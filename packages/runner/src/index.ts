@@ -3,3 +3,7 @@ export * from './artifacts.js';
 export * from './capture.js';
 export * from './retention.js';
 export * from './run.js';
+export * from './comparison-artifacts.js';
+export * from './comparison-ownership.js';
+export * from './long-thread-run.js';
+export * from './long-thread-cli.js';
