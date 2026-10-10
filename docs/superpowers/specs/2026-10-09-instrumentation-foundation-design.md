@@ -1,7 +1,7 @@
 # Chat UI Bench instrumentation foundation
 
 Date: 2026-10-09
-Status: Draft for user review
+Status: Approved by user on 2026-10-09
 Repository: https://github.com/cacheplane/chat-ui-bench
 
 ## Purpose and decisions already established
