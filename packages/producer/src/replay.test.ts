@@ -23,6 +23,19 @@ function harness(backpressure = false) {
   return { replay, deadlines, frames, logs, fire: (time: number) => { now = time; const fn = callback; callback = undefined; fn?.(); }, cleared: () => cleared, ended: () => ended };
 }
 describe('independent monotonic replay', () => {
+  it('preserves v1 clock sampling and emitted observation bytes', () => {
+    const fixture = createCalibrationFixture();
+    fixture.events = [fixture.events[0]!, {sequence: 1, scheduledMs: 0, messageId: 'response-100', type: 'assistant-complete', text: ''}];
+    let sample = 0, callback: (() => void) | undefined;
+    const logs: Observation[] = [];
+    startReplay(fixture, {repetition: 'r1', now: () => sample++ * 10,
+      timer: {set: fn => {callback = fn; return 1;}, clear: () => {}},
+      writer: {write: () => true, end: () => {}}, record: entry => logs.push(entry)});
+    callback!();
+    expect(logs.map(entry => entry.timestampMs)).toEqual([10, 20]);
+    expect(sample).toBe(3);
+    expect(logs.map(entry => entry.data.actualMs)).toEqual([10, 20]);
+  });
   it('logs event planned at 100 and sent at 170 with 70ms lateness; preserves order and deadlines', () => {
     const h = harness();
     expect(h.deadlines).toEqual([100]);

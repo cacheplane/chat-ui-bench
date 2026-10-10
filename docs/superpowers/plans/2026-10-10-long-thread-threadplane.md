@@ -12,26 +12,34 @@
 
 Files: create `.github/workflows/ci.yml`; update `README.md` reproduction/CI notes.
 
-- [ ] Specify one read-only CI workflow for PR and main push, pinned actions, Node 24, npm ci, unit/typecheck/build, pinned Chromium install and sequential browser tests. Preserve failed test logs/artifacts as workflow artifacts; CI is conformance, not hardware benchmarking.
-- [ ] Verify configuration, run local checks, obtain independent spec and quality review, push foundation PR, observe checks for exact head SHA.
-- [ ] Make PR ready and merge only once every required check is green. Verify main workflow and fresh clean checkout. Configure required checks after the workflow exists without bypassing CI.
+- [x] Specify one read-only CI workflow for PR and main push, pinned actions, Node 24, npm ci, unit/typecheck/build, pinned Chromium install and sequential browser tests. Preserve failed test logs/artifacts as workflow artifacts; CI is conformance, not hardware benchmarking.
+- [x] Verify configuration, run local checks, obtain independent spec and quality review, push foundation PR, observe checks for exact head SHA.
+- [x] Make PR ready and merge only once every required check is green. Verify main workflow and fresh clean checkout. Configure required checks after the workflow exists without bypassing CI.
 
 ## Task 1: Version 2 workload and runtime observation contract
 
 Files: create `packages/contract/src/long-thread.ts`, `long-thread.test.ts`, `comparison.ts`, `comparison.test.ts`; modify `packages/contract/src/index.ts`.
 
-- [ ] Write tests first for all twelve deterministic cases: 100/1000/10000 history × 6400/262144 response bytes × follow/history-reading. Default seed 1, 512-byte prose history, 200 deltas at 50ms, exact IDs/roles/bytes, canonical hashes and ordered matrix. Test invalid/duplicate/malformed payloads and split fidelity.
-- [ ] Run focused Vitest and confirm RED. Implement generator and strict version 2 fixture/manifest/invocation/observation types without changing version 1 semantics. Normalize whitespace only for content-only DOM projections, never runtime text; prove omission remains detectable and Unicode translation fidelity.
-- [ ] Define adapter host operations/load/reset/dispose, lightweight replay status, visible-ID/content locators, declared all-mounted/virtualized coverage, native return control and scroll policy. Runtime checkpoints may cover several canonical sequence prefixes. Supply types and validators that runner/analyzer can share.
-- [ ] Run contract tests/typecheck/build, then spec review and quality review. Resolve findings before Task 2.
+- [x] Write tests first for all twelve deterministic cases: 100/1000/10000 history × 6400/262144 response bytes × follow/history-reading. Default seed 1, 512-byte prose history, 200 deltas at 50ms, exact IDs/roles/bytes, canonical hashes and ordered matrix. Test invalid/duplicate/malformed payloads and split fidelity.
+- [x] Run focused Vitest and confirm RED. Implement generator and strict version 2 fixture/manifest/invocation/observation types without changing version 1 semantics. Normalize whitespace only for content-only DOM projections, never runtime text; prove omission remains detectable and Unicode translation fidelity.
+- [x] Define adapter host operations/load/reset/dispose, lightweight replay status, visible-ID/content locators, declared all-mounted/virtualized coverage, native return control and scroll policy. Runtime checkpoints may cover several canonical sequence prefixes. Supply types and validators that runner/analyzer can share.
+- [x] Run contract tests/typecheck/build, then spec review and quality review. Resolve findings before Task 2.
 
 ## Task 1b: Versioned independent producer
 
 Files: modify `packages/producer/src/replay.ts`, `server.ts`, `index.ts`; extend `replay.test.ts`, `server.test.ts`.
 
-- [ ] RED tests prove v2 fixture acceptance, versioned observation suite/repetition identity, original monotonic deadlines, no acknowledgment scheduling, backpressure recording, terminal disconnection and malformed version rejection. Existing v1 replay tests remain unchanged.
-- [ ] Add an explicit v2 producer entry point using the same independently timed scheduling engine. Strictly validate the canonical v2 fixture before opening SSE and emit v2 producer evidence with the correct suite identity. Do not coerce artifacts into v1 or create a second competing clock scheduler.
-- [ ] Run producer unit/typecheck/build and v1 regression checks. Spec then quality review. This task must finish before Task 2 real-browser replay conformance.
+- [x] RED tests prove v2 fixture acceptance, versioned observation suite/repetition identity, original monotonic deadlines, no acknowledgment scheduling, backpressure recording, terminal disconnection and malformed version rejection. Existing v1 replay tests remain unchanged.
+- [x] Add an explicit v2 producer entry point using the same independently timed scheduling engine. Strictly validate the canonical v2 fixture before opening SSE and emit v2 producer evidence with the correct suite identity. Do not coerce artifacts into v1 or create a second competing clock scheduler.
+- [x] Run producer unit/typecheck/build and v1 regression checks. Spec then quality review. This task must finish before Task 2 real-browser replay conformance.
+
+Publish the completed Tasks 1 and 1b together as a focused contract/producer PR
+after final combined review, full conformance, exact-head green CI and merged
+verification. Application and capture work will follow in separate reviewed PRs.
+
+Producer v2 observations use a fixed journey label for the fixture. Browser-phase
+metrics must instead use page-clock phase boundaries; producer journey labels do
+not establish when browser gestures or composer input occurred.
 
 ## Task 2: Released Threadplane Angular application and replay bridge
 
