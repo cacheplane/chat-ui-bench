@@ -1,0 +1,13 @@
+{
+  "name": "@chat-ui-bench/contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./fixture": { "types": "./dist/fixture.d.ts", "import": "./dist/fixture.js" },
+    "./hash": { "types": "./dist/hash.d.ts", "import": "./dist/hash.js" }
+  },
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "dependencies": { "zod": "4.6.5" }
+}

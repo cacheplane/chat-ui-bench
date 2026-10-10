@@ -1,0 +1,5 @@
+{
+  "name": "@chat-ui-bench/reference", "version": "0.1.0", "private": true, "type": "module",
+  "scripts": { "build": "vite build", "typecheck": "tsc -p tsconfig.json --noEmit", "preview": "vite preview --host 127.0.0.1" },
+  "dependencies": { "@chat-ui-bench/contract": "0.1.0" }
+}
