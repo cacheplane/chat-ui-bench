@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {mkdtemp, readFile, writeFile, mkdir, symlink, rename, rm, open} from 'node:fs/promises';
+import {mkdtemp, readFile, writeFile, mkdir, symlink, rename, rm, open, realpath, lstat, chmod} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, basename} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -10,6 +10,203 @@ const roots: string[] = [];
 async function root() { const dir = await mkdtemp(join(tmpdir(), 'comparison-writer-')); roots.push(dir); return dir; }
 afterEach(async () => { await Promise.all(roots.splice(0).map(r => rm(r, {recursive: true, force: true}))); });
 describe('comparison artifact writer', () => {
+  it.each(['reconciliation','inventory'] as const)('rejects post-open replacement during %s while preserving acquired and previously pinned identities',async(operation)=>{
+    for(const {pinned,swapBeforeOpen} of [{pinned:false,swapBeforeOpen:false},{pinned:true,swapBeforeOpen:false},{pinned:true,swapBeforeOpen:true}]) {
+      const dir=await realpath(await root()), outside=await root(); await writeFile(join(outside,'sentinel'),'outside unchanged');
+      let swapped=false, acquired:Awaited<ReturnType<typeof open>>|undefined;
+      const writer=await ComparisonArtifactWriter.create(dir,{open:async(...args)=>{
+        const swap=async()=>{await rename(join(dir,'page.jsonl'),join(dir,'original')); await writeFile(join(dir,'page.jsonl'),'SUBSTITUTED BYTES');};
+        const shouldSwap=!swapped && args[0]===join(dir,'page.jsonl');
+        if(shouldSwap && swapBeforeOpen) await swap();
+        const handle=await open(...args);
+        if(shouldSwap) {
+          swapped=true; acquired=handle;
+          if(!swapBeforeOpen) await swap();
+        }
+        return handle;
+      }});
+      if(pinned) await writer.text('page.jsonl','previously owned');
+      await expect(writer.scoped(()=>{}).appendSerialized('page.jsonl',['true'])).rejects.toThrow(/identity|replaced/i);
+      expect(acquired).toBeDefined(); await expect(acquired!.stat()).rejects.toThrow(/closed|filehandle/i);
+      if(operation==='reconciliation') await expect(writer.reconcilePayloadCandidates()).rejects.toThrow(/identity|replaced/i);
+      else await expect(writer.inventory([{path:'page.jsonl',status:'partial',reason:'open rejected'}])).rejects.toThrow(/identity|replaced/i);
+      expect(await readFile(join(dir,'page.jsonl'),'utf8')).toBe('SUBSTITUTED BYTES');
+      expect(await readFile(join(dir,'original'),'utf8')).toBe(pinned?'previously owned':'');
+      expect(await readFile(join(outside,'sentinel'),'utf8')).toBe('outside unchanged');
+    }
+  });
+  it('rejects slot candidate4097 before mutation while bounded queued candidates settle under their original guard',async()=>{
+    const dir=await root(); await writeFile(join(dir,'sentinel'),'unchanged');
+    let active=true, opens=0, entered!:()=>void, release!:()=>void, original:Awaited<ReturnType<typeof open>>|undefined;
+    const started=new Promise<void>(resolve=>entered=resolve), blocked=new Promise<void>(resolve=>release=resolve);
+    const writer=await ComparisonArtifactWriter.create(dir,{open:async(...args)=>{opens++; const handle=await open(...args); original=handle; entered(); await blocked; return handle;}},{candidateLimit:4096});
+    const scope=writer.scoped(()=>{if(!active) throw new Error('original slot generation revoked');});
+    const pending=[scope.append('journal-0',[])]; await started;
+    for(let i=1;i<4096;i++) pending.push(scope.append(`journal-${i}`,[]));
+    await expect(scope.append('never-created/candidate4097',[])).rejects.toThrow(/capacity/i);
+    await expect(lstat(join(dir,'never-created'))).rejects.toMatchObject({code:'ENOENT'});
+    const settling=Promise.allSettled(pending); active=false; release();
+    expect((await settling).every(result=>result.status==='rejected')).toBe(true); expect(opens).toBe(1);
+    expect(original).toBeDefined(); await expect(original!.stat()).rejects.toThrow(/closed|filehandle/i);
+    const candidates=await writer.reconcilePayloadCandidates();
+    expect(candidates.present).toEqual([{path:'journal-0',status:'partial',reason:'original slot generation revoked'}]);
+    expect(candidates.absent).toHaveLength(4095); expect(candidates.absent.every(file=>file.reason==='original slot generation revoked')).toBe(true);
+    expect(await readFile(join(dir,'sentinel'),'utf8')).toBe('unchanged');
+    await expect(lstat(join(dir,'never-created'))).rejects.toMatchObject({code:'ENOENT'});
+  },30000);
+  it('rejects removed genuinely pinned ancestors while retaining never-created candidate absence',async()=>{
+    const dir=await root(), writer=await ComparisonArtifactWriter.create(dir); await writer.text('nested/raw','owned');
+    await rename(join(dir,'nested'),join(dir,'moved'));
+    await expect(writer.reconcilePayloadCandidates()).rejects.toThrow(/ancestor.*(removed|identity)/i);
+    const other=await ComparisonArtifactWriter.create(await root()); let active=true;
+    const pending=other.scoped(()=>{if(!active) throw new Error('revoked before parent creation');}).appendSerialized('never-created/raw',['true']); active=false;
+    await expect(pending).rejects.toThrow(/revoked/);
+    expect(await other.reconcilePayloadCandidates()).toEqual({present:[],absent:[{path:'never-created/raw',reason:'revoked before parent creation'}]});
+  });
+  it('preserves both genuine post-open expiry and actual handle-close failure',async()=>{
+    const dir=await realpath(await root()); let active=true, cleanup:(()=>Promise<void>)|undefined;
+    const writer=await ComparisonArtifactWriter.create(dir,{open:async(...args)=>{
+      const handle=await open(...args);
+      if(String(args[0])===join(dir,'raw')) {
+        cleanup=handle.close.bind(handle); vi.spyOn(handle,'close').mockRejectedValueOnce(new Error('actual handle close failed')); active=false;
+      }
+      return handle;
+    }});
+    try {await expect(writer.scoped(()=>{if(!active) throw new Error('actual post-open expiry');}).appendSerialized('raw',['true'])).rejects.toThrow(/post-open expiry.*close failed/);}
+    finally {await cleanup?.();}
+  });
+  it('retains a safely readable real temporary when its checked cleanup genuinely fails',async()=>{
+    const dir=await root();
+    const writer=await ComparisonArtifactWriter.create(dir,{rename:async()=>{await chmod(dir,0o500); throw new Error('actual rename failure before denied cleanup');}});
+    try {
+      await expect(writer.text('raw','surviving temporary bytes')).rejects.toThrow();
+      const candidates=await writer.reconcilePayloadCandidates();
+      expect(candidates.present).toHaveLength(1);
+      expect(candidates.present[0]).toMatchObject({status:'partial',reason:expect.stringMatching(/incomplete atomic temporary.*(rename|permission|EACCES)/)});
+      const files=await writer.inventory(candidates.present);
+      expect(files).toMatchObject([{byteLength:25,sha256:createHash('sha256').update('surviving temporary bytes').digest('hex')}]);
+    } finally {await chmod(dir,0o700);}
+  });
+  it('reserves atomic destination plus temporary before any missing parent is created',async()=>{
+    const dir=await root(), writer=await ComparisonArtifactWriter.create(dir,{}, {candidateLimit:16});
+    for(let i=0;i<15;i++) await writer.append(`journal-${i}`,[]);
+    await expect(writer.text('absent-parent/raw','no')).rejects.toThrow(/capacity/i);
+    await expect(lstat(join(dir,'absent-parent'))).rejects.toMatchObject({code:'ENOENT'});
+    expect((await writer.reconcilePayloadCandidates()).present).toHaveLength(15);
+  });
+  it('retains exact interrupted serialized tail and releases batch admission after actual rejection',async()=>{
+    const dir=await root(); let fail=true;
+    const writer=await ComparisonArtifactWriter.create(dir,{open:async(...args)=>{
+      const handle=await open(...args);
+      if(String(args[0]).endsWith('/page.jsonl') && fail) {
+        const write=handle.writeFile.bind(handle);
+        vi.spyOn(handle,'writeFile').mockImplementation(async()=>{await write('{"partial'); fail=false; throw new Error('actual interrupted serialized write');});
+      }
+      return handle;
+    }});
+    await expect(writer.scoped(()=>{}).appendSerialized('page.jsonl',['{"original":1}'])).rejects.toThrow(/interrupted/);
+    expect(await readFile(join(dir,'page.jsonl'),'utf8')).toBe('{"partial');
+    expect(await writer.reconcilePayloadCandidates()).toMatchObject({present:[{path:'page.jsonl',status:'partial',reason:'actual interrupted serialized write'}]});
+    await writer.scoped(()=>{}).appendSerialized('other',['true']);
+  });
+  it('keeps a genuine temporary created before a post-open guard failure as partial raw bytes',async()=>{
+    const dir=await root(); let active=true;
+    const writer=await ComparisonArtifactWriter.create(dir,{open:async(...args)=>{const handle=await open(...args); if(String(args[0]).endsWith('.tmp')) active=false; return handle;}});
+    await expect(writer.scoped(()=>{if(!active) throw new Error('actual temporary post-open expiry');}).text('raw','unwritten')).rejects.toThrow(/expiry/);
+    const candidates=await writer.reconcilePayloadCandidates();
+    expect(candidates.present).toHaveLength(1); expect(candidates.present[0]).toMatchObject({status:'partial',reason:expect.stringContaining('incomplete atomic temporary')});
+    expect(candidates.absent).toMatchObject([{path:'raw',reason:'actual temporary post-open expiry'}]);
+    expect(await writer.inventory(candidates.present)).toMatchObject([{byteLength:0,sha256:createHash('sha256').update('').digest('hex')}]);
+  });
+  it('checks actual UTF8 and LF-inclusive batch bounds, primitive types and code units before mutation', async () => {
+    const dir=await root(), writer=await ComparisonArtifactWriter.create(dir), scope=writer.scoped(()=>{});
+    const invalid:unknown[][]=[Array(65).fill('a'),['a\nb'],['a\rb'],[{}],[new String('a')],['a'.repeat(4194305)],['🙂'.repeat(1048577)],Array(4).fill('a'.repeat(4194304))];
+    for(const records of invalid) await expect(scope.appendSerialized('raw',records as string[])).rejects.toThrow();
+    expect((await writer.reconcilePayloadCandidates()).present).toHaveLength(0);
+    await scope.appendSerialized('raw',['a'.repeat(4194304)]);
+    expect((await readFile(join(dir,'raw'))).length).toBe(4194305);
+  });
+  it('rejects serialized append stream ownership immediately and queued acquisition at execution',async()=>{
+    const writer=await ComparisonArtifactWriter.create(await root()), scope=writer.scoped(()=>{});
+    const stream=await scope.stream('raw'); await expect(scope.appendSerialized('raw',['a'])).rejects.toThrow(/stream/i); await stream.complete();
+    const acquiring=scope.stream('other'); const appending=scope.appendSerialized('other',['a']);
+    const other=await acquiring; await expect(appending).rejects.toThrow(/stream/i); await other.complete();
+  });
+  it('rejects regular leaf and ancestor replacement during owner reconciliation',async()=>{
+    const dir=await root(), writer=await ComparisonArtifactWriter.create(dir); await writer.text('nested/raw','owned');
+    await rename(join(dir,'nested/raw'),join(dir,'nested/original')); await writeFile(join(dir,'nested/raw'),'substituted');
+    await expect(writer.reconcilePayloadCandidates()).rejects.toThrow(/identity|replaced/i);
+    await rm(join(dir,'nested/raw')); await rename(join(dir,'nested/original'),join(dir,'nested/raw'));
+    await rename(join(dir,'nested'),join(dir,'old')); await mkdir(join(dir,'nested')); await writeFile(join(dir,'nested/raw'),'substituted');
+    await expect(writer.reconcilePayloadCandidates()).rejects.toThrow(/ancestor|identity/i);
+  });
+  it('refuses unregistered submitted inventory paths without hashing outside candidates',async()=>{
+    const dir=await root(), writer=await ComparisonArtifactWriter.create(dir); await writeFile(join(dir,'unregistered'),'actual');
+    await expect(writer.inventory([{path:'unregistered',status:'complete'}])).rejects.toThrow(/registered/i);
+  });
+  it('excludes partial inventory manifests from their own payload inventory',async()=>{
+    const writer=await ComparisonArtifactWriter.create(await root()); await writer.text('raw-inventory.json','actual manifest bytes');
+    await expect(writer.inventory([{path:'raw-inventory.json',status:'complete'}])).rejects.toThrow(/inventory|derived|manifest/i);
+  });
+  it('exposes exact append only through a guarded scope and retains original spellings across generations', async () => {
+    const dir = await root(), writer = await ComparisonArtifactWriter.create(dir), scope = writer.scoped(() => {});
+    expect(typeof scope.appendSerialized).toBe('function');
+    expect('appendSerialized' in writer).toBe(false);
+    const records = ['{"v":"\\u0061", "n":1e0}', '"🙂"'];
+    const pending = scope.appendSerialized('page.jsonl', records); records[0] = 'changed'; await pending;
+    await writer.scoped(() => {}).appendSerialized('page.jsonl', ['true']);
+    expect(await readFile(join(dir, 'page.jsonl'), 'utf8')).toBe('{"v":"\\u0061", "n":1e0}\n"🙂"\ntrue\n');
+  });
+  it('rejects a second serialized batch until actual settlement and rejects accessors without invoking them', async () => {
+    const writer = await ComparisonArtifactWriter.create(await root()), scope = writer.scoped(() => {});
+    expect(typeof scope.appendSerialized).toBe('function');
+    let calls = 0; const records: string[] = []; Object.defineProperty(records, 0, {get() {calls++; return 'x';}}); records.length = 1;
+    await expect(scope.appendSerialized('page.jsonl', records)).rejects.toThrow(); expect(calls).toBe(0);
+    const first = scope.appendSerialized('page.jsonl', ['a']);
+    await expect(scope.appendSerialized('page.jsonl', ['b'])).rejects.toThrow(/outstanding/i); await first;
+    await scope.appendSerialized('page.jsonl', ['c']);
+  });
+  it('registers failed-created leaves and can reconcile and hash after seal', async () => {
+    const dir = await realpath(await root()); let active = true;
+    const writer = await ComparisonArtifactWriter.create(dir, {open: async (...args: Parameters<typeof open>) => {
+      const handle = await open(...args); if (String(args[0]) === join(dir, 'page.jsonl')) active = false; return handle;
+    }});
+    expect(typeof writer.reconcilePayloadCandidates).toBe('function');
+    await expect(writer.scoped(() => {if (!active) throw new Error('generation expired after creation');}).appendSerialized('page.jsonl', ['actual'])).rejects.toThrow(/expired/);
+    await writer.seal();
+    expect(await writer.reconcilePayloadCandidates()).toMatchObject({present:[{path:'page.jsonl',status:'partial',reason:'generation expired after creation'}],absent:[]});
+    expect(await writer.inventory([{path:'page.jsonl',status:'partial',reason:'generation expired after creation'}])).toMatchObject([{byteLength:0,sha256:createHash('sha256').update('').digest('hex')}]);
+  });
+  it('exhausts candidate admission before creating parents or destinations', async () => {
+    const dir = await root(), writer = await ComparisonArtifactWriter.create(dir, {}, {candidateLimit:16});
+    for (let i = 0; i < 16; i++) await writer.append(`journal-${i}`, []);
+    await expect(writer.text('new-parent/raw', 'no')).rejects.toThrow(/candidate|capacity/i);
+    await expect(readFile(join(dir, 'new-parent/raw'))).rejects.toMatchObject({code:'ENOENT'});
+    expect((await writer.reconcilePayloadCandidates()).present).toHaveLength(16);
+  });
+  it('rejects real parent fsync after a successful rename and closes its actual directory handle', async () => {
+    const dir = await realpath(await root()); let renamed = false, closeAttempted = false, directoryHandle:Awaited<ReturnType<typeof open>>|undefined;
+    const writer = await ComparisonArtifactWriter.create(dir, {
+      rename: async (from, to) => {await rename(from, to); renamed = true;},
+      open: async (...args: Parameters<typeof open>) => {
+        const handle = await open(...args);
+        if (String(args[0]) === dir && renamed && (await handle.stat()).isDirectory()) {
+          directoryHandle=handle;
+          vi.spyOn(handle, 'sync').mockRejectedValueOnce(new Error('actual parent fsync failed'));
+          const close = handle.close.bind(handle);
+          vi.spyOn(handle, 'close').mockImplementation(async () => {closeAttempted = true; await close();});
+        }
+        return handle;
+      },
+    });
+    await expect(writer.text('raw', 'actual bytes')).rejects.toThrow('actual parent fsync failed');
+    expect(renamed).toBe(true); expect(closeAttempted).toBe(true);
+    expect(directoryHandle).toBeDefined(); await expect(directoryHandle!.stat()).rejects.toThrow(/closed|filehandle/i);
+    expect(await readFile(join(dir, 'raw'), 'utf8')).toBe('actual bytes');
+    expect(await writer.reconcilePayloadCandidates()).toMatchObject({present:[{path:'raw',status:'partial',reason:'actual parent fsync failed'}],absent:[]});
+    expect(await writer.inventory([{path:'raw',status:'partial',reason:'actual parent fsync failed'}])).toMatchObject([{byteLength:12,sha256:createHash('sha256').update('actual bytes').digest('hex')}]);
+    expect(await writer.inventory([{path:'raw',status:'complete'}])).toMatchObject([{status:'partial',reason:'actual parent fsync failed'}]);
+  });
   it('serializes concurrent whole-line appends and nested atomic writes', async () => {
     const dir = await root(), writer = await ComparisonArtifactWriter.create(dir);
     await writer.json('runs/1-0-threadplane/trace.json', {ready: true});
@@ -102,24 +299,30 @@ describe('comparison artifact writer', () => {
   });
   it('rejects an opened hash handle substituted for the checked pathname', async () => {
     const dir = await root(); await writeFile(join(dir, 'raw'), 'original'); await writeFile(join(dir, 'other'), 'wrong');
-    const writer = await ComparisonArtifactWriter.create(dir, {open: async (path, flags, mode) => open(String(path).endsWith('/raw') ? join(dir, 'other') : path, flags, mode)});
+    let hashing=false;
+    const writer = await ComparisonArtifactWriter.create(dir, {open: async (path, flags, mode) => open(hashing && String(path).endsWith('/raw') ? join(dir, 'other') : path, flags, mode)});
+    await writer.append('raw',[]); hashing=true;
     await expect(writer.inventory([{path: 'raw', status: 'complete'}])).rejects.toThrow(/handle|identity|path/i);
   });
   it('rejects pathname replacement after opening a readable original hash handle', async () => {
     const dir = await root(); await writeFile(join(dir, 'raw'), 'original');
+    let hashing=false;
     const writer = await ComparisonArtifactWriter.create(dir, {open: async (...args) => {
-      const handle = await open(...args); if (String(args[0]).endsWith('/raw')) {await rename(join(dir, 'raw'), join(dir, 'old')); await writeFile(join(dir, 'raw'), 'replacement');} return handle;
+      const handle = await open(...args); if (hashing && String(args[0]).endsWith('/raw')) {await rename(join(dir, 'raw'), join(dir, 'old')); await writeFile(join(dir, 'raw'), 'replacement');} return handle;
     }});
+    await writer.append('raw',[]); hashing=true;
     await expect(writer.inventory([{path: 'raw', status: 'complete'}])).rejects.toThrow(/changed|path/i);
     expect(await readFile(join(dir, 'old'), 'utf8')).toBe('original');
   });
   it('rejects file mutation during streamed hashing', async () => {
     const dir = await root(); await writeFile(join(dir, 'raw'), Buffer.alloc(262144, 1));
+    let hashing=false;
     const writer = await ComparisonArtifactWriter.create(dir, {open: async (...args) => {
       const handle = await open(...args), create = handle.createReadStream.bind(handle);
-      vi.spyOn(handle, 'createReadStream').mockImplementation(options => {const stream = create({...options, highWaterMark: 1024}); stream.once('data', () => appendFileSync(join(dir, 'raw'), 'changed')); return stream;});
+      if(hashing) vi.spyOn(handle, 'createReadStream').mockImplementation(options => {const stream = create({...options, highWaterMark: 1024}); stream.once('data', () => appendFileSync(join(dir, 'raw'), 'changed')); return stream;});
       return handle;
     }});
+    await writer.append('raw',[]); hashing=true;
     await expect(writer.inventory([{path: 'raw', status: 'complete'}])).rejects.toThrow(/changed|hash/i);
   });
   it('streams exact bytes and refuses inventory with an unfinished stream', async () => {

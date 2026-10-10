@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {comparisonCaptureInvocationSchema, comparisonScheduledRunSchema, comparisonValidationSchema, comparisonExceptionsSchema, comparisonEvidenceSchema, canonicalSerialize, createLongThreadFixture, type ComparisonCaptureInvocation, type ComparisonIdentity, type ComparisonValidation, type ComparisonEvidence, type ComparisonDeadline, type LongThreadFixture} from '@chat-ui-bench/contract';
 import {ComparisonArtifactWriter, type ComparisonScopedWriter, type ComparisonPayloadFile, type ComparisonFileOperations} from './comparison-artifacts.js';
 import {ComparisonOwnership, type ComparisonOwnershipClock, type ComparisonOwnershipContext} from './comparison-ownership.js';
-import type {LongThreadConfiguration} from './long-thread-cli.js';
+import {validateLongThreadConfiguration, type LongThreadConfiguration} from './long-thread-cli.js';
 const versions = {schemaVersion: 2, suite: 'long-thread-prose-v1', suiteVersion: '1.0.0', collectorVersion: '2.0.0', analyzerVersion: '2.0.0'} as const;
 type Slot = ComparisonCaptureInvocation['runs'][number];
 export interface ComparisonSlotContext {identity: ComparisonIdentity; descriptor: ReturnType<typeof comparisonScheduledRunSchema.parse>; fixture: LongThreadFixture; writer: ComparisonScopedWriter; ownership: ComparisonOwnershipContext}
@@ -26,6 +26,7 @@ export interface ComparisonInvocationExecution {
   finalize(): Promise<void>;
 }
 export function createLongThreadLedger(config: LongThreadConfiguration): ComparisonCaptureInvocation {
+  config = validateLongThreadConfiguration(config);
   const runs: Slot[] = [];
   for (let round = 1; round <= config.configuration.rounds; round++) config.configuration.caseOrder.forEach((scenarioId, caseIndex) => config.configuration.adapterProfiles.forEach((adapterProfile, profileIndex) => {
     runs.push({round, caseIndex, scenarioId, adapterProfile, repetition: `${round}-${caseIndex}-${profileIndex}`, artifactDirectory: `runs/round-${round}/case-${caseIndex}/profile-${profileIndex}`, status: 'scheduled', reasons: []});
@@ -39,8 +40,9 @@ function describeError(error: unknown) {return error instanceof Error ? error.me
 
 /** Injected orchestration only: this does not instantiate a browser, manufacture evidence, or score results. */
 export async function runLongThreadInvocation<State>(config: LongThreadConfiguration, driver: ComparisonSlotDriver<State>, options: {clock?: ComparisonOwnershipClock; fileOperations?: ComparisonFileOperations} = {}): Promise<ComparisonInvocationExecution> {
+  config = validateLongThreadConfiguration(config);
   if (!driver || typeof driver.setup !== 'function' || typeof driver.replay !== 'function') throw new Error('An actual comparison slot driver is required');
-  const invocation = createLongThreadLedger(config), root = await ComparisonArtifactWriter.create(config.out, options.fileOperations);
+  const invocation = createLongThreadLedger(config), root = await ComparisonArtifactWriter.create(config.out, options.fileOperations, {candidateLimit:16});
   await root.claimEmptyRoot('invocation-claim.json', {...versions, kind: 'invocation-ownership-claim', invocationId: randomUUID(), createdAt: invocation.createdAt, purpose: invocation.purpose, configuration: invocation.configuration});
   const writers: ComparisonArtifactWriter[] = [], owners: ComparisonOwnership[] = [], pendingFinalizers: (() => Promise<void>)[] = [];
   let finalized = false; let finalizationFailure: Error | null = null;
@@ -54,7 +56,7 @@ export async function runLongThreadInvocation<State>(config: LongThreadConfigura
   await persistLedger();
   // The complete durable plan precedes every resource factory, including the first.
   for (const slot of invocation.runs) {
-    const writer = await ComparisonArtifactWriter.create(join(root.directory, slot.artifactDirectory), options.fileOperations); writers.push(writer);
+    const writer = await ComparisonArtifactWriter.create(join(root.directory, slot.artifactDirectory), options.fileOperations, {candidateLimit:4096}); writers.push(writer);
     await writer.json('descriptor.json', comparisonScheduledRunSchema.parse({...identity(slot), seed: config.configuration.seed, mode: config.configuration.mode, artifactDirectory: slot.artifactDirectory}));
     await writer.json('validation.json', failed(identity(slot), ['capture-not-started']));
     await writer.json('exceptions.json', comparisonExceptionsSchema.parse({...identity(slot), exceptions: []}));
@@ -114,7 +116,7 @@ export async function runLongThreadInvocation<State>(config: LongThreadConfigura
       const validation = reasons.length ? failed(id, reasons) : comparisonValidationSchema.parse(capture!.validation);
       await writer.json('validation.json', validation);
       const deadlines = Object.freeze(owner.deadlines.map(deadline => Object.freeze({...deadline})));
-      await driver.finalize?.({identity: id, writer, deadlines}, capture);
+      await driver.finalize?.({identity: id, writer:writer.scoped(()=>{}), deadlines}, capture);
       if (capture?.evidence) {
         const supplied = capture.payloadFiles ?? [];
         if (new Set(supplied.map(file => file.path)).size !== supplied.length) throw new Error('Duplicate capture payload file');
