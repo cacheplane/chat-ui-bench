@@ -1,23 +1,84 @@
 # Chat UI Bench
 
-Reproducible browser benchmarks for long, streaming agent conversations.
+Reproducible browser instrumentation for long, streaming agent conversations.
+Maintained by Cacheplane for future Threadplane regression checks and chat-stack
+comparisons. This foundation measures a minimal reference chat with controlled
+faults. Competitor adapters, a dashboard, and comparative rankings are not
+implemented.
 
-Chat UI Bench will measure how chat implementations behave as conversation
-history, active response size, content complexity, and event frequency grow.
-It is maintained by Cacheplane to monitor Threadplane and publish reproducible
-comparisons with other chat stacks.
+The npm workspace contains a deterministic replay contract, independent Node SSE
+producer, local browser reference, Playwright/CDP capture runner, and offline
+analyzer. It validates exact transcript completion, receipt/application ordering,
+active message identity, scroll movement/anchoring, and evidence integrity before
+scoring any sample. Failed and invalid repetitions remain in reports.
 
-**Status:** design stage. No benchmark runner or comparative results are
-available yet. The choices below describe the intended scope, not implemented
-capabilities or measured performance claims.
+## Run it
 
-The first milestone is specified in the
-[instrumentation foundation design](docs/superpowers/specs/2026-10-09-instrumentation-foundation-design.md),
-currently a draft for review.
+Use Node 24+ and npm 11+; dependencies and Playwright Chromium are pinned in the
+lockfile. No global browser or Python installation is required.
 
-## Initial comparison stacks
+```sh
+npm ci
+npx playwright install chromium
+npm test
+npm run typecheck
+npm run build
+npm run test:browser
+npm run bench:calibrate -- --mode headless --repetitions 3 --out artifacts
+npm run bench:calibrate -- --mode headed --repetitions 3 --out artifacts
+npm run bench:analyze -- --artifact-dir /absolute/path/to/artifacts/calibration-directory
+```
 
-| Stack | Configurations |
+`bench:calibrate` captures then analyzes, printing its new artifact directory.
+`bench:analyze` reads existing raw evidence without opening a browser or starting
+an SSE producer. It rewrites only derived `metrics.json` and `summary.md` files.
+A successful calibration expects the three intentional omitted-delta repetitions
+to be invalid, with all other repetitions valid. Unexpected invalid/failed runs
+or missing required calibrations produce a nonzero exit. Supported calibration
+measurements must satisfy their checks; unsupported stall/snapshot capabilities
+remain explicitly **unvalidated**, with reasons, rather than fabricated passes.
+
+Each three-round invocation interleaves seven exclusive variants: clean, stall,
+delayed-display, scroll, omitted-delta, retention-release, and retention-retain.
+That is 21 repetitions with 100 history messages and 200 deltas at 50 ms intervals.
+Each repetition uses a fresh Chromium process/profile with local assets loaded
+before measurement. Headed and headless results are grouped separately.
+
+## Measurements and limits
+
+Available evidence can derive producer lateness, page receive-to-DOM latency,
+DOM backlog, observed composer Event Timing and Long Animation Frames, scroll
+movement and anchoring, renderer V8 heap/DOM counters, and named retained buffer
+ownership after five resets. Every metric carries its unit and evidence or an
+unavailable reason. The analyzer reports comparable group medians, ranges,
+sample counts, and every failure.
+
+DOM observations approximate text freshness; they do not prove pixel
+presentation. Producer/page clocks are independent, so transport latency is
+unavailable. Event Timing absence below the configured 16 ms threshold is
+unavailable, not zero latency, and these scripted events are not field INP.
+Heap counters are not total browser memory. Retention uses strong named heap
+paths and native backing storage, not a guessed JS heap increase.
+
+**Presentation metrics are unavailable in this milestone.** An unchanged headed
+CDP trace was rejected by Chrome DevTools Performance import with “No frames
+found in trace data.” Capture Chrome 156.0.8078.4 and viewer Chrome 154.0.8037.98
+have different revisions; that is a possible factor, not a proven cause. No
+numerical FPS or dropped-frame values are published. This foundation is not
+ready for public smoothness comparisons.
+
+See [instrumentation and artifact contract](docs/instrumentation.md) for evidence,
+clock domains, grouping, capability checks, overhead, and reanalysis limits.
+The [approved design](docs/superpowers/specs/2026-10-09-instrumentation-foundation-design.md)
+sets the milestone boundaries. Reference calibration results are instrumentation
+checks and do not rank chat stacks.
+
+## Planned comparison adapters
+
+The next milestone will add the shared long-thread workload and supported runtime
+adapters for public competitor comparisons. These adapters are not implemented.
+
+| Stack | Planned configurations |
 | --- | --- |
 | Threadplane Angular | Current documented default |
 | assistant-ui React | Default kit and documented virtualized composition |
@@ -25,80 +86,6 @@ currently a draft for review.
 | CopilotKit Angular | Compatible released Angular configuration |
 | CopilotKit React | Documented React chat composition |
 
-Every result must identify exact library and framework versions, renderer,
-configuration, and build revision. Documented defaults and optimized
-configurations will be reported separately. Framework compatibility must be
-verified before versions are selected.
-
-## Initial workloads
-
-- Restore a populated conversation at increasing history sizes.
-- Scroll through history while an assistant response streams.
-- Type in the composer and operate controls during streaming.
-- Switch between populated conversations and measure cleanup.
-
-Further workloads may cover one enormous response, rich Markdown, many tool
-calls, expanding cards, and prepending earlier history.
-
-History size, mounted content, active response size, chunk size, and event rate
-are separate workload dimensions. Model context-window size alone does not
-define the browser workload.
-
-## Measurement principles
-
-- Use deterministic fixtures and replay; exclude live model variability from
-  controlled frontend comparisons.
-- Pace the event producer independently of the page's main thread and record
-  delivery timing so stalls cannot silently reduce the offered workload.
-- Measure the full browser pipeline. V8 profiling explains JavaScript and
-  allocation costs; Chromium traces are needed for rendering and presentation.
-- Report scroll smoothness, input responsiveness, streaming freshness, and
-  memory separately. Average FPS alone is insufficient.
-- Do not equate animation callbacks or DOM mutations with presented frames.
-  INP does not measure scrolling, and Long Animation Frames do not capture every
-  missed frame deadline.
-- Validate content and scroll correctness. Missing content, broken anchoring,
-  or incomplete captures must not appear as performance wins.
-- Allow supported virtualization and batching, with their configuration,
-  content delay, and functional tradeoffs disclosed.
-- Separate production-build measurements, cold/warm conditions, natural-GC
-  interaction runs, and forced-GC retention diagnostics.
-- Repeat and interleave comparisons; report uncertainty and failures, not only
-  the fastest sample.
-
-## Proposed tooling
-
-The leading option is a TypeScript runner using Playwright and Chrome DevTools
-Protocol, with versioned Perfetto analysis. Chromium Crossbench should also be
-evaluated for automated trace collection before the capture approach is fixed.
-
-The first technical milestone is instrumentation validation against a pinned
-browser: demonstrate that controlled stalls, delayed updates, scrolling, and
-retained allocations produce the expected measurements. Unsupported metrics
-must be marked unavailable rather than reported as zero.
-
-## Reproducing published results
-
-Future publications should include adapter source, fixture hashes, lockfiles,
-raw samples, browser traces, analyzer version, and the commands used to run them.
-Hardware, OS, browser revision, GPU configuration, viewport, typography,
-enabled features, and cache conditions must be disclosed.
-
-Results should show scaling curves and where each stack degrades. A single
-aggregate ranking is not the initial goal. Browser upgrades and library changes
-must be distinguishable in regression history.
-
-## Research references
-
-- [V8 real-world performance methodology](https://v8.dev/blog/real-world-performance)
-- [Chrome frame classifications](https://developer.chrome.com/docs/devtools/performance/reference)
-- [Interaction to Next Paint](https://web.dev/articles/inp)
-- [Long Animation Frames](https://developer.chrome.com/docs/web-platform/long-animation-frames)
-- [Perfetto Chrome tracing](https://perfetto.dev/docs/getting-started/chrome-tracing)
-- [Perfetto SQL standard library](https://perfetto.dev/docs/analysis/stdlib-docs)
-- [Chromium Crossbench](https://chromium.googlesource.com/crossbench)
-- [Tachometer](https://github.com/google/tachometer)
-- [assistant-ui virtualization](https://www.assistant-ui.com/docs/guides/virtualization)
-- [AI Elements Conversation](https://elements.ai-sdk.dev/components/conversation)
-- [Streamdown memoization](https://streamdown.ai/docs/memoization)
-- [CopilotKit Angular](https://docs.copilotkit.ai/angular)
+Each future comparison must disclose exact library/framework versions, content
+features, renderer, configuration, and build revision. Defaults and optimized
+configurations will be reported separately after their equivalence is verified.

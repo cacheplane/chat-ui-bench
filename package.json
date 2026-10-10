@@ -1,0 +1,30 @@
+{
+  "name": "chat-ui-bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24",
+    "npm": ">=11"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspace @chat-ui-bench/contract && npm run build --workspace @chat-ui-bench/producer && npm run build --workspace @chat-ui-bench/reference && npm run build --workspace @chat-ui-bench/analyzer && npm run build --workspace @chat-ui-bench/runner",
+    "test:browser": "npm run build && vitest run --config vitest.browser.config.ts",
+    "bench:calibrate": "node packages/runner/dist/cli.js",
+    "bench:analyze": "node packages/analyzer/dist/cli.js"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "playwright": "1.64.0",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.4",
+    "vitest": "5.0.3"
+  }
+}
