@@ -69,3 +69,26 @@ test('events after terminal cannot commit a response to final history', async ()
         void e; }).rejects.toThrow();
     expect((await transport.getHistory('t', new AbortController().signal))[0].values.messages).toHaveLength(1);
 });
+test('dispose retains accepted evidence and accessible final buffer state',async()=>{
+    const transport=new ReplayTransport({fetch:async()=>response(events)});
+    transport.loadHistory('t',history);transport.connect('https://fixture.test/replay');
+    for await(const event of transport.stream('a','t',null,new AbortController().signal)) void event;
+    transport.dispose();
+    expect(transport.readCaptureBufferState()).toMatchObject({pendingEntries:8,highWaterEntries:8,status:'complete'});
+    expect(transport.drainEvidence()).toHaveLength(8);
+    expect(transport.readCaptureBufferState()).toMatchObject({pendingEntries:0,highWaterEntries:8});
+});
+test('overflow never delays delivery and reset retains lifetime loss and undrained records',async()=>{
+    const items=[events[0],...Array.from({length:2050},(_,i)=>({...events[1]!,sequence:i+1,scheduledMs:i+1,text:'x'})),{...events[3]!,sequence:2051,scheduledMs:2051}];
+    let fetches=0;const transport=new ReplayTransport({fetch:async()=>response(fetches++===0?items:events)});
+    transport.loadHistory('t',history);transport.connect('https://fixture.test/replay');
+    let terminal:unknown;for await(const event of transport.stream('a','t',null,new AbortController().signal)) terminal=event;
+    expect(terminal).toMatchObject({type:'values',data:{messages:[{id:'h'},{id:'a',content:'x'.repeat(2050)}]}});
+    expect(transport.readCaptureBufferState()).toMatchObject({pendingEntries:4096,highWaterEntries:4096,rejectedRecordCount:8,overflowCount:8,status:'partial'});
+    transport.reset();expect(transport.readCaptureBufferState()).toMatchObject({pendingEntries:4096,rejectedRecordCount:8});
+    expect(transport.drainEvidence()).toHaveLength(4096);
+    transport.loadHistory('new',history);transport.connect('https://fixture.test/replay');
+    for await(const event of transport.stream('a','new',null,new AbortController().signal)) void event;
+    expect(transport.drainEvidence()).toHaveLength(8);
+    transport.dispose();expect(transport.readCaptureBufferState()).toMatchObject({pendingEntries:0,highWaterEntries:4096,rejectedRecordCount:8});
+});

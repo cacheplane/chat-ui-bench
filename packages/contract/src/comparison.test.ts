@@ -105,10 +105,10 @@ describe('strict comparison v2 contract', () => {
     expect(comparisonObservationSchema.safeParse(receipt).success).toBe(true);
     expect(comparisonObservationSchema.safeParse({...receipt, clockDomain: 'producer-monotonic-ms'}).success).toBe(false);
     expect(comparisonObservationSchema.safeParse({...common, kind: 'runtime-checkpoint', clockDomain: 'page-performance-ms', phaseInstanceId: '0', attributionReason: null, data: {
-      matchedSequences: [1, 2, 3], activeMessage: {id: 'response', role: 'assistant', text: 'prefix', status: 'streaming'}, delivery: 'streaming', loading: true, error: null, outcome: null,
+      matchedSequences: [], activeMessage: {id: 'response', role: 'assistant', text: 'prefix', status: 'streaming'}, delivery: 'streaming', loading: true, error: null, outcome: null,
     }}).success).toBe(true);
     expect(comparisonObservationSchema.safeParse({...common, kind: 'dom-checkpoint', clockDomain: 'page-performance-ms', phaseInstanceId: '0', attributionReason: null, data: {
-      matchedSequences: [1, 2, 3], activeMessageId: 'response', mounted: true, text: 'prefix', visibleMessages: [], mountedMessageCount: 100,
+      matchedSequences: [], activeMessageId: 'response', mounted: true, text: 'prefix', visibleMessages: [], mountedMessageCount: 100,
     }}).success).toBe(true);
     expect(comparisonObservationSchema.safeParse({...common, kind: 'translation', clockDomain: 'page-performance-ms', phaseInstanceId: '0', attributionReason: null, data: {protocolEvent: 'messages/partial', messageId: 'response', text: '🙂', applied: true}}).success).toBe(false);
   });

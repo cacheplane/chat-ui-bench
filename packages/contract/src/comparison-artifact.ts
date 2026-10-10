@@ -3,6 +3,7 @@ import { comparisonIdentityShape, comparisonVersionShape, comparisonPhaseSchema,
 import { phaseInstanceIdSchema, presentationEvidenceSchema } from './presentation.js';
 import { comparisonPhaseMarks, comparisonScoredPresentationPhaseSchema, comparisonRendererPresentationSchema } from './comparison-presentation.js';
 import { longThreadCaseOrder } from './long-thread.js';
+import {COMPARISON_CAPTURE_LIMITS} from './comparison-buffer.js';
 
 const text = z.string().min(1);
 const timestamp = z.number().finite().nonnegative();
@@ -134,7 +135,24 @@ export const comparisonRunResultsSchema = z.strictObject({
 export type ComparisonRunResults = z.infer<typeof comparisonRunResultsSchema>;
 
 export const comparisonRectSchema = z.strictObject({left: z.number().finite(), top: z.number().finite(), right: z.number().finite(), bottom: z.number().finite()}).refine(v => v.right >= v.left && v.bottom >= v.top, 'Rectangle bounds must be ordered');
-export const comparisonGeometrySchema = comparisonAvailabilitySchema(z.strictObject({hostRect: comparisonRectSchema, contentRects: z.array(comparisonRectSchema), viewportRect: comparisonRectSchema, scrollerRect: comparisonRectSchema, clippingAncestorRects: z.array(comparisonRectSchema), effectiveClipRect: comparisonRectSchema.nullable()}));
+export const comparisonGeometrySchema = comparisonAvailabilitySchema(z.strictObject({messageId: text, role: z.enum(['user', 'assistant']), hostRect: comparisonRectSchema, contentRects: z.array(comparisonRectSchema).max(COMPARISON_CAPTURE_LIMITS.maxRectsPerSample), viewportRect: comparisonRectSchema, scrollerRect: comparisonRectSchema, clippingAncestorRects: z.array(comparisonRectSchema).max(COMPARISON_CAPTURE_LIMITS.maxAncestorsPerGeometry), clippingAncestorAxes: z.array(z.strictObject({clipX: z.boolean(), clipY: z.boolean()})).max(COMPARISON_CAPTURE_LIMITS.maxAncestorsPerGeometry), effectiveClipRect: comparisonRectSchema.nullable()}).refine(v => v.clippingAncestorRects.length === v.clippingAncestorAxes.length, 'Clipping rectangles and axes must align'));
+export const comparisonCaptureLimitsSchema = z.strictObject({
+  maxPendingEntries:z.literal(COMPARISON_CAPTURE_LIMITS.maxPendingEntries),maxPendingSerializedBytes:z.literal(COMPARISON_CAPTURE_LIMITS.maxPendingSerializedBytes),maxRecordSerializedBytes:z.literal(COMPARISON_CAPTURE_LIMITS.maxRecordSerializedBytes),
+  maxRecordTokens:z.literal(COMPARISON_CAPTURE_LIMITS.maxRecordTokens),maxRecordDepth:z.literal(COMPARISON_CAPTURE_LIMITS.maxRecordDepth),
+  maxRuntimeCodeUnits:z.literal(COMPARISON_CAPTURE_LIMITS.maxRuntimeCodeUnits),maxRuntimeUtf8Bytes:z.literal(COMPARISON_CAPTURE_LIMITS.maxRuntimeUtf8Bytes),
+  maxActiveDomCodeUnits:z.literal(COMPARISON_CAPTURE_LIMITS.maxActiveDomCodeUnits),maxActiveDomUtf8Bytes:z.literal(COMPARISON_CAPTURE_LIMITS.maxActiveDomUtf8Bytes),
+  maxHistoricalDomCodeUnits:z.literal(COMPARISON_CAPTURE_LIMITS.maxHistoricalDomCodeUnits),maxHistoricalDomUtf8Bytes:z.literal(COMPARISON_CAPTURE_LIMITS.maxHistoricalDomUtf8Bytes),
+  maxHistoricalCallbackCodeUnits:z.literal(COMPARISON_CAPTURE_LIMITS.maxHistoricalCallbackCodeUnits),maxHistoricalCallbackUtf8Bytes:z.literal(COMPARISON_CAPTURE_LIMITS.maxHistoricalCallbackUtf8Bytes),
+  maxHistoricalCandidates:z.literal(COMPARISON_CAPTURE_LIMITS.maxHistoricalCandidates),maxNodesPerSample:z.literal(COMPARISON_CAPTURE_LIMITS.maxNodesPerSample),maxNodesPerCallback:z.literal(COMPARISON_CAPTURE_LIMITS.maxNodesPerCallback),
+  maxAncestorsPerGeometry:z.literal(COMPARISON_CAPTURE_LIMITS.maxAncestorsPerGeometry),maxAncestorsPerCallback:z.literal(COMPARISON_CAPTURE_LIMITS.maxAncestorsPerCallback),
+  maxRectsPerSample:z.literal(COMPARISON_CAPTURE_LIMITS.maxRectsPerSample),maxRectsPerCallback:z.literal(COMPARISON_CAPTURE_LIMITS.maxRectsPerCallback),
+  maxConsoleArguments:z.literal(COMPARISON_CAPTURE_LIMITS.maxConsoleArguments),maxDiagnosticFieldCodeUnits:z.literal(COMPARISON_CAPTURE_LIMITS.maxDiagnosticFieldCodeUnits),maxDiagnosticMessageCodeUnits:z.literal(COMPARISON_CAPTURE_LIMITS.maxDiagnosticMessageCodeUnits),maxDiagnosticStackCodeUnits:z.literal(COMPARISON_CAPTURE_LIMITS.maxDiagnosticStackCodeUnits),
+});
+export const comparisonCaptureMetadataSchema = z.strictObject({...comparisonIdentityShape,
+  browserProtocol:z.strictObject({protocolVersion:text,product:text,revision:text,userAgent:text,jsVersion:text}),chromiumDownloadRevision:text,playwrightVersion:text,
+  instrumentation:z.strictObject({sourceHashes:z.record(comparisonArtifactPathSchema,hash).refine(v=>Object.keys(v).length>0,'Actual source inventory must not be empty'),installerSha256:hash,probeIntervalMs:z.literal(50),limits:comparisonCaptureLimitsSchema}),
+});
+export type ComparisonCaptureMetadata = z.infer<typeof comparisonCaptureMetadataSchema>;
 export const comparisonInputRecipeSchema = z.strictObject({
   wheel: z.strictObject({recipeId: text, deltasCssPx: z.tuple([z.literal(-100), z.literal(-100), z.literal(-100), z.literal(-100)]), cadenceMs: z.literal(50)}),
   composer: z.strictObject({recipeId: text, text: z.literal('calibrate'), cadenceMs: z.literal(35), submit: z.literal(false)}),
@@ -154,8 +172,16 @@ export const comparisonHostFrameGuardSchema = z.strictObject({
   messageId: text, hostObservation: z.strictObject({clockDomain: z.literal('page-performance-ms'), timestampMs: timestamp, hostMounted: z.literal(true), contentMounted: z.boolean()}),
   frames: z.tuple([z.strictObject({ordinal: z.literal(1), clockDomain: z.literal('page-performance-ms'), timestampMs: timestamp}), z.strictObject({ordinal: z.literal(2), clockDomain: z.literal('page-performance-ms'), timestampMs: timestamp})]),
 }).refine(v => v.frames[0].timestampMs >= v.hostObservation.timestampMs && v.frames[1].timestampMs > v.frames[0].timestampMs, 'Two page frame callbacks must follow actual host mount chronologically');
-const scrollCheckpoint = z.strictObject({timestampMs: timestamp, clockDomain: z.literal('page-performance-ms'), scrollTop: z.number().finite(), scrollHeight: timestamp, clientHeight: timestamp, anchorId: text.nullable(), anchorTopCssPx: z.number().finite().nullable(), activeVisible: z.boolean(), followArmed: z.boolean().nullable(), pinThresholdCssPx: timestamp.nullable(), geometry: comparisonGeometrySchema});
-export const comparisonCheckpointsSchema = z.strictObject({...comparisonIdentityShape, inputRecipe: comparisonInputRecipeSchema, hostDispatches: z.array(comparisonHostDispatchSchema), hostFrameGuards: z.array(comparisonHostFrameGuardSchema), scroll: z.array(scrollCheckpoint), counters: z.array(z.strictObject({timestampMs: timestamp, clockDomain: z.literal('page-performance-ms'), data: rendererCountersSchema})), deadlines: z.array(comparisonDeadlineSchema)}).superRefine((v, ctx) => {
+const scrollCheckpoint = z.strictObject({timestampMs: timestamp, clockDomain: z.literal('page-performance-ms'), scrollTop: z.number().finite(), scrollHeight: timestamp, clientHeight: timestamp, anchorId: text.nullable(), anchorTopCssPx: z.number().finite().nullable(), activeVisible: z.boolean(), followArmed: z.boolean().nullable(), pinThresholdCssPx: timestamp.nullable(), geometry: comparisonGeometrySchema,anchorGeometry:comparisonGeometrySchema}).superRefine((v,ctx)=>{
+  if(v.geometry.status==='available'&&v.geometry.value.role!=='assistant') issue(ctx,'Active geometry requires actual assistant role');
+  if(v.anchorGeometry.status==='available'&&v.anchorGeometry.value.messageId!==v.anchorId) issue(ctx,'Anchor geometry must own actual anchor identity');
+});
+const hostReceipt = comparisonAvailabilitySchema(z.strictObject({timestampMs:timestamp,clockDomain:z.literal('host-monotonic-ms')}));
+export const comparisonCounterCheckpointSchema = z.strictObject({lifecycle:z.enum(['baseline','history-ready','replay-end']),pageRequestBracket:comparisonAvailabilitySchema(z.strictObject({clockDomain:z.literal('page-performance-ms'),beforeMs:timestamp,afterMs:timestamp}).refine(v=>v.beforeMs<=v.afterMs,'Page request bracket must be ordered')),hostReceipt:z.strictObject({heap:hostReceipt,dom:hostReceipt}),data:rendererCountersSchema});
+export type ComparisonCounterCheckpoint = z.infer<typeof comparisonCounterCheckpointSchema>;
+export const comparisonCheckpointsSchema = z.strictObject({...comparisonIdentityShape, inputRecipe: comparisonInputRecipeSchema, hostDispatches: z.array(comparisonHostDispatchSchema), hostFrameGuards: z.array(comparisonHostFrameGuardSchema), scroll: z.array(scrollCheckpoint), counters: z.array(comparisonCounterCheckpointSchema), deadlines: z.array(comparisonDeadlineSchema)}).superRefine((v, ctx) => {
+  const order=['baseline','history-ready','replay-end'];
+  if(v.counters.some((counter,i)=>i>0&&order.indexOf(counter.lifecycle)<=order.indexOf(v.counters[i-1]!.lifecycle))) issue(ctx,'Counter lifecycle must be unique and ordered');
   unique(v.deadlines.map(d => d.stage), ctx, 'deadline stage');
   unique(v.hostDispatches.map(d => `${d.recipeId}:${d.index}`), ctx, 'dispatch identity');
   for (const d of v.hostDispatches) {

@@ -6,6 +6,40 @@ const marks = (phase: string, id: string) => ({startMark: `bench:comparison:${ph
 const interval = (phase = 'streaming-follow', instanceId = '0', startMs = 10, endMs = 20) => ({phase, instanceId, startMs, endMs, ...marks(phase, instanceId)});
 const phases = (instances = [interval(), interval('composer-input', '1', 30, 40)]) => ({...identity, status: 'complete', instances, openPhase: null});
 const unavailable = {status: 'unavailable', reason: 'not acquired'};
+describe('bounded capture amendments', () => {
+  it('requires owning geometry and aligned clipping axes', () => {
+    const rect={left:0,top:0,right:10,bottom:10};
+    const value={messageId:'actual',role:'assistant',hostRect:rect,contentRects:[rect],viewportRect:rect,scrollerRect:rect,clippingAncestorRects:[rect],clippingAncestorAxes:[{clipX:true,clipY:false}],effectiveClipRect:rect};
+    expect(contract.comparisonGeometrySchema.safeParse({status:'available',value}).success).toBe(true);
+    for(const patch of [{messageId:undefined},{role:undefined},{clippingAncestorAxes:[]},{clippingAncestorAxes:[{clipX:true,clipY:false,z:true}]}]) expect(contract.comparisonGeometrySchema.safeParse({status:'available',value:{...value,...patch}}).success).toBe(false);
+    expect(contract.comparisonGeometrySchema.safeParse({status:'available',value:{...value,clippingAncestorRects:Array(65).fill(rect),clippingAncestorAxes:Array(65).fill({clipX:true,clipY:false})}}).success).toBe(false);
+  });
+  it('retains lifecycle page brackets and independent CDP receipts in genuine order', () => {
+    const data={heap:unavailable,dom:unavailable};
+    const checkpoint={lifecycle:'baseline',pageRequestBracket:{status:'available',value:{beforeMs:10,afterMs:30,clockDomain:'page-performance-ms'}},hostReceipt:{heap:{status:'available',value:{timestampMs:200,clockDomain:'host-monotonic-ms'}},dom:unavailable},data};
+    expect(contract.comparisonCounterCheckpointSchema.safeParse(checkpoint).success).toBe(true);
+    expect(contract.comparisonCounterCheckpointSchema.safeParse({...checkpoint,pageRequestBracket:{status:'available',value:{beforeMs:31,afterMs:30,clockDomain:'page-performance-ms'}}}).success).toBe(false);
+    expect(contract.comparisonCounterCheckpointSchema.safeParse({timestampMs:10,clockDomain:'page-performance-ms',data}).success).toBe(false);
+    const base={...identity,inputRecipe:{wheel:{recipeId:'w',deltasCssPx:[-100,-100,-100,-100],cadenceMs:50},composer:{recipeId:'c',text:'calibrate',cadenceMs:35,submit:false}},hostDispatches:[],hostFrameGuards:[],scroll:[],deadlines:[]};
+    expect(contract.comparisonCheckpointsSchema.safeParse({...base,counters:[checkpoint,{...checkpoint,lifecycle:'replay-end'}]}).success).toBe(true);
+    for(const counters of [[checkpoint,checkpoint],[{...checkpoint,lifecycle:'replay-end'},checkpoint]]) expect(contract.comparisonCheckpointsSchema.safeParse({...base,counters}).success).toBe(false);
+  });
+  it('records exact acquired capture metadata rather than a configuration bag', () => {
+    const metadata={...identity,browserProtocol:{protocolVersion:'1.3',product:'Chrome/1',revision:'actual',userAgent:'actual',jsVersion:'actual'},chromiumDownloadRevision:'actual',playwrightVersion:'1.64.0',instrumentation:{sourceHashes:{'actual.ts':'a'.repeat(64)},installerSha256:'b'.repeat(64),probeIntervalMs:50,limits:contract.COMPARISON_CAPTURE_LIMITS}};
+    expect(contract.comparisonCaptureMetadataSchema.safeParse(metadata).success).toBe(true);
+    for(const patch of [{instrumentation:{...metadata.instrumentation,probeIntervalMs:51}},{instrumentation:{...metadata.instrumentation,limits:{...metadata.instrumentation.limits,maxPendingEntries:4097}}},{configuration:{}},{browserProtocol:{...metadata.browserProtocol,revision:undefined}}]) expect(contract.comparisonCaptureMetadataSchema.safeParse({...metadata,...patch}).success).toBe(false);
+    for(const [key,value] of Object.entries(contract.COMPARISON_CAPTURE_LIMITS)) expect(contract.comparisonCaptureMetadataSchema.safeParse({...metadata,instrumentation:{...metadata.instrumentation,limits:{...metadata.instrumentation.limits,[key]:value+1}}}).success).toBe(false);
+  });
+  it('keeps separate actual active and historical anchor geometry ownership',()=>{
+    const rect={left:0,top:0,right:1,bottom:1};
+    const geometry={status:'available',value:{messageId:'a',role:'assistant',hostRect:rect,contentRects:[rect],viewportRect:rect,scrollerRect:rect,clippingAncestorRects:[],clippingAncestorAxes:[],effectiveClipRect:rect}};
+    const anchorGeometry={status:'available',value:{...geometry.value,messageId:'h',role:'user'}};
+    const scroll={timestampMs:10,clockDomain:'page-performance-ms',scrollTop:0,scrollHeight:100,clientHeight:80,anchorId:'h',anchorTopCssPx:0,activeVisible:true,followArmed:null,pinThresholdCssPx:150,geometry,anchorGeometry};
+    const base={...identity,inputRecipe:{wheel:{recipeId:'w',deltasCssPx:[-100,-100,-100,-100],cadenceMs:50},composer:{recipeId:'c',text:'calibrate',cadenceMs:35,submit:false}},hostDispatches:[],hostFrameGuards:[],counters:[],deadlines:[]};
+    expect(contract.comparisonCheckpointsSchema.safeParse({...base,scroll:[scroll]}).success).toBe(true);
+    for(const patch of [{anchorGeometry:undefined},{anchorId:'other'},{geometry:{...geometry,value:{...geometry.value,role:'user'}}}]) expect(contract.comparisonCheckpointsSchema.safeParse({...base,scroll:[{...scroll,...patch}]}).success).toBe(false);
+  });
+});
 const page = (kind: 'receipt'|'translation'|'native-input', timestampMs = 15) => ({schemaVersion: 2, repetition: 'r', phase: 'streaming-follow', phaseInstanceId: '0', attributionReason: null, timestampMs, sequence: kind === 'receipt' ? 1 : null, clockDomain: 'page-performance-ms', kind, data: kind === 'receipt' ? {event: {type: 'text-delta', sequence: 1, scheduledMs: 50, messageId: 'response', text: 'x'}} : kind === 'translation' ? {protocolEvent: 'messages', messageId: 'response', text: 'x'} : {recipeId: 'wheel', type: 'wheel', eventTimestampMs: timestampMs, observedAtMs: 100, isTrusted: true, targetRole: 'scroller', deltaX: 0, deltaY: -100, deltaMode: 0, key: null, code: null, inputType: null, value: null}});
 
 describe('schema2 comparison identity and phase contracts', () => {
@@ -136,7 +170,7 @@ describe('retained evidence and independent raw facts', () => {
     expect(contract.comparisonRectSchema.safeParse({left: -5, top: -10, right: 2, bottom: 0}).success).toBe(true);
     expect(contract.comparisonRectSchema.safeParse({left: 5, top: 0, right: 2, bottom: 10}).success).toBe(false);
     const rect = {left: 0, top: 0, right: 10, bottom: 10};
-    expect(contract.comparisonGeometrySchema.safeParse({status: 'available', value: {hostRect: rect, contentRects: [{...rect, top: 20, bottom: 30}], viewportRect: rect, scrollerRect: rect, clippingAncestorRects: [], effectiveClipRect: rect}}).success).toBe(true);
+    expect(contract.comparisonGeometrySchema.safeParse({status: 'available', value: {messageId:'response',role:'assistant',hostRect: rect, contentRects: [{...rect, top: 20, bottom: 30}], viewportRect: rect, scrollerRect: rect, clippingAncestorRects: [],clippingAncestorAxes:[], effectiveClipRect: rect}}).success).toBe(true);
     expect(contract.comparisonGeometrySchema.safeParse(unavailable).success).toBe(true);
   });
   it('requires successful deadline completion at or before its absolute deadline', () => {
@@ -154,7 +188,7 @@ describe('retained evidence and independent raw facts', () => {
     expect(contract.comparisonCheckpointsSchema.safeParse(checkpoints).success).toBe(true);
     expect(contract.comparisonCheckpointsSchema.safeParse({...checkpoints, inputRecipe: {...inputRecipe, composer: {...inputRecipe.composer, submit: true}}}).success).toBe(false);
     expect(contract.comparisonCheckpointsSchema.safeParse({...checkpoints, hostDispatches: [{...checkpoints.hostDispatches[0], recipeId: 'other'}]}).success).toBe(false);
-    const scroll = {timestampMs: 100, clockDomain: 'page-performance-ms', scrollTop: 0, scrollHeight: 100, clientHeight: 80, anchorId: null, anchorTopCssPx: null, activeVisible: false, followArmed: null, pinThresholdCssPx: null, geometry: unavailable};
+    const scroll = {timestampMs: 100, clockDomain: 'page-performance-ms', scrollTop: 0, scrollHeight: 100, clientHeight: 80, anchorId: null, anchorTopCssPx: null, activeVisible: false, followArmed: null, pinThresholdCssPx: null, geometry: unavailable,anchorGeometry:unavailable};
     expect(contract.comparisonCheckpointsSchema.safeParse({...checkpoints, scroll: [scroll]}).success).toBe(true);
     expect(contract.comparisonCheckpointsSchema.safeParse({...checkpoints, scroll: [{...scroll, geometry: null}]}).success).toBe(false);
   });

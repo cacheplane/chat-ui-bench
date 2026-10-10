@@ -86,9 +86,8 @@ export const runtimeProgressSchema = z.strictObject({
 export type RuntimeProgress = z.infer<typeof runtimeProgressSchema>;
 export const visibleMessageSchema = z.strictObject({id: text, text: z.string(), topCssPx: z.number().finite(), bottomCssPx: z.number().finite()});
 export type VisibleMessage = z.infer<typeof visibleMessageSchema>;
-const prefixes = z.array(sequence).superRefine((values, ctx) => {
-  if (values.some((v, i) => i > 0 && v <= values[i - 1]!)) ctx.addIssue({code: 'custom', message: 'Matched prefixes must increase strictly'});
-});
+// Initial v2 collector never asserts matches; offline analysis reconstructs them.
+const prefixes = z.tuple([]);
 const baseObservation = {schemaVersion: z.literal(2), repetition: text, phase: comparisonPhaseSchema, sequence: sequence.nullable(), timestampMs: timestamp};
 const pageObservation = {...baseObservation, phase: comparisonPhaseSchema.nullable(), phaseInstanceId: phaseInstanceIdSchema.nullable(), attributionReason: text.nullable(), clockDomain: z.literal('page-performance-ms')};
 /** One nanosecond in millisecond units, plus eight floating-point epsilon steps at the compared magnitude. */
@@ -102,13 +101,14 @@ export function comparisonAvailabilitySchema<T extends z.ZodType>(value: T) {
   return z.discriminatedUnion('status', [unavailableCounterSchema, z.strictObject({status: z.literal('available'), value})]);
 }
 export const comparisonBoundedBufferSchema = z.strictObject({
-  name: z.enum(['transport', 'page-observations']), maxEntries: z.literal(4096), maxSerializedBytes: z.literal(16777216),
+  name: z.enum(['transport', 'page-observations', 'pre-navigation-errors']), maxEntries: z.literal(4096), maxSerializedBytes: z.literal(16777216),
   highWaterEntries: sequence.max(4096), highWaterSerializedBytes: sequence.max(16777216), overflowCount: sequence, rejectedRecordCount: sequence,
   status: z.enum(['complete', 'partial']), reason: text.optional(),
 }).superRefine((v, ctx) => {
   if (v.status === 'complete' && (v.reason !== undefined || v.overflowCount > 0 || v.rejectedRecordCount > 0)) ctx.addIssue({code: 'custom', message: 'Complete buffer cannot claim lost records'});
   if (v.status === 'partial' && v.reason === undefined) ctx.addIssue({code: 'custom', message: 'Partial buffer needs a reason'});
 });
+export type ComparisonBoundedBuffer = z.infer<typeof comparisonBoundedBufferSchema>;
 export const comparisonObserverSchema = z.discriminatedUnion('status', [unavailableCounterSchema, z.strictObject({
   status: z.literal('available'), value: z.strictObject({entryType: z.enum(['event', 'long-animation-frame']), buffered: z.boolean(), requestedDurationThresholdMs: timestamp.nullable(), registrationTimestampMs: timestamp, observedEntries: sequence, callbackCount: sequence, droppedEntriesCount: comparisonAvailabilitySchema(sequence), finalTakeRecords: z.boolean()}),
 })]);
@@ -149,6 +149,7 @@ export const comparisonObservationSchema = z.discriminatedUnion('kind', [
   z.strictObject({...pageObservation, kind: z.literal('scroll-checkpoint'), data: z.strictObject({scrollTop: z.number().finite(), scrollHeight: timestamp, clientHeight: timestamp, anchorId: text.nullable(), anchorTopCssPx: z.number().finite().nullable(), activeVisible: z.boolean(), followArmed: z.boolean().nullable()})}),
   z.strictObject({...pageObservation, kind: z.literal('composer-input'), data: z.strictObject({value: z.string()})}),
   z.strictObject({...pageObservation, kind: z.literal('failure'), data: z.strictObject({stage: z.enum(['setup', 'replay', 'validation', 'disposal']), reason: text})}),
+  z.strictObject({...pageObservation, kind: z.literal('probe-unavailable'), data: z.strictObject({probe: z.enum(['runtime', 'dom', 'candidates', 'geometry', 'native-input']), reason: text})}),
   z.strictObject({...pageObservation, kind: z.literal('event-timing'), data: eventTiming}),
   z.strictObject({...pageObservation, kind: z.literal('long-animation-frame'), data: loaf}),
   z.strictObject({...pageObservation, kind: z.literal('observer-state'), data: z.strictObject({entryType: z.enum(['event', 'long-animation-frame']), supported: z.boolean(), registration: z.enum(['registered', 'failed', 'unsupported']), reason: text.nullable(), buffered: z.boolean(), requestedDurationThresholdMs: timestamp.nullable(), droppedEntriesCount: comparisonAvailabilitySchema(sequence), observedAtMs: timestamp}).superRefine((v, ctx) => {

@@ -2,6 +2,7 @@ import type { AgentTransport, StreamEvent } from '@threadplane/langgraph';
 import type { ThreadState } from '@langchain/langgraph-sdk';
 import type { Message, ReplayEvent, AdapterCaptureEvent } from '@chat-ui-bench/contract';
 import { parseReplaySse } from './sse.js';
+import {createAdapterCaptureBuffer} from './capture-buffer.js';
 type NativeMessage = {
     id: string;
     type: 'human' | 'ai';
@@ -17,7 +18,7 @@ export class ReplayTransport implements AgentTransport {
     private url: string | null = null;
     private generation = 0;
     private active: AbortController | null = null;
-    private evidence: AdapterCaptureEvent[] = [];
+    private evidence = createAdapterCaptureBuffer();
     private disposed = false;
     constructor(private readonly options: ReplayTransportOptions = {}) {
         const omission = options.omitDeltaSequence;
@@ -30,10 +31,11 @@ export class ReplayTransport implements AgentTransport {
     }
     connect(url: string): void { if (this.disposed)
         throw new Error('Transport disposed'); this.url = url; }
-    reset(): void { this.generation++; this.active?.abort(); this.active = null; this.url = null; this.evidence = []; }
+    reset(): void { this.generation++; this.active?.abort(); this.active = null; this.url = null; }
     dispose(): void { if (this.disposed)
         return; this.disposed = true; this.reset(); this.histories.clear(); }
-    drainEvidence(): AdapterCaptureEvent[] { const events = this.evidence; this.evidence = []; return events; }
+    drainEvidence(): AdapterCaptureEvent[] { return this.evidence.drain(); }
+    readCaptureBufferState() { return this.evidence.state(); }
     async getHistory(threadId: string, signal: AbortSignal): Promise<ThreadState[]> {
         signal.throwIfAborted();
         const messages = this.histories.get(threadId);
@@ -54,8 +56,6 @@ export class ReplayTransport implements AgentTransport {
             abort();
         let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
         const clock = this.options.clock ?? (() => performance.now());
-        const record = (event: AdapterCaptureEvent) => { if (generation === this.generation && !this.disposed)
-            this.evidence.push(event); };
         try {
             const response = await (this.options.fetch ?? fetch)(this.url, { signal: controller.signal });
             if (!response.ok || !response.headers.get('content-type')?.startsWith('text/event-stream') || !response.body)
@@ -69,7 +69,7 @@ export class ReplayTransport implements AgentTransport {
                 yield result.value;
             } };
             let text = '', responseId: string | null = null;
-            for await (const event of parseReplaySse(chunks(), event => record({ kind: 'receipt', timestampMs: clock(), sequence: event.sequence, data: { event } }))) {
+            for await (const event of parseReplaySse(chunks(), event => {if(generation===this.generation&&!this.disposed) this.evidence.receipt(clock(),event.sequence,event.type,event.scheduledMs,event.messageId,event.text);})) {
                 controller.signal.throwIfAborted();
                 if (generation !== this.generation)
                     throw new Error('Stale replay generation');
@@ -83,7 +83,7 @@ export class ReplayTransport implements AgentTransport {
                 if (event.type === 'text-delta')
                     text += event.text;
                 const protocolEvent = event.type === 'assistant-complete' ? 'values' : 'messages';
-                record({ kind: 'translation', timestampMs: clock(), sequence: event.sequence, data: { protocolEvent, messageId: event.messageId, text: event.type === 'assistant-complete' ? text : event.text } });
+                if(generation===this.generation&&!this.disposed) this.evidence.translation(clock(),event.sequence,protocolEvent,event.messageId,event.type === 'assistant-complete' ? text : event.text);
                 if (event.type === 'assistant-complete') {
                     const messages = [...this.histories.get(threadId)!, { id: responseId!, type: 'ai' as const, content: text }];
                     this.histories.set(threadId, messages);
