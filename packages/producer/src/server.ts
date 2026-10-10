@@ -1,6 +1,6 @@
 import { createServer, type ServerResponse } from 'node:http';
-import { validateFixture, type Observation } from '@chat-ui-bench/contract';
-import { startReplay, type ReplaySession } from './replay.js';
+import { LONG_THREAD_SUITE, validateFixture, validateCanonicalLongThreadFixture, type Observation, type ComparisonObservation } from '@chat-ui-bench/contract';
+import { startReplay, startLongThreadReplay, type ReplaySession, type SSEWriter } from './replay.js';
 
 export interface ReplayServerOptions { fixture: unknown; repetition: string; port?: number }
 export interface ReplayServer {
@@ -9,10 +9,31 @@ export interface ReplayServer {
   drain(): Observation[];
   close(): Promise<void>;
 }
+export interface LongThreadReplayServer extends Omit<ReplayServer, 'drain'> {
+  readonly suite: typeof LONG_THREAD_SUITE;
+  readonly repetition: string;
+  drain(): ComparisonObservation[];
+}
 /** One server owns exactly one fixture/repetition; the runner owns shutdown. */
 export async function createReplayServer(options: ReplayServerOptions): Promise<ReplayServer> {
   const fixture = validateFixture(options.fixture);
-  let entries: Observation[] = [];
+  return createTimedReplayServer(options.port, (writer, record) => startReplay(fixture, {repetition: options.repetition, writer, record}));
+}
+
+/** Validate canonical generator provenance before creating or listening on a socket. */
+export async function createLongThreadReplayServer(options: ReplayServerOptions): Promise<LongThreadReplayServer> {
+  const fixture = validateCanonicalLongThreadFixture(options.fixture);
+  const repetition = options.repetition;
+  if (!repetition.trim()) throw new Error('Repetition must not be empty');
+  const server = await createTimedReplayServer<ComparisonObservation>(options.port,
+    (writer, record) => startLongThreadReplay(fixture, {repetition, writer, record}));
+  return {get suite() {return LONG_THREAD_SUITE;}, get repetition() {return repetition;},
+    get url() {return server.url;}, get state() {return server.state;}, drain: () => server.drain(), close: () => server.close()};
+}
+
+async function createTimedReplayServer<T>(port: number | undefined,
+  replay: (writer: SSEWriter, record: (entry: T) => void) => ReplaySession): Promise<Omit<ReplayServer, 'drain'> & {drain(): T[]}> {
+  let entries: T[] = [];
   let connected = false;
   let session: ReplaySession | undefined;
   let response: ServerResponse | undefined;
@@ -26,14 +47,11 @@ export async function createReplayServer(options: ReplayServerOptions): Promise<
     res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
     res.flushHeaders();
     res.on('close', () => session?.disconnect());
-    session = startReplay(fixture, {
-      repetition: options.repetition, writer: { write: frame => res.write(frame), end: () => res.end() },
-      record: observation => entries.push(observation),
-    });
+    session = replay({write: frame => res.write(frame), end: () => res.end()}, observation => entries.push(observation));
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(options.port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve(); });
+    server.listen(port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve(); });
   });
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Expected a loopback TCP server address');

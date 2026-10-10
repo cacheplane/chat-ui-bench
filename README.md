@@ -84,8 +84,21 @@ checks and do not rank chat stacks.
 
 ## Planned comparison adapters
 
-The next milestone will add the shared long-thread workload and supported runtime
-adapters for public competitor comparisons. These adapters are not implemented.
+The shared version 2 workload contract and independent replay producer are
+implemented. The canonical matrix contains 100, 1,000, or 10,000 historical
+messages; 6,400 or 262,144 response bytes; and follow or history-reading journeys.
+Each case has 200 deltas scheduled at 50 ms intervals. Canonical validation
+regenerates every ID and content byte from the declared seed before replay.
+
+The contract exports `createLongThreadFixture`, `createLongThreadMatrix`, and
+`validateCanonicalLongThreadFixture`. The producer exports
+`startLongThreadReplay` and `createLongThreadReplayServer`, preserving independent
+deadlines and recording actual emission timing, backpressure, and terminal
+failures. Runtime and visible-DOM evidence have separate contracts so future
+virtualized adapters can report their actual coverage.
+
+Supported runtime adapters and a long-thread capture command remain forthcoming.
+The current runnable benchmark is the reference calibration described above.
 
 | Stack | Planned configurations |
 | --- | --- |
