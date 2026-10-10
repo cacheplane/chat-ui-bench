@@ -8,6 +8,7 @@ import {
 import { ANALYZER_VERSION, parsedRun, type RawRun } from "./validate.js";
 import { traceStall, PRESENTATION_REASON } from "./trace.js";
 import { retentionForVariant } from "./retention.js";
+import { rendererPresentationForRun } from './presentation-capability.js';
 const unavailable = (reason: string): Metric => ({
   status: "unavailable",
   reason,
@@ -24,6 +25,7 @@ export function deriveMetrics(raw: RawRun, validation: Validation): RunMetrics {
     status: validation.status,
     metrics,
     diagnostics: {},
+    rendererPresentation: rendererPresentationForRun(raw, validation),
   };
   const names = [
     "producerLatenessMaxMs",
@@ -187,7 +189,7 @@ export function deriveMetrics(raw: RawRun, validation: Validation): RunMetrics {
   metrics.transportLatencyMs = unavailable(
     "Producer and page clocks are independent; no validated clock synchronization",
   );
-  metrics.presentationIntervalMs = unavailable(PRESENTATION_REASON);
+  metrics.presentationIntervalMs = unavailable(manifest.collectorVersion === '1.0.0' ? PRESENTATION_REASON : 'See rendererPresentation phases for phase-local feedback intervals; no whole-run interval is scored');
   const counters = (
     raw.checkpoints as {
       streamingEnd?: {

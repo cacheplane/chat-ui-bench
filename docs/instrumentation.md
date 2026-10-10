@@ -5,8 +5,9 @@ The analyzer depends on the shared contract and captured files. It never launche
 a browser, loads the reference application, or schedules the producer. The
 runner CLI invokes analysis after capture; runner core has no analyzer dependency
 in its runtime imports. Build order is contract, producer, reference, analyzer,
-then runner. Raw collector schema 1 / collector 1.0.0 and analyzer 1.0.0 are
-explicitly supported; unsupported schema, collector, suite, and analyzer versions
+then runner. Raw schema 1 supports explicit collector/analyzer version pairs
+1.0.0/1.0.0 and 1.1.0/1.1.0; the current derived analyzer version is 1.1.0.
+Raw manifests are never rewritten. Unsupported schema, collector, suite, and analyzer versions
 fail analysis. Historical manifests that identify analyzer `pending` need an
 explicit migration decision and are never silently rewritten.
 
@@ -129,15 +130,36 @@ performance metrics, including the intentional omitted-delta variant.
   schemas, missing names/paths, or unsupported snapshots yield unavailable.
   Five retained 4 MiB buffers mean 5 / 20,971,520 bytes; the releasing control
   means 0 / 0. No 20 MiB JS heap-used increase is assumed.
-- Presentation remains unavailable **for every run in this milestone**. The exact
-  unchanged headed trace was imported in installed Chrome 154.0.8037.98 DevTools
-  (frontend revision b859317bf11f6be47f9b7799ec690a0a42a1fb33) and rejected:
-  “Recording failed — No frames found in trace data.” Capture was pinned Playwright
-  Chromium 156.0.8078.4, download revision 1248, browser revision
-  f842f52ef39fd97b449eb27cff414bf05a98ddce, protocol 1.3, V8 15.6.75.
-  Viewer/capture mismatch is a possible factor, not a proven root cause. Trace
-  phase/gesture/renderer events alone do not validate presentation. No numerical
-  FPS, frame intervals, dropped frames, second capture path, or readiness claim.
+- Headed collector 1.1 `rendererVisualUpdateFps` measures delivered target renderer
+  visual updates, using pinned Chromium 156.0.8078.4, browser revision
+  f842f52ef39fd97b449eb27cff414bf05a98ddce, and matching DevTools frontend
+  2d671c506c4e5f8958b027e26047deb0acfbd7f9. AnimationFrame begin/end pairs join
+  feedback by exact string `args.id`; `id2.local` identifies the async track,
+  and begin-frame source/sequence are not presentation join keys. Feedback trace
+  timestamps describe presentation, not callback execution time.
+  Both animation begin and feedback must fall in the phase's [start,end) trace
+  microsecond interval. Equal feedback timestamps coalesce to one delivery.
+  The numerator is distinct eligible deliveries; the denominator is the complete
+  phase duration, including idle periods. Intervals are consecutive distinct
+  feedback differences within that phase, with ordinary median, nearest-rank p95,
+  and maximum. Repeated phase ordinals remain separate; intervals are never pooled
+  or bridged between phases. A 20 updates/s input cadence can be healthy at 20;
+  the contract specifies no universal 60 FPS target.
+  Scoring requires valid correctness, headed mode, pinned identity, required
+  categories, complete loss-free trace, an isolated single workload page/root
+  document, one renderer/main thread, and no ambiguous or changing topology.
+  Boundary exclusions and non-presented pairs are diagnostics, not dropped-frame
+  percentages. Zero eligible feedback is unavailable; headless presentation,
+  compositor-only scrolling, global compositor FPS, and monitor refresh are
+  unavailable. Old 1.0 artifacts retain unavailable presentation semantics.
+
+The original browser-target capture failed DevTools import with “No frames found
+in trace data.” The [pinned Chromium TracingHandler](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/content/browser/devtools/protocol/tracing_handler.cc) obtains frame-tree metadata
+from the session's WebContents; browser-target sessions lacked that workload tree.
+Collector 1.1 uses the workload page CDP session and retains the real frame-tree
+response before tracing. The installed Chrome viewer revision mismatch was an
+earlier unproven hypothesis, not the established cause. Legacy DevTools Frames
+counts are retained separately as unscored diagnostics.
 
 ## Reporting and capability checklist
 
@@ -166,5 +188,28 @@ ephemeral fields above. A mismatch produces a failed comparison conclusion.
 
 Use `npm run bench:analyze -- --artifact-dir /absolute/path` to reanalyze retained
 raw artifacts. Identical analyzer versions produce identical derived metrics
-except invocation `generatedAt`. Preserve raw evidence to make analysis changes
+except recursively omitted JSON `generatedAt`; summaries compare exact bytes. Preserve raw evidence to make analysis changes
 reviewable. Output directories are ignored by Git.
+
+```sh
+npm run build
+node scripts/check-offline-artifacts.mjs --artifact-dir /absolute/path/to/calibration-directory
+node scripts/check-renderer-presentation.mjs --artifact-dir /absolute/path/to/calibration-directory --out /absolute/external/path/presentation-check.json
+```
+
+The offline check streams SHA-256 for every raw file/path, runs the built analyzer
+twice, and verifies raw inventory after each pass and all derived run/invocation
+reports. It neither captures, migrates, nor requires a complete 21-slot invocation.
+Unknown versions fail meaningfully after proving raw unchanged. The independent
+bundled checker launches this repository's pinned Playwright Chromium inspector
+only after capture completes, checks Browser.getVersion and actual trace.js and
+handlers.js SHA-256, parses the unchanged trace with the full TraceModel, and
+uses actual Meta frame/process/thread identities. It resets the actual
+AnimationFramesHandler, reapplies its enabled configuration, feeds every original
+event, and finalizes before independently applying phase arithmetic. It compares
+each available phase's target, numerator, full denominator, FPS, timestamps,
+differences and quantiles against already-derived production metrics. Output must
+be outside the artifact directory. Unsupported/invalid/failed samples carry
+explicit skip reasons and retained parser errors, with no fabricated passes.
+Run inspector checks exclusively with no active workload capture. CI headless
+conformance remains an instrumentation check, not a hardware baseline or ranking.

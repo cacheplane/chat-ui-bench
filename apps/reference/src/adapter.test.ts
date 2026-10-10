@@ -39,6 +39,15 @@ function harness(fault = 'clean') {
   };
 }
 describe('reference semantic adapter', () => {
+  it('exposes idempotent final scored closure through the adapter', () => {
+    const h = harness();
+    h.adapter.setPhase('streaming-auto-follow');
+    h.adapter.closeScoredPhase(); h.adapter.closeScoredPhase();
+    h.adapter.dispose();
+    const logs = h.adapter.drainObservations();
+    expect(logs.filter(e => e.kind === 'phase-end')).toHaveLength(1);
+    expect(logs.find(e => e.kind === 'phase-end')?.data).toEqual(logs.find(e => e.kind === 'phase' && e.phase === 'streaming-auto-follow')?.data);
+  });
   it('loads plain-text history once and applies exact text with read-only probes', () => {
     const h = harness();
     h.adapter.loadHistory(h.fixture.history);

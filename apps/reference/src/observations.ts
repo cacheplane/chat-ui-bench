@@ -1,4 +1,4 @@
-import { payloadBytes, type Observation, type Phase, type ReplayEvent } from '@chat-ui-bench/contract';
+import { payloadBytes, presentationPhaseMarks, scoredPresentationPhaseSchema, type Observation, type Phase, type ReplayEvent, type PresentationPhaseInput } from '@chat-ui-bench/contract';
 
 interface PendingPrefix { sequence: number; prefix: string; receiptMs: number }
 /** Bounded to one active response. The DOM observer supplies text only from that node. */
@@ -10,14 +10,31 @@ export class PageObservations {
   private representedSequence: number | null = null;
   private readonly phaseTimeline: { phase: Phase; timestampMs: number }[] = [{ phase: 'setup', timestampMs: 0 }];
   phase: Phase = 'setup';
-  constructor(readonly repetition: string, private readonly now: () => number) {}
+  private nextInstance = 0;
+  private activeScoredPhase: PresentationPhaseInput | null = null;
+  constructor(readonly repetition: string, private readonly now: () => number, private readonly mark: (name: string) => void = name => performance.mark(name)) {}
   record(kind: string, sequence: number | null, data: Observation['data'], timestampMs = this.now(), phase = this.phase): void {
     this.entries.push({ schemaVersion: 1, kind, clockDomain: 'page-performance-ms', repetition: this.repetition, phase, sequence, timestampMs, data });
   }
   setPhase(phase: Phase): void {
+    this.closeScoredPhase();
     this.phase = phase;
     this.phaseTimeline.push({ phase, timestampMs: this.now() });
-    this.record('phase', null, { phase });
+    this.mark(`bench:${this.repetition}:${phase}`);
+    const scored = scoredPresentationPhaseSchema.safeParse(phase);
+    if (scored.success) {
+      const instanceId = String(this.nextInstance++);
+      this.activeScoredPhase = { phase: scored.data, instanceId, ...presentationPhaseMarks(this.repetition, instanceId) };
+      this.mark(this.activeScoredPhase.startMark);
+      this.record('phase', null, { ...this.activeScoredPhase });
+    } else this.record('phase', null, { phase });
+  }
+  closeScoredPhase(): void {
+    if (!this.activeScoredPhase) return;
+    const active = this.activeScoredPhase;
+    this.activeScoredPhase = null;
+    this.mark(active.endMark);
+    this.record('phase-end', null, { ...active }, this.now(), active.phase);
   }
   recordPerformance(kind: string, data: Observation['data'], startTime: number): void {
     const phase = this.phaseTimeline.findLast(boundary => boundary.timestampMs <= startTime)?.phase ?? 'setup';

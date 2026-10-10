@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { presentationEvidenceSchema, rendererPresentationSchema } from './presentation.js';
 const text = z.string().min(1);
 const finite = z.number().finite();
 const timestamp = finite.nonnegative();
@@ -21,9 +22,11 @@ export type Availability<T> = { status: 'available'; value: T } | { status: 'una
 export const runMetricsSchema = z.strictObject({
   schemaVersion: z.literal(1), analyzerVersion: text, status: runStatusSchema,
   metrics: z.record(text, metricSchema),
+  rendererPresentation: rendererPresentationSchema.optional(),
   diagnostics: z.record(text, z.strictObject({ status: z.literal('available'), value: finite, unit: text, evidence: z.array(text).min(1), scored: z.literal(false) })),
 }).superRefine((run, ctx) => {
   if (run.status !== 'valid' && Object.values(run.metrics).some(m => m.status === 'available')) ctx.addIssue({ code: 'custom', message: 'Invalid or failed runs cannot contain scored performance values' });
+  if (run.status !== 'valid' && run.rendererPresentation?.status === 'available' && run.rendererPresentation.value.phases.some(p => p.rendererVisualUpdateFps.status === 'available' || p.presentationIntervals.status === 'available')) ctx.addIssue({ code: 'custom', message: 'Invalid or failed runs cannot contain scored presentation values' });
 });
 export type RunMetrics = z.infer<typeof runMetricsSchema>;
 export const observationSchema = z.strictObject({
@@ -45,7 +48,7 @@ export const validationSchema = z.strictObject({
 export type Validation = z.infer<typeof validationSchema>;
 export const evidenceSchema = z.strictObject({
   schemaVersion: z.literal(1), collectorVersion: text, files: z.record(text, text),
-  trace: z.strictObject({ format: z.literal('cdp-json'), categories: z.array(text).min(1), complete: z.boolean(), lossReason: text.optional() }).optional(),
+  trace: z.strictObject({ format: z.literal('cdp-json'), categories: z.array(text).min(1), complete: z.boolean(), lossReason: text.optional(), presentation: presentationEvidenceSchema.optional() }).optional(),
 });
 export type Evidence = z.infer<typeof evidenceSchema>;
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/);

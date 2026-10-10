@@ -1,14 +1,14 @@
 import { open } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, CDPSession, Page } from 'playwright';
-import { canonicalSerialize, manifestSchema, evidenceSchema, type Fixture, type Observation, type Phase, type TranscriptMessage, type Validation } from '@chat-ui-bench/contract';
+import { canonicalSerialize, manifestSchema, evidenceSchema, presentationEvidenceSchema, PRESENTATION_TRACE_CATEGORIES, PRESENTATION_CONTRACT_VERSION, type PresentationEvidence, type Fixture, type Observation, type Phase, type TranscriptMessage, type Validation } from '@chat-ui-bench/contract';
 import type { ReplayServer } from '@chat-ui-bench/producer';
 import type { ArtifactWriter } from './artifacts.js';
 import { collectEnvironment, sha256 } from './environment.js';
 import { collectRetention } from './retention.js';
 import type { Variant } from './calibrate.js';
 import { withDeadline, errorMessage } from './calibrate.js';
-export const TRACE_CATEGORIES = ['blink.user_timing', 'devtools.timeline', 'disabled-by-default-devtools.timeline', 'toplevel', 'input', 'latencyInfo', 'cc', 'viz', 'benchmark', 'v8', 'v8.execute', 'disabled-by-default-v8.gc'] as const;
+export const TRACE_CATEGORIES = PRESENTATION_TRACE_CATEGORIES;
 interface TraceComplete { stream?: string; dataLossOccurred?: boolean }
 export interface TraceSession {
   once(event: 'Tracing.tracingComplete', callback: (event: TraceComplete) => void): unknown;
@@ -22,6 +22,7 @@ interface PageAPI {
   loadHistory(history: Fixture['history']): void;
   connectReplay(url: string): void;
   setPhase(phase: Phase): void;
+  closeScoredPhase(): void;
   returnToBottom(): void; resetThread(): void; dispose(): void; drainObservations(): Observation[];
   probes: { transcript: TranscriptMessage[]; activeMessageId: string | null; lastAppliedSequence: number | null };
   replayState: string; autoFollow: boolean;
@@ -81,6 +82,8 @@ export interface CaptureOptions {
   browser: Browser; server: ReplayServer; writer: ArtifactWriter; fixture: Fixture;
   run: { id: string; round: number; variant: Variant }; mode: 'headed' | 'headless'; root: string; assetDirectory: string; assetURL: string;
   setupRemainingMs: number; registerDisposal(callback: () => Promise<void>): void;
+  /** The owner created a fresh browser process for this repetition. */
+  isolatedBrowserProcess: boolean;
 }
 export async function captureRepetition(options: CaptureOptions): Promise<Validation> {
   const { browser, server, writer, fixture, run } = options;
@@ -91,7 +94,7 @@ export async function captureRepetition(options: CaptureOptions): Promise<Valida
   const environment = await withinSetup(collectEnvironment(options.root, options.assetDirectory, browserSession));
   const fault = run.variant === 'omitted-delta' ? 'omit' : run.variant;
   const manifest = manifestSchema.parse({
-    schemaVersion: 1, suiteVersion: '0.1.0', analyzerVersion: '1.0.0', collectorVersion: '1.0.0', repetition: run.id, scenarioId: fixture.scenarioId,
+    schemaVersion: 1, suiteVersion: '0.1.0', analyzerVersion: PRESENTATION_CONTRACT_VERSION, collectorVersion: PRESENTATION_CONTRACT_VERSION, repetition: run.id, scenarioId: fixture.scenarioId,
     git: environment.git, assets: environment.assets, browser: environment.browser, environment: environment.environment,
     fixture: { sha256: sha256(fixtureJSON), file: 'fixture.json' }, adapter: { id: 'reference', configuration: { repetition: run.id, fault } },
     configuration: { variant: run.variant, round: run.round, chromiumDownloadRevision: environment.chromiumDownloadRevision, playwrightVersion: environment.playwrightVersion, browserProtocol: environment.browserProtocol, setupTimeoutMs: 10000, replayTimeoutMs: 30000, disposalTimeoutMs: 10000, ordering: 'interleaved-by-round', coldPolicy: 'fresh Playwright browser process and temporary empty profile per repetition; local assets loaded before measurement' },
@@ -100,7 +103,13 @@ export async function captureRepetition(options: CaptureOptions): Promise<Valida
   await writer.json('manifest.json', manifest);
   const files: Record<string, string> = { manifest: 'manifest.json', fixture: 'fixture.json', producer: 'producer-events.jsonl', page: 'page-observations.jsonl', trace: 'trace.json', checkpoints: 'checkpoints.json', finalProbes: 'final-probes.json', validation: 'validation.json', calibration: 'calibration.json', exceptions: 'exceptions.json' };
   let trace: TraceEvidence = { complete: false, lossReason: 'Capture has not completed' };
-  const writeEvidence = async (): Promise<void> => { await writer.json('evidence.json', evidenceSchema.parse({ schemaVersion: 1, collectorVersion: '1.0.0', files, trace: { format: 'cdp-json', categories: [...TRACE_CATEGORIES], ...trace } })); };
+  let presentation: PresentationEvidence | undefined;
+  let presentationAvailability = { status: 'unavailable', reason: 'Page target evidence has not been collected; offline validation required' };
+  files.presentationAvailability = 'presentation-availability.json';
+  const writeEvidence = async (): Promise<void> => {
+    await writer.json(files.presentationAvailability!, presentationAvailability);
+    await writer.json('evidence.json', evidenceSchema.parse({ schemaVersion: 1, collectorVersion: PRESENTATION_CONTRACT_VERSION, files, trace: { format: 'cdp-json', categories: [...TRACE_CATEGORIES], ...trace, ...(presentation ? { presentation } : {}) } }));
+  };
   await writer.text('trace.json', ''); await writeEvidence();
   const context = await withinSetup(browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 }));
   const page = await withinSetup(context.newPage()); const renderer = await withinSetup(context.newCDPSession(page));
@@ -130,7 +139,18 @@ export async function captureRepetition(options: CaptureOptions): Promise<Valida
       configured = true;
     })(), Math.max(1, setupDeadline - Date.now()), 'page setup');
     checkpoints.setup = await withinSetup(counters(renderer)); await withinSetup(drain());
-    await withinSetup(browserSession.send('Tracing.start', { categories: TRACE_CATEGORIES.join(','), transferMode: 'ReturnAsStream', streamFormat: 'json' })); tracing = true;
+    try {
+      const frameTree = await withinSetup(renderer.send('Page.getFrameTree'));
+      const { targetInfo } = await withinSetup(renderer.send('Target.getTargetInfo'));
+      if (targetInfo.type !== 'page') throw new Error(`Expected page target, received ${targetInfo.type}`);
+      presentation = presentationEvidenceSchema.parse({ capability: 'rendererVisualUpdateFps', contractVersion: PRESENTATION_CONTRACT_VERSION,
+        sessionTarget: 'page', targetId: targetInfo.targetId, appURL: targetInfo.url, frameTree, frameTreeCapturePoint: 'before-tracing',
+        isolatedBrowserProcess: options.isolatedBrowserProcess, singleWorkloadPage: browser.contexts().flatMap(context => context.pages()).length === 1 });
+      presentationAvailability = { status: 'unavailable', reason: 'Actual page target/frame evidence captured; renderer presentation requires offline validation' };
+    } catch (error) {
+      presentationAvailability = { status: 'unavailable', reason: `Page target capability unavailable: ${errorMessage(error)}; offline validation required` };
+    }
+    await withinSetup(renderer.send('Tracing.start', { categories: TRACE_CATEGORIES.join(','), transferMode: 'ReturnAsStream', streamFormat: 'json' })); tracing = true;
     await withDeadline((async () => {
       await setPhase(page, 'streaming-auto-follow');
       await page.evaluate(url => window.chatBench.connectReplay(url), server.url);
@@ -153,9 +173,18 @@ export async function captureRepetition(options: CaptureOptions): Promise<Valida
     })(), 30000, 'replay');
   } catch (error) { captureError = error; }
   finally {
-    if (configured) { try { await drain(); } catch (error) { captureError ??= error; } }
-    if (tracing) { trace = await finishTrace(browserSession, join(writer.directory, 'trace.json')); tracing = false; }
-    await writeEvidence();
+    const retainError = (error: unknown): void => { captureError = captureError ? new Error(`${errorMessage(captureError)}; ${errorMessage(error)}`) : error; };
+    try {
+      if (configured) {
+        try { await withDeadline(page.evaluate(() => window.chatBench.closeScoredPhase()), 1000, 'scored phase closure'); } catch (error) { retainError(error); }
+        try { await drain(); } catch (error) { retainError(error); }
+      }
+    } finally {
+      try {
+        if (tracing) { trace = await finishTrace(renderer, join(writer.directory, 'trace.json')); tracing = false; }
+      } catch (error) { retainError(error); trace = { complete: false, lossReason: errorMessage(error) }; }
+      finally { await writeEvidence(); }
+    }
   }
   try {
     if (captureError) throw captureError;
@@ -186,7 +215,7 @@ export async function captureRepetition(options: CaptureOptions): Promise<Valida
     const calibration = {
       stall: run.variant !== 'stall' ? { status: 'not-requested' } : matchingLoaf ? { status: 'validated', source: 'long-animation-frame', timestampMs: matchingLoaf.timestampMs, durationMs: matchingLoaf.data.duration } : { status: 'unvalidated', reason: 'No matching Long Animation Frame entry; raw main-thread trace requires independent offline inspection' },
       input: input.length ? { status: 'available', entryCount: input.length, evidence: 'page-observations.jsonl' } : { status: 'unavailable', reason: 'No observed composer Event Timing entries; unsupported or below the accepted 16ms threshold, never zero latency' },
-      presentation: { status: 'unavailable', reason: 'Raw trace frame/presentation contract has not been validated against headed DevTools; no presentation metrics computed' },
+      presentation: presentationAvailability,
     };
     if (run.variant === 'delayed-display') {
       checks.delayedDisplayObserved = allPage.some(entry => entry.kind === 'dom-checkpoint' && entry.timestampMs - Number(entry.data.receiptMs) >= 100);
