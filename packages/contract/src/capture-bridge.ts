@@ -15,6 +15,8 @@ export interface ActiveDomSnapshot {
     readonly text: string | null;
     readonly mountedMessageCount: number;
 }
+export const activeHostSnapshotSchema = z.strictObject({activeMessageId: z.string().min(1).nullable(), hostMounted: z.boolean()}).refine(v => v.activeMessageId !== null || !v.hostMounted, 'Absent active message cannot have a mounted host');
+export type ActiveHostSnapshot = z.infer<typeof activeHostSnapshotSchema>;
 export interface AdapterPhaseBoundary {
     readonly phase: ComparisonPhase;
     readonly instanceId: string;
@@ -26,5 +28,7 @@ export interface LongThreadCaptureHost extends LongThreadAdapterHost {
     drainCaptureEvents(): readonly AdapterCaptureEvent[];
     markPhase(phase: ComparisonPhase, boundary: 'start' | 'end'): AdapterPhaseBoundary;
     readActiveDom(): ActiveDomSnapshot;
+    /** Actual message host, independent of text-content mount; later capture must implement this probe. */
+    readActiveHost?(): ActiveHostSnapshot;
     waitForReplay(): Promise<void>;
 }

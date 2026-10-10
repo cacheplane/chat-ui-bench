@@ -3,14 +3,25 @@ import { manifestSchema } from './artifact.js';
 import { replayEventSchema, payloadBytes, type Message, type ReplayEvent } from './fixture.js';
 import type { TranscriptMessage } from './adapter.js';
 import { LONG_THREAD_SUITE, longThreadWorkloadSchema, longThreadCaseOrder, longThreadScenarioId } from './long-thread.js';
+import { phaseInstanceIdSchema } from './presentation.js';
 
 const text = z.string().min(1);
 const timestamp = z.number().finite().nonnegative();
-const sequence = z.number().int().nonnegative();
+const sequence = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const exactVersion = z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/);
 const hashes = z.record(text, hash);
 const nonemptyHashes = hashes.refine(value => Object.keys(value).length > 0, 'Hash inventory must not be empty');
+export const COMPARISON_SUITE_VERSION = '1.0.0' as const;
+export const COMPARISON_COLLECTOR_VERSION = '2.0.0' as const;
+export const COMPARISON_ANALYZER_VERSION = '2.0.0' as const;
+export const ACCEPTED_COMPARISON_VERSION_PAIRS = [{collectorVersion: COMPARISON_COLLECTOR_VERSION, analyzerVersion: COMPARISON_ANALYZER_VERSION}] as const;
+/** Syntax only; realpath/symlink containment is a separate filesystem gate. */
+export const comparisonArtifactPathSchema = z.string().regex(/^[A-Za-z0-9._@-]+(?:\/[A-Za-z0-9._@-]+)*$/).refine(path => !path.split('/').some(segment => segment === '.' || segment === '..'), 'Artifact path must be normalized relative POSIX');
+export const comparisonVersionShape = {schemaVersion: z.literal(2), suite: z.literal(LONG_THREAD_SUITE), suiteVersion: z.literal(COMPARISON_SUITE_VERSION), collectorVersion: z.literal(COMPARISON_COLLECTOR_VERSION), analyzerVersion: z.literal(COMPARISON_ANALYZER_VERSION)};
+export const comparisonIdentityShape = {...comparisonVersionShape, repetition: text, scenarioId: text, round: sequence.refine(n => n > 0), caseIndex: sequence, adapterProfile: text};
+export const comparisonIdentitySchema = z.strictObject(comparisonIdentityShape);
+export type ComparisonIdentity = z.infer<typeof comparisonIdentitySchema>;
 export const comparisonPhaseSchema = z.enum([
   'setup', 'history-ready', 'streaming-follow', 'composer-input', 'history-reading', 'return-to-response',
   'replay-end', 'validation', 'disposal',
@@ -40,7 +51,8 @@ export const comparisonAdapterSchema = z.strictObject({
 export type ComparisonAdapter = z.infer<typeof comparisonAdapterSchema>;
 const commonEnvironment = manifestSchema.pick({git: true, fixture: true, browser: true, environment: true, mode: true, viewport: true, cachePolicy: true});
 export const comparisonManifestSchema = commonEnvironment.extend({
-  schemaVersion: z.literal(2), suite: z.literal(LONG_THREAD_SUITE), suiteVersion: text, analyzerVersion: text, collectorVersion: text,
+  ...comparisonVersionShape,
+  fixture: z.strictObject({sha256: hash, file: comparisonArtifactPathSchema}),
   repetition: text, scenarioId: text, round: z.number().int().positive(), caseIndex: sequence,
   caseOrder: z.array(text).min(1), workload: longThreadWorkloadSchema, adapter: comparisonAdapterSchema,
   fonts: z.literal('local-system'),
@@ -78,13 +90,44 @@ const prefixes = z.array(sequence).superRefine((values, ctx) => {
   if (values.some((v, i) => i > 0 && v <= values[i - 1]!)) ctx.addIssue({code: 'custom', message: 'Matched prefixes must increase strictly'});
 });
 const baseObservation = {schemaVersion: z.literal(2), repetition: text, phase: comparisonPhaseSchema, sequence: sequence.nullable(), timestampMs: timestamp};
-const pageObservation = {...baseObservation, clockDomain: z.literal('page-performance-ms')};
+const pageObservation = {...baseObservation, phase: comparisonPhaseSchema.nullable(), phaseInstanceId: phaseInstanceIdSchema.nullable(), attributionReason: text.nullable(), clockDomain: z.literal('page-performance-ms')};
 /** One nanosecond in millisecond units, plus eight floating-point epsilon steps at the compared magnitude. */
 function sameTimingMs(actual: number, expected: number): boolean {
   const toleranceMs = 1e-6 + 8 * Number.EPSILON * Math.max(1, Math.abs(actual), Math.abs(expected));
   return Math.abs(actual - expected) <= toleranceMs;
 }
 const unavailableCounterSchema = z.strictObject({status: z.literal('unavailable'), reason: text});
+export const comparisonUnavailableSchema = unavailableCounterSchema;
+export function comparisonAvailabilitySchema<T extends z.ZodType>(value: T) {
+  return z.discriminatedUnion('status', [unavailableCounterSchema, z.strictObject({status: z.literal('available'), value})]);
+}
+export const comparisonBoundedBufferSchema = z.strictObject({
+  name: z.enum(['transport', 'page-observations']), maxEntries: z.literal(4096), maxSerializedBytes: z.literal(16777216),
+  highWaterEntries: sequence.max(4096), highWaterSerializedBytes: sequence.max(16777216), overflowCount: sequence, rejectedRecordCount: sequence,
+  status: z.enum(['complete', 'partial']), reason: text.optional(),
+}).superRefine((v, ctx) => {
+  if (v.status === 'complete' && (v.reason !== undefined || v.overflowCount > 0 || v.rejectedRecordCount > 0)) ctx.addIssue({code: 'custom', message: 'Complete buffer cannot claim lost records'});
+  if (v.status === 'partial' && v.reason === undefined) ctx.addIssue({code: 'custom', message: 'Partial buffer needs a reason'});
+});
+export const comparisonObserverSchema = z.discriminatedUnion('status', [unavailableCounterSchema, z.strictObject({
+  status: z.literal('available'), value: z.strictObject({entryType: z.enum(['event', 'long-animation-frame']), buffered: z.boolean(), requestedDurationThresholdMs: timestamp.nullable(), registrationTimestampMs: timestamp, observedEntries: sequence, callbackCount: sequence, droppedEntriesCount: comparisonAvailabilitySchema(sequence), finalTakeRecords: z.boolean()}),
+})]);
+const targetRole = z.enum(['composer', 'return-control', 'scroller', 'other', 'unknown']);
+const nativeInput = z.strictObject({
+  recipeId: text, type: z.enum(['wheel', 'keydown', 'keyup', 'beforeinput', 'input', 'click']), eventTimestampMs: timestamp, observedAtMs: timestamp, isTrusted: z.boolean(), targetRole,
+  deltaX: z.number().finite().nullable(), deltaY: z.number().finite().nullable(), deltaMode: z.union([z.literal(0), z.literal(1), z.literal(2)]).nullable(), key: z.string().nullable(), code: z.string().nullable(), inputType: z.string().nullable(), value: z.string().nullable(),
+}).superRefine((v, ctx) => {
+  if (v.observedAtMs < v.eventTimestampMs) ctx.addIssue({code: 'custom', message: 'Input observation precedes event'});
+  const deltas = [v.deltaX, v.deltaY, v.deltaMode];
+  if (v.type === 'wheel' ? deltas.some(n => n === null) : deltas.some(n => n !== null)) ctx.addIssue({code: 'custom', message: 'Wheel alone requires delta fields'});
+});
+const eventTiming = z.strictObject({
+  entryType: z.literal('event'), name: text.refine(name => name !== 'wheel', 'Wheel uses separate native event evidence'),
+  startTime: timestamp, duration: timestamp, processingStart: timestamp, processingEnd: timestamp, cancelable: z.boolean(), interactionId: sequence, observedAtMs: timestamp, targetRole: z.enum(['composer', 'return-control', 'other', 'unknown']),
+}).superRefine((v, ctx) => {
+  if (v.processingStart < v.startTime || v.processingEnd < v.processingStart || v.observedAtMs < v.startTime) ctx.addIssue({code: 'custom', message: 'Event Timing times are not chronological'});
+});
+const loaf = z.strictObject({entryType: z.literal('long-animation-frame'), name: z.literal('long-animation-frame'), startTime: timestamp, duration: timestamp, renderStart: timestamp, styleAndLayoutStart: timestamp, blockingDuration: timestamp, firstUIEventTimestamp: timestamp, observedAtMs: timestamp}).refine(v => v.observedAtMs >= v.startTime, 'LoAF observation precedes entry');
 export const rendererCountersSchema = z.strictObject({
   heap: z.discriminatedUnion('status', [z.strictObject({status: z.literal('available'), value: z.strictObject({jsHeapUsedBytes: sequence})}), unavailableCounterSchema]),
   dom: z.discriminatedUnion('status', [z.strictObject({status: z.literal('available'), value: z.strictObject({nodes: sequence, documents: sequence, eventListeners: sequence})}), unavailableCounterSchema]),
@@ -101,12 +144,31 @@ export const comparisonObservationSchema = z.discriminatedUnion('kind', [
     if (!d.mounted && d.text !== null) ctx.addIssue({code: 'custom', message: 'Unmounted content cannot carry DOM text'});
     if (!d.mounted && d.matchedSequences.length !== 0) ctx.addIssue({code: 'custom', message: 'Unmounted content cannot satisfy DOM prefixes'});
   })}),
-  z.strictObject({...pageObservation, kind: z.literal('phase'), data: z.strictObject({boundary: z.enum(['start', 'end'])})}),
+  z.strictObject({...baseObservation, clockDomain: z.literal('page-performance-ms'), phaseInstanceId: phaseInstanceIdSchema, kind: z.literal('phase'), data: z.strictObject({boundary: z.enum(['start', 'end']), markName: text})}),
   z.strictObject({...pageObservation, kind: z.literal('renderer-counters'), data: rendererCountersSchema}),
   z.strictObject({...pageObservation, kind: z.literal('scroll-checkpoint'), data: z.strictObject({scrollTop: z.number().finite(), scrollHeight: timestamp, clientHeight: timestamp, anchorId: text.nullable(), anchorTopCssPx: z.number().finite().nullable(), activeVisible: z.boolean(), followArmed: z.boolean().nullable()})}),
   z.strictObject({...pageObservation, kind: z.literal('composer-input'), data: z.strictObject({value: z.string()})}),
   z.strictObject({...pageObservation, kind: z.literal('failure'), data: z.strictObject({stage: z.enum(['setup', 'replay', 'validation', 'disposal']), reason: text})}),
+  z.strictObject({...pageObservation, kind: z.literal('event-timing'), data: eventTiming}),
+  z.strictObject({...pageObservation, kind: z.literal('long-animation-frame'), data: loaf}),
+  z.strictObject({...pageObservation, kind: z.literal('observer-state'), data: z.strictObject({entryType: z.enum(['event', 'long-animation-frame']), supported: z.boolean(), registration: z.enum(['registered', 'failed', 'unsupported']), reason: text.nullable(), buffered: z.boolean(), requestedDurationThresholdMs: timestamp.nullable(), droppedEntriesCount: comparisonAvailabilitySchema(sequence), observedAtMs: timestamp}).superRefine((v, ctx) => {
+    if (v.registration === 'registered' ? !v.supported || v.reason !== null : v.reason === null) ctx.addIssue({code: 'custom', message: 'Observer registration needs honest availability'});
+    if (v.registration === 'unsupported' && v.supported) ctx.addIssue({code: 'custom', message: 'Unsupported observer cannot claim API support'});
+  })}),
+  z.strictObject({...pageObservation, kind: z.literal('buffer-state'), data: comparisonBoundedBufferSchema}),
+  z.strictObject({...pageObservation, kind: z.literal('assistant-host'), data: z.strictObject({messageId: text.nullable(), hostMounted: z.boolean(), contentMounted: z.boolean()}).refine(v => v.messageId !== null || (!v.hostMounted && !v.contentMounted), 'Absent message cannot be mounted')}),
+  z.strictObject({...pageObservation, kind: z.literal('animation-frame-checkpoint'), data: z.strictObject({messageId: text, ordinal: z.union([z.literal(1), z.literal(2)])})}),
+  z.strictObject({...pageObservation, kind: z.literal('native-input'), data: nativeInput}),
 ]).superRefine((observation, ctx) => {
+  if (observation.clockDomain === 'page-performance-ms') {
+    if (observation.kind === 'phase') {
+      if (observation.data.markName !== `bench:comparison:${observation.phase}:${observation.phaseInstanceId}:${observation.data.boundary}`) ctx.addIssue({code: 'custom', message: 'Boundary mark identity mismatch'});
+    } else {
+      if (observation.phase === null ? observation.phaseInstanceId !== null || observation.attributionReason === null : observation.phaseInstanceId === null || observation.attributionReason !== null) ctx.addIssue({code: 'custom', message: 'Page attribution requires a known pair or null pair with reason'});
+      if ((observation.kind === 'event-timing' || observation.kind === 'long-animation-frame') && observation.timestampMs !== observation.data.startTime) ctx.addIssue({code: 'custom', message: 'Performance timestamp must retain actual entry startTime'});
+      if (observation.kind === 'native-input' && observation.timestampMs !== observation.data.eventTimestampMs) ctx.addIssue({code: 'custom', message: 'Input timestamp must retain actual event time'});
+    }
+  }
   if (observation.kind === 'receipt' && observation.sequence !== observation.data.event.sequence) {
     ctx.addIssue({code: 'custom', message: 'Receipt sequence must match the received event'});
   }
