@@ -6,7 +6,105 @@ const marks = (phase: string, id: string) => ({startMark: `bench:comparison:${ph
 const interval = (phase = 'streaming-follow', instanceId = '0', startMs = 10, endMs = 20) => ({phase, instanceId, startMs, endMs, ...marks(phase, instanceId)});
 const phases = (instances = [interval(), interval('composer-input', '1', 30, 40)]) => ({...identity, status: 'complete', instances, openPhase: null});
 const unavailable = {status: 'unavailable', reason: 'not acquired'};
+const partialCaptureStatus = () => ({...identity,status:'partial',reasons:['capture expired'],captureMetadata:unavailable,evidenceMetadata:unavailable,payloads:[{path:'page.jsonl',status:'partial',reason:'expired'}],unavailablePaths:[{path:'manifest.json',reason:'not acquired'}],terminalPageDrain:unavailable,terminalProducerDrain:unavailable,finalPageInstrumentation:unavailable,traceEof:unavailable});
+const digestFact = {byteLength:2,sha256:'a'.repeat(64)};
+const dispatch = {recipeId:'w',index:0,kind:'wheel',hostMonotonicMs:10,requestedOffsetMs:0,actualOffsetMs:0};
+describe('strict operational raw contracts',()=>{
+  it('binds dataset claim, canonical terminal ledger, members and scheduled summaries',()=>{
+    expect(typeof contract.comparisonDatasetInventorySchema).toBe('object');
+    const configuration={schemaVersion:2,suite:'long-thread-prose-v1',seed:1,rounds:1,adapterProfiles:['threadplane-langgraph-custom-transport'],caseOrder:contract.longThreadCaseOrder(1),mode:'headless',deadlinesMs:{historySetup:60000,replay:30000,disposal:10000}};
+    const versions={schemaVersion:2,suite:'long-thread-prose-v1',suiteVersion:'1.0.0',collectorVersion:'2.0.0',analyzerVersion:'2.0.0'};
+    const invocationId='46dcd970-87f8-4d58-b9c1-490a5d9b9c05', createdAt='2026-10-10T00:00:00.000Z';
+    const runs=configuration.caseOrder.map((scenarioId,caseIndex)=>({round:1,caseIndex,scenarioId,adapterProfile:configuration.adapterProfiles[0],repetition:`1-${caseIndex}-0`,artifactDirectory:`runs/round-1/case-${caseIndex}/profile-0`,status:'failed',reasons:['not started']}));
+    const invocationClaim={...versions,kind:'invocation-ownership-claim',invocationId,createdAt,purpose:'conformance',configuration};
+    const invocationLedger={...versions,createdAt,purpose:'conformance',status:'failed',configuration,runs};
+    const slots=runs.map(r=>({identity:{...versions,repetition:r.repetition,scenarioId:r.scenarioId,round:r.round,caseIndex:r.caseIndex,adapterProfile:r.adapterProfile},artifactDirectory:r.artifactDirectory,status:r.status}));
+    const directories=[...new Set(runs.flatMap(r=>['runs','runs/round-1',`runs/round-1/case-${r.caseIndex}`,r.artifactDirectory]))].sort();
+    const baselineMembers=runs.flatMap(run=>['descriptor.json','validation.json','exceptions.json','raw-inventory.json'].map(name=>({path:run.artifactDirectory+'/'+name,...digestFact})));
+    const members=[{path:'invocation-claim.json',...digestFact},{path:'invocation.json',...digestFact},...baselineMembers].sort((a,b)=>a.path<b.path?-1:1);
+    const base={...versions,invocationId,status:'sealed',configuration,invocationClaim,invocationLedger,root:'.',ledger:{path:'invocation.json',...digestFact},members,absentMembers:[],directories,slots,ownershipSettled:true,finalizationSucceeded:true};
+    expect(contract.comparisonDatasetInventorySchema.safeParse(base).success).toBe(true);
+    const manifestPath=runs[0]!.artifactDirectory+'/raw-inventory.json';
+    expect(contract.comparisonDatasetInventorySchema.safeParse({...base,members:members.filter(member=>member.path!==manifestPath)}).success).toBe(false);
+    const bothManifests=[...members,{path:runs[0]!.artifactDirectory+'/evidence.json',...digestFact}].sort((a,b)=>a.path<b.path?-1:1);
+    expect(contract.comparisonDatasetInventorySchema.safeParse({...base,members:bothManifests}).success).toBe(false);
+    const diagnosticMembers=[...bothManifests,{path:runs[0]!.artifactDirectory+'/finalization-status.json',...digestFact}].sort((a,b)=>a.path<b.path?-1:1);
+    expect(contract.comparisonDatasetInventorySchema.safeParse({...base,status:'partial',reason:'retained unusable manifests after actual finalization failure',finalizationSucceeded:false,members:diagnosticMembers}).success).toBe(true);
+    for(const baseline of ['descriptor.json','validation.json','exceptions.json']) {
+      const path=runs[0]!.artifactDirectory+'/'+baseline, remaining=members.filter(member=>member.path!==path);
+      expect(contract.comparisonDatasetInventorySchema.safeParse({...base,members:remaining}).success).toBe(false);
+      expect(contract.comparisonDatasetInventorySchema.safeParse({...base,members:remaining,absentMembers:[{path,reason:'baseline retention failed'}]}).success).toBe(false);
+      expect(contract.comparisonDatasetInventorySchema.safeParse({...base,status:'partial',reason:'baseline retention failed',members:remaining,absentMembers:[{path,reason:'baseline retention failed'}],finalizationSucceeded:false}).success).toBe(true);
+    }
+    const failureMembers=[...base.members,{path:'dataset-finalization-failure.json',...digestFact}].sort((a,b)=>a.path<b.path?-1:1);
+    expect(contract.comparisonDatasetInventorySchema.safeParse({...base,members:failureMembers}).success).toBe(false);
+    const prefix=runs[0]!.artifactDirectory;
+    const absentMembers=[{path:prefix+'/provenance/source/missing/package.json',reason:'actual source open failed'}];
+    const actualAbsentParents=[prefix+'/provenance',prefix+'/provenance/source',prefix+'/provenance/source/missing'];
+    expect(contract.comparisonDatasetInventorySchema.safeParse({...base,absentMembers,directories:[...directories,...actualAbsentParents].sort()}).success).toBe(true);
+    expect(contract.comparisonDatasetInventorySchema.safeParse({...base,absentMembers}).success).toBe(true);
+    expect(contract.comparisonDatasetInventorySchema.safeParse({...base,absentMembers,directories:[...directories,'unrelated'].sort()}).success).toBe(false);
+    for(const patch of [{invocationId:'5d56859f-0757-4498-bcea-18d05a1b16a3'},{ledger:{path:'invocation.json',...digestFact,byteLength:3}},{slots:slots.slice(1)},{ownershipSettled:false},{invocationLedger:{...invocationLedger,status:'pending'}},{members:[...base.members,{path:'dataset-seal.json',...digestFact}]},{members:[...base.members,{path:'runs/x/results.json',...digestFact}]},{directories:[]}]) expect(contract.comparisonDatasetInventorySchema.safeParse({...base,...patch}).success).toBe(false);
+  });
+  it('exports the unchanged strict exception entry with source-clock agreement',()=>{
+    expect(typeof contract.comparisonExceptionEntrySchema).toBe('object');
+    const exception={source:'console',stage:'setup',clockDomain:'page-performance-ms',timestampMs:1,message:'actual',stack:null,severity:'warning'};
+    expect(contract.comparisonExceptionEntrySchema.safeParse(exception).success).toBe(true);
+    expect(contract.comparisonExceptionEntrySchema.safeParse({...exception,clockDomain:'host-monotonic-ms'}).success).toBe(false);
+  });
+  it('retains unavailable facts without invented values or complete claims',()=>{
+    expect(typeof contract.comparisonCaptureStatusSchema).toBe('object');
+    const s=partialCaptureStatus(); expect(contract.comparisonCaptureStatusSchema.safeParse(s).success).toBe(true);
+    for(const patch of [{status:'complete',reasons:[]},{reasons:[]},{reasons:Array(33).fill('reason')},{terminalPageDrain:{...unavailable,value:{entries:0,serializedBytes:0}}},{captureMetadata:{status:'available',value:identity}},{payloads:Array(4097).fill({path:'page.jsonl',status:'complete'})},{unavailablePaths:[{path:'page.jsonl',reason:'absent'}]}]) expect(contract.comparisonCaptureStatusSchema.safeParse({...s,...patch}).success).toBe(false);
+  });
+  it('excludes unsafe duplicate, self and derived partial inventory members',()=>{
+    expect(typeof contract.comparisonRawInventorySchema).toBe('object');
+    const file={path:'capture-status.json',status:'partial',reason:'expired',...digestFact}, base={...identity,status:'partial',reason:'missing capture',files:[file]};
+    expect(contract.comparisonRawInventorySchema.safeParse(base).success).toBe(true);
+    for(const path of ['raw-inventory.json','evidence.json','results.json','a/../raw']) expect(contract.comparisonRawInventorySchema.safeParse({...base,files:[{...file,path}]}).success).toBe(false);
+    expect(contract.comparisonRawInventorySchema.safeParse({...base,files:[file,file]}).success).toBe(false);
+  });
+  it('binds unusable finalization manifests and honest seal failure facts',()=>{
+    expect(typeof contract.comparisonFinalizationStatusSchema).toBe('object');
+    const base={...identity,status:'failed',reason:'sync failed',manifest:{path:'evidence.json',state:'unusable'},failedAtHostMs:20,datasetSealEligible:false};
+    expect(contract.comparisonFinalizationStatusSchema.safeParse(base).success).toBe(true);
+    expect(contract.comparisonFinalizationStatusSchema.safeParse({...base,manifest:{path:null,state:'unusable'}}).success).toBe(false);
+    expect(contract.comparisonFinalizationStatusSchema.safeParse({...base,datasetSealEligible:true}).success).toBe(false);
+    expect(typeof contract.comparisonDatasetFinalizationFailureSchema).toBe('object');
+    const root={schemaVersion:2,suite:'long-thread-prose-v1',suiteVersion:'1.0.0',collectorVersion:'2.0.0',analyzerVersion:'2.0.0',invocationId:'46dcd970-87f8-4d58-b9c1-490a5d9b9c05',status:'failed',reasons:['sync failed'],failedAtHostMs:20,sealPath:'dataset-seal.json',sealState:'present-unusable'};
+    expect(contract.comparisonDatasetFinalizationFailureSchema.safeParse(root).success).toBe(true);
+    expect(contract.comparisonDatasetFinalizationFailureSchema.safeParse({...root,reasons:[]}).success).toBe(false);
+  });
+  it('bounds genuine trace callbacks and never fills missing loss fields',()=>{
+    expect(typeof contract.comparisonTraceAuxiliarySchema).toBe('object');
+    const base={...identity,cap:256,observedCallbacks:1,retainedCallbacks:1,droppedCallbacks:0,invalidCallbacks:0,status:'partial',reason:'missing loss fact',completion:{status:'available',value:{observedAtHostMs:10,stream:'actual'}}};
+    const parsed=contract.comparisonTraceAuxiliarySchema.parse(base); expect(parsed.completion.status==='available' && parsed.completion.value.dataLossOccurred).toBeUndefined();
+    for(const patch of [{status:'complete',reason:undefined},{observedCallbacks:2},{retainedCallbacks:257},{completion:{status:'available',value:{observedAtHostMs:10,dataLossOccurred:'false'}}},{completion:{...unavailable,value:{dataLossOccurred:false}}}]) expect(contract.comparisonTraceAuxiliarySchema.safeParse({...base,...patch}).success).toBe(false);
+    expect(contract.comparisonTraceAuxiliarySchema.safeParse({...base,observedCallbacks:257,retainedCallbacks:256,invalidCallbacks:1,droppedCallbacks:0}).success).toBe(false);
+    expect(contract.comparisonTraceAuxiliarySchema.safeParse({...base,observedCallbacks:257,retainedCallbacks:255,invalidCallbacks:1,droppedCallbacks:1}).success).toBe(true);
+    expect(contract.comparisonTraceAuxiliarySchema.safeParse({...base,observedCallbacks:257,retainedCallbacks:255,invalidCallbacks:2,droppedCallbacks:0}).success).toBe(false);
+    expect(contract.comparisonTraceAuxiliarySchema.safeParse({...base,status:'complete',reason:undefined,observedCallbacks:257,retainedCallbacks:255,invalidCallbacks:1,droppedCallbacks:1,completion:{status:'available',value:{observedAtHostMs:10,dataLossOccurred:false,stream:'actual'}}}).success).toBe(false);
+  });
+  it('cross-binds native results to real dispatches and host arithmetic',()=>{
+    expect(typeof contract.comparisonNativeDispatchResultsSchema).toBe('object');
+    const result={recipeId:'w',index:0,kind:'wheel',invocationAtHostMs:10,completion:{status:'acknowledged',completionAtHostMs:12,latencyMs:2}};
+    const base={...identity,status:'complete',hostDispatches:[dispatch],results:[result]};
+    expect(contract.comparisonNativeDispatchResultsSchema.safeParse(base).success).toBe(true);
+    for(const patch of [{hostDispatches:[]},{results:[result,result]},{results:[{...result,invocationAtHostMs:11}]},{results:[{...result,completion:{...result.completion,latencyMs:1}}]},{results:[{...result,completion:{status:'unavailable',reason:'no settlement',latencyMs:0}}]}]) expect(contract.comparisonNativeDispatchResultsSchema.safeParse({...base,...patch}).success).toBe(false);
+  });
+  it('requires deterministic provenance paths and measured before/copy/after equality',()=>{
+    expect(typeof contract.comparisonProvenanceAcquisitionSchema).toBe('object');
+    const fact={status:'available',value:digestFact}, member={role:'build-source',key:'package.json',path:'provenance/source/package.json',originalSha256:digestFact.sha256,beforeCopy:fact,copied:fact,afterCopy:fact,status:'complete'};
+    const base={...identity,status:'complete',members:[member]};
+    expect(contract.comparisonProvenanceAcquisitionSchema.safeParse(base).success).toBe(true);
+    for(const patch of [{path:'wrong'},{originalSha256:undefined},{copied:unavailable},{afterCopy:{status:'available',value:{...digestFact,byteLength:3}}},{role:'installed-package-metadata'}]) expect(contract.comparisonProvenanceAcquisitionSchema.safeParse({...base,members:[{...member,...patch}]}).success).toBe(false);
+  });
+});
 describe('bounded capture amendments', () => {
+  it('rejects more than 256 trace usage callbacks', () => {
+    const trace = {status:'available',format:'cdp-json',file:'trace.json',categories:['actual'],complete:false,reason:'stopped',tracingComplete:unavailable,presentation:unavailable,bufferUsage:Array(257).fill({observedAtHostMs:1})};
+    expect(contract.comparisonTraceSchema.safeParse(trace).success).toBe(false);
+  });
   it('requires owning geometry and aligned clipping axes', () => {
     const rect={left:0,top:0,right:10,bottom:10};
     const value={messageId:'actual',role:'assistant',hostRect:rect,contentRects:[rect],viewportRect:rect,scrollerRect:rect,clippingAncestorRects:[rect],clippingAncestorAxes:[{clipX:true,clipY:false}],effectiveClipRect:rect};

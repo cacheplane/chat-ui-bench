@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {mkdtemp, readFile, rm, writeFile, rename, open} from 'node:fs/promises';
+import {mkdtemp, readFile, rm, writeFile, rename, open, lstat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -10,6 +10,24 @@ const roots: string[] = [];
 afterEach(async () => {vi.useRealTimers(); await Promise.all(roots.splice(0).map(r => rm(r, {recursive: true, force: true})));});
 async function config() {const out = await mkdtemp(join(tmpdir(), 'comparison-execution-')); roots.push(out); const args = parseLongThreadArgs(['--out', out]); if (args.help) throw new Error('unexpected help'); return args;}
 describe('complete comparison ledger', () => {
+  it.each([1,2,3])('builds the whole headless matrix for %i rounds',async rounds=>{
+    const c=await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=rounds;
+    expect(createLongThreadLedger(c).runs).toHaveLength(rounds*12);
+  });
+  it('rejects four headless rounds before even making the nonexistent programmatic root',async()=>{
+    const c=await config(); c.out=join(c.out,'not-created'); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=4;
+    const factory=vi.fn(async()=>{}), fileOpen=vi.fn(open);
+    await expect(runLongThreadInvocation(c,{setup:factory,replay:async()=>{throw new Error('unreachable');}},{fileOperations:{open:fileOpen}})).rejects.toThrow(/round|36/);
+    expect(factory).not.toHaveBeenCalled(); expect(fileOpen).not.toHaveBeenCalled(); await expect(lstat(c.out)).rejects.toMatchObject({code:'ENOENT'});
+  });
+  it('rejects programmatic overscheduling before filesystem or factory access', async () => {
+    const c = await config(); await writeFile(join(c.out, 'sentinel'), 'unchanged');
+    c.purpose = 'conformance'; c.configuration.mode = 'headless'; c.configuration.rounds = 4;
+    const setup = vi.fn(async () => {throw new Error('factory touched');});
+    await expect(runLongThreadInvocation(c, {setup, replay: async () => {throw new Error('unreachable');}})).rejects.toThrow(/round|36|configuration/i);
+    expect(setup).not.toHaveBeenCalled(); expect(await readFile(join(c.out, 'sentinel'), 'utf8')).toBe('unchanged');
+    expect(() => createLongThreadLedger(c)).toThrow(/round|36|configuration/i);
+  });
   it('constructs exact 36 slots with decimal member directories and no fabricated environment', async () => {
     const invocation = createLongThreadLedger(await config());
     expect(comparisonCaptureInvocationSchema.parse(invocation).runs).toHaveLength(36);
