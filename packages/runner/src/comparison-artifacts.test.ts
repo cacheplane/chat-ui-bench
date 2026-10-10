@@ -4,11 +4,259 @@ import {tmpdir} from 'node:os';
 import {join, basename} from 'node:path';
 import {createHash} from 'node:crypto';
 import {appendFileSync} from 'node:fs';
+import {constants} from 'node:fs';
 import {execFileSync} from 'node:child_process';
-import {ComparisonArtifactWriter} from './comparison-artifacts.js';
+import {ComparisonArtifactWriter, type ComparisonDatasetSlotSource, type ComparisonFileOperations} from './comparison-artifacts.js';
+import {comparisonDatasetInventorySchema, comparisonDatasetFinalizationFailureSchema, comparisonCaptureStatusSchema, canonicalSerialize, type ComparisonDatasetInventory} from '@chat-ui-bench/contract';
+import {parseLongThreadArgs} from './long-thread-cli.js';
+import {createLongThreadLedger} from './long-thread-run.js';
 const roots: string[] = [];
 async function root() { const dir = await mkdtemp(join(tmpdir(), 'comparison-writer-')); roots.push(dir); return dir; }
 afterEach(async () => { await Promise.all(roots.splice(0).map(r => rm(r, {recursive: true, force: true}))); });
+/** File facts are independently authored from actual retained bytes, never the publisher's hashes. */
+async function dataset(rounds=1,io:ComparisonFileOperations={},extras:Record<string,unknown>={},interruptFirstPage=false,omitCaptureStatus=false) {
+  const directory=await realpath(await root()), parsed=parseLongThreadArgs(['--out',directory,'--mode','headless','--rounds',String(rounds)]);
+  if(parsed.help) throw new Error('unexpected help');
+  const ledger=createLongThreadLedger(parsed), writer=await ComparisonArtifactWriter.create(directory,io,{candidateLimit:16});
+  const {schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion}=ledger;
+  const claim={schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion,kind:'invocation-ownership-claim',invocationId:'46dcd970-87f8-4d58-b9c1-490a5d9b9c05',createdAt:ledger.createdAt,purpose:ledger.purpose,configuration:ledger.configuration};
+  await writer.claimEmptyRoot('invocation-claim.json',claim);
+  const sources:ComparisonDatasetSlotSource[]=[];
+  for(const [index,row] of ledger.runs.entries()) {
+    row.status=index%3===0?'valid':index%3===1?'invalid':'failed'; row.reasons=row.status==='valid'?[]:['diagnostic journey outcome'];
+    const identity={schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion,repetition:row.repetition,scenarioId:row.scenarioId,round:row.round,caseIndex:row.caseIndex,adapterProfile:row.adapterProfile};
+    const slot=await writer.createSlotWriter(row.artifactDirectory);
+    await slot.json('descriptor.json',{...identity,seed:ledger.configuration.seed,mode:ledger.configuration.mode,artifactDirectory:row.artifactDirectory});
+    await slot.json('validation.json',{...identity,status:row.status,reasons:row.reasons,checks:[{name:'fixture ownership only',passed:row.status==='valid',reason:row.status==='valid'?null:row.reasons[0],evidencePaths:[]}]});
+    await slot.json('exceptions.json',{...identity,exceptions:[]});
+    await slot.text('page.jsonl','original exact raw bytes\n');
+    if(interruptFirstPage && index===0) {
+      await expect(slot.scoped(()=>{}).appendSerialized('page.jsonl',['{"actual":"record"}'])).rejects.toThrow('interrupted actual append before fsync');
+      row.status='failed'; row.reasons=['interrupted actual append before fsync'];
+      await slot.json('validation.json',{...identity,status:'failed',reasons:row.reasons,checks:[{name:'actual interrupted append',passed:false,reason:row.reasons[0],evidencePaths:['page.jsonl']}]});
+    }
+    const rawPaths=[...new Set(['descriptor.json','exceptions.json','page.jsonl','validation.json',...Object.keys(extras).filter(path=>path!=='capture-status.json')])].sort();
+    const payloads=rawPaths.map(path=>({path,status:interruptFirstPage && index===0 && path==='page.jsonl'?'partial' as const:'complete' as const,...(interruptFirstPage && index===0 && path==='page.jsonl'?{reason:'interrupted actual append before fsync'}:{})}));
+    const unavailable={status:'unavailable' as const,reason:'Storage fixture has no acquired browser metadata'};
+    if(!omitCaptureStatus) await slot.json('capture-status.json',comparisonCaptureStatusSchema.parse({...identity,status:'partial',reasons:[unavailable.reason,...row.reasons],captureMetadata:unavailable,evidenceMetadata:unavailable,payloads,unavailablePaths:[],terminalPageDrain:unavailable,terminalProducerDrain:unavailable,finalPageInstrumentation:unavailable,traceEof:unavailable}));
+    for(const [path,value] of Object.entries(extras)) await slot.json(path,value);
+    const files=[];
+    for(const path of [...rawPaths,...(omitCaptureStatus?[]:['capture-status.json'])].sort()) {
+      const bytes=await readFile(join(slot.directory,path)); files.push({path,status:interruptFirstPage && index===0 && path==='page.jsonl'?'partial':'complete',...(interruptFirstPage && index===0 && path==='page.jsonl'?{reason:'interrupted actual append before fsync'}:{}),byteLength:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});
+    }
+    await slot.json('raw-inventory.json',{...identity,status:'partial',reason:'Storage fixture has no browser acquisition',files});
+    await slot.seal(); sources.push({writer:slot,identity,artifactDirectory:row.artifactDirectory,status:row.status,ownershipSettled:true,finalizationSucceeded:true});
+  }
+  ledger.status='failed'; await writer.json('invocation.json',ledger);
+  const build=(checked:Readonly<ComparisonDatasetInventory>)=>{
+    expect(canonicalSerialize(checked.invocationClaim)).toBe(canonicalSerialize(claim)); expect(canonicalSerialize(checked.invocationLedger)).toBe(canonicalSerialize(ledger)); return structuredClone(checked);
+  };
+  return {writer,sources,ledger,claim,build,directory};
+}
+describe('durable whole dataset publication',()=>{
+  it('rejects every real registered slot missing the required owner capture-status',async()=>{
+    const d=await dataset(1,{}, {},false,true);
+    await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/requires.*capture-status/);
+    await expect(readFile(join(d.directory,'dataset-seal.json'))).rejects.toMatchObject({code:'ENOENT'});
+  },30000);
+  it('uses admission-time source cardinality and copied source identity despite synchronous caller mutations',async()=>{
+    const d=await dataset(),expectedIdentity={...d.sources[0]!.identity},expectedDirectory=d.sources[0]!.artifactDirectory;
+    const publication=d.writer.publishDatasetSeal(d.sources,d.build);
+    while(d.sources.length<=36) d.sources.push(d.sources[0]!);
+    d.sources[0]!.identity.repetition='caller-mutated-after-admission';
+    d.sources[0]!.artifactDirectory='runs/round-1/case-1/profile-0'; d.sources[0]!.ownershipSettled=false;
+    d.sources[0]!.writer=d.sources[1]!.writer;
+    await publication;
+    const seal=comparisonDatasetInventorySchema.parse(JSON.parse(await readFile(join(d.directory,'dataset-seal.json'),'utf8')));
+    expect(seal.slots).toHaveLength(12); expect(seal.slots[0]).toMatchObject({identity:expectedIdentity,artifactDirectory:expectedDirectory});
+    await expect(readFile(join(d.directory,'dataset-finalization-failure.json'))).rejects.toMatchObject({code:'ENOENT'});
+  },30000);
+  it.each(['identity','raw-membership','evidence-availability'] as const)('rejects actual capture-status %s disagreement even with independently refreshed file hashes',async mode=>{
+    const d=await dataset(),slot=d.sources[0]!.writer,statusPath=join(slot.directory,'capture-status.json');
+    const status=comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(statusPath,'utf8')));
+    if(mode==='identity') status.repetition='different-retained-status-identity';
+    if(mode==='raw-membership') status.payloads[0]={...status.payloads[0]!,status:'partial',reason:'Inventoried bytes did not acquire this claimed status'};
+    if(mode==='evidence-availability') status.evidenceMetadata={status:'available'};
+    const bytes=Buffer.from(JSON.stringify(comparisonCaptureStatusSchema.parse(status))+'\n'); await writeFile(statusPath,bytes);
+    const manifestPath=join(slot.directory,'raw-inventory.json'),manifest=JSON.parse(await readFile(manifestPath,'utf8'));
+    const file=manifest.files.find((f:{path:string})=>f.path==='capture-status.json');
+    file.byteLength=bytes.length; file.sha256=createHash('sha256').update(bytes).digest('hex'); await writeFile(manifestPath,JSON.stringify(manifest)+'\n');
+    await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/Capture status/);
+    await expect(readFile(join(d.directory,'dataset-seal.json'))).rejects.toMatchObject({code:'ENOENT'});
+  },30000);
+  it.each([false,true])('uses a real readonly file durability barrier for pre-fsync interrupted append bytes (barrier fails=%s)',async fails=>{
+    let armed=false,selected='',barriers=0,appendSynced=false,actualAppend:Awaited<ReturnType<typeof open>>|undefined,readHandle:Awaited<ReturnType<typeof open>>|undefined;
+    const d=await dataset(1,{open:async(...args)=>{
+      const handle=await open(...args),path=String(args[0]),flags=Number(args[1]);
+      if(path.includes('/case-0/profile-0/') && path.endsWith('/page.jsonl') && (flags & constants.O_APPEND)!==0) {
+        actualAppend=handle; handle.writeFile=async()=>{await handle.write(Buffer.from('actual partial tail')); throw new Error('interrupted actual append before fsync');};
+        const sync=handle.sync.bind(handle); handle.sync=async()=>{appendSynced=true; await sync();};
+      }
+      if(armed && path===selected && (await handle.stat()).isFile()) {
+        readHandle=handle; const sync=handle.sync.bind(handle);
+        handle.sync=async()=>{barriers++; if(fails) throw new Error('actual readonly partial-file fsync failed'); await sync();};
+      }
+      return handle;
+    }},{},true);
+    selected=join(d.sources[0]!.writer.directory,'page.jsonl'); armed=true;
+    expect(appendSynced).toBe(false); await expect(actualAppend!.stat()).rejects.toThrow(/closed/);
+    const original=await readFile(selected); expect(original.toString()).toBe('original exact raw bytes\nactual partial tail');
+    if(fails) {await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/readonly partial-file fsync/); await expect(readFile(join(d.directory,'dataset-seal.json'))).rejects.toMatchObject({code:'ENOENT'}); await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/retry/);}
+    else {await d.writer.publishDatasetSeal(d.sources,d.build); expect(JSON.parse(await readFile(join(d.directory,'dataset-seal.json'),'utf8')).status).toBe('sealed');}
+    expect(barriers).toBe(1); await expect(readHandle!.stat()).rejects.toThrow(/closed/); expect(await readFile(selected)).toEqual(original);
+    const manifest=JSON.parse(await readFile(join(d.sources[0]!.writer.directory,'raw-inventory.json'),'utf8'));
+    expect(manifest.files.find((f:{path:string})=>f.path==='page.jsonl')).toMatchObject({status:'partial',reason:'interrupted actual append before fsync',sha256:createHash('sha256').update(original).digest('hex')});
+  },30000);
+  it('closes a genuine publication handle when the second real stat acquisition rejects',async()=>{
+    let armed=false,owned:Awaited<ReturnType<typeof open>>|undefined,closeOwned:(()=>Promise<void>)|undefined;
+    const d=await dataset(1,{open:async(...args)=>{const handle=await open(...args); if(armed && /dataset-seal\.json\..*\.tmp$/.test(String(args[0]))) {owned=handle; closeOwned=handle.close.bind(handle); const stat=handle.stat.bind(handle); let calls=0; handle.stat=async(...statArgs)=>{if(++calls===2) throw new Error('actual second seal stat failed'); return stat(...statArgs);};} return handle;}}); armed=true;
+    try {await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/actual second seal stat failed/); await expect(owned!.stat()).rejects.toThrow(/closed/);}
+    finally {await closeOwned?.();}
+  },30000);
+  it('rejects a genuine nested declared directory fsync failure before seal creation, closes the actual handle, and preserves raw bytes',async()=>{
+    let armed=false,selected='',attempted=false,closed=false,owned:Awaited<ReturnType<typeof open>>|undefined;
+    const d=await dataset(1,{open:async(...args)=>{
+      const handle=await open(...args);
+      if(armed && String(args[0])===selected && (await handle.stat()).isDirectory()) {
+        owned=handle; const close=handle.close.bind(handle);
+        handle.sync=async()=>{attempted=true; throw new Error('nested declared directory fsync failed');};
+        handle.close=async()=>{closed=true; await close();};
+      }
+      return handle;
+    }}); selected=join(d.directory,'runs/round-1/case-0'); armed=true;
+    await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/nested declared directory fsync/);
+    expect(attempted).toBe(true); expect(closed).toBe(true); await expect(owned!.stat()).rejects.toThrow(/closed/);
+    expect(await readFile(join(d.sources[0]!.writer.directory,'page.jsonl'),'utf8')).toBe('original exact raw bytes\n');
+    await expect(readFile(join(d.directory,'dataset-seal.json'))).rejects.toMatchObject({code:'ENOENT'});
+    await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/retry/);
+  },30000);
+  it('independently rejects malformed actual capture-status even when the raw manifest hashes are fresh',async()=>{
+    const d=await dataset(1,{}, {'capture-status.json':{forged:true}});
+    await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/capture|identity|Invalid/);
+  },30000);
+  it('preserves both genuine publication file fsync and close errors and closes the retained real handle in test cleanup',async()=>{
+    let armed=false,owned:Awaited<ReturnType<typeof open>>|undefined,closeOwned:(()=>Promise<void>)|undefined;
+    const d=await dataset(1,{open:async(...args)=>{
+      const handle=await open(...args);
+      if(armed && /dataset-seal\.json\..*\.tmp$/.test(String(args[0]))) {
+        owned=handle; closeOwned=handle.close.bind(handle);
+        handle.sync=async()=>{throw new Error('genuine seal file fsync error');};
+        handle.close=async()=>{throw new Error('genuine seal close error');};
+      }
+      return handle;
+    }}); armed=true;
+    try {await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/file fsync error.*close error/);}
+    finally {await closeOwned?.();}
+    expect(owned).toBeDefined(); await expect(owned!.stat()).rejects.toThrow(/closed/);
+  },30000);
+  it('rejects a real open root stream without inventing owner settlement',async()=>{
+    let owned:Awaited<ReturnType<typeof open>>|undefined,closeOwned:(()=>Promise<void>)|undefined;
+    const d=await dataset(1,{open:async(...args)=>{const handle=await open(...args); if(String(args[0]).endsWith('/root-stream')) {owned=handle; closeOwned=handle.close.bind(handle);} return handle;}});
+    const stream=await d.writer.stream('root-stream'); await stream.write(Buffer.from('actual stream bytes'));
+    try {
+      await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/streams/);
+      await expect(d.writer.seal()).rejects.toThrow(/publication.*frozen/);
+      await expect(d.writer.text('late-after-failed-seal','forbidden')).rejects.toThrow(/sealed/);
+      await expect(stream.write(Buffer.from('forbidden late bytes'))).rejects.toThrow(/sealed/);
+      await stream.complete(); await expect(owned!.stat()).rejects.toThrow(/closed/);
+      await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/retry/);
+    }
+    finally {await closeOwned?.();} // Actual test-owned FD cleanup is not claimed as publisher settlement.
+  },30000);
+  it('keeps a raw stream with a rejected actual close unsealable even after test-owned FD cleanup',async()=>{
+    let owned:Awaited<ReturnType<typeof open>>|undefined,closeOwned:(()=>Promise<void>)|undefined;
+    const d=await dataset(1,{open:async(...args)=>{
+      const handle=await open(...args);
+      if(String(args[0]).endsWith('/root-stream')) {owned=handle; closeOwned=handle.close.bind(handle); handle.close=async()=>{throw new Error('actual stream close rejected');};}
+      return handle;
+    }});
+    const stream=await d.writer.stream('root-stream'); await stream.write(Buffer.from('retained actual stream bytes'));
+    try {
+      await expect(stream.complete()).rejects.toThrow('actual stream close rejected');
+      expect((await owned!.stat()).isFile()).toBe(true);
+      await closeOwned!(); await expect(owned!.stat()).rejects.toThrow(/closed/);
+      await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/streams/);
+      await expect(readFile(join(d.directory,'dataset-seal.json'))).rejects.toMatchObject({code:'ENOENT'});
+    } finally {await closeOwned?.();}
+  },30000);
+  it('freezes normal admission before draining a genuine earlier queued write without nested queue deadlock',async()=>{
+    let armed=false,entered!:()=>void,release!:()=>void;
+    const started=new Promise<void>(r=>entered=r), blocked=new Promise<void>(r=>release=r);
+    const d=await dataset(1,{open:async(...args)=>{if(armed && /invocation\.json\..*\.tmp$/.test(String(args[0]))) {entered(); await blocked;} return open(...args);}});
+    armed=true; const pending=d.writer.json('invocation.json',d.ledger); await started;
+    const publication=d.writer.publishDatasetSeal(d.sources,d.build);
+    await expect(d.writer.text('late-unregistered','forbidden')).rejects.toThrow(/sealed/);
+    armed=false; release(); await pending; await publication;
+    expect(JSON.parse(await readFile(join(d.directory,'dataset-seal.json'),'utf8')).status).toBe('sealed');
+  },30000);
+  it.each([1,3])('checks independently authored whole %i round collection and every raw hash',async rounds=>{
+    const d=await dataset(rounds); await d.writer.publishDatasetSeal(d.sources,d.build);
+    const seal=comparisonDatasetInventorySchema.parse(JSON.parse(await readFile(join(d.directory,'dataset-seal.json'),'utf8')));
+    expect(seal.slots).toHaveLength(rounds*12); expect(seal.members).toHaveLength(2+rounds*12*6);
+    for(const member of seal.members) {const bytes=await readFile(join(d.directory,member.path)); expect(member.byteLength).toBe(bytes.length); expect(member.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));}
+    await expect(d.writer.json('late.json',{})).rejects.toThrow(/sealed/);
+    await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/retry/);
+  },30000);
+  it.each(['missing-source','duplicate-source','wrong-prefix','wrong-identity','unsettled-owner','failed-finalizer','stale-manifest','stale-ledger','missing-member','unknown-file','unknown-directory','symlink','replaced-leaf','replaced-directory','replaced-root','builder-hash'] as const)('rejects %s against real checked filesystem facts',async mode=>{
+    const d=await dataset(), first=d.sources[0]!, slot=first.writer;
+    let sources=d.sources, build=d.build;
+    if(mode==='missing-source') sources=sources.slice(1);
+    if(mode==='duplicate-source') sources=[sources[0]!,sources[0]!,...sources.slice(2)];
+    if(mode==='wrong-prefix') sources=[{...first,artifactDirectory:'runs/round-1/case-1/profile-0'},...sources.slice(1)];
+    if(mode==='wrong-identity') sources=[{...first,identity:{...first.identity,repetition:'substituted'}},...sources.slice(1)];
+    if(mode==='unsettled-owner') sources=[{...first,ownershipSettled:false},...sources.slice(1)];
+    if(mode==='failed-finalizer') sources=[{...first,finalizationSucceeded:false},...sources.slice(1)];
+    if(mode==='stale-manifest') await writeFile(join(slot.directory,'page.jsonl'),'changed bytes without manifest update');
+    if(mode==='stale-ledger') {const changed=structuredClone(d.ledger); changed.createdAt='2026-10-09T00:00:00.000Z'; await writeFile(join(d.directory,'invocation.json'),JSON.stringify(changed));}
+    if(mode==='missing-member') await rm(join(slot.directory,'page.jsonl'));
+    if(mode==='unknown-file') await writeFile(join(slot.directory,'unknown-raw'),'unknown bytes');
+    if(mode==='unknown-directory') await mkdir(join(slot.directory,'unknown-directory'));
+    if(mode==='symlink') {const outside=await root(); await writeFile(join(outside,'sentinel'),'unread outside'); await symlink(join(outside,'sentinel'),join(slot.directory,'unknown-link'));}
+    if(mode==='replaced-leaf') {await rename(join(slot.directory,'page.jsonl'),join(slot.directory,'original')); await writeFile(join(slot.directory,'page.jsonl'),'replacement');}
+    if(mode==='replaced-directory') {await rename(slot.directory,slot.directory+'-original'); await mkdir(slot.directory);}
+    if(mode==='replaced-root') {const saved=d.directory+'-original'; roots.push(saved); await rename(d.directory,saved); await mkdir(d.directory); await writeFile(join(d.directory,'sentinel'),'replacement root untouched');}
+    if(mode==='builder-hash') build=checked=>({...d.build(checked),members:checked.members.map((m,i)=>i===0?{...m,sha256:'0'.repeat(64)}:m)});
+    await expect(d.writer.publishDatasetSeal(sources,build)).rejects.toThrow();
+    await expect(readFile(join(d.directory,'dataset-seal.json'))).rejects.toMatchObject({code:'ENOENT'});
+    await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/retry/);
+    if(mode==='replaced-root') expect(await readFile(join(d.directory,'sentinel'),'utf8')).toBe('replacement root untouched');
+  },30000);
+  it.each(['create','write','rename','directory-fsync','postcheck','all-retention-fails'] as const)('retains actual publication %s failure without reporting success or retrying',async mode=>{
+    let armed=false,renamed=false,rootPath='',created:Awaited<ReturnType<typeof open>>|undefined;
+    const io:ComparisonFileOperations={open:async(...args)=>{
+      const path=String(args[0]);
+      if(armed && mode==='all-retention-fails' && (/dataset-finalization-failure\.json\..*\.tmp$/.test(path) || /invocation\.json\..*\.tmp$/.test(path))) throw new Error('ALL error retention writes failed');
+      const temporary=/dataset-seal\.json\..*\.tmp$/.test(path);
+      if(armed && temporary && mode==='create') throw new Error('seal create failed');
+      const handle=await open(...args);
+      if(armed && temporary) {created=handle; if(mode==='write') handle.writeFile=async()=>{await handle.write(Buffer.from('actual partial seal')); throw new Error('seal write failed');};}
+      if(armed && renamed && path===rootPath && (await handle.stat()).isDirectory() && ['directory-fsync','all-retention-fails'].includes(mode)) {const sync=handle.sync.bind(handle); handle.sync=async()=>{if(mode==='all-retention-fails' || renamed) {renamed=false; throw new Error('seal parent fsync failed after real rename');} await sync();};}
+      if(armed && renamed && path===join(rootPath,'dataset-seal.json') && mode==='postcheck') handle.readFile=async()=>{throw new Error('seal postcheck failed');};
+      return handle;
+    },rename:async(source,destination)=>{
+      if(armed && String(destination).endsWith('/dataset-seal.json')) {if(mode==='rename') throw new Error('seal rename failed'); await rename(source,destination); renamed=true; return;}
+      await rename(source,destination);
+    }};
+    const d=await dataset(1,io); rootPath=d.directory; armed=true;
+    await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/seal|retention/);
+    if(created) await expect(created.stat()).rejects.toThrow(/closed/);
+    if(mode==='write') {
+      const actual=await d.writer.reconcilePayloadCandidates(), temporary=actual.present.find(f=>/^dataset-seal\.json\..*\.tmp$/.test(f.path));
+      expect(temporary).toMatchObject({status:'partial'}); expect(await readFile(join(d.directory,temporary!.path),'utf8')).toBe('actual partial seal');
+    }
+    await expect(d.writer.publishDatasetSeal(d.sources,d.build)).rejects.toThrow(/retry/);
+    await expect(d.writer.json('arbitrary-reopening.json',{})).rejects.toThrow(/sealed/);
+    if(['directory-fsync','postcheck','all-retention-fails'].includes(mode)) expect(JSON.parse(await readFile(join(d.directory,'dataset-seal.json'),'utf8')).status).toBe('sealed');
+    if(mode==='all-retention-fails') {
+      await expect(readFile(join(d.directory,'dataset-finalization-failure.json'))).rejects.toMatchObject({code:'ENOENT'});
+      expect(JSON.parse(await readFile(join(d.directory,'invocation.json'),'utf8'))).toEqual(d.ledger);
+      // This surviving consistent seal cannot prove unpersisted command success or crash durability.
+    } else {
+      const failure=comparisonDatasetFinalizationFailureSchema.parse(JSON.parse(await readFile(join(d.directory,'dataset-finalization-failure.json'),'utf8')));
+      expect(failure.sealState).toBe(['directory-fsync','postcheck'].includes(mode)?'present-unusable':'absent');
+    }
+  },30000);
+});
 describe('comparison artifact writer', () => {
   it.each(['reconciliation','inventory'] as const)('rejects post-open replacement during %s while preserving acquired and previously pinned identities',async(operation)=>{
     for(const {pinned,swapBeforeOpen} of [{pinned:false,swapBeforeOpen:false},{pinned:true,swapBeforeOpen:false},{pinned:true,swapBeforeOpen:true}]) {

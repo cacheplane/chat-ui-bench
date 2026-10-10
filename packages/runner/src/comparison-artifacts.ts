@@ -2,7 +2,7 @@ import {constants, type Stats} from 'node:fs';
 import {lstat, mkdir, open, readdir, realpath, rename, unlink, type FileHandle} from 'node:fs/promises';
 import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
-import {comparisonArtifactPathSchema, comparisonInventoryFileSchema, type ComparisonInventoryFile} from '@chat-ui-bench/contract';
+import {comparisonArtifactPathSchema, comparisonInventoryFileSchema, comparisonDatasetInventorySchema, comparisonCaptureInvocationSchema, comparisonScheduledRunSchema, comparisonValidationSchema, comparisonExceptionsSchema, comparisonEvidenceSchema, comparisonRawInventorySchema, comparisonCaptureStatusSchema, comparisonDatasetFinalizationFailureSchema, canonicalSerialize, type ComparisonInventoryFile, type ComparisonDatasetInventory, type ComparisonIdentity} from '@chat-ui-bench/contract';
 
 export interface ComparisonPayloadFile {path: string; status: 'complete' | 'partial'; reason?: string}
 export interface ComparisonRawStream {write(bytes: Uint8Array): Promise<void>; complete(): Promise<void>}
@@ -15,10 +15,25 @@ export interface ComparisonScopedWriter {
 }
 /** Narrow I/O injection supports controlled failure and pathname-substitution checks. */
 export interface ComparisonFileOperations {open?: typeof open; rename?: typeof rename}
+export interface ComparisonDatasetSlotSource {
+  writer: ComparisonArtifactWriter; artifactDirectory: string; identity: ComparisonIdentity;
+  status: 'valid'|'invalid'|'failed'; ownershipSettled: boolean; finalizationSucceeded: boolean;
+}
+export type ComparisonDatasetSealFacts = Readonly<ComparisonDatasetInventory>;
 const derived = new Set(['evidence.json', 'raw-inventory.json', 'results.json', 'metrics.json', 'summary.md', 'report.json', 'report.html', 'report.md']);
+const analysisDerived = new Set(['results.json', 'metrics.json', 'summary.md', 'report.json', 'report.html', 'report.md']);
 function sameIdentity(a: Pick<Stats,'dev'|'ino'>, b: Pick<Stats,'dev'|'ino'>) {return a.dev === b.dev && a.ino === b.ino;}
 function sameFile(a: Stats, b: Stats) {return sameIdentity(a, b) && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;}
 function absent(error: unknown): boolean {return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';}
+async function closing<T>(handle:FileHandle,operation:()=>Promise<T>):Promise<T> {
+  let value:T, failure:unknown, failed=false;
+  try {value=await operation();} catch(error) {failure=error; failed=true;}
+  try {await handle.close();} catch(error) {
+    if(failed) throw new AggregateError([failure,error],[failure,error].map(e=>e instanceof Error?e.message:String(e)).join('; '));
+    throw error;
+  }
+  if(failed) throw failure; return value!;
+}
 
 /** Portable Node checks protect application-owned directories; this is not an adversarial openat sandbox. */
 export class ComparisonArtifactWriter {
@@ -30,6 +45,7 @@ export class ComparisonArtifactWriter {
   private readonly candidates = new Map<string, {role:'destination'|'temporary'; reason?:string; identity?:Pick<Stats,'dev'|'ino'>}>();
   private readonly parents = new Map<string, Pick<Stats,'dev'|'ino'>>();
   private candidateAdmissionFailure:string|null = null;
+  private publicationRequested = false;
   private constructor(readonly directory: string, private readonly rootIdentity: Stats, private readonly io: ComparisonFileOperations, private readonly candidateLimit:16|4096) {}
   static async create(directory: string, io: ComparisonFileOperations = {}, options: {candidateLimit:16|4096} = {candidateLimit:4096}): Promise<ComparisonArtifactWriter> {
     if (options.candidateLimit !== 16 && options.candidateLimit !== 4096) throw new Error('Candidate capacity must be root16 or slot4096');
@@ -135,7 +151,14 @@ export class ComparisonArtifactWriter {
   private async syncParent(path: string, expected: Stats) {
     await this.checkRoot(); const parent = dirname(path); this.contained(await realpath(parent));
     const handle = await (this.io.open ?? open)(parent, constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {const actual = await lstat(parent), opened = await handle.stat(); if (!actual.isDirectory() || actual.isSymbolicLink() || !sameIdentity(expected, actual) || !sameIdentity(opened, actual)) throw new Error('Durability parent identity changed'); await handle.sync();} finally {await handle.close();}
+    await closing(handle,async()=>{
+      const actual = await lstat(parent), opened = await handle.stat();
+      if (!actual.isDirectory() || actual.isSymbolicLink() || !opened.isDirectory() || !sameIdentity(expected, actual) || !sameIdentity(opened, actual) || await realpath(parent)!==parent) throw new Error('Durability parent identity changed');
+      await handle.sync();
+      const after=await lstat(parent), afterHandle=await handle.stat();
+      if(!after.isDirectory() || after.isSymbolicLink() || !sameIdentity(expected,after) || !sameIdentity(afterHandle,after) || await realpath(parent)!==parent) throw new Error('Durability parent identity changed after sync');
+      await this.checkRoot();
+    });
   }
   private atomic(path: string, bytes: Uint8Array, guard: () => void): Promise<void> {
     const temporary = `${path}.${randomUUID()}.tmp`;
@@ -217,7 +240,14 @@ export class ComparisonArtifactWriter {
       this.streams.add(path); let completed = false;
       return {
         write: bytes => this.tracked(path,async () => {if (completed) throw new Error('Raw stream is complete'); const current = await this.checked(path); if (!current.leaf || !sameIdentity(await handle.stat(), current.leaf)) throw new Error('Raw stream pathname was replaced'); guard(); await handle.writeFile(bytes);}, guard),
-        complete: () => this.tracked(path,async () => {if (completed) return; try {await handle.sync();} finally {await handle.close(); completed = true; this.streams.delete(path);}}, () => {}),
+        complete: () => {
+          const closeOwned=async()=>{if (completed) return; try {await handle.sync();} finally {await handle.close(); completed = true; this.streams.delete(path);}};
+          if(!this.publicationRequested) return this.tracked(path,closeOwned,()=>{});
+          // Publication freezes mutation admission, but cannot strand an already owned FD.
+          // This lane only syncs/closes this existing stream; it never reopens publication.
+          const task=this.tail.then(closeOwned).catch(error=>{this.failure(path,error); throw error;});
+          this.tail=task.catch(()=>{}); return task;
+        },
       };
     }, guard);
   }
@@ -243,8 +273,8 @@ export class ComparisonArtifactWriter {
     });
     this.tail=task.catch(()=>{}); return task;
   }
-  /** Read-only checked helper also works on sealed slots without mutation admission. */
-  private async readInventory(files: readonly ComparisonPayloadFile[]): Promise<ComparisonInventoryFile[]> {
+  /** Checked reads work on sealed slots; root's first collection also syncs retained payload bytes. */
+  private async readInventory(files: readonly ComparisonPayloadFile[], durable = false): Promise<ComparisonInventoryFile[]> {
       if (this.streams.size) throw new Error('Cannot inventory active raw streams');
       if (new Set(files.map(f => f.path)).size !== files.length) throw new Error('Duplicate inventory path');
       const inventory: ComparisonInventoryFile[] = [];
@@ -253,14 +283,16 @@ export class ComparisonArtifactWriter {
         const candidate=this.candidates.get(file.path);
         if(!candidate) throw new Error('Inventory path is not a registered artifact candidate');
         const before = await this.checked(file.path); if (!before.leaf) throw new Error('Inventoried payload is absent');
+        const leaf=before.leaf;
         const handle = await (this.io.open ?? open)(before.path, constants.O_RDONLY | constants.O_NOFOLLOW);
         let byteLength = 0; const hash = createHash('sha256');
-        try {
-          const opened = await handle.stat(); if (!opened.isFile() || !sameFile(opened, before.leaf)) throw new Error('Hash handle differs from checked path');
+        await closing(handle,async()=>{
+          const opened = await handle.stat(); if (!opened.isFile() || !sameFile(opened, leaf)) throw new Error('Hash handle differs from checked path');
           for await (const bytes of handle.createReadStream({autoClose: false})) {byteLength += bytes.length; hash.update(bytes);}
+          if(durable) await handle.sync();
           const afterHandle = await handle.stat(), after = await this.checked(file.path);
-          if (!after.leaf || !sameFile(before.leaf, after.leaf) || !sameFile(opened, afterHandle) || !sameFile(afterHandle, after.leaf) || byteLength !== opened.size) throw new Error('Payload changed while hashing');
-        } finally {await handle.close();}
+          if (!after.leaf || !sameFile(leaf, after.leaf) || !sameFile(opened, afterHandle) || !sameFile(afterHandle, after.leaf) || byteLength !== opened.size) throw new Error('Payload changed while hashing');
+        });
         const failureReason=candidate.role==='temporary' ? `incomplete atomic temporary${candidate.reason ? ': '+candidate.reason : ''}`.slice(0,4096) : candidate.reason;
         inventory.push(comparisonInventoryFileSchema.parse({...file,...(failureReason ? {status:'partial',reason:failureReason} : {}), byteLength, sha256: hash.digest('hex')}));
       }
@@ -269,8 +301,193 @@ export class ComparisonArtifactWriter {
   }
   /** Settlement gate only; each queued operation still reports its own rejection to its caller. */
   async drain(): Promise<void> {await this.tail;}
+  /** Root owns and pins every scheduled ancestor before any acquisition. */
+  async createSlotWriter(prefix:string):Promise<ComparisonArtifactWriter> {
+    if(this.candidateLimit!==16 || this.sealed || this.sealRequested) throw new Error('Only an active root can initialize a slot');
+    comparisonArtifactPathSchema.parse(prefix);
+    await this.checked(prefix+'/descriptor.json',true);
+    return ComparisonArtifactWriter.create(join(this.directory,prefix),this.io,{candidateLimit:4096});
+  }
+  /** Owner-only declared metadata acquisition retains one whole JSON body, with checked identity/read count. */
+  private async readJson(path:string):Promise<unknown> {
+    if(!this.candidates.has(path)) throw new Error('JSON path is not registered');
+    const before=await this.checked(path);
+    if(!before.leaf) throw new Error('JSON member is absent');
+    const leaf=before.leaf;
+    const handle=await (this.io.open ?? open)(before.path,constants.O_RDONLY|constants.O_NOFOLLOW);
+    return closing(handle,async()=>{
+      const opened=await handle.stat();
+      if(!opened.isFile() || !sameFile(opened,leaf)) throw new Error('JSON handle identity differs');
+      const bytes=await handle.readFile();
+      const current=await this.checked(path), after=await handle.stat();
+      if(!current.leaf || !sameFile(opened,after) || !sameFile(opened,current.leaf) || bytes.length!==opened.size) throw new Error('JSON member changed during acquisition');
+      return JSON.parse(bytes.toString('utf8'));
+    });
+  }
+  /** Final root mutation. Normal admission and retries stay frozen even on failure. */
+  publishDatasetSeal(sources:readonly ComparisonDatasetSlotSource[],build:(checked:ComparisonDatasetSealFacts)=>ComparisonDatasetInventory):Promise<void> {
+    if(this.candidateLimit!==16 || this.sealed || this.sealRequested || this.publicationRequested) return Promise.reject(new Error('Dataset publication requires an unfrozen root writer; retry is forbidden'));
+    this.publicationRequested=true;
+    const sealTemporary=`dataset-seal.json.${randomUUID()}.tmp`;
+    const failureTemporary=`dataset-finalization-failure.json.${randomUUID()}.tmp`;
+    const ledgerTemporary=`invocation.json.${randomUUID()}.tmp`;
+    try {this.admit([{path:'dataset-seal.json',role:'destination'},{path:sealTemporary,role:'temporary'},{path:'dataset-finalization-failure.json',role:'destination'},{path:failureTemporary,role:'temporary'},{path:'invocation.json',role:'destination'},{path:ledgerTemporary,role:'temporary'}]);}
+    catch(error) {this.sealRequested=true; return Promise.reject(error);}
+    this.sealRequested=true;
+    // Snapshot bounded authority before awaiting the queue; no mutable caller array survives.
+    const sourceCount=sources.length;
+    const selected=sourceCount<=36 ? sources.map(source=>({...source,identity:{...source.identity}})) : [];
+    const task=this.tail.then(async()=>{
+      let facts:ComparisonDatasetInventory|undefined;
+      let claim:ComparisonDatasetInventory['invocationClaim']|undefined;
+      let ledger:ComparisonDatasetInventory['invocationLedger']|undefined;
+      let durabilityDirectories:Map<string,Stats>|undefined;
+      const writeReserved=async(path:string,temporary:string,value:unknown,requireAbsent:boolean)=>{
+        try {
+        const bytes=Buffer.from(this.serialize(value)), before=await this.checked(path);
+        if(requireAbsent && before.leaf) throw new Error('Dataset seal destination already exists');
+        const handle=await this.openChecked(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL,()=>{},true);
+        const opened=await closing(handle,async()=>{const actual=await handle.stat(); await handle.writeFile(bytes); await handle.sync(); return actual;});
+        const current=await this.checked(path);
+        if(!sameIdentity(before.parent,current.parent) || (before.leaf ? !current.leaf || !sameFile(before.leaf,current.leaf) : current.leaf!==null)) throw new Error('Publication destination changed before rename');
+        await (this.io.rename ?? rename)(join(this.directory,temporary),current.path);
+        this.candidates.get(path)!.identity={dev:opened.dev,ino:opened.ino};
+        await this.syncParent(current.path,current.parent);
+        const published=await this.readJson(path);
+        if(canonicalSerialize(published)!==canonicalSerialize(value)) throw new Error('Published JSON content differs');
+        const [content]=await this.readInventory([{path,status:'complete'}]);
+        if(!content || content.byteLength!==bytes.length || content.sha256!==createHash('sha256').update(bytes).digest('hex')) throw new Error('Published exact JSON bytes differ');
+        const remaining=await this.checked(temporary); if(!remaining.leaf) this.candidates.delete(temporary);
+        } catch(error) {this.failure(path,error); this.failure(temporary,error); throw error;}
+      };
+      try {
+        if(!selected.length || sourceCount>36 || new Set(selected.map(s=>s.writer)).size!==selected.length || new Set(selected.map(s=>s.artifactDirectory)).size!==selected.length) throw new Error('Dataset requires unique bounded slot sources');
+        await this.checkRoot(); if(this.streams.size) throw new Error('Dataset root has active streams');
+        claim=comparisonDatasetInventorySchema.shape.invocationClaim.parse(await this.readJson('invocation-claim.json'));
+        ledger=comparisonCaptureInvocationSchema.parse(await this.readJson('invocation.json'));
+        if(ledger.runs.length!==selected.length) throw new Error('Dataset sources differ from every scheduled ledger row');
+        const collect=async():Promise<ComparisonDatasetInventory>=>{
+          const members:ComparisonDatasetInventory['members']=[], absentMembers:ComparisonDatasetInventory['absentMembers']=[];
+          const directoryIdentities=new Map<string,Stats>([['',this.rootIdentity]]);
+          const excluded=(path:string)=>path==='dataset-seal.json' || path===sealTemporary || derived.has(basename(path)) && path!=='evidence.json' && path!=='raw-inventory.json';
+          const addDirectory=async(path:string,writer:ComparisonArtifactWriter,local:string)=>{
+            const actual=await lstat(join(this.directory,path));
+            if(!actual.isDirectory() || actual.isSymbolicLink()) throw new Error('Declared dataset directory is not regular');
+            const known=local==='' ? writer.rootIdentity : writer.parents.get(join(writer.directory,local)) ?? this.parents.get(join(this.directory,path));
+            if(known && !sameIdentity(actual,known)) throw new Error('Declared dataset directory identity was replaced');
+            const prior=directoryIdentities.get(path); if(prior && !sameIdentity(prior,actual)) throw new Error('Dataset directory substitution');
+            directoryIdentities.set(path,actual);
+          };
+          const collectWriter=async(writer:ComparisonArtifactWriter,prefix:string)=>{
+            await writer.checkRoot(); if(writer.streams.size || writer.candidateAdmissionFailure) throw new Error('Dataset writer has unresolved streams or candidate admission failure');
+            const reconciled=await writer.readPayloadCandidates();
+            const files=await writer.readInventory(reconciled.present.filter(f=>!excluded(f.path)),durabilityDirectories===undefined);
+            members.push(...files.map(f=>({path:prefix+f.path,byteLength:f.byteLength,sha256:f.sha256})));
+            absentMembers.push(...reconciled.absent.filter(f=>!excluded(f.path)).map(f=>({...f,path:prefix+f.path})));
+            for(const candidate of [...reconciled.present,...reconciled.absent]) {
+              const parts=candidate.path.split('/').slice(0,-1);
+              for(let i=1;i<=parts.length;i++) {
+                const local=parts.slice(0,i).join('/');
+                try {await addDirectory(prefix+local,writer,local);} catch(error) {if(!absent(error)) throw error;}
+              }
+            }
+            return {files,reconciled};
+          };
+          await collectWriter(this,'');
+          for(let index=0;index<selected.length;index++) {
+            const source=selected[index]!, row=ledger!.runs[index]!, writer=source.writer;
+            comparisonArtifactPathSchema.parse(source.artifactDirectory);
+            if(!source.ownershipSettled || !source.finalizationSucceeded || !writer.sealed || writer.candidateLimit!==4096 || writer.directory!==join(this.directory,source.artifactDirectory) || source.artifactDirectory!==row.artifactDirectory || source.status!==row.status) throw new Error('Slot source is not settled, sealed or descriptor-bound');
+            await writer.drain();
+            const descriptor=comparisonScheduledRunSchema.parse(await writer.readJson('descriptor.json'));
+            const validation=comparisonValidationSchema.parse(await writer.readJson('validation.json'));
+            const exceptions=comparisonExceptionsSchema.parse(await writer.readJson('exceptions.json'));
+            const expected={...source.identity,seed:ledger!.configuration.seed,mode:ledger!.configuration.mode,artifactDirectory:source.artifactDirectory};
+            if(canonicalSerialize(descriptor)!==canonicalSerialize(expected) || validation.status!==source.status || canonicalSerialize(validation.reasons)!==canonicalSerialize(row.reasons) || Object.keys(source.identity).some(key=>validation[key as keyof typeof validation]!==source.identity[key as keyof ComparisonIdentity] || exceptions[key as keyof typeof exceptions]!==source.identity[key as keyof ComparisonIdentity])) throw new Error('Checked slot descriptor, verdict or exception identity differs');
+            const prefix=source.artifactDirectory+'/';
+            const collected=await collectWriter(writer,prefix);
+            if(collected.reconciled.present.some(f=>f.path==='finalization-status.json')) throw new Error('Slot finalization failure prohibits dataset publication');
+            const manifests=collected.files.filter(f=>f.path==='evidence.json' || f.path==='raw-inventory.json');
+            if(manifests.length!==1) throw new Error('Slot requires exactly one inventory manifest');
+            const manifestPath=manifests[0]!.path;
+            const manifest=manifestPath==='evidence.json' ? comparisonEvidenceSchema.parse(await writer.readJson(manifestPath)) : comparisonRawInventorySchema.parse(await writer.readJson(manifestPath));
+            if(Object.keys(source.identity).some(key=>manifest[key as keyof typeof manifest]!==source.identity[key as keyof ComparisonIdentity])) throw new Error('Slot manifest identity differs');
+            const raw=collected.files.filter(f=>f.path!==manifestPath);
+            // Manifest statuses are driver facts; checked operation failure always takes precedence.
+            const checked=await writer.readInventory(manifest.files.map(f=>({path:f.path,status:f.status,...(f.reason?{reason:f.reason}:{})})));
+            if(canonicalSerialize(checked)!==canonicalSerialize(manifest.files) || raw.length!==manifest.files.length || raw.some(f=>!manifest.files.some(m=>m.path===f.path && m.sha256===f.sha256 && m.byteLength===f.byteLength))) throw new Error('Slot manifest has stale hashes or missing raw members');
+            if('unavailableFiles' in manifest && canonicalSerialize([...manifest.unavailableFiles].sort((a,b)=>a.path.localeCompare(b.path)))!==canonicalSerialize([...collected.reconciled.absent].sort((a,b)=>a.path.localeCompare(b.path)))) throw new Error('Slot manifest absent members differ');
+            if(!raw.some(f=>f.path==='capture-status.json')) throw new Error('Every slot requires checked owner capture-status.json');
+            const status=comparisonCaptureStatusSchema.parse(await writer.readJson('capture-status.json'));
+            if(Object.keys(source.identity).some(key=>status[key as keyof typeof status]!==source.identity[key as keyof ComparisonIdentity])) throw new Error('Capture status identity differs');
+            if((status.evidenceMetadata.status==='available')!==(manifestPath==='evidence.json')) throw new Error('Capture status evidence availability differs from actual slot manifest');
+            const payloads=manifest.files.filter(f=>f.path!=='capture-status.json').map(f=>({path:f.path,status:f.status,...(f.reason!==undefined?{reason:f.reason}:{})}));
+            if(canonicalSerialize(status.payloads)!==canonicalSerialize(payloads) || canonicalSerialize(status.unavailablePaths)!==canonicalSerialize(collected.reconciled.absent)) throw new Error('Capture status disagrees with checked raw membership');
+            if('instrumentation' in manifest && status.finalPageInstrumentation.status==='available' && canonicalSerialize(status.finalPageInstrumentation.value)!==canonicalSerialize(manifest.instrumentation)) throw new Error('Capture status instrumentation differs from evidence');
+            const parts=source.artifactDirectory.split('/');
+            for(let i=1;i<=parts.length;i++) await addDirectory(parts.slice(0,i).join('/'),writer,i===parts.length?'':'__scheduled_parent__');
+          }
+          members.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0); absentMembers.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
+          const directories=[...directoryIdentities.keys()].filter(Boolean).sort();
+          // Enumerate only finite declared ancestors; never follow or hash unknown entries.
+          const allowed=new Set([...members.map(f=>f.path),...directories,'dataset-seal.json',sealTemporary]);
+          for(const directory of [...directoryIdentities.keys()]) {
+            const actual=await lstat(join(this.directory,directory));
+            if(!actual.isDirectory() || actual.isSymbolicLink() || !sameIdentity(actual,directoryIdentities.get(directory)!)) throw new Error('Dataset directory identity changed');
+            for(const entry of await readdir(join(this.directory,directory),{withFileTypes:true})) {
+              const path=directory ? directory+'/'+entry.name : entry.name;
+              if(!allowed.has(path) && !analysisDerived.has(entry.name)) throw new Error('Unexpected dataset entry: '+path);
+              if(entry.isSymbolicLink() || !entry.isFile() && !entry.isDirectory() || entry.isDirectory()!==directoryIdentities.has(path)) throw new Error('Unexpected dataset entry type: '+path);
+            }
+          }
+          const rootClaim=comparisonDatasetInventorySchema.shape.invocationClaim.parse(await this.readJson('invocation-claim.json'));
+          const rootLedger=comparisonCaptureInvocationSchema.parse(await this.readJson('invocation.json'));
+          if(canonicalSerialize(rootClaim)!==canonicalSerialize(claim) || canonicalSerialize(rootLedger)!==canonicalSerialize(ledger)) throw new Error('Claim or ledger changed during publication');
+          const ledgerMember=members.find(m=>m.path==='invocation.json'); if(!ledgerMember) throw new Error('Missing checked ledger');
+          const {schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion}=claim!;
+          durabilityDirectories ??= directoryIdentities;
+          return comparisonDatasetInventorySchema.parse({schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion,invocationId:claim!.invocationId,status:'sealed',configuration:ledger!.configuration,invocationClaim:claim,invocationLedger:ledger,root:'.',ledger:ledgerMember,members,absentMembers,directories,slots:selected.map(s=>({identity:s.identity,artifactDirectory:s.artifactDirectory,status:s.status})),ownershipSettled:true,finalizationSucceeded:true});
+        };
+        facts=await collect();
+        const supplied=comparisonDatasetInventorySchema.parse(build(structuredClone(facts)));
+        if(canonicalSerialize(supplied)!==canonicalSerialize(facts)) throw new Error('Dataset builder differs from independently checked facts');
+        // Persist only the finite checked directory tree, deepest first and root last.
+        for(const [directory,expected] of [...durabilityDirectories!].sort(([a],[b])=>b.split('/').filter(Boolean).length-a.split('/').filter(Boolean).length || (a<b?-1:a>b?1:0))) {
+          await this.syncParent(join(this.directory,directory,'__directory_durability__'),expected);
+        }
+        await writeReserved('dataset-seal.json',sealTemporary,supplied,true);
+        const after=await collect();
+        if(canonicalSerialize(after)!==canonicalSerialize(facts)) throw new Error('Dataset members changed after publication');
+        if(canonicalSerialize(await this.readJson('dataset-seal.json'))!==canonicalSerialize(facts)) throw new Error('Dataset seal changed during final postcheck');
+        const [sealContent]=await this.readInventory([{path:'dataset-seal.json',status:'complete'}]);
+        const expectedBytes=Buffer.from(this.serialize(facts));
+        if(!sealContent || sealContent.byteLength!==expectedBytes.length || sealContent.sha256!==createHash('sha256').update(expectedBytes).digest('hex')) throw new Error('Dataset seal exact bytes changed during final postcheck');
+        this.sealed=true;
+      } catch(error) {
+        const errors:unknown[]=[error]; let sealState:'absent'|'present-unusable'|'unavailable'='unavailable';
+        // Every safely obtainable failure outcome poisons the seal. If ALL retention writes
+        // fail after rename, offline consistency cannot prove command success/crash durability.
+        if(!claim) {try {claim=comparisonDatasetInventorySchema.shape.invocationClaim.parse(await this.readJson('invocation-claim.json'));} catch(retention) {errors.push(retention);}}
+        if(!ledger) {try {ledger=comparisonCaptureInvocationSchema.parse(await this.readJson('invocation.json'));} catch(retention) {errors.push(retention);}}
+        try {sealState=(await this.checked('dataset-seal.json')).leaf?'present-unusable':'absent';} catch(retention) {errors.push(retention);}
+        if(claim) {
+          const {schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion,invocationId}=claim;
+          try {await writeReserved('dataset-finalization-failure.json',failureTemporary,comparisonDatasetFinalizationFailureSchema.parse({schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion,invocationId,status:'failed',reasons:[error instanceof Error?error.message.slice(0,4096):'Dataset publication failed'],failedAtHostMs:performance.now(),sealPath:'dataset-seal.json',sealState}),false);} catch(retention) {errors.push(retention);}
+        }
+        if(ledger) {
+          ledger.status='failed';
+          const first=ledger.runs[0]; if(first) {first.status='failed'; first.reasons=[...first.reasons,'Dataset finalization failed: '+(error instanceof Error?error.message:'publication error')];}
+          try {await writeReserved('invocation.json',ledgerTemporary,comparisonCaptureInvocationSchema.parse(ledger),false);} catch(retention) {errors.push(retention);}
+        }
+        throw new AggregateError(errors,errors.map(e=>e instanceof Error?e.message:String(e)).join('; '));
+      }
+    });
+    this.tail=task.catch(()=>{}); return task;
+  }
   async seal(): Promise<void> {
-    if (this.sealed) return; this.sealRequested = true; await this.tail;
+    if (this.sealed) return;
+    if(this.publicationRequested) throw new Error('Dataset publication is frozen; ordinary seal is forbidden');
+    this.sealRequested = true; await this.tail;
     if (this.streams.size) {this.sealRequested = false; throw new Error('Cannot seal active raw streams');}
     await this.checkRoot(); this.sealed = true;
   }
