@@ -23,12 +23,14 @@ export const adapterCapabilitiesSchema = z.strictObject({
 });
 export type AdapterCapabilities = z.infer<typeof adapterCapabilitiesSchema>;
 export const adapterBuildSchema = z.strictObject({
-  packages: z.array(z.strictObject({name: text, version: exactVersion, integrity: z.string().regex(/^sha(?:256|384|512)-[A-Za-z0-9+/=_-]+$/)})).min(1),
+  packages: z.array(z.strictObject({name: text, version: exactVersion, integrity: z.string().regex(/^sha(?:256|384|512)-[A-Za-z0-9+/=_-]+$/), resolutionPath: z.string().regex(/^(?:[A-Za-z0-9._@-]+\/)*node_modules\/(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/).refine(path=>!path.split('/').some(segment=>segment==='.'||segment==='..'),'Package path must be normalized').optional()})).min(1),
   framework: z.strictObject({name: text, version: exactVersion}), production: z.literal(true),
   sourceHashes: nonemptyHashes, copiedSourceHashes: hashes, assetHashes: nonemptyHashes,
   settings: z.strictObject({optimization: z.boolean(), sourceMaps: z.boolean()}),
 }).superRefine((build, ctx) => {
-  if (new Set(build.packages.map(p => p.name)).size !== build.packages.length) ctx.addIssue({code: 'custom', message: 'Duplicate package provenance'});
+  const identities=build.packages.map(p=>p.resolutionPath===undefined?`name:${p.name}`:`path:${p.resolutionPath}`);
+  if (new Set(identities).size !== identities.length) ctx.addIssue({code: 'custom', message: 'Duplicate package provenance'});
+  for(const p of build.packages)if(p.resolutionPath!==undefined&&!p.resolutionPath.endsWith(`node_modules/${p.name}`))ctx.addIssue({code:'custom',message:'Package name and physical resolution path differ'});
 });
 export type AdapterBuild = z.infer<typeof adapterBuildSchema>;
 export const comparisonAdapterSchema = z.strictObject({

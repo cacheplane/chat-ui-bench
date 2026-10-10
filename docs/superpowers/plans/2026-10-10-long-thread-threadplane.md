@@ -6,6 +6,8 @@
 
 **Architecture:** Version 1 calibration remains unchanged. A version 2 workload/adapter contract separates canonical replay, runtime state, visible DOM and default scroll behavior. A stack-independent runner and offline analyzer capture and validate a production Angular adapter with reproducible dependencies.
 
+**Task 2 reviewed provenance and journey clarification:** Build evidence inventories the actual resolved production dependency closure, available optional dependencies/peers, and exact direct compiler/build pins. Registry package records keep real package names plus optional normalized repository-relative physical `resolutionPath` identities; duplicate physical paths fail and legacy records retain name identity. Workspace packages are source/manifest/lock hashed and their production dependencies traversed. Missing required dependencies, installed/lock name/version differences, and missing integrities reject capture. Multiple physical p-queue versions must remain distinct. Native historical return validity requires active response text intersecting the clipped native viewport at both post-click checkpoints, further actual runtime updates, and both bottom gaps below Threadplane's declared 150 CSS px threshold. A click or visible host footer/padding alone cannot validate continued following. Earlier diagnostic captures remain immutable under their original revision identities.
+
 **Tech Stack:** npm workspaces, TypeScript, Vitest, Playwright/CDP, Angular production build, Threadplane 0.3.2, GitHub Actions.
 
 ## Task 0: Repository CI and foundation merge
@@ -42,6 +44,24 @@ metrics must instead use page-clock phase boundaries; producer journey labels do
 not establish when browser gestures or composer input occurred.
 
 ## Task 2: Released Threadplane Angular application and replay bridge
+
+Dependency revision approved on 2026-10-10 after independent dependency review:
+pin `@angular/core`, `common`, `platform-browser`, `router`, `compiler`,
+`compiler-cli`, `build`, and `cli` coherently to **21.2.25**, retaining app-local
+TypeScript **5.9.3** and the root TypeScript **7.0.2** / Vitest **5.0.3**. The
+initial 21.1.6 framework/compiler and 21.1.5 build/CLI audit reported five
+affected production packages. Official registry metadata verifies all eight new
+versions, compiler/build TypeScript peer ranges and Node 24 compatibility;
+released Threadplane 0.3.2 peers accept Angular 21. Fresh install, audit,
+production build, all typechecks/unit tests, and actual-browser conformance are
+required for the new pins. Initial browser evidence retains its original
+21.1.6 identity and must not be relabeled. Inert-prose workload reachability is
+disclosed separately from package security findings.
+
+Primary compatibility evidence:
+[Angular compiler-cli 21.2.25](https://registry.npmjs.org/@angular/compiler-cli/21.2.25),
+[Angular build 21.2.25](https://registry.npmjs.org/@angular/build/21.2.25),
+[Threadplane chat 0.3.2 peers](https://registry.npmjs.org/@threadplane/chat/0.3.2).
 
 Files: create `apps/threadplane/package.json`, Angular configuration, `src/main.ts`, `src/app.ts`, `src/replay-transport.ts`, `src/host.ts`, focused tests; update root scripts/lockfile only for required build integration.
 

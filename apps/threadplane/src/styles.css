@@ -1,0 +1,3 @@
+@import '@threadplane/chat/chat.css';
+html,body,bench-app{height:100%;margin:0;display:block;font-family:system-ui,sans-serif}
+chat{height:100%;display:block}
