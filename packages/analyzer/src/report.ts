@@ -2,12 +2,17 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve, relative, isAbsolute } from "node:path";
 import {
+  ACCEPTED_RAW_VERSION_PAIRS,
+  observationSchema,
   canonicalSerialize,
   runMetricsSchema,
   type Manifest,
   type RunMetrics,
   type Validation,
   type Metric,
+  type PresentationPhaseInput,
+  type RendererPresentation,
+  type RendererPresentationPhase,
 } from "@chat-ui-bench/contract";
 import {
   ANALYZER_VERSION,
@@ -17,12 +22,14 @@ import {
 } from "./validate.js";
 import { deriveMetrics } from "./metrics.js";
 import { retentionDelta, retentionForVariant } from "./retention.js";
+import { presentationPhaseIdentities } from './presentation-capability.js';
 export interface AnalysisRun {
   id: string;
   manifest: Manifest | null;
   validation: Validation;
   metrics: RunMetrics;
   retention: ReturnType<typeof retentionDelta>;
+  presentationPhases?: Pick<PresentationPhaseInput, 'phase' | 'instanceId'>[];
 }
 export interface MetricAggregate {
   median: number;
@@ -70,7 +77,8 @@ export function aggregate(
     id: string;
     manifest: Manifest | null;
     validation: Pick<Validation, "status" | "reasons">;
-    metrics: { metrics: Record<string, Metric> };
+    metrics: { metrics: Record<string, Metric>; rendererPresentation?: RendererPresentation | undefined };
+    presentationPhases?: Pick<PresentationPhaseInput, 'phase' | 'instanceId'>[];
   }[],
 ) {
   const grouped = new Map<string, (typeof runs)[number][]>();
@@ -141,6 +149,7 @@ export function aggregate(
   });
   return {
     groups,
+    presentationGroups: aggregatePresentation(runs),
     failures: runs
       .filter((r) => r.validation.status !== "valid")
       .map((r) => ({
@@ -149,6 +158,56 @@ export function aggregate(
         reasons: r.validation.reasons,
       })),
   };
+}
+function aggregatePresentation(runs: readonly {
+  id: string; manifest: Manifest | null; validation: Pick<Validation, 'status' | 'reasons'>;
+  metrics: { rendererPresentation?: RendererPresentation | undefined };
+  presentationPhases?: Pick<PresentationPhaseInput, 'phase' | 'instanceId'>[];
+}[]) {
+  const grouped = new Map<string, { run: (typeof runs)[number]; phase: Pick<PresentationPhaseInput, 'phase' | 'instanceId'>; evidence?: RendererPresentationPhase }[]>();
+  for (const run of runs) {
+    const capability = run.metrics.rendererPresentation;
+    const phases = capability?.status === 'available' ? capability.value.phases : run.presentationPhases ?? [];
+    for (const phase of phases) {
+      const key = `${run.manifest ? environmentIdentity(run.manifest) : `missing-manifest:${run.id}`}:${phase.phase}:${phase.instanceId}`;
+      const evidence = capability?.status === 'available' ? capability.value.phases.find(p => p.instanceId === phase.instanceId && p.phase === phase.phase) : undefined;
+      grouped.set(key, [...(grouped.get(key) ?? []), { run, phase, ...(evidence ? { evidence } : {}) }]);
+    }
+  }
+  return [...grouped].map(([identity, samples]) => {
+    const details = samples.map(({ run, evidence }) => {
+      const capability = run.metrics.rendererPresentation;
+      const fps = run.validation.status === 'valid' ? evidence?.rendererVisualUpdateFps : undefined;
+      const reason = run.validation.status !== 'valid' ? `Run ${run.validation.status}: ${run.validation.reasons.join('; ')}` : fps?.status === 'unavailable' ? fps.reason : capability?.status === 'unavailable' ? capability.reason : 'Renderer presentation evidence not recorded';
+      return { id: run.id, status: run.validation.status, ...(fps?.status === 'available' ? { rendererVisualUpdateFps: fps } : { reason }), ...(run.validation.status === 'valid' && evidence ? { evidence } : {}) };
+    });
+    const values = details.flatMap(d => 'rendererVisualUpdateFps' in d ? [d.rendererVisualUpdateFps.value] : []).sort((a, b) => a - b);
+    const middle = Math.floor(values.length / 2);
+    const intervalStatistic = (name: 'median' | 'p95' | 'max') => {
+      const values: number[] = [], reasons: string[] = [];
+      for (const { run, evidence } of samples) {
+        const intervals = evidence?.presentationIntervals;
+        if (run.validation.status === 'valid' && intervals?.status === 'available') values.push(intervals[name]);
+        else reasons.push(run.validation.status !== 'valid' ? `Run ${run.validation.status}: ${run.validation.reasons.join('; ')}` : intervals?.status === 'unavailable' ? intervals.reason : run.metrics.rendererPresentation?.status === 'unavailable' ? run.metrics.rendererPresentation.reason : 'Phase interval evidence not recorded');
+      }
+      values.sort((a, b) => a - b);
+      const middle = Math.floor(values.length / 2);
+      const counts = { count: values.length, unavailableCount: samples.length - values.length, reasons: [...new Set(reasons)] };
+      return values.length ? { status: 'available' as const, ...counts, median: values.length % 2 ? values[middle]! : (values[middle - 1]! + values[middle]!) / 2, min: values[0]!, max: values.at(-1)!, unit: 'us' } : { status: 'unavailable' as const, ...counts };
+    };
+    return {
+      identity, phase: samples[0]!.phase.phase, instanceId: samples[0]!.phase.instanceId,
+      mode: samples[0]!.run.manifest?.mode ?? 'unknown', scope: 'target renderer visual updates',
+      sampleCount: samples.length, validCount: samples.filter(s => s.run.validation.status === 'valid').length,
+      invalidCount: samples.filter(s => s.run.validation.status === 'invalid').length,
+      failedCount: samples.filter(s => s.run.validation.status === 'failed').length,
+      availableCount: values.length, unavailableCount: samples.length - values.length,
+      reasons: [...new Set(details.flatMap(d => 'reason' in d ? [d.reason] : []))], samples: details,
+      // Aggregate each run's summary; raw intervals never bridge runs or phases.
+      presentationIntervals: { median: intervalStatistic('median'), p95: intervalStatistic('p95'), max: intervalStatistic('max') },
+      rendererVisualUpdateFps: values.length ? { status: 'available' as const, median: values.length % 2 ? values[middle]! : (values[middle - 1]! + values[middle]!) / 2, min: values[0]!, max: values.at(-1)!, unit: 'updates/s' } : { status: 'unavailable' as const, reason: 'No available phase samples' },
+    };
+  });
 }
 const readJSON = async (path: string): Promise<unknown> =>
   JSON.parse(await readFile(path, "utf8"));
@@ -167,27 +226,34 @@ function artifactPath(directory: string, file: string): string {
 export async function analyzeRepetition(
   directory: string,
   id: string,
-  expected?: { round: number; variant: string },
+  expected?: { round: number; variant: string; collectorVersion?: string },
 ): Promise<AnalysisRun> {
   let manifest: Manifest | null = null;
   let raw: RawRun | undefined;
+  let pageObservations: unknown[] | undefined;
   let validation: Validation;
   try {
     const manifestJSON = await readJSON(join(directory, "manifest.json"));
+    // Retain a schema-checked identity even when a later evidence file is missing.
+    const { manifestSchema } = await import("@chat-ui-bench/contract");
+    const parsed = manifestSchema.safeParse(manifestJSON);
+    if (parsed.success) manifest = parsed.data;
+    // Phase identities are useful even if another required raw file is missing.
+    pageObservations = await readLines(join(directory, 'page-observations.jsonl'));
     // validateRun owns schema validation; preserve the original object for an error report.
     const loaded = {
       manifest: manifestJSON,
       fixtureText: await readFile(join(directory, "fixture.json"), "utf8"),
       producer: await readLines(join(directory, "producer-events.jsonl")),
-      page: await readLines(join(directory, "page-observations.jsonl")),
+      page: pageObservations,
       evidence: await readJSON(join(directory, "evidence.json")),
       final: await readJSON(join(directory, "final-probes.json")),
       exceptions: await readJSON(join(directory, "exceptions.json")),
       checkpoints: await readJSON(join(directory, "checkpoints.json")),
-      trace: await readJSON(join(directory, "trace.json")),
-      captureValidation: await readJSON(join(directory, "validation.json")),
     };
     raw = loaded;
+    raw.trace = await readJSON(join(directory, "trace.json"));
+    raw.captureValidation = await readJSON(join(directory, "validation.json"));
     try {
       raw.disposalError = await readJSON(
         join(directory, "page-disposal-error.json"),
@@ -195,19 +261,16 @@ export async function analyzeRepetition(
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    // Schema checked independently before treating a manifest as an aggregation identity.
-    const { manifestSchema } = await import("@chat-ui-bench/contract");
-    const parsed = manifestSchema.safeParse(manifestJSON);
-    if (parsed.success) manifest = parsed.data;
     if (
       manifest &&
       (manifest.repetition !== id ||
         (expected &&
           (manifest.configuration.round !== expected.round ||
-            manifest.configuration.variant !== expected.variant)))
+            manifest.configuration.variant !== expected.variant ||
+            (expected.collectorVersion !== undefined && manifest.collectorVersion !== expected.collectorVersion))))
     )
       throw new Error(
-        "Artifact identity mismatch: manifest repetition, variant, or round differs from its directory/invocation entry",
+        "Artifact identity mismatch: manifest repetition, variant, round, or collector version differs from its directory/invocation entry",
       );
     if (String(manifest?.configuration.variant).startsWith("retention-")) {
       raw.retention = await readJSON(join(directory, "retention.json"));
@@ -249,6 +312,10 @@ export async function analyzeRepetition(
         status: validation!.status,
         metrics: {},
         diagnostics: {},
+        rendererPresentation: {
+          status: 'unavailable' as const,
+          reason: `Run ${validation!.status}: ${validation!.reasons.join('; ')}`,
+        },
       };
   runMetricsSchema.parse(metrics);
   const run: AnalysisRun = {
@@ -256,6 +323,10 @@ export async function analyzeRepetition(
     manifest,
     validation: validation!,
     metrics,
+    presentationPhases: pageObservations ? presentationPhaseIdentities(pageObservations.flatMap(value => {
+      const parsed = observationSchema.safeParse(value);
+      return parsed.success ? [parsed.data] : [];
+    })) : [],
     retention:
       validation!.status === "valid"
         ? retentionForVariant(
@@ -284,6 +355,7 @@ function runMarkdown(run: AnalysisRun): string {
     `Analyzer: ${ANALYZER_VERSION}`,
     ...run.validation.reasons.map((r) => `- ${r}`),
     "",
+    ...presentationMarkdown(run.metrics.rendererPresentation),
     "| Metric | Value or unavailable reason |",
     "| --- | --- |",
     ...Object.entries(run.metrics.metrics).map(
@@ -294,6 +366,18 @@ function runMarkdown(run: AnalysisRun): string {
     `Retention ownership: ${run.retention.status === "available" ? JSON.stringify(run.retention.value) : run.retention.reason}`,
     "",
   ].join("\n");
+}
+function presentationMarkdown(capability: RendererPresentation | undefined): string[] {
+  if (!capability || capability.status === 'unavailable') return [`Renderer presentation: ${capability?.reason ?? 'Evidence not recorded'}`, ''];
+  return ['## Renderer presentation: target renderer visual updates',
+    'Each phase uses distinct eligible feedback deliveries / complete phase duration in trace microseconds. Complete pairs are joined across the whole trace; both start and feedback must lie in [start,end). Identical feedback timestamps coalesce. Boundary-spanning pairs are excluded; unpresented pairs are not diagnosed as dropped frames. Instrumentation overhead is included.',
+    ...capability.value.phases.flatMap(p => [
+      `### ${p.phase} / instance ${p.instanceId}`,
+      `Target: frame ${p.target.frameId}; PID ${p.target.pid}; TID ${p.target.tid}. Boundaries [${p.startUs}, ${p.endUs}) us; full denominator ${p.durationUs} us. Boundary exclusions ${p.boundaryExcludedPairCount}; unpresented pairs ${p.nonPresentedPairCount}.`,
+      p.rendererVisualUpdateFps.status === 'available' ? `rendererVisualUpdateFps: ${p.rendererVisualUpdateFps.value} updates/s; numerator ${p.rendererVisualUpdateFps.numerator} distinct deliveries; denominator ${p.rendererVisualUpdateFps.denominatorUs} us.` : `rendererVisualUpdateFps unavailable: ${p.rendererVisualUpdateFps.reason}`,
+      p.presentationIntervals.status === 'available' ? `Consecutive phase-local intervals (us): ${p.presentationIntervals.intervalsUs.join(', ')}; median ${p.presentationIntervals.median}; p95 ${p.presentationIntervals.p95}; max ${p.presentationIntervals.max}.` : `Presentation intervals unavailable: ${p.presentationIntervals.reason}`,
+      '',
+    ]), ''];
 }
 interface Invocation {
   schemaVersion: number;
@@ -418,7 +502,7 @@ export async function analyzeInvocation(directory: string) {
   )) as Invocation;
   if (
     invocation.schemaVersion !== 1 ||
-    invocation.collectorVersion !== "1.0.0" ||
+    !ACCEPTED_RAW_VERSION_PAIRS.some(pair => pair.collectorVersion === invocation.collectorVersion) ||
     !Array.isArray(invocation.order) ||
     !Number.isInteger(invocation.repetitions) ||
     invocation.repetitions < 1
@@ -432,7 +516,7 @@ export async function analyzeInvocation(directory: string) {
       await analyzeRepetition(
         join(directory, "repetitions", entry.id),
         entry.id,
-        entry,
+        { ...entry, collectorVersion: invocation.collectorVersion },
       ),
     );
   }
@@ -525,7 +609,9 @@ export async function analyzeInvocation(directory: string) {
         `- ${g.variant} / ${g.mode}: ${g.validCount}/${g.sampleCount} valid; identity ${g.identity}\n  ${JSON.stringify(g.metrics)}`,
     ),
     "",
-    "Presentation: unavailable in this milestone; failed DevTools frame import prevents a validated presentation contract. No comparative readiness or rankings are claimed.",
+    '## Renderer presentation groups (environment, phase and instance ordinal)',
+    ...stats.presentationGroups.map(g => `- ${g.phase} / instance ${g.instanceId} / ${g.mode}: ${g.availableCount}/${g.sampleCount} available; valid ${g.validCount}, invalid ${g.invalidCount}, failed ${g.failedCount}, unavailable ${g.unavailableCount}; identity ${g.identity}\n  ${JSON.stringify(g)}`),
+    'Presentation capability: pinned headed Chromium 1.1 page-session captures can measure target renderer visual updates with complete phase denominators. See each repetition for numerator, boundaries, exclusions, target IDs and phase-local intervals. Collector 1.0 presentation remains unavailable. Global compositor smoothness, headless presentation and dropped-frame percentage remain unavailable. No comparative readiness or rankings are claimed.',
     "",
   ].join("\n");
   await writeFile(join(directory, "summary.md"), summary);

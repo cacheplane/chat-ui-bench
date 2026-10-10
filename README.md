@@ -69,12 +69,38 @@ unavailable, not zero latency, and these scripted events are not field INP.
 Heap counters are not total browser memory. Retention uses strong named heap
 paths and native backing storage, not a guessed JS heap increase.
 
-**Presentation metrics are unavailable in this milestone.** An unchanged headed
-CDP trace was rejected by Chrome DevTools Performance import with “No frames
-found in trace data.” Capture Chrome 156.0.8078.4 and viewer Chrome 154.0.8037.98
-have different revisions; that is a possible factor, not a proven cause. No
-numerical FPS or dropped-frame values are published. This foundation is not
-ready for public smoothness comparisons.
+Collector 1.1 supports **headed target renderer visual updates** through the
+phase-local `rendererVisualUpdateFps` capability. Each phase counts distinct
+presentation feedback timestamps whose animation begin and feedback both fall
+inside its trace-clock boundaries, divided by the full phase duration. Reports
+include consecutive feedback intervals, median, nearest-rank p95, and maximum.
+Correctness, pinned browser identity, complete traces, and supported single-page
+topology gate scoring. A workload supplying 20 updates/s can have a healthy
+20 updates/s rate; this is not a 60 FPS target. Headless presentation, global
+compositor FPS, monitor refresh, and dropped-frame percentages remain unavailable.
+Old collector 1.0 artifacts retain their original unavailable presentation meaning.
+
+The original DevTools import failure came from browser-target CDP tracing lacking
+the workload WebContents frame tree. Pinned Chromium's TracingHandler uses the
+page session to identify that tree; collector 1.1 captures through the workload
+page session. The historical viewer/capture revision mismatch was an unproven
+hypothesis. Independent bundled-parser checks now verify retained traces without
+recapturing or changing raw evidence.
+
+After building, reproduce determinism and the independent headed bundled check:
+
+```sh
+node scripts/check-offline-artifacts.mjs --artifact-dir /absolute/path/to/calibration-directory
+node scripts/check-renderer-presentation.mjs --artifact-dir /absolute/path/to/calibration-directory --out /absolute/external/path/presentation-check.json
+```
+
+The offline checker opens no browser. It hashes every raw artifact before and
+after two analyses and compares every derived report, ignoring only JSON
+`generatedAt`. The bundled checker launches the pinned inspector after capture,
+verifies runtime Chromium and both bundled resource hashes, and compares actual
+DevTools handler output to already-derived production metrics. Run it exclusively
+with no workload capture in progress. Partial/failed invocations remain failures
+in analysis; determinism checks do not certify a complete calibration or ranking.
 
 See [instrumentation and artifact contract](docs/instrumentation.md) for evidence,
 clock domains, grouping, capability checks, overhead, and reanalysis limits.

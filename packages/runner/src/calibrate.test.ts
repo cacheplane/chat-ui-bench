@@ -94,6 +94,16 @@ it('keeps an inspectable trace artifact when completion times out', async () => 
   expect(result.lossReason).toContain('timed out');
   expect(await readFile(join(base, 'trace.json'), 'utf8')).toBe('');
 });
+it('retains raw artifact and an explicit failure when trace completion omits the stream', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'bench-trace-missing-stream-')); let callback: ((event: {}) => void) | undefined;
+  const calls: string[] = [];
+  const result = await finishTrace({ once: (_name, handler) => { callback = handler; }, off: () => {}, send: async method => {
+    calls.push(method); if (method === 'Tracing.end') callback!({}); return {};
+  } }, join(base, 'trace.json'), 100);
+  expect(result).toEqual({ complete: false, lossReason: 'Tracing.tracingComplete omitted stream' });
+  expect(calls).toEqual(['Tracing.end']);
+  expect(await readFile(join(base, 'trace.json'), 'utf8')).toBe('');
+});
 it('treats a stream close failure as incomplete collection while retaining drained data', async () => {
   const base = await mkdtemp(join(tmpdir(), 'bench-trace-close-')); let callback: ((event: { stream: string }) => void) | undefined;
   const result = await finishTrace({ once: (_name, handler) => { callback = handler; }, off: () => {}, send: async method => {

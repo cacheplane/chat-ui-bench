@@ -512,3 +512,125 @@ it("labels non-retention report ownership as not requested", async () => {
     "Retention ownership: Retention diagnostic not requested for this variant",
   );
 });
+import { emptyPresentationEvidence } from './presentation-capability.test-helper.js';
+import { deriveMetrics } from './metrics.js';
+import { validateRun } from './validate.js';
+it('retains unavailable phase samples separately by phase, ordinal and environment', () => {
+  const raw = emptyPresentationEvidence();
+  const metrics = deriveMetrics(raw, validateRun(raw));
+  const hints = [{ phase: 'streaming-auto-follow', instanceId: '0' }, { phase: 'composer-input', instanceId: '1' }, { phase: 'streaming-auto-follow', instanceId: '2' }] as const;
+  const a = { id: 'a', manifest: raw.manifest, validation: { status: 'valid' as const, reasons: [] }, metrics, presentationPhases: [...hints] };
+  const b = { ...a, id: 'b', validation: { status: 'failed' as const, reasons: ['missing trace'] }, metrics: { metrics: {}, rendererPresentation: { status: 'unavailable' as const, reason: 'missing trace' } } };
+  const c = { ...a, id: 'c', manifest: { ...raw.manifest, mode: 'headless' } };
+  const result = aggregate([a, b, c]);
+  expect(result.presentationGroups).toHaveLength(6);
+  const first = result.presentationGroups.find(g => g.instanceId === '0' && g.mode === 'headed')!;
+  expect(first).toMatchObject({ phase: 'streaming-auto-follow', sampleCount: 2, validCount: 1, failedCount: 1, invalidCount: 0, unavailableCount: 2 });
+  expect(first.reasons.join(' ')).toContain('missing trace');
+});
+it('accepts 1.1 invocation and rejects invocation/manifest collector disagreement', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'presentation-invocation-'));
+  const raw = emptyPresentationEvidence();
+  await writeKnownArtifacts(join(directory, 'repetitions', '1-clean'), raw);
+  await writeKnownInvocation(directory, [{ id: '1-clean', round: 1, variant: 'clean' }]);
+  const mismatch = await analyzeInvocation(directory);
+  expect(mismatch.runs[0]!.validation.status).toBe('failed');
+  const invocation = JSON.parse(await readFile(join(directory, 'invocation.json'), 'utf8'));
+  invocation.collectorVersion = '1.1.0';
+  await writeFile(join(directory, 'invocation.json'), JSON.stringify(invocation));
+  const result = await analyzeInvocation(directory);
+  expect(result.runs[0]!.validation.status).toBe('valid');
+  expect(result.presentationGroups).toHaveLength(3);
+  expect(await readFile(join(directory, 'repetitions', '1-clean', 'summary.md'), 'utf8')).toContain('target renderer visual updates');
+  expect(await readFile(join(directory, 'summary.md'), 'utf8')).not.toContain('failed DevTools frame import prevents');
+});
+import { unlink } from 'node:fs/promises';
+it('retains phase identities when the requested raw trace file is missing', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'missing-presentation-trace-'));
+  await writeKnownArtifacts(directory, emptyPresentationEvidence());
+  await unlink(join(directory, 'trace.json'));
+  const run = await analyzeRepetition(directory, '1-clean');
+  expect(run.validation.status).toBe('failed');
+  const groups = aggregate([run]).presentationGroups;
+  expect(groups).toHaveLength(3);
+  expect(groups.every(g => g.failedCount === 1 && g.unavailableCount === 1)).toBe(true);
+});
+it('aggregates available rates without scoring invalid samples or merging ordinals', () => {
+  const raw = emptyPresentationEvidence();
+  const metrics = deriveMetrics(raw, validateRun(raw));
+  if (metrics.rendererPresentation?.status !== 'available') throw new Error('phase scope missing');
+  const phase = metrics.rendererPresentation.value.phases[0]!;
+  phase.rendererVisualUpdateFps = { status: 'available', value: 250, unit: 'updates/s', evidence: ['aggregation unit input, not capture evidence'], numerator: 1, denominatorUs: 4000 };
+  const run = { id: 'a', manifest: raw.manifest, metrics, validation: { status: 'valid' as const, reasons: [] } };
+  const bad = { ...run, id: 'bad', validation: { status: 'invalid' as const, reasons: ['wrong text'] } };
+  const result = aggregate([run, bad]);
+  expect(result.presentationGroups).toHaveLength(3);
+  expect(result.presentationGroups[0]).toMatchObject({ availableCount: 1, invalidCount: 1, unavailableCount: 1, rendererVisualUpdateFps: { median: 250, min: 250, max: 250 } });
+  expect(result.presentationGroups[0]!.samples[1]).not.toHaveProperty('evidence');
+  expect(result.presentationGroups[0]!.samples[1]).not.toHaveProperty('rendererVisualUpdateFps');
+});
+it('summarizes per-run interval statistics with separate availability counts, never pooled intervals', () => {
+  const raw = emptyPresentationEvidence();
+  const multiple = deriveMetrics(raw, validateRun(raw));
+  if (multiple.rendererPresentation?.status !== 'available') throw new Error('phase scope missing');
+  const p = multiple.rendererPresentation.value.phases[0]!;
+  p.rendererVisualUpdateFps = { status: 'available', value: 500, unit: 'updates/s', evidence: ['aggregation unit input'], numerator: 2, denominatorUs: 4000 };
+  p.presentationIntervals = { status: 'available', timestampsUs: [2000, 3000], intervalsUs: [1000], median: 1000, p95: 1000, max: 1000, unit: 'us', evidence: ['aggregation unit input'] };
+  const single = structuredClone(multiple);
+  if (single.rendererPresentation?.status !== 'available') throw new Error('phase scope missing');
+  single.rendererPresentation.value.phases[0]!.rendererVisualUpdateFps = { ...p.rendererVisualUpdateFps, value: 250, numerator: 1 };
+  single.rendererPresentation.value.phases[0]!.presentationIntervals = { status: 'unavailable', reason: 'At least two distinct eligible presentation timestamps are required for intervals' };
+  const run = { id: 'multiple', manifest: raw.manifest, metrics: multiple, validation: { status: 'valid' as const, reasons: [] } };
+  const result = aggregate([run, { ...run, id: 'single', metrics: single }, { ...run, id: 'zero', metrics: deriveMetrics(raw, validateRun(raw)) }, { ...run, id: 'invalid', validation: { status: 'invalid' as const, reasons: ['wrong text'] } }]);
+  const group = result.presentationGroups[0]!;
+  expect(group.availableCount).toBe(2);
+  for (const name of ['median', 'p95', 'max'] as const) {
+    expect(group.presentationIntervals[name]).toMatchObject({ status: 'available', median: 1000, min: 1000, max: 1000, count: 1, unavailableCount: 3, unit: 'us' });
+    expect(group.presentationIntervals[name].reasons.join(' ')).toContain('wrong text');
+    expect(group.presentationIntervals[name].reasons.join(' ')).toContain('At least two distinct');
+  }
+});
+import { runMetricsSchema } from '@chat-ui-bench/contract';
+// Hash every raw artifact, including invocation metadata and extra retained files.
+// Derived JSON ignores only generatedAt; Markdown is compared byte-for-byte.
+import { inventory, assertEqual } from '../../../scripts/artifact-checks.mjs';
+it.each(['1.0.0', '1.1.0'])('preserves the complete %s raw inventory across deterministic derived runs', async (version) => {
+  const directory = await mkdtemp(join(tmpdir(), 'all-raw-offline-'));
+  const raw = version === '1.0.0' ? evidence() : emptyPresentationEvidence();
+  await writeKnownArtifacts(join(directory, 'repetitions', '1-clean'), raw, { 'extra-retained.json': { untouched: true } });
+  await writeKnownInvocation(directory, [{ id: '1-clean', round: 1, variant: 'clean' }]);
+  const invocation = JSON.parse(await readFile(join(directory, 'invocation.json'), 'utf8'));
+  invocation.collectorVersion = version;
+  await writeFile(join(directory, 'invocation.json'), JSON.stringify(invocation));
+  const before = await inventory(directory, 'raw');
+  await analyzeInvocation(directory);
+  assertEqual(await inventory(directory, 'raw'), before, 'raw after first analysis');
+  const derived = await inventory(directory, 'derived');
+  expect(Object.keys(derived)).toEqual(['metrics.json', 'repetitions/1-clean/metrics.json', 'repetitions/1-clean/summary.md', 'summary.md']);
+  await analyzeInvocation(directory);
+  assertEqual(await inventory(directory, 'raw'), before, 'raw after second analysis');
+  assertEqual(await inventory(directory, 'derived'), derived, 'all derived outputs');
+});
+it('rejects unknown invocation versions without changing any raw artifact', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'unknown-offline-version-'));
+  await writeKnownArtifacts(join(directory, 'repetitions', '1-clean'), evidence());
+  await writeKnownInvocation(directory, [{ id: '1-clean', round: 1, variant: 'clean' }]);
+  const invocation = JSON.parse(await readFile(join(directory, 'invocation.json'), 'utf8'));
+  invocation.collectorVersion = '99.0.0';
+  await writeFile(join(directory, 'invocation.json'), JSON.stringify(invocation));
+  const before = await inventory(directory, 'raw');
+  await expect(analyzeInvocation(directory)).rejects.toThrow(/version|Unsupported/);
+  assertEqual(await inventory(directory, 'raw'), before, 'unknown-version raw');
+});
+it.each(['fixture.json', 'page-observations.jsonl', 'evidence.json'])('emits unavailable renderer capability for a 1.1 run missing %s before raw loading completes', async (file) => {
+  const directory = await mkdtemp(join(tmpdir(), 'incomplete-presentation-raw-'));
+  await writeKnownArtifacts(directory, emptyPresentationEvidence());
+  await unlink(join(directory, file));
+  const run = await analyzeRepetition(directory, '1-clean');
+  expect(run.manifest?.collectorVersion).toBe('1.1.0');
+  expect(run.validation.status).toBe('failed');
+  expect(run.metrics.rendererPresentation).toMatchObject({ status: 'unavailable', reason: expect.stringContaining('Run failed:') });
+  expect(JSON.stringify(run.metrics.rendererPresentation)).not.toContain('"value":');
+  expect(runMetricsSchema.safeParse(run.metrics).success).toBe(true);
+  expect(aggregate([run]).presentationGroups).toHaveLength(file === 'page-observations.jsonl' ? 0 : 3);
+});

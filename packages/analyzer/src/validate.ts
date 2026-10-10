@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  ACCEPTED_RAW_VERSION_PAIRS,
   canonicalSerialize,
   availabilitySchema,
   evidenceSchema,
@@ -14,7 +15,7 @@ import {
   type Observation,
 } from "@chat-ui-bench/contract";
 import { z } from "zod";
-export const ANALYZER_VERSION = "1.0.0";
+export const ANALYZER_VERSION = "1.1.0";
 export const CALIBRATION_VARIANTS = [
   "clean",
   "stall",
@@ -117,9 +118,10 @@ export function validateRun(
     const evidence = evidenceSchema.parse(raw.evidence);
     if (
       manifest.suiteVersion !== "0.1.0" ||
-      manifest.collectorVersion !== "1.0.0" ||
-      evidence.collectorVersion !== "1.0.0" ||
-      manifest.analyzerVersion !== ANALYZER_VERSION
+      evidence.collectorVersion !== manifest.collectorVersion ||
+      !ACCEPTED_RAW_VERSION_PAIRS.some(pair =>
+        pair.collectorVersion === manifest.collectorVersion &&
+        pair.analyzerVersion === manifest.analyzerVersion)
     )
       throw new Error(
         "Unsupported suite, collector, or analyzer version (pending capture manifests require an explicit migration; raw files are never rewritten)",

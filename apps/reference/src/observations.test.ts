@@ -3,6 +3,27 @@ import { PageObservations } from './observations.js';
 import { type ReplayEvent } from '@chat-ui-bench/contract';
 const deltas: ReplayEvent[] = ['a', '🙂', 'c'].map((text, i) => ({ sequence: i + 1, scheduledMs: i * 50, messageId: 'a', type: 'text-delta', text }));
 describe('active response DOM checkpoints', () => {
+  it('brackets repeated scored instances once and retains legacy marks', () => {
+    let now = 10;
+    const marks: string[] = [];
+    const o = new PageObservations('r1', () => now, name => marks.push(name));
+    for (const phase of ['setup', 'streaming-auto-follow', 'composer-input', 'streaming-auto-follow'] as const) { o.setPhase(phase); now += 10; }
+    o.closeScoredPhase(); o.closeScoredPhase();
+    for (const phase of ['validation', 'retention', 'disposal'] as const) o.setPhase(phase);
+    const entries = o.drain();
+    const starts = entries.filter(e => e.kind === 'phase' && e.data.instanceId !== undefined);
+    const ends = entries.filter(e => e.kind === 'phase-end');
+    expect(starts.map(e => [e.phase, e.data.instanceId])).toEqual([['streaming-auto-follow', '0'], ['composer-input', '1'], ['streaming-auto-follow', '2']]);
+    expect(ends.map(e => e.data)).toEqual(starts.map(e => e.data));
+    for (const entry of starts) {
+      expect(marks.filter(m => m === entry.data.startMark)).toHaveLength(1);
+      expect(marks.filter(m => m === entry.data.endMark)).toHaveLength(1);
+      expect(entry.data.startMark).toBe(`bench:r1:phase:${entry.data.instanceId}:start`);
+      expect(entry.data.endMark).toBe(`bench:r1:phase:${entry.data.instanceId}:end`);
+    }
+    expect(marks.filter(m => m === 'bench:r1:streaming-auto-follow')).toHaveLength(2);
+    expect(ends.map(e => e.timestampMs)).toEqual([30, 40, 50]);
+  });
   it('maps all three satisfied cumulative prefixes to one checkpoint time', () => {
     const o = new PageObservations('r1', () => 99);
     deltas.forEach(e => o.receive(e));

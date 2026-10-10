@@ -167,3 +167,19 @@ it("requires a reason for unavailable retention metadata", () => {
   const raw = { ...evidence(), retention: { status: "unavailable" } };
   expect(validateRun(raw).status).toBe("failed");
 });
+import { emptyPresentationEvidence } from './presentation-capability.test-helper.js';
+it('dispatches old and new capture pairs independently of output analyzer version', () => {
+  expect(validateRun(evidence()).status).toBe('valid');
+  expect(validateRun(emptyPresentationEvidence()).status).toBe('valid');
+});
+it.each([['1.0.0', '1.1.0'], ['1.1.0', '1.0.0'], ['2.0.0', '2.0.0']])('rejects capture pair %s/%s', (collector, analyzer) => {
+  const raw = emptyPresentationEvidence();
+  raw.manifest.collectorVersion = raw.evidence.collectorVersion = collector;
+  raw.manifest.analyzerVersion = analyzer;
+  expect(validateRun(raw).status).toBe('failed');
+});
+it('rejects manifest/evidence collector disagreement', () => {
+  const raw = emptyPresentationEvidence();
+  raw.evidence.collectorVersion = '1.0.0';
+  expect(validateRun(raw).status).toBe('failed');
+});

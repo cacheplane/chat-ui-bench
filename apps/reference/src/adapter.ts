@@ -181,9 +181,8 @@ export class ReferenceAdapter implements ChatAdapter {
   }
   setPhase(phase: Phase): void {
     this.ensureLive(); this.observations.setPhase(phase);
-    // Trace-visible User Timing markers; not a presentation counter.
-    if (typeof performance !== 'undefined') performance.mark(`bench:${this.configuration.repetition}:${phase}`);
   }
+  closeScoredPhase(): void { this.ensureLive(); this.observations.closeScoredPhase(); }
   get replayState(): ReferenceReplayState { return this.state; }
   get autoFollow(): boolean { return this.following; }
   get instrumentation(): InstrumentationAvailability { return this.performanceInstrumentation.availability; }

@@ -3,6 +3,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCalibration, variants } from "./index.js";
+import { PRESENTATION_TRACE_CATEGORIES } from "@chat-ui-bench/contract";
 let directory: string;
 const json = async (variant: string, name: string) =>
   JSON.parse(
@@ -123,15 +124,46 @@ it.each(["retention-release", "retention-retain"])(
 );
 it("every trace completes and missing below-threshold input remains explicitly unavailable", async () => {
   const profiles = [];
+  expect((JSON.parse(await readFile(join(directory, 'invocation.json'), 'utf8'))).collectorVersion).toBe('1.1.0');
   for (const variant of variants) {
-    expect((await json(variant, "evidence.json")).trace.complete).toBe(true);
-    expect(
-      (await json(variant, "trace.json")).traceEvents.length,
-    ).toBeGreaterThan(0);
+    const evidence = await json(variant, "evidence.json");
+    expect(evidence.collectorVersion).toBe('1.1.0');
+    expect(evidence.trace.complete).toBe(true);
+    expect(evidence.trace.categories).toEqual([...PRESENTATION_TRACE_CATEGORIES]);
+    const presentation = evidence.trace.presentation;
+    expect(presentation).toMatchObject({ sessionTarget: 'page', contractVersion: '1.1.0', frameTreeCapturePoint: 'before-tracing', isolatedBrowserProcess: true, singleWorkloadPage: true });
+    expect(presentation.targetId).toBeTruthy();
+    const rootFrame = presentation.frameTree.frameTree;
+    expect(rootFrame.frame.url).toBe(presentation.appURL);
+    expect(rootFrame.childFrames ?? []).toEqual([]);
+    const events = (await json(variant, "trace.json")).traceEvents;
+    expect(events.length).toBeGreaterThan(0);
+    const topology = events.filter((event: any) => event.name === 'TracingStartedInBrowser').flatMap((event: any) => event.args?.data?.frames ?? []);
+    const root = topology.filter((frame: any) => frame.frame === rootFrame.frame.id && frame.url === presentation.appURL);
+    expect(root).toHaveLength(1);
+    expect(topology.filter((frame: any) => frame.parent === rootFrame.frame.id)).toEqual([]);
+    const mainThreads = events.filter((event: any) => event.name === 'thread_name' && event.args?.name === 'CrRendererMain' && event.pid === root[0].processId);
+    expect(mainThreads).toHaveLength(1);
+    const observations = await lines(variant, 'page-observations.jsonl');
+    const phases = observations.filter(entry => entry.kind === 'phase' && entry.data.instanceId !== undefined);
+    expect(phases.map(entry => entry.data.instanceId)).toEqual(phases.map((_entry, index) => String(index)));
+    expect(phases.filter(entry => entry.phase === 'streaming-auto-follow').length).toBeGreaterThanOrEqual(2);
+    const ends = observations.filter(entry => entry.kind === 'phase-end');
+    expect(ends.map(entry => entry.data)).toEqual(phases.map(entry => entry.data));
+    for (const phase of phases) {
+      expect(['streaming-auto-follow', 'composer-input', 'gesture-scroll', 'return-to-bottom']).toContain(phase.phase);
+      const start = events.filter((event: any) => event.name === phase.data.startMark);
+      const end = events.filter((event: any) => event.name === phase.data.endMark);
+      expect(start).toHaveLength(1); expect(end).toHaveLength(1);
+      expect(start[0]).toMatchObject({ pid: mainThreads[0].pid, tid: mainThreads[0].tid });
+      expect(end[0]).toMatchObject({ pid: mainThreads[0].pid, tid: mainThreads[0].tid });
+      expect(end[0].ts).toBeGreaterThan(start[0].ts);
+    }
     const calibration = await json(variant, "calibration.json");
     if (calibration.input.status === "unavailable")
       expect(calibration.input.reason).toContain("threshold");
     const manifest = await json(variant, "manifest.json");
+    expect(manifest).toMatchObject({ collectorVersion: '1.1.0', analyzerVersion: '1.1.0', suiteVersion: '0.1.0' });
     const profile = manifest.browser.flags.find((flag: string) =>
       flag.startsWith("--user-data-dir="),
     );
@@ -160,6 +192,7 @@ it("offline ANALYZED results gate validity and validate independent calibration 
   expect(find("clean").metrics.metrics.presentationIntervalMs!.status).toBe(
     "unavailable",
   );
+  expect(find('clean').metrics.rendererPresentation).toMatchObject({ status: 'unavailable', reason: expect.stringMatching(/headed/i) });
   const value = (variant: string, name: string) => {
     const metric = find(variant).metrics.metrics[name]!;
     expect(metric.status).toBe("available");

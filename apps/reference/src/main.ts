@@ -22,6 +22,7 @@ export interface ReferenceBrowserAPI {
   resetThread(): void;
   dispose(): void;
   setPhase(phase: Phase): void;
+  closeScoredPhase(): void;
   returnToBottom(): void;
   drainObservations(): Observation[];
   readonly probes: AdapterProbes;
@@ -45,6 +46,7 @@ window.chatBench = Object.freeze({
   resetThread: () => configured().resetThread(),
   dispose: () => configured().dispose(),
   setPhase: (phase: Phase) => configured().setPhase(phase),
+  closeScoredPhase: () => configured().closeScoredPhase(),
   returnToBottom: () => configured().returnToBottom(),
   drainObservations: () => configured().drainObservations(),
   get probes() { return configured().probes; },
