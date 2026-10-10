@@ -7,3 +7,4 @@ export * from './presentation.js';
 export * from './capture-bridge.js';
 export * from './comparison-artifact.js';
 export * from './comparison-presentation.js';
+export * from './comparison-buffer.js';

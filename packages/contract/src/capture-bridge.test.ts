@@ -29,3 +29,13 @@ test('exports an exact page-clock receipt/translation capture schema without imp
     expect(schema.safeParse({ kind: 'translation', sequence: 1, timestampMs: 1, data: { protocolEvent: 'messages', messageId: 'a', text: 'x', applied: true } }).success).toBe(false);
     expect(schema.safeParse({ kind: 'receipt', sequence: 2, timestampMs: 1, data: { event: { type: 'assistant-start', messageId: 'a', sequence: 0, scheduledMs: 0, text: '' } } }).success).toBe(false);
 });
+test('v2 collector rejects claimed runtime matches and retains explicit unavailable probes', () => {
+    const page={schemaVersion:2,repetition:'r',phase:null,phaseInstanceId:null,attributionReason:'setup',sequence:null,timestampMs:1,clockDomain:'page-performance-ms'};
+    const data={activeMessage:null,delivery:'idle',outcome:null,loading:false,error:null,matchedSequences:[]};
+    expect(contract.comparisonObservationSchema.safeParse({...page,kind:'runtime-checkpoint',data}).success).toBe(true);
+    expect(contract.comparisonObservationSchema.safeParse({...page,kind:'runtime-checkpoint',data:{...data,matchedSequences:[1]}}).success).toBe(false);
+    expect(contract.comparisonObservationSchema.safeParse({...page,kind:'probe-unavailable',data:{probe:'runtime',reason:'content too large'}}).success).toBe(true);
+    const dom={activeMessageId:'actual',mounted:true,text:'real',visibleMessages:[],mountedMessageCount:1,matchedSequences:[]};
+    expect(contract.comparisonObservationSchema.safeParse({...page,kind:'dom-checkpoint',data:dom}).success).toBe(true);
+    expect(contract.comparisonObservationSchema.safeParse({...page,kind:'dom-checkpoint',data:{...dom,matchedSequences:[1]}}).success).toBe(false);
+});
