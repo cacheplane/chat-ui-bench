@@ -11,6 +11,10 @@ comparisons with other chat stacks.
 available yet. The choices below describe the intended scope, not implemented
 capabilities or measured performance claims.
 
+The first milestone is specified in the
+[instrumentation foundation design](docs/superpowers/specs/2026-10-09-instrumentation-foundation-design.md),
+currently a draft for review.
+
 ## Initial comparison stacks
 
 | Stack | Configurations |
