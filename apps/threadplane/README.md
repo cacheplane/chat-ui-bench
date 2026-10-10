@@ -1,0 +1,32 @@
+# Threadplane production profile
+
+This workspace runs released `@threadplane/chat` and `@threadplane/langgraph` 0.3.2 with the default public `ChatComponent`, a supported custom `AgentTransport`, and a zoneless production Angular application. It keeps the product's message rendering, markdown, composer, and native scrolling behavior.
+
+From the repository root:
+
+```sh
+npm run build
+npm run typecheck
+npm run test:browser:threadplane
+node apps/threadplane/provenance.mjs
+```
+
+Production files are served from `apps/threadplane/dist`. Framework, compiler, CLI, and build packages are pinned coherently to Angular 21.2.25. The application compiler resolves its own TypeScript 5.9.3; the benchmark's root TypeScript 7 compiler remains separate. Build evidence records the installed package versions and npm integrities, framework version, adapter/build source hashes, package-lock hash, and every emitted asset hash. Source maps are disabled and Angular CLI analytics and product telemetry are disabled.
+
+Package evidence traverses the actual resolved production dependency closure, including available optional dependencies and peers, plus the exact direct compiler/build pins. Each registry package retains its real name and a normalized repository-relative physical `resolutionPath`, so multiple installed versions such as p-queue 6.6.2 and 9.3.3 remain distinguishable. Missing required packages, installed/lock version or name mismatches, and missing integrities fail closed. Workspace packages are covered by source/manifest/lock hashes and their production dependencies are traversed. This inventory describes package resolution; it does not assert that every reachable package appears in the browser bundle.
+
+The successful production build writes an ignored local build record. Subsequent evidence reads reject changed source, dependency, or asset inventories until a new build completes, preventing old assets from being relabeled with newly installed package versions.
+
+Dependency updates for this app use `npm install --workspace @chat-ui-bench/threadplane --install-strategy=nested`. The checked-in nested lock is installed by ordinary root `npm ci`; there is no global Angular override or npm install-strategy setting. App-local packages share one physical Angular core instance while keeping the TypeScript compiler isolated. The builder's optional Vitest peer uses app-local 4.1.11; benchmark test configs explicitly resolve the test API to the root Vitest 5 runner. Build evidence rejects a separate Angular core instance in the released renderer/runtime dependencies.
+
+The initially researched Angular 21.1.6 framework/compiler and 21.1.5 builder pins were revised before publication after the exact production audit reported affected Angular packages. Official registry metadata confirms all eight 21.2.25 packages exist, retain the required TypeScript/Node compatibility, and satisfy Threadplane 0.3.2's public peer ranges. This dependency revision received independent review. The initial 21.1.6 browser conformance evidence remains identified by its original version; new captures use their actual build evidence. Audit findings and workload reachability are separate: inert prose and absence of SSR/i18n inputs do not establish general package safety.
+
+`window.benchHost` implements `LongThreadCaptureHost`. History enters through real public checkpoint loading and `switchThread`. Replay starts with `submit(null)`, which adds no optimistic user message. Runtime snapshots come from public product signals; receipt and translation buffers describe transport work only. Text is not copied from those buffers into runtime observations or DOM content. DOM annotations identify existing product message hosts without replacing their content.
+
+The finite SSE bridge validates UTF-8, JSON/event structure, sequence order, IDs, and start/completion lifecycle. Terminal translation/persistence waits for a valid EOF; a partial, malformed, or extra trailing event cannot publish successful persisted history. Complete-event receipt timestamps are recorded when the frame is decoded, separately from terminal translation. The conformance-only `?conformanceOmitDelta=N` option suppresses one translated delta and its persisted text while retaining receipt evidence. Normal profile URLs have no omission query.
+
+The released native bottom-pin threshold is strictly less than 150 CSS px. The host does not read the protected pin signal or write scroll positions. Four native 100 px wheel inputs at 50 ms can fail to leave follow mode if content updates reset each step. The conformance actuator dispatches at independent host-clock deadlines and records dispatch lateness separately from passive page-clock wheel/scroll observations; browsers may coalesce native wheel inputs. Historical coverage requires actual upward movement, departure beyond the released pin region at both checkpoints, the same historical anchor, and further public runtime updates. A historical journey also requires the native return control. Browser conformance preserves all outcomes and labels missing coverage invalid; it does not change the workload until an explicit versioned journey revision is reviewed. Historical drift is evidence, without an invented drift threshold.
+
+After a native return click, historical journey validity additionally requires actual active-response text intersecting the clipped scroll viewport at both checkpoints, further public runtime updates, and bottom gaps below 150 CSS px at both checkpoints. Text Range rectangles are intersected with the window, native scroll client viewport, and each ancestor's overflow clipping axes. Message-host padding/actions alone cannot satisfy content visibility. These geometry inspections are conformance instrumentation outside scored phases and input dispatch; their cost is not part of a performance claim.
+
+The focused browser suite uses optimized production assets and covers Unicode, incomplete streams, omission, reset/disposal, full history correctness, native composer input, default follow behavior, bounded visible DOM observation, and both large-history/large-response corners. It does not publish FPS or competitor rankings; generic capture and offline correctness gating are separate benchmark tasks.

@@ -4,3 +4,4 @@ export * from './adapter.js';
 export * from './long-thread.js';
 export * from './comparison.js';
 export * from './presentation.js';
+export * from './capture-bridge.js';

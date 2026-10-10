@@ -14,10 +14,11 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "build": "npm run build --workspace @chat-ui-bench/contract && npm run build --workspace @chat-ui-bench/producer && npm run build --workspace @chat-ui-bench/reference && npm run build --workspace @chat-ui-bench/analyzer && npm run build --workspace @chat-ui-bench/runner",
+    "build": "npm run build --workspace @chat-ui-bench/contract && npm run build --workspace @chat-ui-bench/producer && npm run build --workspace @chat-ui-bench/reference && npm run build --workspace @chat-ui-bench/analyzer && npm run build --workspace @chat-ui-bench/runner && npm run build --workspace @chat-ui-bench/threadplane",
     "test:browser": "npm run build && vitest run --config vitest.browser.config.ts",
     "bench:calibrate": "node packages/runner/dist/cli.js",
-    "bench:analyze": "node packages/analyzer/dist/cli.js"
+    "bench:analyze": "node packages/analyzer/dist/cli.js",
+    "test:browser:threadplane": "npm run build && vitest run --config vitest.threadplane.browser.config.ts"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

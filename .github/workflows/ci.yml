@@ -64,6 +64,9 @@ jobs:
       - name: Run browser conformance sequentially
         run: npm run test:browser 2>&1 | tee ci-logs/browser.log
 
+      - name: Run production Threadplane browser conformance
+        run: npm run test:browser:threadplane 2>&1 | tee ci-logs/threadplane-browser.log
+
       - name: Preserve failure logs and browser evidence
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -72,5 +75,6 @@ jobs:
           path: |
             ci-logs/
             ${{ runner.temp }}/ci-evidence/bench-browser-*/
+            ${{ runner.temp }}/ci-evidence/threadplane-conformance-independent-*/
           if-no-files-found: warn
           retention-days: 7
