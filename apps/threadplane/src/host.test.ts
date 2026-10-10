@@ -10,6 +10,16 @@ function setup(message: object|null, count=1) {
   return host;
 }
 const active=()=>({id:'actual',role:'assistant',content:'🌍漢',delivery:{phase:'streaming'}});
+test('capture mounted count is the O(1) total map size, independent of visibility and agent',()=>{
+  const host=setup(active()),touch=vi.fn(()=>{throw Error('unbounded read');});
+  const mounted=new Map(Array.from({length:100},(_,i)=>[String(i),{}]));
+  mounted[Symbol.iterator]=touch as never;
+  Object.assign(host,{mounted,visible:new Set([{},{}]),agent:{messages:touch}});
+  expect(host.readCaptureMountedMessageCount()).toEqual({status:'available',value:100});
+  mounted.clear();expect(host.readCaptureMountedMessageCount()).toEqual({status:'available',value:0});
+  expect(touch).not.toHaveBeenCalled();
+  Object.assign(host,{disposed:true});expect(()=>host.readCaptureMountedMessageCount()).toThrow();
+});
 test('actual streaming host mount is independent of missing content and terminal DOM',()=>{
   const message=active(),host=setup(message),element={isConnected:true};
   Object.assign(host,{mounted:new Map([['actual',element]])});

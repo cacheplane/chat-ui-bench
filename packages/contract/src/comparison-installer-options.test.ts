@@ -1,0 +1,9 @@
+import {test,expect} from 'vitest';
+import * as contract from './index.js';
+test('installer schemas are shared strict data schemas with exact runtime literals and bounded run identity',()=>{
+  expect(contract.preNavigationOptionsSchema).toBeDefined();expect(contract.mainOptionsSchema).toBeDefined();
+  const identity={repetition:'r',round:1,artifactDirectory:'runs/r',scenarioId:'s',caseIndex:0,adapterProfile:'p',seed:1,mode:'headless'},common={optionsVersion:1,identity,limits:contract.COMPARISON_CAPTURE_LIMITS},pre={...common,stateGlobal:'comparisonPreNavigation'},main={...common,probeIntervalMs:50,bridgeGlobal:'benchHost',stateGlobal:'comparisonCapture',preNavigationGlobal:'comparisonPreNavigation',observers:{eventTiming:{buffered:true,durationThresholdMs:16},loaf:{buffered:true}},nativeRecipeIds:{wheel:'comparison-wheel-up-v1',composer:'comparison-composer-calibrate-v1'}};
+  expect(contract.preNavigationOptionsSchema.parse(pre)).toEqual(pre);expect(contract.mainOptionsSchema.parse(main)).toEqual(main);
+  for(const value of [{...pre,extra:1},{...pre,identity:{...identity,extra:1}},{...pre,identity:{...identity,round:0}},{...pre,identity:{...identity,seed:Number.MAX_SAFE_INTEGER+1}},{...pre,identity:{...identity,repetition:'r'.repeat(257)}},{...pre,identity:{...identity,artifactDirectory:'../r'}},{...pre,limits:{...pre.limits,maxRecordTokens:65535}}])expect(contract.preNavigationOptionsSchema.safeParse(value).success).toBe(false);
+  for(const value of [{...main,probeIntervalMs:51},{...main,bridgeGlobal:'other'},{...main,observers:{...main.observers,eventTiming:{buffered:true,durationThresholdMs:17}}},{...main,nativeRecipeIds:{...main.nativeRecipeIds,wheel:'unused'}},{...main,observers:{...main.observers,extra:{}}}])expect(contract.mainOptionsSchema.safeParse(value).success).toBe(false);
+});

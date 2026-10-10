@@ -22,6 +22,11 @@ test('exports an optional actual-host mount probe without conflating content mou
     expect(contract.activeHostSnapshotSchema.safeParse({activeMessageId: 'response', hostMounted: true}).success).toBe(true);
     expect(contract.activeHostSnapshotSchema.safeParse({activeMessageId: 'response', hostMounted: true, contentMounted: false}).success).toBe(false);
 });
+test('mounted count is an optional scalar availability seam and does not force legacy implementations',()=>{
+    expect(hostWithoutProbe.readCaptureMountedMessageCount).toBeUndefined();
+    const host:LongThreadCaptureHost={...hostWithoutProbe,readCaptureMountedMessageCount:()=>({status:'available',value:100})};
+    expect(host.readCaptureMountedMessageCount?.()).toEqual({status:'available',value:100});
+});
 test('exports an exact page-clock receipt/translation capture schema without implied runtime application', () => {
     const schema = (contract as any).adapterCaptureEventSchema;
     expect(schema).toBeDefined();
