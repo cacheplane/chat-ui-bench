@@ -46,6 +46,14 @@ before measurement. Headed and headless results are grouped separately.
 
 ## Measurements and limits
 
+CI runs on pull requests, pushes to `main`, and manual dispatches using Node 24
+and npm 11. It installs locked dependencies, runs unit tests, typechecks and builds
+the workspaces, then runs the browser conformance suite sequentially with pinned
+Playwright Chromium. Failed runs retain command logs and available browser
+evidence for seven days. These shared-runner checks validate instrumentation
+conformance; they do not establish hardware performance baselines or rank chat
+stacks.
+
 Available evidence can derive producer lateness, page receive-to-DOM latency,
 DOM backlog, observed composer Event Timing and Long Animation Frames, scroll
 movement and anchoring, renderer V8 heap/DOM counters, and named retained buffer

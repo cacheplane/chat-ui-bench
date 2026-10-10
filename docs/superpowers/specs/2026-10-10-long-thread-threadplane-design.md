@@ -1,7 +1,8 @@
 # Shared long-thread workload and Threadplane adapter
 
 Date: 2026-10-10
-Status: Proposed; awaiting user approval
+Status: Approved by user on 2026-10-10; autonomous implementation, review, PR,
+merge on green, and further iteration authorized.
 
 ## Scope and recommendation
 
