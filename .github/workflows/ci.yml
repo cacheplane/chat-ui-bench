@@ -49,14 +49,14 @@ jobs:
       - name: Install locked dependencies
         run: npm ci 2>&1 | tee ci-logs/install.log
 
+      - name: Build workspaces
+        run: npm run build 2>&1 | tee ci-logs/build.log
+
       - name: Run unit tests
         run: npm test 2>&1 | tee ci-logs/unit.log
 
       - name: Typecheck workspaces
         run: npm run typecheck 2>&1 | tee ci-logs/typecheck.log
-
-      - name: Build workspaces
-        run: npm run build 2>&1 | tee ci-logs/build.log
 
       - name: Install Playwright Chromium and system dependencies
         run: npx playwright install --with-deps chromium 2>&1 | tee ci-logs/browser-install.log

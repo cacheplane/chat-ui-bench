@@ -20,9 +20,9 @@ lockfile. No global browser or Python installation is required.
 ```sh
 npm ci
 npx playwright install chromium
+npm run build
 npm test
 npm run typecheck
-npm run build
 npm run test:browser
 npm run bench:calibrate -- --mode headless --repetitions 3 --out artifacts
 npm run bench:calibrate -- --mode headed --repetitions 3 --out artifacts
@@ -47,8 +47,9 @@ before measurement. Headed and headless results are grouped separately.
 ## Measurements and limits
 
 CI runs on pull requests, pushes to `main`, and manual dispatches using Node 24
-and npm 11. It installs locked dependencies, runs unit tests, typechecks and builds
-the workspaces, then runs the browser conformance suite sequentially with pinned
+and npm 11. It installs locked dependencies and builds the workspaces before
+running unit tests and typechecking, because workspace exports resolve to built
+`dist` files. It then runs the browser conformance suite sequentially with pinned
 Playwright Chromium. Failed runs retain command logs and available browser
 evidence for seven days. These shared-runner checks validate instrumentation
 conformance; they do not establish hardware performance baselines or rank chat
