@@ -1,15 +1,187 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {mkdtemp, readFile, rm, writeFile, rename, open, lstat} from 'node:fs/promises';
+import {mkdtemp, readFile, rm, writeFile, rename, open, lstat, realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {comparisonCaptureInvocationSchema, comparisonValidationSchema, comparisonEvidenceSchema} from '@chat-ui-bench/contract';
+import {comparisonCaptureInvocationSchema, comparisonValidationSchema, comparisonEvidenceSchema, comparisonCaptureStatusSchema, comparisonRawInventorySchema, comparisonFinalizationStatusSchema} from '@chat-ui-bench/contract';
+import {ComparisonArtifactWriter} from './comparison-artifacts.js';
 import {parseLongThreadArgs} from './long-thread-cli.js';
 import {runLongThreadInvocation, createLongThreadLedger} from './long-thread-run.js';
 const roots: string[] = [];
 afterEach(async () => {vi.useRealTimers(); await Promise.all(roots.splice(0).map(r => rm(r, {recursive: true, force: true})));});
 async function config() {const out = await mkdtemp(join(tmpdir(), 'comparison-execution-')); roots.push(out); const args = parseLongThreadArgs(['--out', out]); if (args.help) throw new Error('unexpected help'); return args;}
 describe('complete comparison ledger', () => {
+  it('reconciles genuine O_EXCL bytes after late guarded open rejection and records the actually absent destination',async()=>{
+    vi.useFakeTimers(); const c=await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=1;
+    let now=0,entered!:()=>void,release!:()=>void,owned:Awaited<ReturnType<typeof open>>|undefined;
+    const started=new Promise<void>(r=>entered=r),held=new Promise<void>(r=>release=r);
+    const run=runLongThreadInvocation(c,{
+      async setup(ctx) {await ctx.writer.json('capture-metadata.json',{acquisition:'will not be written'});},
+      async replay() {throw new Error('unreachable');},
+    },{clock:{now:()=>now},fileOperations:{open:async(...args)=>{const handle=await open(...args); if(/capture-metadata\.json\..*\.tmp$/.test(String(args[0]))) {owned=handle; entered(); await held;} return handle;}}});
+    await started; now=60000; await vi.advanceTimersByTimeAsync(60000); now=70000; await vi.advanceTimersByTimeAsync(10000);
+    const result=await run; expect(result.finalized).toBe(false); now=72000; release(); await result.ownershipSettled; await result.finalize(); expect(result.finalized).toBe(true);
+    await expect(owned!.stat()).rejects.toThrow(/closed/);
+    const directory=join(c.out,result.invocation.runs[0]!.artifactDirectory), inventory=comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(directory,'raw-inventory.json'),'utf8')));
+    const temporary=inventory.files.find(f=>/^capture-metadata\.json\..*\.tmp$/.test(f.path));
+    expect(temporary).toMatchObject({status:'partial',byteLength:0,sha256:createHash('sha256').update('').digest('hex')});
+    const status=comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(directory,'capture-status.json'),'utf8')));
+    expect(status.unavailablePaths).toContainEqual({path:'capture-metadata.json',reason:expect.stringMatching(/revoked|deadline/)});
+    await expect(lstat(join(directory,'capture-metadata.json'))).rejects.toMatchObject({code:'ENOENT'});
+  },30000);
+  it('rejects driver replacement of reserved atomic remnants before creating any file',async()=>{
+    const c=await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=1;
+    const path='descriptor.json.00000000-0000-4000-8000-000000000000.tmp';
+    const result=await runLongThreadInvocation(c,{
+      async setup(ctx) {await expect(ctx.writer.json(path,{forged:true})).rejects.toThrow(/root-owned/); return null;},
+      async replay(ctx) {return {validation:comparisonValidationSchema.parse({...ctx.identity,status:'valid',reasons:[],checks:[{name:'owned fixture',passed:true,reason:null,evidencePaths:[]}]})};},
+    });
+    expect(result.finalized).toBe(true);
+    for(const slot of result.invocation.runs) await expect(lstat(join(c.out,slot.artifactDirectory,path))).rejects.toMatchObject({code:'ENOENT'});
+  },30000);
+  it.each(['setup','replay'] as const)('preserves acquired raw bytes and future failed-not-started inventories while %s expires and actually settles late',async stage=>{
+    vi.useFakeTimers(); const c=await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=1;
+    let now=0,entered!:()=>void,release!:()=>void,attempts=0;
+    const started=new Promise<void>(r=>entered=r),pending=new Promise<void>(r=>release=r);
+    const hold=async(ctx:Parameters<Parameters<typeof runLongThreadInvocation>[1]['setup']>[0])=>{await ctx.writer.text('instrumentation/main.js','acquired before expiry'); entered(); await pending;};
+    const run=runLongThreadInvocation(c,{
+      async setup(ctx) {attempts++; if(stage==='setup') await hold(ctx); return null;},
+      async replay(ctx) {await hold(ctx); throw new Error('late replay failed after expiry');},
+      async finalize(ctx,capture) {expect(capture).toBeNull(); expect(ctx.deadlines.find(d=>d.stage===stage)).toMatchObject({outcome:'expired',finishedAtHostMs:stage==='setup'?72000:42000});},
+    },{clock:{now:()=>now}});
+    await started; const budget=stage==='setup'?60000:30000; now=budget; await vi.advanceTimersByTimeAsync(budget); now=budget+10000; await vi.advanceTimersByTimeAsync(10000);
+    const result=await run; expect(result.finalized).toBe(false); expect(attempts).toBe(1);
+    await expect(readFile(join(c.out,'dataset-seal.json'))).rejects.toMatchObject({code:'ENOENT'});
+    for(const slot of result.invocation.runs.slice(1)) {expect(slot.reasons[0]).toContain('failed-not-started'); await readFile(join(c.out,slot.artifactDirectory,'raw-inventory.json'));}
+    now=budget+12000; release(); await result.ownershipSettled; await result.finalize(); expect(result.finalized).toBe(true);
+    const slot=result.invocation.runs[0]!; expect(slot.status).toBe('failed'); expect(await readFile(join(c.out,slot.artifactDirectory,'instrumentation/main.js'),'utf8')).toBe('acquired before expiry');
+  },30000);
+  it.each([false,true])('keeps execution unfinalized when real post-rename parent fsync fails (all retention fails=%s)',async allRetentionFails=>{
+    const c=await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=1; const rootPath=await realpath(c.out);
+    let published=false,failedSync=false;
+    const result=await runLongThreadInvocation(c,{
+      async setup() {return null;},
+      async replay(ctx) {return {validation:comparisonValidationSchema.parse({...ctx.identity,status:'invalid',reasons:['storage-only driver outcome'],checks:[{name:'owned fixture',passed:false,reason:'storage-only driver outcome',evidencePaths:[]}]})};},
+    },{fileOperations:{
+      rename:async(source,destination)=>{await rename(source,destination); if(String(destination)===join(rootPath,'dataset-seal.json')) published=true;},
+      open:async(...args)=>{
+        const path=String(args[0]);
+        if(published && allRetentionFails && /(?:dataset-finalization-failure|invocation)\.json\..*\.tmp$/.test(path)) throw new Error('ALL root retention writes unavailable');
+        const handle=await open(...args);
+        if(published && !failedSync && path===rootPath && (await handle.stat()).isDirectory()) {handle.sync=async()=>{failedSync=true; throw new Error('actual root parent fsync failed');};}
+        return handle;
+      },
+    }});
+    expect(published).toBe(true); expect(failedSync).toBe(true); expect(result.finalized).toBe(false); expect(result.invocation.status).toBe('failed');
+    await expect(result.finalize()).rejects.toThrow(/actual root parent fsync failed/);
+    expect(JSON.parse(await readFile(join(c.out,'dataset-seal.json'),'utf8')).status).toBe('sealed');
+    if(allRetentionFails) {await expect(readFile(join(c.out,'dataset-finalization-failure.json'))).rejects.toMatchObject({code:'ENOENT'}); expect(JSON.parse(await readFile(join(c.out,'invocation.json'),'utf8')).status).toBe('complete');}
+    else expect(JSON.parse(await readFile(join(c.out,'dataset-finalization-failure.json'),'utf8')).sealState).toBe('present-unusable');
+  },30000);
+  it.each(['setup','replay'] as const)('accepts genuine typed partial filesystem finalization after %s throws without changing failed validation',async stage=>{
+    const c=await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=1;
+    const result=await runLongThreadInvocation(c,{
+      async setup(ctx) {await ctx.writer.text('instrumentation/main.js','actual bytes'); if(stage==='setup') throw new Error('setup acquisition failed'); return null;},
+      async replay(ctx) {await ctx.writer.text('trace-auxiliary.json','actual auxiliary bytes'); throw new Error('replay acquisition failed');},
+      async finalize(ctx,capture) {
+        expect(capture).toBeNull(); expect(Object.isFrozen(ctx.deadlines)).toBe(true);
+        const reason='actual final drain not acquired', unavailable={status:'unavailable',reason};
+        return {payloadFiles:[{path:'instrumentation/main.js',status:'partial',reason:'acquisition incomplete'}],captureStatus:comparisonCaptureStatusSchema.parse({...ctx.identity,status:'partial',reasons:[reason],captureMetadata:unavailable,evidenceMetadata:unavailable,payloads:[],unavailablePaths:[],terminalPageDrain:unavailable,terminalProducerDrain:unavailable,finalPageInstrumentation:unavailable,traceEof:unavailable})};
+      },
+    });
+    expect(result.finalized).toBe(true);
+    for(const slot of result.invocation.runs) {
+      expect(slot.status).toBe('failed'); const directory=join(c.out,slot.artifactDirectory);
+      const inventory=comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(directory,'raw-inventory.json'),'utf8')));
+      expect(inventory.files.find(f=>f.path==='instrumentation/main.js')).toMatchObject({status:'partial',reason:'acquisition incomplete',byteLength:12});
+      const status=comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(directory,'capture-status.json'),'utf8')));
+      expect(status.captureMetadata.status).toBe('unavailable'); expect(status.terminalPageDrain).toMatchObject({status:'unavailable',reason:'actual final drain not acquired'});
+    }
+  },30000);
+  it.each(['reserved','derived','unregistered','duplicate','identity'] as const)('rejects %s finalization authority without publishing a dataset',async mode=>{
+    const c=await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=1;
+    const result=await runLongThreadInvocation(c,{
+      async setup(ctx) {await ctx.writer.text('instrumentation/main.js','actual'); throw new Error('null capture');},
+      async replay() {throw new Error('unreachable');},
+      async finalize(ctx) {
+        if(mode==='reserved') await ctx.writer.json('exceptions.json',{forged:true});
+        const path=mode==='derived'?'results.json':mode==='unregistered'?'visible-validation.json':'instrumentation/main.js';
+        const missing={status:'unavailable',reason:'not acquired'};
+        const status=comparisonCaptureStatusSchema.parse({...ctx.identity,...(mode==='identity'?{repetition:'wrong'}:{}),status:'partial',reasons:['not acquired'],captureMetadata:missing,evidenceMetadata:missing,payloads:[],unavailablePaths:[],terminalPageDrain:missing,terminalProducerDrain:missing,finalPageInstrumentation:missing,traceEof:missing});
+        const file={path,status:'partial' as const,reason:'not completed'};
+        return {payloadFiles:mode==='duplicate'?[file,file]:[file],captureStatus:status};
+      },
+    });
+    expect(result.finalized).toBe(false); await expect(result.finalize()).rejects.toThrow();
+    await expect(readFile(join(c.out,'dataset-seal.json'))).rejects.toMatchObject({code:'ENOENT'});
+  },30000);
+  it.each(['evidence.json','raw-inventory.json'] as const)('retains exact provisional %s as stale unusable diagnostics when actual slot seal rejects',async manifestPath=>{
+    const c=await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=1;
+    let original:Buffer|undefined,failed=false;
+    const actual=ComparisonArtifactWriter.prototype.seal;
+    const spy=vi.spyOn(ComparisonArtifactWriter.prototype,'seal').mockImplementation(async function(this:ComparisonArtifactWriter) {
+      if(!failed) {failed=true; original=await readFile(join(this.directory,manifestPath)); throw new Error('actual post-manifest slot seal failure');}
+      await actual.call(this);
+    });
+    try {
+      const result=await runLongThreadInvocation(c,{
+        async setup() {return null;},
+        async replay(ctx) {
+          const validation=comparisonValidationSchema.parse({...ctx.identity,status:'valid',reasons:[],checks:[{name:'owned fixture',passed:true,reason:null,evidencePaths:[]}]});
+          if(manifestPath==='raw-inventory.json') return {validation};
+          const missing={status:'unavailable',reason:'storage test has no browser'},probe={intervalMs:50,callbacks:0,callbackDurationTotalMs:0,maximumObservedGapMs:missing};
+          const {files:_,...evidence}=comparisonEvidenceSchema.parse({...ctx.identity,status:'partial',reason:'storage-only fixture',files:[],unavailableFiles:[],trace:missing,instrumentation:{runtimeProbe:probe,domProbe:{...probe,selectionStrategy:'bounded-visible-candidates'},scrollProbe:probe,transportDrain:probe,eventTiming:missing,loaf:missing,buffers:[]}});
+          return {validation,evidence};
+        },
+      });
+      expect(result.finalized).toBe(false); const directory=join(c.out,result.invocation.runs[0]!.artifactDirectory);
+      expect(await readFile(join(directory,manifestPath))).toEqual(original);
+      const manifest=JSON.parse(original!.toString()); const bytes=await readFile(join(directory,'validation.json'));
+      expect(manifest.files.find((f:{path:string})=>f.path==='validation.json').sha256).not.toBe(createHash('sha256').update(bytes).digest('hex'));
+      const failure=comparisonFinalizationStatusSchema.parse(JSON.parse(await readFile(join(directory,'finalization-status.json'),'utf8')));
+      expect(failure.manifest).toEqual({path:manifestPath,state:'unusable'}); await expect(result.finalize()).rejects.toThrow(/slot seal failure/);
+    } finally {spy.mockRestore();}
+  },30000);
+  it.each([false,true])('recognizes a real manifest renamed before rejected durability even when status retention fails=%s',async statusRetentionFails=>{
+    const c=await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=1;
+    const rootPath=await realpath(c.out), directory=join(rootPath,'runs/round-1/case-0/profile-0');
+    let manifestRenamed=false,failedSync=false,provisional:Buffer|undefined;
+    const result=await runLongThreadInvocation(c,{
+      async setup() {return null;},
+      async replay(ctx) {return {validation:comparisonValidationSchema.parse({...ctx.identity,status:'valid',reasons:[],checks:[{name:'owned fixture',passed:true,reason:null,evidencePaths:[]}]})};},
+    },{fileOperations:{
+      rename:async(source,destination)=>{
+        if(statusRetentionFails && String(destination)===join(directory,'finalization-status.json')) throw new Error('actual status retention failed');
+        await rename(source,destination);
+        if(String(destination)===join(directory,'raw-inventory.json')) {manifestRenamed=true; provisional=await readFile(String(destination));}
+      },
+      open:async(...args)=>{const handle=await open(...args); if(manifestRenamed && !failedSync && String(args[0])===directory && (await handle.stat()).isDirectory()) handle.sync=async()=>{failedSync=true; throw new Error('manifest parent fsync rejected after real rename');}; return handle;},
+    }});
+    expect(failedSync).toBe(true); expect(result.finalized).toBe(false); expect(await readFile(join(directory,'raw-inventory.json'))).toEqual(provisional);
+    if(statusRetentionFails) {expect(result.invocation.runs[0]!.reasons.join('; ')).toContain('finalization-status.json'); await expect(readFile(join(directory,'finalization-status.json'))).rejects.toMatchObject({code:'ENOENT'});}
+    else expect(JSON.parse(await readFile(join(directory,'finalization-status.json'),'utf8')).manifest).toEqual({path:'raw-inventory.json',state:'unusable'});
+    await expect(result.finalize()).rejects.toThrow(/manifest parent fsync rejected/); await expect(readFile(join(rootPath,'dataset-seal.json'))).rejects.toMatchObject({code:'ENOENT'});
+  },30000);
+  it.each([1,3])('durably seals every real raw member of a %i round null-capture collection', async rounds => {
+    const c = await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=rounds;
+    const result = await runLongThreadInvocation(c, {
+      async setup(ctx) {await ctx.writer.text('instrumentation/main.js', 'actual partial bytes'); await ctx.writer.appendSerialized('page-exceptions.jsonl', ['{"message":"original page bytes"}']); throw new Error('acquired then failed');},
+      async replay() {throw new Error('unreachable');},
+    });
+    expect(result.finalized).toBe(true);
+    const seal = JSON.parse(await readFile(join(c.out,'dataset-seal.json'),'utf8'));
+    expect(seal.slots).toHaveLength(rounds*12); expect(seal.status).toBe('sealed');
+    for(const slot of result.invocation.runs) {
+      const manifest=JSON.parse(await readFile(join(c.out,slot.artifactDirectory,'raw-inventory.json'),'utf8'));
+      expect(manifest.status).toBe('partial'); expect(manifest.files.find((f:{path:string})=>f.path==='instrumentation/main.js')).toMatchObject({sha256:createHash('sha256').update('actual partial bytes').digest('hex'),byteLength:20});
+      expect(await readFile(join(c.out,slot.artifactDirectory,'page-exceptions.jsonl'),'utf8')).toBe('{"message":"original page bytes"}\n');
+      expect(slot.status).toBe('failed');
+    }
+    for(const member of seal.members) {
+      const bytes=await readFile(join(c.out,member.path));
+      expect(member.sha256).toBe(createHash('sha256').update(bytes).digest('hex')); expect(member.byteLength).toBe(bytes.length);
+    }
+  },30000);
   it.each([1,2,3])('builds the whole headless matrix for %i rounds',async rounds=>{
     const c=await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=rounds;
     expect(createLongThreadLedger(c).runs).toHaveLength(rounds*12);
@@ -173,7 +345,7 @@ describe('complete comparison ledger', () => {
     });
     expect(attempts).toBe(12); expect(result.finalized).toBe(true); const slot = result.invocation.runs[0]!;
     const evidence = comparisonEvidenceSchema.parse(JSON.parse(await readFile(join(cfg.out, slot.artifactDirectory, 'evidence.json'), 'utf8')));
-    expect(evidence.files.map(f => f.path)).toEqual(['descriptor.json', 'exceptions.json', 'fixture.json', 'page.jsonl', 'producer.jsonl', 'trace.json', 'validation.json']);
+    expect(evidence.files.map(f => f.path)).toEqual(['capture-status.json', 'descriptor.json', 'exceptions.json', 'fixture.json', 'page.jsonl', 'producer.jsonl', 'trace.json', 'validation.json']);
     const exceptionBytes = await readFile(join(cfg.out, slot.artifactDirectory, 'exceptions.json'));
     expect(evidence.files.find(f => f.path === 'exceptions.json')?.sha256).toBe(createHash('sha256').update(exceptionBytes).digest('hex'));
     expect(exceptionBytes.toString()).toContain('auxiliary page disposal failed'); expect(evidence.status).toBe('partial');
@@ -197,10 +369,10 @@ describe('complete comparison ledger', () => {
         const before = JSON.stringify(ctx.deadlines);
         expect(() => {Reflect.set(ctx.deadlines[0]!, 'finishedAtHostMs', 999);}).not.toThrow();
         expect(JSON.stringify(ctx.deadlines)).toBe(before);
-        await ctx.writer.json('deadlines.json', ctx.deadlines);
+        await ctx.writer.json('checkpoints.json', ctx.deadlines);
       },
     }, {clock: {now: () => now}});
-    expect(JSON.parse(await readFile(join(cfg.out, result.invocation.runs[0]!.artifactDirectory, 'deadlines.json'), 'utf8'))).toEqual([
+    expect(JSON.parse(await readFile(join(cfg.out, result.invocation.runs[0]!.artifactDirectory, 'checkpoints.json'), 'utf8'))).toEqual([
       {stage: 'setup', budgetMs: 60000, startedAtHostMs: 100, deadlineAtHostMs: 60100, finishedAtHostMs: 137, outcome: 'complete'},
       {stage: 'replay', budgetMs: 30000, startedAtHostMs: 137, deadlineAtHostMs: 30137, finishedAtHostMs: 201, outcome: 'complete'},
       {stage: 'disposal', budgetMs: 10000, startedAtHostMs: 201, deadlineAtHostMs: 10201, finishedAtHostMs: 240, outcome: 'complete'},
@@ -217,12 +389,12 @@ describe('complete comparison ledger', () => {
         expect(ctx.deadlines.every(deadline => deadline.outcome === 'expired' && deadline.finishedAtHostMs === 72000)).toBe(true);
         expect(Reflect.set(ctx.deadlines[0]!, 'outcome', 'complete')).toBe(false);
         expect(Reflect.set(ctx.deadlines, '0', {})).toBe(false);
-        await ctx.writer.json('deadlines.json', ctx.deadlines);
+        await ctx.writer.json('checkpoints.json', ctx.deadlines);
       },
     }, {clock: {now: () => now}});
     await started; now = 60000; await vi.advanceTimersByTimeAsync(60000); now = 70000; await vi.advanceTimersByTimeAsync(10000); const result = await run;
     now = 72000; resolve(); await result.ownershipSettled; await result.finalize();
-    const persisted = JSON.parse(await readFile(join(configuration.out, result.invocation.runs[0]!.artifactDirectory, 'deadlines.json'), 'utf8'));
+    const persisted = JSON.parse(await readFile(join(configuration.out, result.invocation.runs[0]!.artifactDirectory, 'checkpoints.json'), 'utf8'));
     expect(persisted).toHaveLength(2); expect(persisted.every((deadline: {outcome: string; finishedAtHostMs: number}) => deadline.outcome === 'expired' && deadline.finishedAtHostMs === 72000)).toBe(true);
   }, 30000);
   it('includes outstanding queued writes in disposal ownership and blocks subsequent slots', async () => {
