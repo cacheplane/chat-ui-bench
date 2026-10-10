@@ -50,5 +50,7 @@ export interface LongThreadCaptureHost extends LongThreadAdapterHost {
     readCaptureCandidates?(maxCandidates:number):CaptureAvailability<CaptureCandidates>;
     /** Actual public tail only; unavailable content is never truncated. */
     readCaptureProgress?(limits:CaptureProgressLimits):CaptureAvailability<RuntimeProgress>;
+    /** O(1) total registered mounted hosts, matching readActiveDom's map-size count. */
+    readCaptureMountedMessageCount?():CaptureAvailability<number>;
     waitForReplay(): Promise<void>;
 }

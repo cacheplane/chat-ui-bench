@@ -5,5 +5,7 @@ export * from './retention.js';
 export * from './run.js';
 export * from './comparison-artifacts.js';
 export * from './comparison-ownership.js';
+export * from './comparison-installer.js';
+export * from './comparison-observations.js';
 export * from './long-thread-run.js';
 export * from './long-thread-cli.js';

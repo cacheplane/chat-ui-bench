@@ -164,6 +164,10 @@ export class ThreadplaneHost implements LongThreadCaptureHost {
         const content = id ? document.querySelector(this.locators.messageContent(id)) : null;
         return { activeMessageId: id, mounted: content !== null, text: content?.textContent ?? null, mountedMessageCount: this.mounted.size };
     }
+    readCaptureMountedMessageCount():CaptureAvailability<number> {
+        this.assertAlive();
+        return {status:'available',value:this.mounted.size};
+    }
     private actualStreamingId():string|null {
         const messages=this.agent.messages(),last=messages.at(-1);
         if(!last||messages.length<=this.historyCount) return null;
