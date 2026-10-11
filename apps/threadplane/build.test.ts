@@ -91,13 +91,12 @@ test('real command runner rejects nonzero exits and terminating signals',async()
  await expect(api.runCommand({command:process.execPath,args:['-e','process.exit(7)'],cwd:process.cwd()})).rejects.toThrow('7');
  await expect(api.runCommand({command:process.execPath,args:['-e',"process.kill(process.pid,'SIGTERM')"],cwd:process.cwd()})).rejects.toThrow('SIGTERM');
 });
-test('read-only acquisition rejects old21, missing/extra/duplicate records and mismatched or partial pairs',async()=>{
+test.each(['old21','missing','extra','duplicate','missing-lf','whitespace'])('read-only acquisition rejects product record %s',async mode=>{
  const root=await fixture();try{
   await api.buildThreadplane({root,runCommand:async(command:any)=>{if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng')await assets(root);}});
   const productApi=await import('./provenance.mjs'),{canonicalSerialize}=await import('@chat-ui-bench/contract');
   const productPath=join(root,recordPaths[0]!),probePath=join(root,recordPaths[1]!),productBytes=await fs.readFile(productPath),probeBytes=await fs.readFile(probePath);
   const product=JSON.parse(productBytes.toString()),record=JSON.parse(probeBytes.toString());
-  for(const mode of ['old21','missing','extra','duplicate','missing-lf','whitespace']){
    const altered=structuredClone(product);
    if(mode==='old21')altered.sourceHashes=Object.fromEntries(Object.entries(altered.sourceHashes).slice(0,21));
    if(mode==='missing')delete altered.sourceHashes['packages/contract/dist/comparison-buffer.js'];
@@ -107,8 +106,14 @@ test('read-only acquisition rejects old21, missing/extra/duplicate records and m
    if(mode==='missing-lf')bytes=productBytes.subarray(0,productBytes.length-1);
    if(mode==='whitespace')bytes=Buffer.from(productBytes.toString()+' ');
    await fs.writeFile(productPath,bytes);await expect(productApi.threadplaneBuildEvidence(root)).rejects.toThrow();await expect(probe.comparisonInstrumentationBuildEvidence(root)).rejects.toThrow();await fs.writeFile(productPath,productBytes);
-  }
-  for(const mode of ['missing','extra','duplicate','mismatch','no-product']){
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test.each(['missing','extra','duplicate','mismatch','no-product'])('read-only acquisition rejects probe record %s',async mode=>{
+ const root=await fixture();try{
+  await api.buildThreadplane({root,runCommand:async(command:any)=>{if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng')await assets(root);}});
+  const productApi=await import('./provenance.mjs'),{canonicalSerialize}=await import('@chat-ui-bench/contract');
+  const productPath=join(root,recordPaths[0]!),probePath=join(root,recordPaths[1]!),productBytes=await fs.readFile(productPath),probeBytes=await fs.readFile(probePath);
+  const product=JSON.parse(productBytes.toString()),record=JSON.parse(probeBytes.toString());
    const altered=structuredClone(record);
    if(mode==='missing')delete altered.compiledHashes['packages/runner/dist/comparison-installer.js'];
    if(mode==='extra')altered.compiledHashes['nonexistent-future-worker.js']='a'.repeat(64);
@@ -116,13 +121,22 @@ test('read-only acquisition rejects old21, missing/extra/duplicate records and m
    const bytes=mode==='duplicate'?Buffer.from(probeBytes.toString().replace('"formatVersion":1','"formatVersion":1,"formatVersion":1')):Buffer.from(canonicalSerialize(altered)+'\n');
    await fs.writeFile(probePath,bytes);if(mode==='no-product')await fs.unlink(productPath);
    await expect(probe.comparisonInstrumentationBuildEvidence(root)).rejects.toThrow();await fs.writeFile(probePath,probeBytes);await fs.writeFile(productPath,productBytes);
-  }
-  for(const key of ['packages/contract/src/comparison-buffer.ts','packages/contract/src/comparison-installer-options.ts','packages/contract/src/presentation.ts','packages/contract/dist/comparison-buffer.js','packages/runner/dist/comparison-installer.js']){
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test.each(['packages/contract/src/comparison-buffer.ts','packages/contract/src/comparison-installer-options.ts','packages/contract/src/presentation.ts','packages/contract/dist/comparison-buffer.js','packages/runner/dist/comparison-installer.js'])('read-only acquisition rejects mutated input %s',async key=>{
+ const root=await fixture();try{
+  await api.buildThreadplane({root,runCommand:async(command:any)=>{if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng')await assets(root);}});
+  const productApi=await import('./provenance.mjs');
    const path=join(root,key),bytes=await fs.readFile(path);await fs.writeFile(path,Buffer.concat([bytes,Buffer.from(' ')]));
    await expect(probe.comparisonInstrumentationBuildEvidence(root)).rejects.toThrow();
    if(!key.startsWith('packages/runner/'))await expect(productApi.threadplaneBuildEvidence(root)).rejects.toThrow();
    await fs.writeFile(path,bytes);
-  }
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test('read-only acquisition preserves the legacy app compiler metadata whitespace boundary',async()=>{
+ const root=await fixture();try{
+  await api.buildThreadplane({root,runCommand:async(command:any)=>{if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng')await assets(root);}});
+  const productApi=await import('./provenance.mjs');
   // Legacy AdapterBuild pins app tool name/version/lock integrity, not metadata bytes.
   const appTool=join(root,'apps/threadplane/node_modules/typescript/package.json'),metadata=await fs.readFile(appTool);await fs.writeFile(appTool,Buffer.concat([metadata,Buffer.from(' ')]));
   expect(await productApi.threadplaneBuildEvidence(root)).toBeDefined();expect(await probe.comparisonInstrumentationBuildEvidence(root)).toBeDefined();
