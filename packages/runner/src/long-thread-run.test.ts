@@ -3,7 +3,7 @@ import {mkdtemp, readFile, rm, writeFile, rename, open, lstat, realpath} from 'n
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {comparisonCaptureInvocationSchema, comparisonValidationSchema, comparisonEvidenceSchema, comparisonCaptureStatusSchema, comparisonRawInventorySchema, comparisonFinalizationStatusSchema} from '@chat-ui-bench/contract';
+import {comparisonCaptureInvocationSchema, comparisonValidationSchema, comparisonEvidenceSchema, comparisonCaptureStatusSchema, comparisonRawInventorySchema, comparisonFinalizationStatusSchema, comparisonExceptionsSchema} from '@chat-ui-bench/contract';
 import {ComparisonArtifactWriter} from './comparison-artifacts.js';
 import {parseLongThreadArgs} from './long-thread-cli.js';
 import {runLongThreadInvocation, createLongThreadLedger} from './long-thread-run.js';
@@ -11,6 +11,98 @@ const roots: string[] = [];
 afterEach(async () => {vi.useRealTimers(); await Promise.all(roots.splice(0).map(r => rm(r, {recursive: true, force: true})));});
 async function config() {const out = await mkdtemp(join(tmpdir(), 'comparison-execution-')); roots.push(out); const args = parseLongThreadArgs(['--out', out]); if (args.help) throw new Error('unexpected help'); return args;}
 describe('complete comparison ledger', () => {
+  it.each(['returned replay capture', 'setup failure'] as const)('retains empty cleanup failure with %s and the original capture availability', async mode => {
+    const initial = await config(), c = parseLongThreadArgs(['--out', initial.out, '--mode', 'headless', '--rounds', '1']); if (c.help) throw new Error('unexpected help');
+    let attempts = 0, replayCalls = 0, closes = 0, closeObserved = false, original: unknown;
+    let finalizedCapture: unknown = undefined, finalizerCalls = 0;
+    const exceptionParse = vi.spyOn(comparisonExceptionsSchema, 'parse'), validationParse = vi.spyOn(comparisonValidationSchema, 'parse');
+    let exceptionCandidate: ReturnType<typeof comparisonExceptionsSchema.parse> | undefined, acceptedException: ReturnType<typeof comparisonExceptionsSchema.parse> | undefined;
+    let exceptionOutcome: string | undefined, validationCandidate: ReturnType<typeof comparisonValidationSchema.parse> | undefined;
+    let result: Awaited<ReturnType<typeof runLongThreadInvocation>> | undefined, escaped = false, escapedError: unknown;
+    try {
+      result = await runLongThreadInvocation(c, {
+      async setup(ctx) {
+        attempts++;
+        await ctx.ownership.adopt({name: 'host', close: async () => {closes++; try {throw '';} catch (error) {closeObserved = true; original = error; throw error;}}});
+        await ctx.writer.text('instrumentation/main.js', 'original acquired bytes');
+        if (mode === 'setup failure') throw new Error('actual setup failure before capture');
+        return null;
+      },
+      async replay(ctx) {
+        replayCalls++;
+        return {validation: comparisonValidationSchema.parse({...ctx.identity, status: 'invalid', reasons: ['controlled capture without browser measurement'], checks: [{name: 'controlled capture', passed: false, reason: 'controlled capture without browser measurement', evidencePaths: []}]})};
+      },
+      async finalize(_ctx, capture) {finalizerCalls++; finalizedCapture = capture;},
+      });
+      await result.ownershipSettled;
+    } catch (error) {escaped = true; escapedError = error;}
+    finally {
+      try {
+        const exceptionIndex = exceptionParse.mock.calls.findIndex(([input]) => (input as ReturnType<typeof comparisonExceptionsSchema.parse>).exceptions.some(row => row.stage === 'disposal' && row.message.startsWith('host: ')));
+        if (exceptionIndex >= 0) {
+          exceptionCandidate = structuredClone(exceptionParse.mock.calls[exceptionIndex]![0] as ReturnType<typeof comparisonExceptionsSchema.parse>);
+          const parsed = exceptionParse.mock.results[exceptionIndex]!; exceptionOutcome = parsed.type;
+          if (parsed.type === 'return') acceptedException = structuredClone(parsed.value);
+        }
+        const call = validationParse.mock.calls.find(([input]) => {
+          const candidate = input as ReturnType<typeof comparisonValidationSchema.parse>;
+          return candidate.checks.some(check => check.name === 'capture-ownership') && candidate.reasons.some(reason => reason.includes('Owned resource cleanup failed'));
+        });
+        if (call) validationCandidate = structuredClone(call[0] as ReturnType<typeof comparisonValidationSchema.parse>);
+      } finally {exceptionParse.mockRestore(); validationParse.mockRestore();}
+    }
+    expect(escaped, String(escapedError)).toBe(false); expect(result).toBeDefined();
+    expect(closeObserved).toBe(true); expect(original).toBe(''); expect(closes).toBe(1); expect(attempts).toBe(1);
+    expect(exceptionCandidate).toBeDefined(); expect(exceptionOutcome).toBe('return'); expect(acceptedException).toEqual(exceptionCandidate);
+    expect(acceptedException?.exceptions.find(row => row.stage === 'disposal')?.message.length).toBeGreaterThan(0);
+    expect(validationCandidate).toBeDefined(); expect(validationCandidate?.reasons).toContain('Thrown empty string');
+    expect(validationCandidate?.reasons.every(reason => reason.length > 0)).toBe(true);
+    expect(replayCalls).toBe(mode === 'setup failure' ? 0 : 1); expect(finalizerCalls).toBe(1);
+    if (mode === 'setup failure') expect(finalizedCapture).toBeNull();
+    else expect(finalizedCapture).toMatchObject({validation: {status: 'invalid', reasons: ['controlled capture without browser measurement']}});
+    expect(result!.finalized).toBe(true); expect(result!.unsafeOutstanding).toBe(false);
+    const ledger = comparisonCaptureInvocationSchema.parse(JSON.parse(await readFile(join(c.out, 'invocation.json'), 'utf8')));
+    expect(ledger.runs).toHaveLength(12); expect(ledger.runs[0]?.status).toBe('failed');
+    expect(ledger.runs.slice(1).every(slot => slot.status === 'failed' && slot.reasons.some(reason => reason.includes('failed-not-started')))).toBe(true);
+    const directory = join(c.out, ledger.runs[0]!.artifactDirectory);
+    expect(await readFile(join(directory, 'instrumentation/main.js'), 'utf8')).toBe('original acquired bytes');
+    const exceptions = comparisonExceptionsSchema.parse(JSON.parse(await readFile(join(directory, 'exceptions.json'), 'utf8')));
+    expect(exceptions.exceptions).toContainEqual(expect.objectContaining({stage: 'disposal', message: 'host: Thrown empty string'}));
+    const validation = comparisonValidationSchema.parse(JSON.parse(await readFile(join(directory, 'validation.json'), 'utf8')));
+    expect(validation.reasons).toContain('Thrown empty string'); expect(validation.reasons.every(reason => reason.length > 0)).toBe(true);
+    expect(JSON.parse(await readFile(join(c.out, 'dataset-seal.json'), 'utf8')).status).toBe('sealed');
+  });
+  it.each(['empty string', 'blank Error'] as const)('retains the first filesystem finalizer rejection %s without supplying a usable seal', async kind => {
+    const initial = await config(), c = parseLongThreadArgs(['--out', initial.out, '--mode', 'headless', '--rounds', '1']); if (c.help) throw new Error('unexpected help');
+    const rejection = kind === 'empty string' ? '' : new Error(''); if (rejection instanceof Error) rejection.name = '';
+    const originalStack = rejection instanceof Error ? rejection.stack : null;
+    let attempts = 0, finalizerCalls = 0, observed = false, original: unknown;
+    const result = await runLongThreadInvocation(c, {
+      async setup(ctx) {attempts++; await ctx.writer.text('instrumentation/main.js', 'original finalizer bytes'); return null;},
+      async replay(ctx) {return {validation: comparisonValidationSchema.parse({...ctx.identity, status: 'invalid', reasons: ['controlled measurement unavailable'], checks: [{name: 'controlled capture', passed: false, reason: 'controlled measurement unavailable', evidencePaths: []}]})};},
+      async finalize() {finalizerCalls++; try {throw rejection;} catch (error) {observed = true; original = error; throw error;}},
+    });
+    await result.ownershipSettled;
+    expect(observed).toBe(true); expect(original).toBe(rejection); expect(attempts).toBe(1); expect(finalizerCalls).toBe(1);
+    expect(result.finalized).toBe(false); expect(result.unsafeOutstanding).toBe(false);
+    const diagnostic = kind === 'empty string' ? 'Thrown empty string' : 'Error with empty message and name';
+    const ledger = comparisonCaptureInvocationSchema.parse(JSON.parse(await readFile(join(c.out, 'invocation.json'), 'utf8')));
+    expect(ledger.runs).toHaveLength(12); expect(ledger.runs[0]?.reasons).toEqual([diagnostic]);
+    expect(ledger.runs.slice(1).every(slot => slot.status === 'failed' && slot.reasons.some(reason => reason.includes('failed-not-started')))).toBe(true);
+    const directory = join(c.out, ledger.runs[0]!.artifactDirectory);
+    expect(await readFile(join(directory, 'instrumentation/main.js'), 'utf8')).toBe('original finalizer bytes');
+    const exceptions = comparisonExceptionsSchema.parse(JSON.parse(await readFile(join(directory, 'exceptions.json'), 'utf8')));
+    expect(exceptions.exceptions).toContainEqual(expect.objectContaining({message: diagnostic, stack: originalStack}));
+    expect(comparisonValidationSchema.parse(JSON.parse(await readFile(join(directory, 'validation.json'), 'utf8'))).reasons).toEqual([diagnostic]);
+    expect(comparisonFinalizationStatusSchema.parse(JSON.parse(await readFile(join(directory, 'finalization-status.json'), 'utf8')))).toMatchObject({status: 'failed', reason: diagnostic, datasetSealEligible: false, manifest: {path: null, state: 'not-written'}});
+    let escaped = false, finalError: unknown;
+    try {await result.finalize();} catch (error) {escaped = true; finalError = error;}
+    expect(escaped).toBe(true);
+    if (rejection instanceof Error) {expect(finalError).toBe(rejection); expect(rejection.stack).toBe(originalStack); expect(rejection.message).toBe(''); expect(rejection.name).toBe('');}
+    else expect(finalError).toMatchObject({message: diagnostic});
+    await expect(result.finalize()).rejects.toBe(finalError); expect(finalizerCalls).toBe(1);
+    await expect(readFile(join(c.out, 'dataset-seal.json'))).rejects.toMatchObject({code: 'ENOENT'});
+  });
   it('reconciles genuine O_EXCL bytes after late guarded open rejection and records the actually absent destination',async()=>{
     vi.useFakeTimers(); const c=await config(); c.purpose='conformance'; c.configuration.mode='headless'; c.configuration.rounds=1;
     let now=0,entered!:()=>void,release!:()=>void,owned:Awaited<ReturnType<typeof open>>|undefined;

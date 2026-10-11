@@ -48,7 +48,10 @@ function writtenManifest(files:readonly ComparisonPayloadFile[]):'evidence.json'
 }
 function failed(id: ComparisonIdentity, reasons: string[]): ComparisonValidation {return comparisonValidationSchema.parse({...id, status: 'failed', checks: [{name: 'capture-ownership', passed: false, reason: reasons.join('; '), evidencePaths: ['descriptor.json', 'exceptions.json']}], reasons});}
 function fixtureFor(slot: Slot, seed: number) {return createLongThreadFixture({seed, historyCount: ([100, 1000, 10000] as const)[Math.floor(slot.caseIndex / 4)]!, responseBytes: slot.caseIndex % 4 < 2 ? 6400 : 262144, journey: slot.caseIndex % 2 === 0 ? 'follow' : 'history-reading'});}
-function describeError(error: unknown) {return error instanceof Error ? error.message || error.name : String(error);}
+function describeError(error: unknown) {
+  if (error instanceof Error) {const rendered = error.message || error.name; return rendered === '' ? 'Error with empty message and name' : rendered;}
+  return error === '' ? 'Thrown empty string' : String(error);
+}
 const reserved=new Set(['descriptor.json','fixture.json','validation.json','exceptions.json','capture-status.json','finalization-status.json','evidence.json','raw-inventory.json']);
 const reservedPath=(path:string)=>reserved.has(path.replace(/\.[a-f0-9-]{36}\.tmp$/,''));
 function assertIdentity(value:ComparisonIdentity,id:ComparisonIdentity) {

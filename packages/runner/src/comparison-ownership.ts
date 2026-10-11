@@ -17,7 +17,10 @@ export interface ComparisonOwnershipFailure {stage: ComparisonOwnershipStage; ti
 export type ComparisonStageResult<T> = {status: 'complete'; value: T; deadline: ComparisonDeadline} | {status: 'failed' | 'expired'; deadline: ComparisonDeadline};
 export interface ComparisonOwnershipClock {now(): number; setTimer?: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>; clearTimer?: (timer: ReturnType<typeof setTimeout>) => void}
 interface ResourceRecord {resource: ComparisonOwnedResource; close: Promise<void> | null; failure: ComparisonOwnershipFailure | null}
-function message(error: unknown) {return error instanceof Error ? error.message || error.name : String(error);}
+function message(error: unknown) {
+  if (error instanceof Error) {const rendered = error.message || error.name; return rendered === '' ? 'Error with empty message and name' : rendered;}
+  return error === '' ? 'Thrown empty string' : String(error);
+}
 /** Races report deadlines; tracked operations and adopted resources establish actual settlement separately. */
 export class ComparisonOwnership {
   private readonly clock: ComparisonOwnershipClock;
