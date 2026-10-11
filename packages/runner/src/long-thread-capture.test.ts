@@ -419,7 +419,7 @@ for(const rejection of [undefined,null,false,0,''])test(`first actual host dispo
    const setup=await owner.run('setup',async ownership=>{try{state=await driver.setup(context(ownership));}catch(value){failed=true;error=value;throw value;}});if(failed)throw error;expect(setup.status).toBe('complete');
    let replay:Awaited<ReturnType<ComparisonOwnership['run']>>|undefined,ownerRejected=false,ownerError:unknown;
    try{replay=await owner.run('replay',async ownership=>{try{await driver.replay(context(ownership),state!);}catch(value){failed=true;error=value;throw value;}});}catch(value){ownerRejected=true;ownerError=value;}
-   if(rejection===''){expect(ownerRejected).toBe(true);expect(ownerError).toBeInstanceOf(Error);expect((ownerError as Error).name).toBe('ZodError');expect(String(ownerError)).toContain('reason');expect(replay).toBeUndefined();}
+   if(rejection===''){expect(ownerRejected,String(ownerError)).toBe(false);expect(replay).toMatchObject({status:'failed',deadline:{reason:'Thrown empty string'}});expect(owner.failures.some(failure=>failure.message==='Thrown empty string')).toBe(true);}
    else{expect(ownerRejected).toBe(false);expect(replay?.status).toBe('failed');}
    expect(failed).toBe(true);expect(error).toBe(rejection);
    const disposal=await owner.dispose();await owner.ownershipSettled;expect(disposal.status).toBe('failed');expect(order.filter(value=>value==='host-dispose')).toHaveLength(1);expect(order.filter(value=>value==='stop')).toHaveLength(1);

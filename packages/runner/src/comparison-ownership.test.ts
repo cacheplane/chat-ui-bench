@@ -2,6 +2,53 @@ import {describe, expect, it, vi, afterEach} from 'vitest';
 import {ComparisonOwnership, type ComparisonOwnershipContext} from './comparison-ownership.js';
 afterEach(() => vi.useRealTimers());
 describe('comparison ownership', () => {
+  for (const stage of ['setup', 'replay'] as const) {
+    it.each(['empty string', 'blank Error'])('retains a nonempty diagnostic for %s rejected by real '+stage, async kind => {
+      const rejection = kind === 'empty string' ? '' : new Error('');
+      if (rejection instanceof Error) rejection.name = '';
+      const stack = rejection instanceof Error ? rejection.stack : null;
+      const owner = new ComparisonOwnership({now: () => 123});
+      let observed = false, original: unknown, context!: ComparisonOwnershipContext;
+      let result: Awaited<ReturnType<typeof owner.run>> | undefined, escaped = false, escapedError: unknown;
+      try {
+        result = await owner.run(stage, async ctx => {
+          context = ctx;
+          try {throw rejection;} catch (error) {observed = true; original = error; throw error;}
+        });
+      } catch (error) {escaped = true; escapedError = error;}
+      finally {await owner.dispose(); await owner.ownershipSettled;}
+      expect(observed).toBe(true); expect(original).toBe(rejection);
+      expect(escaped, String(escapedError)).toBe(false);
+      const diagnostic = kind === 'empty string' ? 'Thrown empty string' : 'Error with empty message and name';
+      expect(result).toMatchObject({status: 'failed', deadline: {reason: diagnostic, budgetMs: stage === 'setup' ? 60000 : 30000, startedAtHostMs: 123, deadlineAtHostMs: stage === 'setup' ? 60123 : 30123, finishedAtHostMs: 123}});
+      expect(owner.failures[0]).toMatchObject({message: diagnostic, stack, stage, resource: null});
+      expect(context.signal.aborted).toBe(true); expect(() => context.assertActive()).toThrow(/revoked/);
+      expect(owner.unsafeOutstanding).toBe(false);
+      if (rejection instanceof Error) {expect(rejection.message).toBe(''); expect(rejection.name).toBe(''); expect(rejection.stack).toBe(stack);}
+    });
+  }
+  it('retains empty close diagnostics without claiming containment or retrying cleanup', async () => {
+    const owner = new ComparisonOwnership({now: () => 123}); let calls = 0, observed = false, original: unknown;
+    await owner.run('setup', async ctx => {await ctx.adopt({name: 'host', close: async () => {calls++; try {throw '';} catch (error) {observed = true; original = error; throw error;}}});});
+    const result = await owner.dispose(); await owner.ownershipSettled;
+    expect(observed).toBe(true); expect(original).toBe(''); expect(calls).toBe(1);
+    expect(result).toMatchObject({status: 'failed', deadline: {reason: 'Owned resource cleanup failed', budgetMs: 10000}});
+    expect(owner.failures).toEqual([{stage: 'disposal', timestampMs: 123, message: 'Thrown empty string', stack: null, resource: 'host'}]);
+    expect(owner.unsafeOutstanding).toBe(false); expect(owner.canContinue).toBe(false);
+  });
+  it.each([
+    [undefined, 'undefined'], [null, 'null'], [false, 'false'], [0, '0'],
+    ['ordinary', 'ordinary'], ['   ', '   '], [new Error('ordinary error'), 'ordinary error'],
+    [new Error(''), 'Error'], [new Error('   '), '   '],
+  ] as const)('preserves existing diagnostic for %s', async (rejection, diagnostic) => {
+    const owner = new ComparisonOwnership(); let observed = false, original: unknown;
+    let result: Awaited<ReturnType<typeof owner.run>> | undefined, escaped = false, escapedError: unknown;
+    try {result = await owner.run('setup', async () => {try {throw rejection;} catch (error) {observed = true; original = error; throw error;}});}
+    catch (error) {escaped = true; escapedError = error;}
+    finally {await owner.dispose(); await owner.ownershipSettled;}
+    expect(observed).toBe(true); expect(original).toBe(rejection); expect(escaped, String(escapedError)).toBe(false);
+    expect(result).toMatchObject({status: 'failed', deadline: {reason: diagnostic}}); expect(owner.failures[0]?.message).toBe(diagnostic);
+  });
   it('uses an absolute setup origin, delivers abort and revokes the generation', async () => {
     vi.useFakeTimers(); let now = 100; let context!: ComparisonOwnershipContext;
     const owner = new ComparisonOwnership({now: () => now});
