@@ -5,3 +5,4 @@ artifacts/
 .angular/
 dist-types/
 .build-evidence.json
+packages/runner/.comparison-build-evidence.json
