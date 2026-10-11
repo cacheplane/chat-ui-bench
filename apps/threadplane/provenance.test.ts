@@ -3,6 +3,65 @@ import { adapterBuildSchema } from '@chat-ui-bench/contract';
 import {createRequire} from 'node:module';
 import {resolve} from 'node:path';
 import {spawn} from 'node:child_process';
+import * as fs from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+const probe=await import('./probe-provenance.mjs');
+const {ComparisonOwnership}=await import('../../packages/runner/dist/comparison-ownership.js');
+async function productFixture(){
+ const root=await fs.realpath(await fs.mkdtemp(join(tmpdir(),'owned-product-'))),app=join(root,'apps/threadplane');
+ for(const key of [...probe.commonBuildKeys,...probe.contractSourceKeys]){await fs.mkdir(join(root,key,'..'),{recursive:true});await fs.copyFile(resolve(key),join(root,key));}
+ await fs.mkdir(join(app,'src/nested'),{recursive:true});await fs.writeFile(join(app,'src/host.ts'),'source');await fs.writeFile(join(app,'src/nested/child.ts'),'child');await fs.writeFile(join(app,'src/host.test.ts'),'excluded');
+ await fs.mkdir(join(app,'dist'),{recursive:true});await fs.writeFile(join(app,'dist/index.html'),'fixture asset');
+ const packages:Record<string,any>={},dependencies:Record<string,string>={};
+ for(const name of ['@angular/core','@threadplane/chat','@threadplane/langgraph','@threadplane/render','@threadplane/telemetry']){
+  const key=`node_modules/${name}`;await fs.mkdir(join(root,key),{recursive:true});await fs.writeFile(join(root,key,'package.json'),JSON.stringify({name,version:'1.0.0',exports:'./index.js'}));await fs.writeFile(join(root,key,'index.js'),'');packages[key]={version:'1.0.0',integrity:'sha512-YQ=='};dependencies[name]='1.0.0';
+ }
+ await fs.writeFile(join(app,'package.json'),JSON.stringify({dependencies}));await fs.writeFile(join(root,'package-lock.json'),JSON.stringify({packages}));
+ await fs.writeFile(join(app,'angular.json'),JSON.stringify({cli:{analytics:false},projects:{threadplane:{architect:{build:{options:{aot:true},configurations:{production:{optimization:true,sourceMap:false,outputHashing:'all'}}}}}}}));
+ await fs.cp(resolve('packages/contract/dist'),join(root,'packages/contract/dist'),{recursive:true});await fs.symlink(resolve('node_modules/zod'),join(root,'node_modules/zod'));
+ return root;
+}
+function productControls(target?:[string,string]){
+ let active=true,hit=false;const revoked=new Error('product generation revoked'),ledger:string[]=[],resources:any[]=[];
+ const lifecycle={assertActive(){if(!active)throw revoked;},async adopt(resource:any){resources.push(resource);if(!active){await resource.close();throw revoked;}}};
+ const acquire=async(name:string,path:any,operation:()=>Promise<any>)=>{expect(active,`after revoke ${name} ${path}`).toBe(true);ledger.push(`${name}:${path}`);const value=await operation();if(target&&name===target[0]&&String(path).endsWith(target[1])){hit=true;active=false;}return value;};
+ const ops={...fs,...Object.fromEntries(['realpath','lstat','readdir','access'].map(name=>[name,(path:any,...args:any[])=>acquire(name,path,()=> (fs as any)[name](path,...args))])),open:(path:any,...args:any[])=>acquire('open',path,async()=>{const fd=await (fs.open as any)(path,...args);return {stat:()=>acquire('stat',path,()=>fd.stat()),read:(...args:any[])=>acquire('read',path,()=>fd.read(...args)),close:()=>fd.close()};})};
+ return {ops,lifecycle,ledger,resources,revoked,revoke(){active=false;},get hit(){return hit;}};
+}
+test('owned checker product revoked entry does not resolve roots or open records',async()=>{
+ const c=productControls();c.revoke();for(const call of [()=>api.productSourceKeys(process.cwd(),c),()=>api.snapshotProductInputs(process.cwd(),c),()=>api.assertProductInputsUnchanged(process.cwd(),{},c),()=>api.productBuildInventory(process.cwd(),c),()=>api.threadplaneBuildEvidence(process.cwd(),c)])await expect(call()).rejects.toBe(c.revoked);expect(c.ledger).toEqual([]);
+});
+test.each([['realpath',''],['readdir','/src'],['readdir','/nested'],['access','/@threadplane/chat/package.json'],['realpath','/@threadplane/render/index.js'],['open','/angular.json'],['open','/package-lock.json'],['open','/@threadplane/telemetry/package.json'],['open','/src/host.ts'],['open','/packages/contract/dist/index.js'],['readdir','/dist'],['open','/dist/index.html']])('owned checker product expiry at %s %s blocks further acquisition',async(name,key)=>{
+ const root=await productFixture();try{const c=productControls([name,key]);await expect(api.productBuildInventory(root,c)).rejects.toBe(c.revoked);expect(c.hit).toBe(true);for(const resource of c.resources)await resource.close();}finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test('owned checker product default and empty options retain fixture keys and facts',async()=>{
+ const root=await productFixture();try{expect(await api.productSourceKeys(root,{})).toEqual(await api.productSourceKeys(root));expect(await api.snapshotProductInputs(root,{})).toEqual(await api.snapshotProductInputs(root));const c=productControls();expect(await api.productBuildInventory(root,c)).toEqual(await api.productBuildInventory(root));expect(c.resources.length).toBeGreaterThan(0);for(const resource of c.resources)await resource.close();}finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test('owned checker changed fixture source remains invalid under lifecycle options',async()=>{
+ const root=await productFixture();try{const c=productControls(),before=await api.snapshotProductInputs(root,c);await fs.writeFile(join(root,'apps/threadplane/src/host.ts'),'mutate');await expect(api.assertProductInputsUnchanged(root,before,c)).rejects.toThrow('changed');}finally{await fs.rm(root,{recursive:true,force:true});}
+});
+async function genuineProduct(scenario='equality'){
+ const root=await fs.realpath(process.cwd()),path=join(root,'apps/threadplane/.build-evidence.json'),before=await fs.readFile(path),resources:any[]=[],handles:any[]=[];let now=0,recordOpens=0;
+ const owner=new ComparisonOwnership({now:()=>now}),failure=new Error('genuine product actual close failed');
+ const outcome=await owner.run('setup',async context=>{
+  const lifecycle={assertActive:()=>context.assertActive(),async adopt(resource:any){resources.push(resource);await context.adopt(resource);}};
+  const ops={...fs,writeFile:async()=>{throw new Error('read-only checker wrote');},rename:async()=>{throw new Error('read-only checker renamed');},unlink:async()=>{throw new Error('read-only checker unlinked');},open:async(file:any,...args:any[])=>{
+   context.assertActive();const fd=await (fs.open as any)(file,...args),row={fd,closes:0};handles.push(row);if(file===path){recordOpens++;if(scenario==='record-reread-expiry'&&recordOpens===2)now=context.deadlineAtHostMs;}
+   return {stat:()=>{context.assertActive();return fd.stat();},read:(...args:any[])=>{context.assertActive();return fd.read(...args);},close:async()=>{row.closes++;await fd.close();if(file===path&&recordOpens===1){if(scenario==='record-close-expiry')now=context.deadlineAtHostMs;if(scenario==='record-close-failure')throw failure;}}};
+  }};
+  return api.threadplaneBuildEvidence(root,{ops,lifecycle});
+ });
+ const disposal=await owner.dispose();for(const resource of resources){expect(resource.close()).toBe(resource.close());if(scenario==='record-close-failure')await resource.close().catch(()=>{});else await resource.close();}
+ for(const row of handles){expect(row.closes).toBe(1);await expect(row.fd.stat()).rejects.toMatchObject({code:'EBADF'});}expect(resources).toHaveLength(handles.length);expect(await fs.readFile(path)).toEqual(before);
+ return {outcome,disposal,failure,owner};
+}
+test('actual optimized product default and owned checker equality',async()=>{
+ const expected=await api.threadplaneBuildEvidence();const {outcome,disposal}=await genuineProduct();expect(outcome.status).toBe('complete');expect(outcome.value).toEqual(expected);expect(disposal.status).toBe('complete');
+});
+test.each(['record-reread-expiry','record-close-expiry','record-close-failure'])('actual optimized product default and owned checker equality (%s rejects)',async scenario=>{
+ const {outcome,disposal,owner,failure}=await genuineProduct(scenario);expect(outcome.status).toBe('failed');if(scenario==='record-close-failure'){expect(disposal.status).toBe('failed');expect(owner.failures.some((row:any)=>row.message===failure.message)).toBe(true);expect(owner.canContinue).toBe(false);}else expect(disposal.status).toBe('complete');
+});
 test('released renderer and app resolve the same physical Angular core instance',()=>{
     const appRequire=createRequire(resolve('apps/threadplane/package.json'));
     const productRequire=createRequire(appRequire.resolve('@threadplane/chat/package.json'));
