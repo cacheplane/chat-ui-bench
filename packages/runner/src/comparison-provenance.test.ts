@@ -79,8 +79,28 @@ type FileCase = {
 };
 const exactIdentityBoundaries = ['FD during copy','leaf between passes','ancestor between passes','fresh after assembly','explicit pre-serving','mtimeNs','ctimeNs'] as const;
 // Test harness envelope for setup, disposal and control overhead; production deadlines stay unchanged.
-const exactIdentityControlMarginMs = 5000;
-const exactIdentityIntegrationBodyMs = COMPARISON_STAGE_BUDGETS.setup + COMPARISON_STAGE_BUDGETS.disposal + exactIdentityControlMarginMs;
+const provenanceIntegrationControlMarginMs = 5000;
+const provenanceIntegrationBodyMs = COMPARISON_STAGE_BUDGETS.setup + COMPARISON_STAGE_BUDGETS.disposal + provenanceIntegrationControlMarginMs;
+const provenanceIntegrationCaseNames = new Set<string>([
+  'genuine current146 plan admits exact roles before the first destination failure',
+  'registered session preserves actual member candidate on destination failure and new finalization writer persists pure partial snapshot',
+  'actual source close rejection cannot publish a copied digest and independently completes the destination',
+  'actual same-size source rejects pinned copy facts',
+  'actual ancestor substitution rejects pinned copy facts',
+  'actual source after destination completion rejects pinned copy facts',
+  'actual source after all copies rejects pinned copy facts',
+  'exact provenance rejects rounded identity contradiction at FD during copy',
+  'exact provenance rejects rounded identity contradiction at leaf between passes',
+  'exact provenance rejects rounded identity contradiction at ancestor between passes',
+  'exact provenance rejects rounded identity contradiction at fresh after assembly',
+  'exact provenance rejects rounded identity contradiction at explicit pre-serving',
+  'exact provenance rejects rounded identity contradiction at mtimeNs',
+  'exact provenance rejects rounded identity contradiction at ctimeNs',
+  'actual late source open is adopted first and closes after generation revocation',
+  'actual immutable instrumentation/pre-navigation.js destination cannot heal its first rejected command',
+  'actual immutable provenance/acquisition.json destination cannot heal its first rejected command',
+  'genuine complete97 acquisition payload persistence and actual disposal complete under production ownership',
+]);
 const exactIdentityCaseNames = new Set<string>(exactIdentityBoundaries.map(boundary => `exact provenance rejects rounded identity contradiction at ${boundary}`));
 const exactPoints = ['body-entered','output-initializing','output-initialized','writer-initializing','writer-initialized','assertions-entered','finally-entered','teardown-before-FIRST-start','whole-body-settled'] as const;
 type ExactPoint = typeof exactPoints[number];
@@ -1580,7 +1600,7 @@ afterEach(async ({task}) => {
   if (observation && observation.disposal !== 'N/A') disposals.push({outcome:{status:'fulfilled',value:observation.disposal},failures:current.gate!.owner.failures,allowed:current.name === nativeCloseFailureCase && outcomes[3].status === 'fulfilled'});
   for (const [index,record] of (fileCase.localOwners ?? []).entries()) {const outcome = localResults[index]; if (!outcome) throw Error('Missing local disposal observation'); disposals.push({outcome,failures:record.owner.failures,allowed:record.realClosedProof && outcomes[3].status === 'fulfilled'});}
   const primary = selectPrimary(fileCase,disposals,[outcomes[0],outcomes[1],outcomes[3]]);
-  await preservePrimary(primary,fileCase,() => persistForensic(fileCase,resourceSafe ? 'settled' : 'unsafe', {test:current.name, allocation:{hookMs:10000, bodyMs:exactIdentityCaseNames.has(current.name) ? exactIdentityIntegrationBodyMs : 5000, cleanupHookMs:10000, ownerBudgets:{setup:60000,replay:30000,disposal:10000}}, root:current.root, output:current.output, localPaths:[...(fileCase.localPaths ?? [])], taskState:task.result?.state, phases:current.phases, preparationSettled:current.preparationSettled, hookSettled:current.hookSettled, bodySettled:fileCase.bodySettled, workSettled:current.workSettled, resourceSafe, observation:observation ?? 'N/A', localOwnership:(fileCase.localOwners ?? []).map((record,index) => ({first:localResults[index],failures:record.owner.failures,canContinue:record.owner.canContinue,actualOwnershipSettled:true,realClosedProof:record.realClosedProof})), failures:current.gate?.owner.failures ?? [], primary:primary?.reason instanceof Error ? primary.reason.message : primary ? 'non-Error' : null, evidenceErrors:fileCase.evidenceErrors.map(row => row instanceof Error ? row.message : 'non-Error'), collectorError:current.collectorError, metadataReads:current.metadataReads,repairFacts:current.repairFacts,localDiagnostic:current.localDisposalDiagnostic ? {phaseAttempts:current.phaseAttempts ?? 0,phaseCount:current.phases.length,limit:64,truncated:(current.phaseAttempts ?? 0) > current.phases.length} : undefined,diagnostic:snapshotGitDiagnostic(current),diagnosticPending:current.diagnosticPending, outcomes:outcomes.map(row => row.status === 'rejected' ? {status:row.status,reason:row.reason instanceof Error ? row.reason.message : 'non-Error'} : {status:row.status})}));
+  await preservePrimary(primary,fileCase,() => persistForensic(fileCase,resourceSafe ? 'settled' : 'unsafe', {test:current.name, allocation:{hookMs:10000, bodyMs:provenanceIntegrationCaseNames.has(current.name) ? provenanceIntegrationBodyMs : 5000, cleanupHookMs:10000, ownerBudgets:{setup:60000,replay:30000,disposal:10000}}, root:current.root, output:current.output, localPaths:[...(fileCase.localPaths ?? [])], taskState:task.result?.state, phases:current.phases, preparationSettled:current.preparationSettled, hookSettled:current.hookSettled, bodySettled:fileCase.bodySettled, workSettled:current.workSettled, resourceSafe, observation:observation ?? 'N/A', localOwnership:(fileCase.localOwners ?? []).map((record,index) => ({first:localResults[index],failures:record.owner.failures,canContinue:record.owner.canContinue,actualOwnershipSettled:true,realClosedProof:record.realClosedProof})), failures:current.gate?.owner.failures ?? [], primary:primary?.reason instanceof Error ? primary.reason.message : primary ? 'non-Error' : null, evidenceErrors:fileCase.evidenceErrors.map(row => row instanceof Error ? row.message : 'non-Error'), collectorError:current.collectorError, metadataReads:current.metadataReads,repairFacts:current.repairFacts,localDiagnostic:current.localDisposalDiagnostic ? {phaseAttempts:current.phaseAttempts ?? 0,phaseCount:current.phases.length,limit:64,truncated:(current.phaseAttempts ?? 0) > current.phases.length} : undefined,diagnostic:snapshotGitDiagnostic(current),diagnosticPending:current.diagnosticPending, outcomes:outcomes.map(row => row.status === 'rejected' ? {status:row.status,reason:row.reason instanceof Error ? row.reason.message : 'non-Error'} : {status:row.status})}));
   if (outcomes[2].status === 'rejected') throw outcomes[2].reason;
   expect(current.workSettled).toBe(true);
   if (current.session) expect(current.session.snapshotAcquisition().acquisition.status).toBe('complete');
@@ -1595,7 +1615,7 @@ afterEach(async ({task}) => {
   if (current.diagnostic) fileCase.retainPaths = true;
   })(); void fileCase.innerCleanup.catch(() => {}); await fileCase.innerCleanup;
 });
-test('genuine current146 plan admits exact roles before the first destination failure', async () => {
+test('genuine current146 plan admits exact roles before the first destination failure', {timeout:provenanceIntegrationBodyMs}, async () => {
   const output = await localOutput('comparison-full-plan-');
   const writer = await ComparisonArtifactWriter.create(output), owner = caseOwner();
   const build = adapterBuildSchema.parse(JSON.parse(await fs.readFile(join(root, 'apps/threadplane/.build-evidence.json'), 'utf8')));
@@ -1629,7 +1649,7 @@ test('genuine current146 plan admits exact roles before the first destination fa
     snapshot.acquisition.members.length = 0; expect(session!.snapshotAcquisition().acquisition.members).toHaveLength(146);
   } finally {if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
 });
-test('registered session preserves actual member candidate on destination failure and new finalization writer persists pure partial snapshot', async () => {
+test('registered session preserves actual member candidate on destination failure and new finalization writer persists pure partial snapshot', {timeout:provenanceIntegrationBodyMs}, async () => {
   const output = await localOutput('comparison-acquisition-partial-');
   const writer = await ComparisonArtifactWriter.create(output), owner = caseOwner();
   let session: import('./comparison-provenance.js').ComparisonProvenanceSession | undefined, streams = 0, disposed = false;
@@ -1662,7 +1682,7 @@ test('registered session preserves actual member candidate on destination failur
     await expect(session!.recheckBeforeServing()).rejects.toThrow();
   } finally {if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
 });
-test('actual source close rejection cannot publish a copied digest and independently completes the destination', async () => {
+test('actual source close rejection cannot publish a copied digest and independently completes the destination', {timeout:provenanceIntegrationBodyMs}, async () => {
   const output = await localOutput('comparison-close-order-');
   const writer = await ComparisonArtifactWriter.create(output), owner = caseOwner();
   let session: import('./comparison-provenance.js').ComparisonProvenanceSession | undefined, fd: FileHandle | undefined, destinationCompleted = false, disposed = false;
@@ -1693,7 +1713,7 @@ test('actual source close rejection cannot publish a copied digest and independe
     record.realClosedProof = true; capturedFileCase().retainPaths = true; // Existing local proof, not sharedgate exception.
   } finally {fileOperations.opened = undefined; if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
 });
-test.each(['same-size source', 'ancestor substitution', 'source after destination completion', 'source after all copies'])('actual %s rejects pinned copy facts', async mutation => {
+test.each(['same-size source', 'ancestor substitution', 'source after destination completion', 'source after all copies'])('actual %s rejects pinned copy facts', {timeout:provenanceIntegrationBodyMs}, async mutation => {
   const output = await localOutput('comparison-source-mutation-');
   const writer = await ComparisonArtifactWriter.create(output), owner = caseOwner();
   let session: import('./comparison-provenance.js').ComparisonProvenanceSession | undefined, disposed = false, copies = 0, workers = 0;
@@ -1720,7 +1740,7 @@ test.each(['same-size source', 'ancestor substitution', 'source after destinatio
     expect(snapshot.payloads.every(row => row.status === 'not-attempted')).toBe(true);
   } finally {processOperations.created = undefined; if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
 });
-test.each(exactIdentityBoundaries)('exact provenance rejects rounded identity contradiction at %s', {timeout:exactIdentityIntegrationBodyMs}, async boundary => {
+test.each(exactIdentityBoundaries)('exact provenance rejects rounded identity contradiction at %s', {timeout:provenanceIntegrationBodyMs}, async boundary => {
   const fileCase = capturedFileCase(), original = fileCase.original!;
   const diagnostic = installExactIdentityDiagnostic(fileCase,original,boundary);
   exactPoint(diagnostic,'output-initializing');
@@ -1798,7 +1818,7 @@ test.each(exactIdentityBoundaries)('exact provenance rejects rounded identity co
     disposed = true; expect((await firstLocalDisposal(owner)).status).toBe('complete'); await owner.ownershipSettled; exactOwnershipSettled(fileCase); expect(owner.canContinue).toBe(true);
   } finally {exactPoint(diagnostic,'finally-entered'); exactObserve(diagnostic,'worker observation end',() => {diagnostic.workerObservationEnded = true;}); exactEvent(diagnostic,'actual worker creation observer span ended'); fileOperations.opened = undefined; fileOperations.statted = undefined; processOperations.created = undefined; if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; exactOwnershipSettled(fileCase); }
 });
-test('actual late source open is adopted first and closes after generation revocation', async () => {
+test('actual late source open is adopted first and closes after generation revocation', {timeout:provenanceIntegrationBodyMs}, async () => {
   const output = await localOutput('comparison-late-open-');
   const writer = await ComparisonArtifactWriter.create(output), owner = caseOwner();
   let release!: () => void, entered!: () => void, fd: FileHandle | undefined, disposed = false;
@@ -1820,7 +1840,7 @@ test('actual late source open is adopted first and closes after generation revoc
     await expect(fd!.stat()).rejects.toThrow(); expect(owner.canContinue).toBe(true);
   } finally {release(); fileOperations.opened = undefined; if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
 });
-test.each(['instrumentation/pre-navigation.js', 'provenance/acquisition.json'])('actual immutable %s destination cannot heal its first rejected command', async failedPath => {
+test.each(['instrumentation/pre-navigation.js', 'provenance/acquisition.json'])('actual immutable %s destination cannot heal its first rejected command', {timeout:provenanceIntegrationBodyMs}, async failedPath => {
   const fileCase = capturedFileCase(), current = originalCase(), fault = Error('actual immutable destination command rejected');
   let faultReached = false, setupError:unknown;
   const facts = {failedPath,faultReached:false,streamAttempts:0,workerObservationEnabled:Boolean(current.localDisposalDiagnostic),observedWorkers:0,observedWorkerCloses:0}; current.repairFacts = facts;
@@ -1915,7 +1935,7 @@ async function acquired(operation: (session: Session) => Promise<void>, cleanupS
     expect(completedSession!.snapshotAcquisition().acquisition.status).toBe('complete');
   } finally {if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
 }
-test('genuine complete97 acquisition payload persistence and actual disposal fit the original body budget', async () => {await acquired(async () => {});});
+test('genuine complete97 acquisition payload persistence and actual disposal complete under production ownership', {timeout:provenanceIntegrationBodyMs}, async () => {await acquired(async () => {});});
 test.each(['close rejection', 'injected path identity contradiction', 'rounded adjacent64-bit inode contradiction', 'rounded native FD inode contradiction'] as const)('native Git owned header rejects actual FD %s without mutating system files', async failure => {
   let nativeFd: FileHandle | undefined, closed = false, closes = 0, observedFD = false, reads = 0;
   const canonical = await fs.realpath('/usr/bin/git');
