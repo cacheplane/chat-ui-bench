@@ -29,7 +29,7 @@ import {tmpdir,devNull} from 'node:os';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import {ComparisonArtifactWriter} from './comparison-artifacts.js';
-import {ComparisonOwnership} from './comparison-ownership.js';
+import {ComparisonOwnership, COMPARISON_STAGE_BUDGETS} from './comparison-ownership.js';
 import {resolveComparisonThreadplaneProfile, recheckComparisonThreadplaneProfile} from './comparison-threadplane.js';
 import {comparisonProvenanceAcquisitionSchema, adapterBuildSchema, comparisonInstrumentationBuildSchema} from '@chat-ui-bench/contract';
 import {createHash} from 'node:crypto';
@@ -78,6 +78,9 @@ type FileCase = {
   exactIdentityDiagnostic?:ExactIdentityDiagnostic;
 };
 const exactIdentityBoundaries = ['FD during copy','leaf between passes','ancestor between passes','fresh after assembly','explicit pre-serving','mtimeNs','ctimeNs'] as const;
+// Test harness envelope for setup, disposal and control overhead; production deadlines stay unchanged.
+const exactIdentityControlMarginMs = 5000;
+const exactIdentityIntegrationBodyMs = COMPARISON_STAGE_BUDGETS.setup + COMPARISON_STAGE_BUDGETS.disposal + exactIdentityControlMarginMs;
 const exactIdentityCaseNames = new Set<string>(exactIdentityBoundaries.map(boundary => `exact provenance rejects rounded identity contradiction at ${boundary}`));
 const exactPoints = ['body-entered','output-initializing','output-initialized','writer-initializing','writer-initialized','assertions-entered','finally-entered','teardown-before-FIRST-start','whole-body-settled'] as const;
 type ExactPoint = typeof exactPoints[number];
@@ -248,10 +251,13 @@ function test(name:string, optionsOrOperation:TestOptions | ((context:TestContex
 namespace test {
   export function each<T>(rows:readonly T[]) {
     type Args = T extends readonly [...infer Values] ? Values : [T];
-    return (name:string, operation:(...values:Args) => unknown) => nativeTest.for(rows)(name,async (row,context) => {
-      const current = fileCases.get(context.task)!; fileCoordinator.active(current);
-      await trackedBody(current,() => operation(...(Array.isArray(row) ? row : [row]) as Args));
-    });
+    return (name:string, optionsOrOperation:TestOptions | ((...values:Args) => unknown), operation?: (...values:Args) => unknown) => {
+      const options = typeof optionsOrOperation === 'function' ? {} : optionsOrOperation, body = typeof optionsOrOperation === 'function' ? optionsOrOperation : operation!;
+      return nativeTest.for(rows)(name,options,async (row,context) => {
+        const current = fileCases.get(context.task)!; fileCoordinator.active(current);
+        await trackedBody(current,() => body(...(Array.isArray(row) ? row : [row]) as Args));
+      });
+    };
   }
 }
 async function persistForensic(current:FileCase, name:string, facts:unknown, write:(path:string,data:string) => Promise<void> = (path,data) => fs.writeFile(path,data,{flag:'wx'})) {
@@ -1574,7 +1580,7 @@ afterEach(async ({task}) => {
   if (observation && observation.disposal !== 'N/A') disposals.push({outcome:{status:'fulfilled',value:observation.disposal},failures:current.gate!.owner.failures,allowed:current.name === nativeCloseFailureCase && outcomes[3].status === 'fulfilled'});
   for (const [index,record] of (fileCase.localOwners ?? []).entries()) {const outcome = localResults[index]; if (!outcome) throw Error('Missing local disposal observation'); disposals.push({outcome,failures:record.owner.failures,allowed:record.realClosedProof && outcomes[3].status === 'fulfilled'});}
   const primary = selectPrimary(fileCase,disposals,[outcomes[0],outcomes[1],outcomes[3]]);
-  await preservePrimary(primary,fileCase,() => persistForensic(fileCase,resourceSafe ? 'settled' : 'unsafe', {test:current.name, allocation:{hookMs:10000, bodyMs:5000, cleanupHookMs:10000, ownerBudgets:{setup:60000,replay:30000,disposal:10000}}, root:current.root, output:current.output, localPaths:[...(fileCase.localPaths ?? [])], taskState:task.result?.state, phases:current.phases, preparationSettled:current.preparationSettled, hookSettled:current.hookSettled, bodySettled:fileCase.bodySettled, workSettled:current.workSettled, resourceSafe, observation:observation ?? 'N/A', localOwnership:(fileCase.localOwners ?? []).map((record,index) => ({first:localResults[index],failures:record.owner.failures,canContinue:record.owner.canContinue,actualOwnershipSettled:true,realClosedProof:record.realClosedProof})), failures:current.gate?.owner.failures ?? [], primary:primary?.reason instanceof Error ? primary.reason.message : primary ? 'non-Error' : null, evidenceErrors:fileCase.evidenceErrors.map(row => row instanceof Error ? row.message : 'non-Error'), collectorError:current.collectorError, metadataReads:current.metadataReads,repairFacts:current.repairFacts,localDiagnostic:current.localDisposalDiagnostic ? {phaseAttempts:current.phaseAttempts ?? 0,phaseCount:current.phases.length,limit:64,truncated:(current.phaseAttempts ?? 0) > current.phases.length} : undefined,diagnostic:snapshotGitDiagnostic(current),diagnosticPending:current.diagnosticPending, outcomes:outcomes.map(row => row.status === 'rejected' ? {status:row.status,reason:row.reason instanceof Error ? row.reason.message : 'non-Error'} : {status:row.status})}));
+  await preservePrimary(primary,fileCase,() => persistForensic(fileCase,resourceSafe ? 'settled' : 'unsafe', {test:current.name, allocation:{hookMs:10000, bodyMs:exactIdentityCaseNames.has(current.name) ? exactIdentityIntegrationBodyMs : 5000, cleanupHookMs:10000, ownerBudgets:{setup:60000,replay:30000,disposal:10000}}, root:current.root, output:current.output, localPaths:[...(fileCase.localPaths ?? [])], taskState:task.result?.state, phases:current.phases, preparationSettled:current.preparationSettled, hookSettled:current.hookSettled, bodySettled:fileCase.bodySettled, workSettled:current.workSettled, resourceSafe, observation:observation ?? 'N/A', localOwnership:(fileCase.localOwners ?? []).map((record,index) => ({first:localResults[index],failures:record.owner.failures,canContinue:record.owner.canContinue,actualOwnershipSettled:true,realClosedProof:record.realClosedProof})), failures:current.gate?.owner.failures ?? [], primary:primary?.reason instanceof Error ? primary.reason.message : primary ? 'non-Error' : null, evidenceErrors:fileCase.evidenceErrors.map(row => row instanceof Error ? row.message : 'non-Error'), collectorError:current.collectorError, metadataReads:current.metadataReads,repairFacts:current.repairFacts,localDiagnostic:current.localDisposalDiagnostic ? {phaseAttempts:current.phaseAttempts ?? 0,phaseCount:current.phases.length,limit:64,truncated:(current.phaseAttempts ?? 0) > current.phases.length} : undefined,diagnostic:snapshotGitDiagnostic(current),diagnosticPending:current.diagnosticPending, outcomes:outcomes.map(row => row.status === 'rejected' ? {status:row.status,reason:row.reason instanceof Error ? row.reason.message : 'non-Error'} : {status:row.status})}));
   if (outcomes[2].status === 'rejected') throw outcomes[2].reason;
   expect(current.workSettled).toBe(true);
   if (current.session) expect(current.session.snapshotAcquisition().acquisition.status).toBe('complete');
@@ -1714,7 +1720,7 @@ test.each(['same-size source', 'ancestor substitution', 'source after destinatio
     expect(snapshot.payloads.every(row => row.status === 'not-attempted')).toBe(true);
   } finally {processOperations.created = undefined; if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
 });
-test.each(exactIdentityBoundaries)('exact provenance rejects rounded identity contradiction at %s', async boundary => {
+test.each(exactIdentityBoundaries)('exact provenance rejects rounded identity contradiction at %s', {timeout:exactIdentityIntegrationBodyMs}, async boundary => {
   const fileCase = capturedFileCase(), original = fileCase.original!;
   const diagnostic = installExactIdentityDiagnostic(fileCase,original,boundary);
   exactPoint(diagnostic,'output-initializing');
