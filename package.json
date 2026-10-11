@@ -18,7 +18,8 @@
     "test:browser": "npm run build && vitest run --config vitest.browser.config.ts",
     "bench:calibrate": "node packages/runner/dist/cli.js",
     "bench:analyze": "node packages/analyzer/dist/cli.js",
-    "test:browser:threadplane": "npm run build && vitest run --config vitest.threadplane.browser.config.ts"
+    "test:browser:threadplane": "npm run build && vitest run --config vitest.threadplane.browser.config.ts",
+    "bench:long-thread": "node packages/runner/dist/long-thread-main.js"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
