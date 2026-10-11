@@ -1,4 +1,4 @@
-import {test, expect} from 'vitest';
+import {test, expect, describe, beforeEach, afterEach, type TestContext} from 'vitest';
 import {spawn, execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {access, cp, mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
@@ -103,14 +103,92 @@ test('wire writer requires callback even when write returns true and rejects clo
   await Promise.resolve(); expect(settled).toBe(false);
   stream.emit('close'); await expect(writing).rejects.toThrow('worker-write-failed');
 });
-test('fresh actual original transitive imports ignore the primed parent module cache', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'comparison-worker-original-'));
-  try {
-    for (const path of ['packages/runner/dist', 'packages/contract/dist', 'node_modules/zod']) await cp(join(process.cwd(), path), join(root, path), {recursive: true});
-    await mkdir(join(root, 'node_modules/@chat-ui-bench/contract'), {recursive: true});
-    await cp(join(process.cwd(), 'packages/contract/package.json'), join(root, 'node_modules/@chat-ui-bench/contract/package.json'));
-    await cp(join(root, 'packages/contract/dist'), join(root, 'node_modules/@chat-ui-bench/contract/dist'), {recursive: true});
-    await writeFile(join(root, 'package.json'), '{"type":"module"}');
+describe('fresh original worker cache fixture lifecycle', () => {
+  const states = new WeakMap<TestContext['task'], {body: () => Promise<void>; cleanup: () => Promise<void>}>();
+  beforeEach(context => {
+  const rows: {phase: string; boundary: string; elapsedMs: number | null; durationMs?: number | null}[] = [];
+  const pending = new Set<string>();
+  let attempts = 0, diagnosticErrors = 0, anchor: bigint | undefined;
+  const elapsed = (): number | null => {
+    try {return anchor === undefined ? null : Number(process.hrtime.bigint() - anchor) / 1e6;}
+    catch {diagnosticErrors++; return null;}
+  };
+  try {anchor = process.hrtime.bigint();} catch {diagnosticErrors++;}
+  const facts = {
+    setup: 'not-started', body: 'not-started', cleanup: 'not-started', callback: 'not-started', removal: 'not-started', oracle: 'not-reached', root: '',
+    parentCoverage: 'unavailable', parentCloses: [false, false, false, false], innerWorkerClosureCoverage: 'unavailable',
+    firstOperationError: {} as Record<string, string>, removalError: {} as Record<string, string>,
+  };
+  const project = (error: unknown): Record<string, string> => {
+    const result: Record<string, string> = {};
+    try {
+      if (typeof error === 'object' && error !== null) for (const key of ['name', 'message', 'code']) {
+        const field = Object.getOwnPropertyDescriptor(error, key);
+        if (field && 'value' in field && typeof field.value === 'string') result[key] = field.value.slice(0, 256);
+      }
+    } catch {diagnosticErrors++;}
+    return result;
+  };
+  let firstOperationRejected = false, failureIssued = false, lateIssued = false;
+  const note = (phase: string, boundary: string, started?: number | null): void => {
+    const now = elapsed(); attempts++;
+    if (rows.length < 64) rows.push({phase, boundary, elapsedMs: now,
+      ...(started === undefined ? {} : {durationMs: now === null || started === null ? null : now - started})});
+  };
+  const phase = <T>(name: string, operation: () => Promise<T>): Promise<T> => {
+    const started = elapsed(); pending.add(name); note(name, 'entered');
+    const rejected = (error: unknown): void => {
+      if (name === 'removal') facts.removalError = project(error);
+      else if (!firstOperationRejected) {firstOperationRejected = true; facts.firstOperationError = project(error);}
+    };
+    let original: Promise<T>;
+    try {original = operation();}
+    catch (error) {
+      try {note(name, 'rejected', started); rejected(error); pending.delete(name);} catch {diagnosticErrors++;}
+      throw error;
+    }
+    try {
+      void original.then(() => {
+        try {note(name, 'fulfilled', started); pending.delete(name);} catch {diagnosticErrors++;}
+      }, error => {
+        try {note(name, 'rejected', started); rejected(error); pending.delete(name);} catch {diagnosticErrors++;}
+      });
+    } catch {diagnosticErrors++;}
+    return original;
+  };
+  const emit = (point: string): void => {
+    try {
+      const snapshot = {point, elapsedMs: elapsed(), ...facts, parentCloses: [...facts.parentCloses],
+        firstOperationError: {...facts.firstOperationError}, removalError: {...facts.removalError},
+        pending: [...pending], rows: rows.map(row => ({...row})), attempts, limit: 64, truncated: attempts > rows.length, diagnosticErrors, failureHookObserved: failureIssued};
+      let encoded = JSON.stringify(snapshot);
+      while (Buffer.byteLength(encoded, 'utf8') > 16384 && snapshot.rows.length) {
+        snapshot.rows.pop(); snapshot.truncated = true; encoded = JSON.stringify(snapshot);
+      }
+      if (Buffer.byteLength(encoded, 'utf8') > 16384) encoded = JSON.stringify({...snapshot, root: '', rows: [], firstOperationError: {}, removalError: {}, truncated: true});
+      console.error('comparison worker-cache diagnostic:', encoded);
+    } catch {diagnosticErrors++;}
+  };
+  context.onTestFailed(() => {if (!failureIssued) {failureIssued = true; emit('actual framework failure hook');}});
+  let root: string | undefined;
+  let setup: Promise<void> | undefined, body: Promise<void> | undefined, cleanup: Promise<void> | undefined;
+  const receipt = (operation: Promise<void>, lane: 'setup' | 'body' | 'cleanup'): void => {
+    const terminal = (state: string): void => {
+      try {
+        facts[lane] = state; note(`actual ${lane} promise`, state);
+        if (lane === 'cleanup' && failureIssued && !lateIssued) {lateIssued = true; emit('actual late cleanup settlement');}
+      } catch {diagnosticErrors++;}
+    };
+    try {void operation.then(() => {terminal('fulfilled');}, () => {terminal('rejected');});}
+    catch {diagnosticErrors++;}
+  };
+  states.set(context.task, {
+    body: () => {
+      if (body) throw new Error('worker-cache body already started');
+      if (!root) throw new Error('worker-cache setup did not supply a root');
+      const actualRoot = root;
+      facts.body = 'pending';
+      body = (async () => {
     const script = `
       import {assembleComparisonInstaller} from './packages/runner/dist/comparison-installer.js';
       import {readFile,writeFile} from 'node:fs/promises';
@@ -130,9 +208,78 @@ test('fresh actual original transitive imports ignore the primed parent module c
         const fresh=JSON.parse(Buffer.concat(chunks).toString());
         process.stdout.write(JSON.stringify({code,cacheUnchanged:assembleComparisonInstaller(pre,main).installerSha256===cached.installerSha256,freshChanged:fresh.installerSha256!==cached.installerSha256,marker:fresh.preNavigation.includes('private original dependency change')}));
       });`;
-    await writeFile(join(root, 'prime-original.mjs'), script);
-    const result = await promisify(execFile)(process.execPath, ['prime-original.mjs', JSON.stringify([canonicalSerialize(preOptions), canonicalSerialize(mainOptions)])], {cwd: root, env: {NODE_DISABLE_COMPILE_CACHE: '1'}});
+    await phase('write original parent script', () => writeFile(join(actualRoot, 'prime-original.mjs'), script));
+    const result = await phase('native execFile', () => {
+      const execution = promisify(execFile)(process.execPath, ['prime-original.mjs', JSON.stringify([canonicalSerialize(preOptions), canonicalSerialize(mainOptions)])], {cwd: actualRoot, env: {NODE_DISABLE_COMPILE_CACHE: '1'}});
+      facts.callback = 'pending';
+      void execution.then(() => {facts.callback = 'fulfilled';}, () => {facts.callback = 'rejected';});
+      let installed = 0;
+      try {
+        const child = execution.child;
+        if (child) facts.parentCoverage = 'partial';
+        for (let index = 0; child && index < 4; index++) {
+          try {
+            const emitter = index === 0 ? child : index === 1 ? child.stdin : index === 2 ? child.stdout : child.stderr;
+            if (emitter) {emitter.once('close', () => {
+              try {facts.parentCloses[index] = true; note(`parent close ${index}`, 'received');} catch {diagnosticErrors++;}
+            }); installed++;}
+          } catch {diagnosticErrors++;}
+        }
+      } catch {diagnosticErrors++;}
+      if (installed === 4) facts.parentCoverage = 'installed';
+      return execution;
+    });
+    note('assertions', 'entered');
+    try {
     expect(result.stderr).toBe('');
     expect(JSON.parse(result.stdout)).toEqual({code: 0, cacheUnchanged: true, freshChanged: true, marker: true});
-  } finally {await rm(root, {recursive: true, force: true});}
+    facts.oracle = 'passed'; note('assertions', 'fulfilled');
+    } catch (error) {
+      facts.oracle = 'failed'; note('assertions', 'rejected');
+      if (!firstOperationRejected) {firstOperationRejected = true; facts.firstOperationError = project(error);}
+      throw error;
+    }
+      })();
+      receipt(body, 'body');
+      return body;
+    },
+    cleanup: () => {
+      if (cleanup) return cleanup;
+      facts.cleanup = 'pending';
+      cleanup = (async () => {
+        await Promise.allSettled([...(setup ? [setup] : []), ...(body ? [body] : [])]);
+        if (root) {
+          const actualRoot = root;
+          facts.removal = 'pending';
+          try {await phase('removal', () => rm(actualRoot, {recursive: true, force: true})); facts.removal = 'fulfilled';}
+          catch (error) {facts.removal = 'rejected'; throw error;}
+        }
+      })();
+      receipt(cleanup, 'cleanup');
+      return cleanup;
+    },
+  });
+  facts.setup = 'pending';
+  setup = (async () => {
+    const actualRoot = await phase('mkdtemp', () => mkdtemp(join(tmpdir(), 'comparison-worker-original-')));
+    root = actualRoot; facts.root = actualRoot.slice(0, 1024);
+    for (const path of ['packages/runner/dist', 'packages/contract/dist', 'node_modules/zod']) await phase(`copy ${path}`, () => cp(join(process.cwd(), path), join(actualRoot, path), {recursive: true}));
+    await phase('mkdir package resolution', () => mkdir(join(actualRoot, 'node_modules/@chat-ui-bench/contract'), {recursive: true}));
+    await phase('copy contract metadata', () => cp(join(process.cwd(), 'packages/contract/package.json'), join(actualRoot, 'node_modules/@chat-ui-bench/contract/package.json')));
+    await phase('second contract dist copy', () => cp(join(actualRoot, 'packages/contract/dist'), join(actualRoot, 'node_modules/@chat-ui-bench/contract/dist'), {recursive: true}));
+    await phase('write root metadata', () => writeFile(join(actualRoot, 'package.json'), '{"type":"module"}'));
+  })();
+  receipt(setup, 'setup');
+  return setup;
+  });
+  test('fresh actual original transitive imports ignore the primed parent module cache', context => {
+    const state = states.get(context.task);
+    if (!state) throw new Error('worker-cache task state missing');
+    return state.body();
+  });
+  afterEach(context => {
+    const state = states.get(context.task);
+    if (!state) throw new Error('worker-cache cleanup task state missing');
+    return state.cleanup();
+  });
 });

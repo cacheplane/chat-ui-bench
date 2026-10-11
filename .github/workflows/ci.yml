@@ -81,3 +81,17 @@ jobs:
             ${{ runner.temp }}/ci-evidence/threadplane-conformance-independent-*/
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Preserve comparison failure evidence
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: comparison-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ci-evidence/comparison-forensic-*/
+            ${{ runner.temp }}/ci-evidence/comparison-acquisition-original-*/
+            ${{ runner.temp }}/ci-evidence/comparison-exact-source-*/
+            ${{ runner.temp }}/ci-evidence/comparison-profile-output-*/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7

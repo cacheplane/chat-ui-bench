@@ -63,7 +63,7 @@ function context(): ComparisonSlotContext {
   const identity = comparisonIdentitySchema.parse(Object.fromEntries(Object.entries(descriptor).filter(([key]) => !['seed', 'mode', 'artifactDirectory'].includes(key))));
   return {descriptor, identity, fixture: createLongThreadFixture({seed: 1, historyCount: 100, responseBytes: 6400, journey: 'follow'}), ownership: {signal: new AbortController().signal, generation: 1, stage: 'setup', startedAtHostMs: 0, deadlineAtHostMs: 60000, remainingMs: () => 60000, assertActive() {}, async adopt() {}}, writer: {async text() {throw Error('unexpected write');}, async json() {throw Error('unexpected write');}, async append() {throw Error('unexpected write');}, async appendSerialized() {throw Error('unexpected write');}, async stream() {throw Error('unexpected stream');}}};
 }
-type LocalOwnerRecord = {owner:ComparisonOwnership; current:FileCase; first?:ReturnType<ComparisonOwnership['dispose']>; realClosedProof:boolean};
+type LocalOwnerRecord = {owner:ComparisonOwnership; current:FileCase; assertGeneration:() => void; first?:ReturnType<ComparisonOwnership['dispose']>; realClosedProof:boolean};
 type FileCase = {
   task:TestContext['task']; generation:number; admitted:boolean; blocked?:string; abandoned:boolean;
   body?:Promise<unknown>; bodySettled:boolean; innerCleanup?:Promise<void>; rootCleanup?:Promise<void>; cleanupSettled:boolean; safe:boolean; managed?:boolean; resourceSafe?:boolean;
@@ -75,7 +75,148 @@ type FileCase = {
   restorations?:{restore:() => void; restored:() => boolean}[];
   restoration?:Promise<void>;
   processesStatus?:{first:string; actualClosed:number}[];
+  exactIdentityDiagnostic?:ExactIdentityDiagnostic;
 };
+const exactIdentityBoundaries = ['FD during copy','leaf between passes','ancestor between passes','fresh after assembly','explicit pre-serving','mtimeNs','ctimeNs'] as const;
+const exactIdentityCaseNames = new Set<string>(exactIdentityBoundaries.map(boundary => `exact provenance rejects rounded identity contradiction at ${boundary}`));
+const exactPoints = ['body-entered','output-initializing','output-initialized','writer-initializing','writer-initialized','assertions-entered','finally-entered','teardown-before-FIRST-start','whole-body-settled'] as const;
+type ExactPoint = typeof exactPoints[number];
+type ExactIdentityDiagnostic = {
+  current:FileCase; original:OriginalCaseState; assertGeneration:() => void; boundary:string; taskId:string; testName:string;
+  dependencies:{clock:() => number; stringify:(value:unknown) => string; log:(line:string) => void};
+  anchor:number | null; events:{event:string;hostElapsedMs:number | null}[]; eventAttempts:number;
+  point:ExactPoint; points:Record<ExactPoint,number | null>;
+  observerErrorCount:number; observerErrors:string[]; summaryIssued:boolean;
+  wholeBody:{status:'pending' | 'fulfilled' | 'rejected'}; wholeBodyError:unknown;
+  first:{status:'not-invoked' | 'pending' | 'fulfilled' | 'rejected'; resultStatus?:string; canContinue?:boolean}; firstError:unknown;
+  stage:string; stagePromise:'not-invoked' | 'pending' | 'fulfilled' | 'rejected'; callback:string; acquisition:string; ownershipSettled:boolean;
+  stageFacts:Record<string,string | number | null>; firstFacts:Record<string,string | number | null>; firstFailures:{stage:string;message:string;resource:string | null}[];
+  changed:boolean; reached:boolean; streamAttempts:number; streamAdopted:number; textAttempts:number;
+  workerCoverage:'not-installed' | 'installed' | 'partial'; workerObservationEnded:boolean; workers:{closes:boolean[];installed:boolean[]}[];
+};
+function exactObserverFailure(value:ExactIdentityDiagnostic,label:string) {
+  value.observerErrorCount++; if (value.observerErrors.length < 8) value.observerErrors.push(label);
+}
+function exactObserve(value:ExactIdentityDiagnostic,label:string,operation:() => void) {
+  try {value.assertGeneration(); operation();} catch {exactObserverFailure(value,label);}
+}
+function exactErrorProjection(error:unknown):Record<string,string> {
+  if (typeof error !== 'object' || error === null) return {kind:'unknown'};
+  const output:Record<string,string> = {};
+  for (const key of ['name','message','code']) {
+    const field = Object.getOwnPropertyDescriptor(error,key);
+    if (field && 'value' in field && typeof field.value === 'string') output[key] = field.value.slice(0,256);
+  }
+  return Object.keys(output).length ? output : {kind:'unknown'};
+}
+function exactResultProjection(result:unknown):Record<string,string | number | null> {
+  const output:Record<string,string | number | null> = {};
+  if (typeof result !== 'object' || result === null) return output;
+  const status = Object.getOwnPropertyDescriptor(result,'status');
+  if (status && 'value' in status && typeof status.value === 'string') output.status = status.value.slice(0,32);
+  const deadline = Object.getOwnPropertyDescriptor(result,'deadline');
+  if (deadline && 'value' in deadline && typeof deadline.value === 'object' && deadline.value !== null) {
+    for (const key of ['stage','budgetMs','startedAtHostMs','deadlineAtHostMs','finishedAtHostMs','outcome','reason']) {
+      const field = Object.getOwnPropertyDescriptor(deadline.value,key);
+      if (field && 'value' in field) {
+        const value:unknown = field.value;
+        if (typeof value === 'string') output[key] = value.slice(0,256);
+        else if (typeof value === 'number' && Number.isFinite(value) || value === null) output[key] = value;
+      }
+    }
+  }
+  return output;
+}
+function exactElapsed(value:ExactIdentityDiagnostic):number | null {
+  try {const now = value.dependencies.clock(); if (!Number.isFinite(now) || value.anchor === null) throw Error('Unavailable diagnostic clock'); const elapsed = now - value.anchor; if (!Number.isFinite(elapsed)) throw Error('Unavailable diagnostic elapsed time'); return elapsed;}
+  catch {exactObserverFailure(value,'clock unavailable'); return null;}
+}
+function exactTiming(value:ExactIdentityDiagnostic,point:ExactPoint = value.point) {
+  return {snapshotPoint:point,snapshotElapsedMs:exactElapsed(value),points:{...value.points}};
+}
+function snapshotExactIdentityDiagnostic(value:ExactIdentityDiagnostic,point:ExactPoint = value.point) {
+  let bodyError:Record<string,string> = {kind:'unknown'}, firstError:Record<string,string> = {kind:'unknown'};
+  try {bodyError = exactErrorProjection(value.wholeBodyError); firstError = exactErrorProjection(value.firstError);} catch {exactObserverFailure(value,'error projection');}
+  return {taskId:value.taskId,test:value.testName,generation:value.current.generation,boundary:value.boundary.slice(0,128),clock:'host performance.now only',hostAnchorMs:value.anchor,...exactTiming(value,point),eventLimit:64,eventAttempts:value.eventAttempts,retainedEvents:value.events.length,eventTruncated:value.eventAttempts > value.events.length,encodingTruncated:false,events:value.events.map(row => ({...row})),wholeBody:{...value.wholeBody},wholeBodyError:bodyError,first:{...value.first},firstError,firstFacts:{...value.firstFacts},firstFailures:value.firstFailures.map(row => ({...row})),stage:value.stage,stagePromise:value.stagePromise,stageFacts:{...value.stageFacts},callback:value.callback,acquisition:value.acquisition,ownershipSettled:value.ownershipSettled,changed:value.changed,reached:value.reached,streamAttempts:value.streamAttempts,streamReturnedAndAdopted:value.streamAdopted,textAttempts:value.textAttempts,workerCoverage:value.workerCoverage,workerObservationEnded:value.workerObservationEnded,workers:value.workers.map(row => ({actualClose:[...row.closes],observerInstalled:[...row.installed]})),observerErrorCount:value.observerErrorCount,observerErrors:[...value.observerErrors]};
+}
+function exactPublish(value:ExactIdentityDiagnostic) {
+  exactObserve(value,'detached publication',() => {value.original.repairFacts ??= {}; value.original.repairFacts.exactIdentityDiagnostic = snapshotExactIdentityDiagnostic(value);});
+}
+function exactEvent(value:ExactIdentityDiagnostic,event:string) {
+  exactObserve(value,'event clock',() => {
+    value.eventAttempts++;
+    const elapsed = exactElapsed(value);
+    if (value.events.length < 64) value.events.push({event:event.slice(0,96),hostElapsedMs:elapsed});
+  }); exactPublish(value);
+}
+function exactPoint(value:ExactIdentityDiagnostic,point:ExactPoint) {
+  exactObserve(value,'actual lifecycle point',() => {value.point = point; value.points[point] = exactElapsed(value);}); exactEvent(value,point);
+}
+function encodeExactIdentityDiagnostic(value:ExactIdentityDiagnostic):string {
+  try {
+    const facts = snapshotExactIdentityDiagnostic(value);
+    let encoded = value.dependencies.stringify(facts);
+    if (Buffer.byteLength(encoded,'utf8') <= 16384) return encoded;
+    facts.events = []; facts.observerErrors = []; facts.wholeBodyError = {kind:'omitted for byte bound'}; facts.firstError = {kind:'omitted for byte bound'}; facts.eventTruncated = true; facts.encodingTruncated = true; facts.retainedEvents = 0;
+    encoded = value.dependencies.stringify(facts);
+    if (Buffer.byteLength(encoded,'utf8') <= 16384) return encoded;
+  } catch {exactObserverFailure(value,'encoding');}
+  // Generated terminal scalars only: no caller objects, custom encoder, or getters.
+  return JSON.stringify({encodingFallback:true,generation:value.current.generation,...exactTiming(value),wholeBody:{status:value.wholeBody.status},first:{...value.first},stage:value.stage,stagePromise:value.stagePromise,callback:value.callback,acquisition:value.acquisition,ownershipSettled:value.ownershipSettled,changed:value.changed,reached:value.reached,streamAttempts:value.streamAttempts,streamReturnedAndAdopted:value.streamAdopted,textAttempts:value.textAttempts,eventAttempts:value.eventAttempts,eventTruncated:true,workerCoverage:value.workerCoverage,workerObservationEnded:value.workerObservationEnded,workers:value.workers.map(row => ({actualClose:[...row.closes],observerInstalled:[...row.installed]})),observerErrorCount:value.observerErrorCount});
+}
+function exactFailureSummary(value:ExactIdentityDiagnostic,failure:boolean) {
+  if (!failure || value.summaryIssued) return;
+  value.summaryIssued = true;
+  try {value.assertGeneration(); value.dependencies.log(`comparison exact-identity diagnostic: ${encodeExactIdentityDiagnostic(value)}`);} catch {exactObserverFailure(value,'summary logger');}
+  exactPublish(value);
+}
+function installExactIdentityDiagnostic(current:FileCase,original:OriginalCaseState,boundary:string,assertGeneration:() => void = () => fileCoordinator.assert(current),dependencies:Partial<ExactIdentityDiagnostic['dependencies']> = {}) {
+  assertGeneration(); if (current.original !== original || current.exactIdentityDiagnostic) throw Error('Wrong captured diagnostic case');
+  const ordinaryName = `exact provenance rejects rounded identity contradiction at ${boundary}`;
+  const expected = exactIdentityCaseNames.has(ordinaryName) ? ordinaryName : boundary === 'fulfillment' || boundary === 'rejection' ? `exact provenance diagnostic tracks actual held whole-body ${boundary}` : undefined;
+  if (!expected || current.task.name !== expected || original.name !== expected) throw Error('Unselected exact diagnostic task');
+  const value:ExactIdentityDiagnostic = {current,original,boundary,taskId:current.task.id.slice(0,256),testName:original.name.slice(0,256),assertGeneration,dependencies:{clock:() => performance.now(),stringify:JSON.stringify,log:line => console.info(line),...dependencies},anchor:null,point:'body-entered',points:{'body-entered':null,'output-initializing':null,'output-initialized':null,'writer-initializing':null,'writer-initialized':null,'assertions-entered':null,'finally-entered':null,'teardown-before-FIRST-start':null,'whole-body-settled':null},events:[],eventAttempts:0,observerErrorCount:0,observerErrors:[],summaryIssued:false,wholeBody:{status:'pending'},wholeBodyError:undefined,first:{status:'not-invoked'},firstError:undefined,stage:'not-invoked',stagePromise:'not-invoked',callback:'not-invoked',acquisition:'not-invoked',stageFacts:{},firstFacts:{},firstFailures:[],ownershipSettled:false,changed:false,reached:false,streamAttempts:0,streamAdopted:0,textAttempts:0,workerCoverage:'not-installed',workerObservationEnded:false,workers:[]};
+  current.exactIdentityDiagnostic = value;
+  exactObserve(value,'anchor clock',() => {const anchor = value.dependencies.clock(); if (!Number.isFinite(anchor)) throw Error('Unavailable diagnostic anchor'); value.anchor = anchor;}); exactPoint(value,'body-entered'); return value;
+}
+function exactBodyReceipt(current:FileCase,error?:{reason:unknown}) {
+  const value = current.exactIdentityDiagnostic; if (!value) return;
+  exactObserve(value,'actual body receipt',() => {value.wholeBody.status = error ? 'rejected' : 'fulfilled'; if (error) value.wholeBodyError = error.reason;});
+  exactPoint(value,'whole-body-settled');
+  exactFailureSummary(value,!!error || current.task.result?.state === 'fail');
+}
+function exactTeardownDiagnostic(current:FileCase) {
+  const value = current.exactIdentityDiagnostic; if (!value) return;
+  exactPoint(value,'teardown-before-FIRST-start');
+  exactFailureSummary(value,current.task.result?.state === 'fail' || value.wholeBody.status === 'rejected' || current.abandoned && value.wholeBody.status === 'pending');
+}
+function exactOwnershipSettled(current:FileCase) {
+  const value = current.exactIdentityDiagnostic; if (!value) return;
+  exactObserve(value,'actual ownership settlement',() => {value.ownershipSettled = true;}); exactEvent(value,'actual ownership settlement awaited');
+}
+function exactOperation<T>(value:ExactIdentityDiagnostic,lane:'stage' | 'callback' | 'acquisition',promise:Promise<T>):Promise<T> {
+  exactObserve(value,`${lane} entered`,() => {value[lane] = 'pending'; if (lane === 'stage') value.stagePromise = 'pending';}); exactEvent(value,`actual ${lane} promise created`);
+  void promise.then(result => {
+    exactObserve(value,`${lane} fulfillment`,() => {
+      if (lane === 'stage') {value.stagePromise = 'fulfilled'; value.stage = 'fulfilled'; value.stageFacts = exactResultProjection(result); value.stage = typeof value.stageFacts.status === 'string' ? value.stageFacts.status : 'fulfilled';}
+      else value[lane] = 'fulfilled';
+    }); exactEvent(value,`actual ${lane} promise fulfilled`);
+  },() => {exactObserve(value,`${lane} rejection`,() => {value[lane] = 'rejected'; if (lane === 'stage') value.stagePromise = 'rejected';}); exactEvent(value,`actual ${lane} promise rejected`);}).catch(() => {});
+  return promise;
+}
+function exactWorkerCreated(value:ExactIdentityDiagnostic,child:ChildProcessWithoutNullStreams) {
+  exactObserve(value,'actual worker creation receipt',() => {
+    if (value.workers.length >= 2) {value.workerCoverage = 'partial'; return;}
+    const row = {closes:[false,false,false,false],installed:[false,false,false,false]}; value.workers.push(row);
+    for (const [index,emitter] of [child,child.stdin,child.stdout,child.stderr].entries()) {
+      exactInstallCloseObserver(value,row,index,listener => {emitter.once('close',listener);});
+    }
+  }); exactEvent(value,'actual worker creation received');
+}
+function exactInstallCloseObserver(value:ExactIdentityDiagnostic,row:{closes:boolean[];installed:boolean[]},index:number,register:(listener:() => void) => void) {
+  try {register(() => {exactObserve(value,'actual worker close receipt',() => {row.closes[index] = true;}); exactEvent(value,`actual worker close lane ${index}`);}); row.installed[index] = true;}
+  catch {value.workerCoverage = 'partial'; exactObserverFailure(value,'worker close observer installation');}
+}
 function containmentCoordinator() {
   let predecessor:FileCase | undefined, generation = 0;
   return {
@@ -93,7 +234,10 @@ function capturedFileCase():FileCase {const current = actualBody.getStore(); if 
 function trackedBody(current:FileCase, operation:() => unknown):Promise<unknown> {
   current.bodySettled = false;
   const body = Promise.resolve().then(() => actualBody.run(current,operation)).finally(() => {current.bodySettled = true;});
-  current.body = body; void body.catch(() => {}); return body;
+  current.body = body; void body.catch(() => {});
+  // Observe the exact returned promise, after its trailing finally has settled.
+  if (current.exactIdentityDiagnostic || exactIdentityCaseNames.has(current.task.name)) void body.then(() => exactBodyReceipt(current),reason => exactBodyReceipt(current,{reason})).catch(() => {});
+  return body;
 }
 function test(name:string, operation:(context:TestContext) => unknown):void;
 function test(name:string, options:TestOptions, operation:(context:TestContext) => unknown):void;
@@ -236,17 +380,26 @@ function observedProcess(...args:Parameters<typeof api.createObservedComparisonP
   finally {processOperations.created = previous;}
 }
 const localOwnerRecords = new WeakMap<ComparisonOwnership,LocalOwnerRecord>();
-function registerLocalOwner(current:FileCase,owner:ComparisonOwnership):LocalOwnerRecord {
-  fileCoordinator.assert(current);
+function registerLocalOwner(current:FileCase,owner:ComparisonOwnership,assertGeneration:() => void = () => fileCoordinator.assert(current)):LocalOwnerRecord {
+  assertGeneration();
   if (localOwnerRecords.has(owner)) throw Error('Local owner already registered');
-  const record:LocalOwnerRecord = {owner,current,realClosedProof:false};
+  const record:LocalOwnerRecord = {owner,current,assertGeneration,realClosedProof:false};
   localOwnerRecords.set(owner,record); (current.localOwners ??= []).push(record); return record;
 }
 function firstLocalDisposal(owner:ComparisonOwnership):ReturnType<ComparisonOwnership['dispose']> {
   const record = localOwnerRecords.get(owner); if (!record) throw Error('Unregistered local owner');
-  fileCoordinator.assert(record.current);
+  record.assertGeneration();
   if (record.first) return record.first;
+  const diagnostic = record.current.exactIdentityDiagnostic;
+  if (diagnostic) {exactObserve(diagnostic,'FIRST invocation',() => {diagnostic.first.status = 'pending';}); exactEvent(diagnostic,'actual FIRST disposal invoked');}
   const first = owner.dispose(); record.first = first; void first.catch(() => {});
+  if (diagnostic) {
+    void first.then(result => {
+      exactObserve(diagnostic,'FIRST fulfillment',() => {diagnostic.first = {status:'fulfilled',resultStatus:result.status,canContinue:owner.canContinue}; diagnostic.firstFacts = exactResultProjection(result); diagnostic.firstFailures = owner.failures.slice(0,4).map(row => ({stage:row.stage,message:row.message.slice(0,256),resource:row.resource === null ? null : row.resource.slice(0,256)}));}); exactEvent(diagnostic,'actual FIRST disposal fulfilled');
+    },reason => {
+      exactObserve(diagnostic,'FIRST rejection',() => {diagnostic.first.status = 'rejected'; diagnostic.firstError = reason;}); exactEvent(diagnostic,'actual FIRST disposal rejected');
+    }).catch(() => {});
+  }
   const original = record.current.original;
   if (original?.localDisposalDiagnostic) {
     const note = (name:string) => {try {fileCoordinator.assert(record.current); markOriginalCase(original,name);} catch (error) {record.current.evidenceErrors.push(error);}};
@@ -270,6 +423,129 @@ function challengeParent(current:FileCase, values:Record<string,string>, argv?:s
   (current.restorations ??= []).push({restore() {for (const row of saved) {if (row.present) process.env[row.key] = row.value; else delete process.env[row.key];} if (argv) process.execArgv.splice(0,process.execArgv.length,...originalArgv); restored = true;},restored() {return restored && saved.every(row => Object.hasOwn(process.env,row.key) === row.present && process.env[row.key] === row.value) && (!argv || JSON.stringify(process.execArgv) === JSON.stringify(originalArgv));}});
   Object.assign(process.env,values); if (argv) process.execArgv.splice(0,process.execArgv.length,...argv);
 }
+test.each(['fulfillment','rejection'] as const)('exact provenance diagnostic tracks actual held whole-body %s', async scenario => {
+  const outer = capturedFileCase(), coordinator = containmentCoordinator(), current = coordinator.admit(outer.task);
+  const original:OriginalCaseState = current.original = {name:outer.task.name,abandoned:false,preparationSettled:true,hookSettled:true,cleanupStarted:false,workSettled:false,phases:[],started:performance.now(),diagnostic:false};
+  const lines:string[] = [], originalError = Error('actual held diagnostic whole-body rejection');
+  const diagnostic = installExactIdentityDiagnostic(current,original,scenario,() => coordinator.assert(current),{log:line => {lines.push(line); console.info(line);}});
+  const owner = new ComparisonOwnership(); registerLocalOwner(current,owner,() => coordinator.assert(current));
+  let fd:FileHandle | undefined, restoreSpy:(() => void) | undefined, rawCalls:() => number = () => 0;
+  let body:Promise<unknown> | undefined, callback:Promise<void> | undefined, stage:ReturnType<ComparisonOwnership['run']> | undefined;
+  let releaseWork!:() => void, releaseClose!:() => void, releaseTail!:() => void, entered!:() => void;
+  const workHeld = new Promise<void>(resolve => {releaseWork = resolve;}), closeHeld = new Promise<void>(resolve => {releaseClose = resolve;}), tailHeld = new Promise<void>(resolve => {releaseTail = resolve;}), entering = new Promise<void>(resolve => {entered = resolve;});
+  let actualClosed = false, guardError:unknown, proofPassed = false, primary:PromiseRejectedResult | undefined, rawCount = 0;
+  try {
+    exactPoint(diagnostic,'output-initializing');
+    const output = await localOutput('comparison-exact-source-');
+    exactPoint(diagnostic,'output-initialized');
+    fd = await fs.open(join(output,'held-diagnostic-fd'),'w+'); const actualFD = fd;
+    const spy = vi.spyOn(owner,'dispose'); restoreSpy = () => spy.mockRestore(); rawCalls = () => spy.mock.calls.length;
+    body = trackedBody(current,async () => {
+      try {
+        stage = exactOperation(diagnostic,'stage',owner.run('setup',ownership => {
+          callback = exactOperation(diagnostic,'callback',(async () => {
+            await ownership.adopt({name:'actual diagnostic held FD',async close() {await closeHeld; await actualFD.close(); actualClosed = true;}});
+            entered(); await workHeld;
+            try {ownership.assertActive();} catch (error) {guardError = error; throw error;}
+          })()); void callback.catch(() => {}); return callback;
+        })); void stage.catch(() => {});
+        const result = await stage; exactPoint(diagnostic,'assertions-entered'); expect(result.status).toBe('failed'); await callback;
+      } catch (error) {expect(error).toBe(guardError);}
+      finally {
+        exactPoint(diagnostic,'finally-entered');
+        await firstLocalDisposal(owner); await owner.ownershipSettled;
+        exactOwnershipSettled(current); await tailHeld;
+      }
+      if (scenario === 'rejection') throw originalError;
+      return 'actual whole body fulfilled';
+    });
+    expect(body).toBe(current.body); await entering;
+    const before = snapshotExactIdentityDiagnostic(diagnostic);
+    expect(before).toMatchObject({wholeBody:{status:'pending'},first:{status:'not-invoked'},ownershipSettled:false});
+    expect(before.workerCoverage).toBe('not-installed'); expect(before.workerObservationEnded).toBe(false);
+    const first = firstLocalDisposal(owner); expect(firstLocalDisposal(owner)).toBe(first); expect(rawCalls()).toBe(1);
+    current.abandoned = true; exactTeardownDiagnostic(current);
+    expect(lines).toHaveLength(1); expect(lines[0]).toMatch(/^comparison exact-identity diagnostic: /);
+    releaseWork(); releaseClose();
+    expect((await first).status).toBe('complete'); await owner.ownershipSettled;
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(actualClosed).toBe(true); await expect(actualFD.stat()).rejects.toMatchObject({code:'EBADF'});
+    expect(guardError).toBeInstanceOf(Error); if (!(guardError instanceof Error)) throw Error('Missing actual guard rejection'); expect(guardError.message).toBe('Ownership generation revoked or deadline expired');
+    expect(owner.failures).toHaveLength(1); expect(owner.failures[0]).toMatchObject({stage:'setup',message:'Ownership generation revoked or deadline expired',resource:null});
+    expect(snapshotExactIdentityDiagnostic(diagnostic)).toMatchObject({wholeBody:{status:'pending'},first:{status:'fulfilled',resultStatus:'complete'},ownershipSettled:true,stage:'failed',callback:'rejected',workerCoverage:'not-installed',workers:[]});
+    expect(before).toMatchObject({wholeBody:{status:'pending'},first:{status:'not-invoked'},ownershipSettled:false});
+    expect(lines).toHaveLength(1); expect(rawCalls()).toBe(1);
+    // Deliberate failed-registration coverage model, not a worker creation or close.
+    const partialModel = {closes:[false,false,false,false],installed:[false,false,false,false]};
+    exactInstallCloseObserver(diagnostic,partialModel,0,() => {throw Error('injected registration failure');});
+    expect(partialModel).toEqual({closes:[false,false,false,false],installed:[false,false,false,false]});
+    expect(diagnostic.workerCoverage).toBe('partial'); expect(diagnostic.workers).toEqual([]);
+    for (let index = 0; index < 100; index++) exactEvent(diagnostic,'\u0000界'.repeat(96));
+    expect(diagnostic.events).toHaveLength(64); expect(diagnostic.eventAttempts).toBeGreaterThan(100);
+    const retained = snapshotExactIdentityDiagnostic(diagnostic);
+    expect(retained.retainedEvents).toBe(retained.events.length); expect(retained.retainedEvents).toBe(64);
+    const terminal = {wholeBody:{status:'pending'},first:{status:'fulfilled',resultStatus:'complete',canContinue:true},stage:'failed',stagePromise:'fulfilled',callback:'rejected',acquisition:'not-invoked',ownershipSettled:true,changed:false,reached:false,workerCoverage:'partial',workerObservationEnded:false,workers:[]};
+    expect(retained).toMatchObject(terminal); expect(retained.stageFacts.status).toBe('failed');
+    const pointFacts = {...diagnostic.points};
+    const encoded = encodeExactIdentityDiagnostic(diagnostic);
+    expect(Buffer.byteLength(encoded,'utf8')).toBeLessThanOrEqual(16384);
+    const overflow = JSON.parse(encoded);
+    expect(overflow).toMatchObject({...terminal,eventLimit:64,eventAttempts:diagnostic.eventAttempts,eventTruncated:true,encodingTruncated:true,retainedEvents:0,events:[],snapshotPoint:'finally-entered',points:pointFacts});
+    expect(overflow.snapshotElapsedMs).toEqual(expect.any(Number));
+    const hostile = Object.create(null); Object.defineProperty(hostile,'message',{get() {throw Error('arbitrary getter must not run');}});
+    expect(exactErrorProjection(hostile)).toEqual({kind:'unknown'});
+    const hugeError = Error('\u0000界'.repeat(20000)); diagnostic.wholeBodyError = hugeError;
+    expect(Buffer.byteLength(encodeExactIdentityDiagnostic(diagnostic),'utf8')).toBeLessThanOrEqual(16384);
+    diagnostic.wholeBodyError = undefined;
+    const failureCount = diagnostic.observerErrorCount;
+    const hostileProjection = new Proxy({}, {getOwnPropertyDescriptor() {throw Error('injected descriptor projection');}});
+    diagnostic.firstError = hostileProjection; snapshotExactIdentityDiagnostic(diagnostic); diagnostic.firstError = undefined;
+    diagnostic.dependencies.clock = () => {throw Error('injected diagnostic clock');}; exactEvent(diagnostic,'clock failure');
+    expect(diagnostic.observerErrors).toContain('clock unavailable');
+    diagnostic.dependencies.stringify = () => {throw Error('injected diagnostic encoder');};
+    const fallback = JSON.parse(encodeExactIdentityDiagnostic(diagnostic));
+    expect(fallback).toMatchObject({...terminal,encodingFallback:true,snapshotPoint:'finally-entered',snapshotElapsedMs:null,points:pointFacts,eventAttempts:diagnostic.eventAttempts,eventTruncated:true});
+    let loggerFailures = 0;
+    diagnostic.summaryIssued = false; diagnostic.dependencies.log = () => {loggerFailures++; throw Error('injected diagnostic logger');}; exactFailureSummary(diagnostic,true);
+    expect(loggerFailures).toBe(1); expect(diagnostic.summaryIssued).toBe(true);
+    expect(diagnostic.observerErrorCount).toBeGreaterThan(failureCount);
+    expect(diagnostic.wholeBodyError).toBeUndefined(); expect(diagnostic.wholeBody.status).toBe('pending');
+    releaseTail();
+    if (scenario === 'rejection') await expect(body).rejects.toBe(originalError); else await expect(body).resolves.toBe('actual whole body fulfilled');
+    expect(snapshotExactIdentityDiagnostic(diagnostic).wholeBody.status).toBe(scenario === 'rejection' ? 'rejected' : 'fulfilled');
+    expect(diagnostic.wholeBodyError).toBe(scenario === 'rejection' ? originalError : undefined); expect(lines).toHaveLength(1); expect(loggerFailures).toBe(1);
+    const settledFallback = JSON.parse(encodeExactIdentityDiagnostic(diagnostic));
+    expect(settledFallback).toMatchObject({...terminal,wholeBody:{status:scenario === 'rejection' ? 'rejected' : 'fulfilled'},encodingFallback:true,snapshotPoint:'whole-body-settled',snapshotElapsedMs:null,points:{...pointFacts,'whole-body-settled':null}});
+    const priorFacts = original.repairFacts!.exactIdentityDiagnostic;
+    const actualAssert = diagnostic.assertGeneration;
+    diagnostic.assertGeneration = () => {coordinator.assert({...current});}; exactEvent(diagnostic,'wrong generation');
+    expect(original.repairFacts!.exactIdentityDiagnostic).toBe(priorFacts); diagnostic.assertGeneration = actualAssert;
+    expect(coordinator.admit(outer.task).admitted).toBe(false);
+    expect(() => coordinator.assert({...current})).toThrow('Wrong test generation');
+    const successor = coordinator.admit(outer.task); let successorWrites = 0;
+    expect(() => {coordinator.active(successor); successorWrites++;}).toThrow(); expect(successorWrites).toBe(0);
+    proofPassed = true;
+  } catch (error) {primary = {status:'rejected',reason:error};
+  } finally {
+    releaseWork(); releaseClose(); releaseTail();
+    try {
+      const first = firstLocalDisposal(owner); await Promise.allSettled([body,callback,stage,first]); await owner.ownershipSettled;
+      current.resourceSafe = owner.canContinue && actualClosed && current.bodySettled;
+      current.safe = current.resourceSafe && proofPassed && scenario === 'fulfillment';
+      if (scenario === 'rejection') outer.retainPaths = true;
+    } catch (error) {primary ??= {status:'rejected',reason:error}; current.safe = false;
+    } finally {
+      try {if (fd && !actualClosed) await fd.close();}
+      catch (error) {primary ??= {status:'rejected',reason:error}; current.safe = false;}
+      finally {try {rawCount = rawCalls(); restoreSpy?.();} catch (error) {primary ??= {status:'rejected',reason:error}; current.safe = false;}}
+    }
+    await recordRootCleanup(current,async () => {
+      coordinator.assert(current);
+      await preservePrimary(primary,outer,() => persistForensic(outer,'exact-identity-proof',{scenario,proofPassed,actualFDClosed:actualClosed,actualOwnershipSettled:diagnostic.ownershipSettled,resourceSafe:current.resourceSafe ?? false,admissionSafe:current.safe,rawDisposeCalls:rawCount,diagnostic:snapshotExactIdentityDiagnostic(diagnostic),summaryCount:lines.length,summaryBytes:lines.map(line => Buffer.byteLength(line.slice('comparison exact-identity diagnostic: '.length),'utf8')),primary:primary ? exactErrorProjection(primary.reason) : null}));
+    });
+    if (proofPassed) expect(coordinator.admit(outer.task).admitted).toBe(scenario === 'fulfillment');
+  }
+});
 test.each(['complete','close-then-error'] as const)('local FIRST disposal shares actual cleanup across late body revocation %s', async scenario => {
   const current = capturedFileCase(), owner = new ComparisonOwnership(); registerLocalOwner(current,owner);
   const closeError = Error('actual local close after real FD closure');
@@ -1275,13 +1551,16 @@ beforeEach(async ({task}) => {
 afterEach(async ({task}) => {
   const fileCase = fileCases.get(task)!; if (!fileCase.admitted) return;
   const current = fileCase.original!; fileCase.abandoned = true;
+  exactTeardownDiagnostic(fileCase);
+  const exactPending = fileCase.exactIdentityDiagnostic ? snapshotExactIdentityDiagnostic(fileCase.exactIdentityDiagnostic,'teardown-before-FIRST-start') : undefined;
   if (current.gitDiagnostic) {try {current.diagnosticPending = snapshotGitDiagnostic(current);} catch (error) {fileCase.evidenceErrors.push(error);}}
-  pendingForensic(fileCase,{taskId:task.id,test:current.name,state:'pending',bodySettled:fileCase.bodySettled,preparationSettled:current.preparationSettled,hookSettled:current.hookSettled,root:current.root,output:current.output,observation:current.gate?.observation() ?? 'N/A'});
+  pendingForensic(fileCase,{taskId:task.id,test:current.name,state:'pending',bodySettled:fileCase.bodySettled,preparationSettled:current.preparationSettled,hookSettled:current.hookSettled,root:current.root,output:current.output,observation:current.gate?.observation() ?? 'N/A',repairFacts:exactPending ? {exactIdentityDiagnostic:exactPending} : undefined});
   fileCase.innerCleanup = (async () => {
   const localDisposals = (fileCase.localOwners ?? []).map(record => firstLocalDisposal(record.owner));
   const outcomes = await settleOriginalCase(current,fileCase.body);
   const localResults = await Promise.allSettled(localDisposals);
   await Promise.all((fileCase.localOwners ?? []).map(record => record.owner.ownershipSettled));
+  if (fileCase.localOwners?.length) exactOwnershipSettled(fileCase);
   fileCoordinator.assert(fileCase);
   if (current.gitDiagnostic) for (const error of fileOperations.timingErrors) if (!fileCase.evidenceErrors.includes(error)) fileCase.evidenceErrors.push(error);
   await restoreParent(fileCase,'inner-owned-work',current.workSettled && fileCase.bodySettled).catch(() => {});
@@ -1435,9 +1714,14 @@ test.each(['same-size source', 'ancestor substitution', 'source after destinatio
     expect(snapshot.payloads.every(row => row.status === 'not-attempted')).toBe(true);
   } finally {processOperations.created = undefined; if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
 });
-test.each(['FD during copy', 'leaf between passes', 'ancestor between passes', 'fresh after assembly', 'explicit pre-serving', 'mtimeNs', 'ctimeNs'] as const)('exact provenance rejects rounded identity contradiction at %s', async boundary => {
+test.each(exactIdentityBoundaries)('exact provenance rejects rounded identity contradiction at %s', async boundary => {
+  const fileCase = capturedFileCase(), original = fileCase.original!;
+  const diagnostic = installExactIdentityDiagnostic(fileCase,original,boundary);
+  exactPoint(diagnostic,'output-initializing');
   const output = await localOutput('comparison-exact-source-');
-  const writer = await ComparisonArtifactWriter.create(output), owner = caseOwner();
+  exactPoint(diagnostic,'output-initialized'); exactPoint(diagnostic,'writer-initializing');
+  const writer = await ComparisonArtifactWriter.create(output);
+  exactPoint(diagnostic,'writer-initialized'); const owner = caseOwner();
   const leaf = join(root, 'apps/threadplane/.build-evidence.json'), target = boundary === 'ancestor between passes' ? dirname(leaf) : leaf;
   const field = boundary === 'mtimeNs' || boundary === 'ctimeNs' ? boundary : 'ino', base = (1n << 60n) + 1n;
   expect(base).not.toBe(base + 1n); expect(Number(base)).toBe(Number(base + 1n));
@@ -1451,7 +1735,7 @@ test.each(['FD during copy', 'leaf between passes', 'ancestor between passes', '
   };
   fileOperations.statted = (path, stat) => {
     if (path !== target) return stat;
-    if (changed && boundary !== 'FD during copy' && typeof stat.ino === 'bigint') reached = true;
+    if (changed && boundary !== 'FD during copy' && typeof stat.ino === 'bigint') {reached = true; exactObserve(diagnostic,'actual path contradiction reached',() => {diagnostic.reached = true;}); exactEvent(diagnostic,'actual path contradiction reached');}
     return project(stat, changed && boundary !== 'FD during copy');
   };
   fileOperations.opened = async (path, actual) => {
@@ -1461,32 +1745,38 @@ test.each(['FD during copy', 'leaf between passes', 'ancestor between passes', '
     return new Proxy(actual, {get(handle, key) {
       if (key === 'stat') return async (options?: import('node:fs').StatOptions) => {
         const stat = await handle.stat(options as {bigint: true});
-        if (read && changed && boundary === 'FD during copy' && typeof stat.ino === 'bigint') reached = true;
+        if (read && changed && boundary === 'FD during copy' && typeof stat.ino === 'bigint') {reached = true; exactObserve(diagnostic,'actual FD contradiction reached',() => {diagnostic.reached = true;}); exactEvent(diagnostic,'actual FD contradiction reached');}
         return project(stat, changed && (boundary !== 'FD during copy' || read));
       };
       if (key === 'read') return async (...args: Parameters<FileHandle['read']>) => {const value = await handle.read(...args); if (value.bytesRead) read = true; return value;};
       const value = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
     }});
   };
-  processOperations.created = child => {workers++; if (boundary === 'fresh after assembly') child.on('close', () => {changed = true;});};
+  diagnostic.workerCoverage = 'installed';
+  processOperations.created = child => {exactWorkerCreated(diagnostic,child); workers++; if (boundary === 'fresh after assembly') child.on('close', () => {changed = true; exactObserve(diagnostic,'actual post-assembly change',() => {diagnostic.changed = true;}); exactEvent(diagnostic,'actual child close triggered contradiction');});};
   try {
-    const result = await owner.run('setup', async ownership => {
+    exactEvent(diagnostic,'actual setup invocation');
+    const stage = owner.run('setup', ownership => exactOperation(diagnostic,'callback',(async () => {
       const scoped = writer.scoped(() => ownership.assertActive());
       session = api.createComparisonProvenanceSession({...context(), ownership, writer: {...scoped,
-        async text(path, text) {writes++; return scoped.text(path, text);},
+        async text(path, text) {writes++; exactObserve(diagnostic,'actual text attempt',() => {diagnostic.textAttempts++;}); return scoped.text(path, text);},
         async stream(path) {
+          exactObserve(diagnostic,'actual stream attempt',() => {diagnostic.streamAttempts++;}); exactEvent(diagnostic,'actual destination stream attempt');
           streams++; const stream = await scoped.stream(path); await ownership.adopt({name:path, close: () => stream.complete()});
-          if (boundary !== 'fresh after assembly' && boundary !== 'explicit pre-serving') changed = true;
+          exactObserve(diagnostic,'actual stream return and adoption',() => {diagnostic.streamAdopted++;});
+          if (boundary !== 'fresh after assembly' && boundary !== 'explicit pre-serving') {changed = true; exactObserve(diagnostic,'actual between-pass change',() => {diagnostic.changed = true;}); exactEvent(diagnostic,'actual stream adoption triggered contradiction');}
           return stream;
         },
       }}, root);
       if (boundary === 'explicit pre-serving') {
-        await session.acquire(canonicalSerialize(preOptions), canonicalSerialize(mainOptions));
-        const prior = session.snapshotAcquisition(); changed = true;
+        await exactOperation(diagnostic,'acquisition',session.acquire(canonicalSerialize(preOptions), canonicalSerialize(mainOptions)));
+        const prior = session.snapshotAcquisition(); changed = true; exactObserve(diagnostic,'actual pre-serving change',() => {diagnostic.changed = true;}); exactEvent(diagnostic,'actual pre-serving contradiction activated');
         await expect(session.recheckBeforeServing()).rejects.toThrow('original facts changed');
         expect(session.snapshotAcquisition()).toEqual(prior);
-      } else await session.acquire(canonicalSerialize(preOptions), canonicalSerialize(mainOptions));
-    });
+      } else await exactOperation(diagnostic,'acquisition',session.acquire(canonicalSerialize(preOptions), canonicalSerialize(mainOptions)));
+    })()));
+    const result = await exactOperation(diagnostic,'stage',stage);
+    exactPoint(diagnostic,'assertions-entered');
     expect(reached).toBe(true);
     expect(result.status).toBe(boundary === 'explicit pre-serving' ? 'complete' : 'failed');
     if (boundary === 'explicit pre-serving' || boundary === 'fresh after assembly') {
@@ -1499,8 +1789,8 @@ test.each(['FD during copy', 'leaf between passes', 'ancestor between passes', '
       expect(session!.snapshotAcquisition().acquisition.members[0]).toMatchObject({beforeCopy:{status:'available'}, copied:{status:'unavailable'}});
     }
     if (boundary === 'FD during copy') {expect(fd).toBeDefined(); await expect(fd!.stat()).rejects.toThrow();}
-    disposed = true; expect((await firstLocalDisposal(owner)).status).toBe('complete'); await owner.ownershipSettled; expect(owner.canContinue).toBe(true);
-  } finally {fileOperations.opened = undefined; fileOperations.statted = undefined; processOperations.created = undefined; if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
+    disposed = true; expect((await firstLocalDisposal(owner)).status).toBe('complete'); await owner.ownershipSettled; exactOwnershipSettled(fileCase); expect(owner.canContinue).toBe(true);
+  } finally {exactPoint(diagnostic,'finally-entered'); exactObserve(diagnostic,'worker observation end',() => {diagnostic.workerObservationEnded = true;}); exactEvent(diagnostic,'actual worker creation observer span ended'); fileOperations.opened = undefined; fileOperations.statted = undefined; processOperations.created = undefined; if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; exactOwnershipSettled(fileCase); }
 });
 test('actual late source open is adopted first and closes after generation revocation', async () => {
   const output = await localOutput('comparison-late-open-');
