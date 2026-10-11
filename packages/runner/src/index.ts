@@ -20,3 +20,7 @@ export {createComparisonCounterCapture} from './comparison-counters.js';
 export type {ComparisonCounterCommands, ComparisonCounterCaptureOptions, ComparisonCounterCapture} from './comparison-counters.js';
 export {createComparisonTraceCapture} from './comparison-trace.js';
 export type {ComparisonTraceCaptureOptions, ComparisonTraceSnapshot, ComparisonTraceCapture} from './comparison-trace.js';
+export {createComparisonCaptureJournal} from './comparison-capture-journal.js';
+export type {ComparisonCaptureJournalOptions, ComparisonCaptureJournal, ComparisonJournalSnapshot, ComparisonJournalTerminalSnapshot} from './comparison-capture-journal.js';
+export {createLongThreadCaptureDriver} from './long-thread-capture.js';
+export type {LongThreadCaptureOptions, AcquiredSlot} from './long-thread-capture.js';
