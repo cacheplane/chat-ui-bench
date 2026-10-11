@@ -238,7 +238,7 @@ const analysisOutputs = new Set(['results.json','metrics.json','summary.md','rep
 const slotRawNames = new Set(['descriptor.json','fixture.json','validation.json','exceptions.json','producer.jsonl','page.jsonl','page-exceptions.jsonl','trace.json','manifest.json','capture-metadata.json','phases.json','checkpoints.json','final-runtime.json','visible-validation.json','trace-auxiliary.json','native-dispatch-results.json','capture-status.json','finalization-status.json']);
 function rawSlotPath(path:string):boolean {
   const original=path.replace(/\.[a-f0-9-]{36}\.tmp$/,'');
-  return slotRawNames.has(original) || original==='provenance/build-evidence.json' || original==='provenance/acquisition.json' || original==='instrumentation/pre-navigation.js' || original==='instrumentation/main.js' || /^(?:provenance\/(?:source|assets|packages)|instrumentation\/source)\/.+/.test(original);
+  return slotRawNames.has(original) || original==='provenance/build-evidence.json' || original==='provenance/acquisition.json' || original==='instrumentation/pre-navigation.js' || original==='instrumentation/main.js' || original==='instrumentation/build-evidence.json' || /^(?:provenance\/(?:source|assets|packages)|instrumentation\/(?:source|compiled))\/.+/.test(original);
 }
 function sameIdentityFacts(a:Record<string,unknown>,b:Record<string,unknown>):boolean {return Object.keys(comparisonIdentityShape).every(key=>a[key]===b[key]);}
 const drainSummary = z.strictObject({entries:count,serializedBytes:count}).refine(v=>v.entries!==0 || v.serializedBytes===0,'Empty drain cannot contain serialized bytes');
@@ -291,11 +291,22 @@ export const comparisonNativeDispatchResultsSchema = z.strictObject({...comparis
 });
 export type ComparisonNativeDispatchResults = z.infer<typeof comparisonNativeDispatchResultsSchema>;
 const measuredBytes=z.strictObject({byteLength:count,sha256:hash});
-const provenanceMember=z.strictObject({role:z.enum(['build-record','build-source','served-asset','installed-package-metadata','instrumentation-source']),key:comparisonArtifactPathSchema,path:comparisonArtifactPathSchema,originalSha256:hash.optional(),beforeCopy:availability(measuredBytes),copied:availability(measuredBytes),afterCopy:availability(measuredBytes),status:z.enum(['complete','partial']),reason:reason.optional()}).superRefine((v,ctx)=>{
+const buildHashes=z.record(comparisonArtifactPathSchema,hash).refine(v=>Object.keys(v).length>0,'Build input inventory must be nonempty');
+const buildToolShape={name:text,version:text,resolutionPath:comparisonArtifactPathSchema,integrity:z.string().regex(/^sha(?:256|384|512)-[A-Za-z0-9+/=_-]+$/)};
+/** Measured metadata identifies package.json bytes, independently of tarball integrity. */
+export const comparisonInstrumentationBuildSchema=z.strictObject({
+  kind:z.literal('comparison-instrumentation-build'),formatVersion:z.literal(1),
+  sourceHashes:buildHashes,compiledHashes:buildHashes,
+  compiler:z.strictObject({...buildToolShape,nodeVersion:text}),
+  nativeCompiler:z.strictObject({...buildToolShape,platform:text,architecture:text,executablePath:comparisonArtifactPathSchema}),
+  compilerPackageMetadata:measuredBytes,nativeCompilerPackageMetadata:measuredBytes,
+});
+export type ComparisonInstrumentationBuild=z.infer<typeof comparisonInstrumentationBuildSchema>;
+const provenanceMember=z.strictObject({role:z.enum(['build-record','build-source','served-asset','installed-package-metadata','instrumentation-source','instrumentation-build-record','instrumentation-compiled-input']),key:comparisonArtifactPathSchema,path:comparisonArtifactPathSchema,originalSha256:hash.optional(),beforeCopy:availability(measuredBytes),copied:availability(measuredBytes),afterCopy:availability(measuredBytes),status:z.enum(['complete','partial']),reason:reason.optional()}).superRefine((v,ctx)=>{
   if(v.status==='partial' ? v.reason===undefined : v.reason!==undefined) issue(ctx,'Provenance member requires explicit partial reason');
-  const expected=v.role==='build-record' ? 'provenance/build-evidence.json' : v.role==='build-source' ? `provenance/source/${v.key}` : v.role==='served-asset' ? `provenance/assets/${v.key}` : v.role==='installed-package-metadata' ? `provenance/packages/${v.key}/package.json` : `instrumentation/source/${v.key}`;
-  if(v.path!==expected || v.role==='build-record' && v.key!=='.build-evidence.json') issue(ctx,'Provenance role must retain its exact deterministic original key');
-  const originalRole=v.role==='build-source' || v.role==='served-asset' || v.role==='instrumentation-source';
+  const expected=v.role==='build-record' ? 'provenance/build-evidence.json' : v.role==='build-source' ? `provenance/source/${v.key}` : v.role==='served-asset' ? `provenance/assets/${v.key}` : v.role==='installed-package-metadata' ? `provenance/packages/${v.key}/package.json` : v.role==='instrumentation-build-record' ? 'instrumentation/build-evidence.json' : v.role==='instrumentation-compiled-input' ? `instrumentation/compiled/${v.key}` : `instrumentation/source/${v.key}`;
+  if(v.path!==expected || v.role==='build-record' && v.key!=='.build-evidence.json' || v.role==='instrumentation-build-record' && v.key!=='packages/runner/.comparison-build-evidence.json') issue(ctx,'Provenance role must retain its exact deterministic original key');
+  const originalRole=v.role==='build-source' || v.role==='served-asset' || v.role==='instrumentation-source' || v.role==='instrumentation-compiled-input';
   if(!originalRole && v.originalSha256!==undefined) issue(ctx,'This provenance role has no original inventory byte digest');
   if(v.status==='complete') {
     if(originalRole && v.originalSha256===undefined) issue(ctx,'Complete source acquisition requires the original digest');

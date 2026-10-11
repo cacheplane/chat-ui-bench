@@ -33,7 +33,7 @@
     "vitest": "4.1.11"
   },
   "scripts": {
-    "build": "ng build threadplane --configuration production && node provenance.mjs --write-build-record",
+    "build": "node build.mjs",
     "typecheck": "ngc -p tsconfig.app.json --noEmit"
   }
 }

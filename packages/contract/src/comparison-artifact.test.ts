@@ -340,3 +340,22 @@ describe('retained invocation ledger', () => {
     expect(contract.comparisonCaptureInvocationSchema.safeParse({...ledger, status: 'pending', runs: runs.map(r => ({...r, status: 'scheduled', reasons: []}))}).success).toBe(true);
   });
 });
+
+describe('instrumentation build lineage contracts',()=>{
+  const tool={name:'typescript',version:'7.0.2',resolutionPath:'node_modules/typescript',integrity:'sha512-YQ==',nodeVersion:'v24.20.0'};
+  const build={kind:'comparison-instrumentation-build',formatVersion:1,sourceHashes:{'package.json':'a'.repeat(64)},compiledHashes:{'packages/contract/dist/index.js':'b'.repeat(64)},compiler:tool,nativeCompiler:{name:'@typescript/typescript-darwin-arm64',version:'7.0.2',resolutionPath:'node_modules/@typescript/typescript-darwin-arm64',integrity:'sha512-Yg==',platform:'darwin',architecture:'arm64',executablePath:'node_modules/@typescript/typescript-darwin-arm64/lib/tsc'},compilerPackageMetadata:digestFact,nativeCompilerPackageMetadata:digestFact};
+  it('requires a field-strict separate source/compiled/tool record',()=>{
+    const schema=(contract as any).comparisonInstrumentationBuildSchema;
+    expect(typeof schema).toBe('object');
+    expect(schema.safeParse(build).success).toBe(true);
+    for(const patch of [{extra:true},{formatVersion:2},{compiledHashes:{}},{sourceHashes:{}},{compiler:{...tool,extra:true}},{compilerPackageMetadata:{...digestFact,integrity:'sha512-YQ=='}}]) expect(schema.safeParse({...build,...patch}).success).toBe(false);
+  });
+  it('requires compiled originals and prohibits build-record original digests',()=>{
+    const fact={status:'available',value:digestFact};
+    const compiled={role:'instrumentation-compiled-input',key:'packages/runner/dist/comparison-installer.js',path:'instrumentation/compiled/packages/runner/dist/comparison-installer.js',originalSha256:digestFact.sha256,beforeCopy:fact,copied:fact,afterCopy:fact,status:'complete'};
+    const record={...compiled,role:'instrumentation-build-record',key:'packages/runner/.comparison-build-evidence.json',path:'instrumentation/build-evidence.json',originalSha256:undefined};
+    for(const member of [compiled,record]) expect(contract.comparisonProvenanceAcquisitionSchema.safeParse({...identity,status:'complete',members:[member]}).success).toBe(true);
+    for(const member of [{...compiled,originalSha256:undefined},{...compiled,path:'instrumentation/source/'+compiled.key},{...record,originalSha256:digestFact.sha256},{...record,key:'.build-evidence.json'}]) expect(contract.comparisonProvenanceAcquisitionSchema.safeParse({...identity,status:'complete',members:[member]}).success).toBe(false);
+    expect(contract.comparisonRawInventorySchema.safeParse({...identity,status:'partial',reason:'actual incomplete',files:[{path:record.path,status:'complete',...digestFact},{path:compiled.path,status:'complete',...digestFact}]}).success).toBe(true);
+  });
+});
