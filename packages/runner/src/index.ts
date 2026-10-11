@@ -9,3 +9,8 @@ export * from './comparison-installer.js';
 export * from './comparison-observations.js';
 export * from './long-thread-run.js';
 export * from './long-thread-cli.js';
+export {createComparisonProvenanceSession} from './comparison-provenance.js';
+export type {ComparisonProvenanceSession, ComparisonAcquiredInstrumentation, ComparisonServingFacts, ComparisonAcquisitionSnapshot} from './comparison-provenance.js';
+export {resolveComparisonThreadplaneProfile, recheckComparisonThreadplaneProfile} from './comparison-threadplane.js';
+export {collectComparisonEnvironment} from './environment.js';
+export type {ComparisonEnvironmentCapture, CapturedEnvironment} from './environment.js';
