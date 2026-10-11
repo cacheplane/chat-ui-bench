@@ -8,8 +8,8 @@ export const probeRecordKey='packages/runner/.comparison-build-evidence.json';
 export const contractSourceKeys=Object.freeze(['index','fixture','artifact','adapter','long-thread','comparison','presentation','capture-bridge','comparison-artifact','comparison-presentation','comparison-buffer','comparison-installer-options'].map(name=>`packages/contract/src/${name}.ts`).sort());
 export const contractCompiledKeys=Object.freeze(contractSourceKeys.map(key=>key.replace('/src/','/dist/').replace(/\.ts$/,'.js')));
 export const commonBuildKeys=Object.freeze(['package.json','package-lock.json','tsconfig.base.json','packages/contract/package.json','packages/contract/tsconfig.json','apps/threadplane/package.json','apps/threadplane/angular.json','apps/threadplane/tsconfig.json','apps/threadplane/tsconfig.app.json','apps/threadplane/provenance.mjs','apps/threadplane/dependency-closure.mjs','apps/threadplane/build.mjs','apps/threadplane/probe-provenance.mjs'].sort());
-export const probeSourceKeys=Object.freeze([...commonBuildKeys,...contractSourceKeys,'packages/runner/package.json','packages/runner/tsconfig.json','packages/runner/src/comparison-installer.ts','packages/runner/src/comparison-observations.ts'].sort());
-export const probeCompiledKeys=Object.freeze([...contractCompiledKeys,'packages/runner/dist/comparison-installer.js','packages/runner/dist/comparison-observations.js'].sort());
+export const probeSourceKeys=Object.freeze([...commonBuildKeys,...contractSourceKeys,'packages/runner/package.json','packages/runner/tsconfig.json','packages/runner/src/comparison-installer.ts','packages/runner/src/comparison-observations.ts','packages/runner/src/comparison-assembly-worker.ts'].sort());
+export const probeCompiledKeys=Object.freeze([...contractCompiledKeys,'packages/runner/dist/comparison-installer.js','packages/runner/dist/comparison-observations.js','packages/runner/dist/comparison-assembly-worker.js'].sort());
 
 export function assertExactKeys(values,keys,label){if(JSON.stringify(Object.keys(values).sort())!==JSON.stringify([...keys].sort()))throw new Error(`Unsupported ${label} keys`);}
 /** Optional options.lifecycle: assertActive(): void;
