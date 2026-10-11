@@ -14,3 +14,9 @@ export type {ComparisonProvenanceSession, ComparisonAcquiredInstrumentation, Com
 export {resolveComparisonThreadplaneProfile, recheckComparisonThreadplaneProfile} from './comparison-threadplane.js';
 export {collectComparisonEnvironment} from './environment.js';
 export type {ComparisonEnvironmentCapture, CapturedEnvironment} from './environment.js';
+export {createComparisonNativeInput} from './comparison-native-input.js';
+export type {ComparisonNativeControls, ComparisonNativeInputOptions, ComparisonNativeInput} from './comparison-native-input.js';
+export {createComparisonCounterCapture} from './comparison-counters.js';
+export type {ComparisonCounterCommands, ComparisonCounterCaptureOptions, ComparisonCounterCapture} from './comparison-counters.js';
+export {createComparisonTraceCapture} from './comparison-trace.js';
+export type {ComparisonTraceCaptureOptions, ComparisonTraceSnapshot, ComparisonTraceCapture} from './comparison-trace.js';
