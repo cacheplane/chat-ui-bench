@@ -4,6 +4,8 @@ import {createHash} from 'node:crypto';
 import {isAbsolute, join, normalize, parse} from 'node:path';
 import {z} from 'zod';
 import {comparisonSchemasForVersionPair, type ComparisonSchemaPair} from '@chat-ui-bench/contract';
+import {checkComparisonReferences, revokeComparisonReferences, unavailableComparisonReferences, type ComparisonSlotReferences, type ComparisonReferenceInput} from './comparison-reference-closure.js';
+import {unavailableComparisonProvenanceGraph, provenanceGraphAdmission, provenanceMetadataPaths, provenanceMetadataCopiedWitnesses, checkComparisonProvenanceGraph, revokeComparisonProvenanceGraph, comparisonPackageMetadataSchema, type ComparisonProvenanceGraph, type ProductDeclaration, type ProbeDeclaration, type PackageMetadata} from './comparison-provenance-graph.js';
 
 type ComparisonSchemas = ReturnType<typeof comparisonSchemasForVersionPair>;
 type ComparisonIdentity = z.output<ComparisonSchemas['comparisonIdentitySchema']>;
@@ -488,6 +490,8 @@ export interface ComparisonLoadedBootstrapRun {
   manifest: ComparisonManifest | null; captureValidation: ComparisonValidation | null;
   rawAvailability: {descriptor: ComparisonRawAvailability; manifest: ComparisonRawAvailability; captureValidation: ComparisonRawAvailability};
   loadingIssues: ComparisonLoadingIssue[]; additionalLoadingIssueCount: number;
+  references: ComparisonSlotReferences;
+  provenanceGraph: ComparisonProvenanceGraph;
 }
 type Claim = z.output<ComparisonSchemas['comparisonDatasetInventorySchema']['shape']['invocationClaim']>;
 export interface ComparisonLoadedInvocationBootstrap {
@@ -788,7 +792,7 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
         await slotDocument<ComparisonExceptions>('exceptions.json', schemas.comparisonExceptionsSchema);
         result.runs.push({identity, artifactDirectory: row.artifactDirectory, descriptor: descriptor.value, manifest: manifest.value, captureValidation: validation.value,
           rawAvailability: {descriptor: descriptor.availability, manifest: manifest.availability, captureValidation: validation.availability},
-          loadingIssues: rowIssues.loadingIssues, additionalLoadingIssueCount: rowIssues.count()});
+          loadingIssues: rowIssues.loadingIssues, additionalLoadingIssueCount: rowIssues.count(), references: unavailableComparisonReferences('Slot references not admitted by invocation preflight'), provenanceGraph: unavailableComparisonProvenanceGraph('Captured provenance graph not yet checked')});
       }
       if (result.byteIntegrity.admission === 'within-limit') {
         let hashComplete = owner.failedOwnedReads.size === 0;
@@ -803,6 +807,100 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
           }
           if (loaded.status === 'failed') {hashComplete = false; loaded.loadingIssues.forEach(issue => issues.add(issue));}
         }
+        for (const [index, run] of result.runs.entries()) {
+          const prefix = run.artifactDirectory + '/', localFiles = result.physicalInventory.files.filter(file => file.path.startsWith(prefix));
+          const files: ComparisonReferenceInput['files'] = new Map(localFiles.map(file => [file.path.slice(prefix.length), {actual: owner.originals.get(file.path)?.fact ?? null, seal: expected.get(file.path) ?? null, role: file.role}]));
+          const absent = (seal?.absentMembers ?? []).filter(member => member.path.startsWith(prefix)).map(member => ({path: member.path.slice(prefix.length), reason: member.reason}));
+          async function referenceDocument<T>(name: string, schema: z.ZodType<T>): Promise<ComparisonLoadedDocument<T> & {referenceIssue?: ComparisonLoadingIssue}> {
+            if (!files.has(name)) return {value: null, fact: null, availability: {status: 'absent', path: prefix + name, reason: 'Required reference document is not an admitted original member'}};
+            const raw = await measuredJson(root, prefix + name, 'slot-json', owner);
+            if (raw.status === 'failed') hashComplete = false;
+            if ((name === 'evidence.json' || name === 'raw-inventory.json') && raw.status === 'admitted-json' && raw.value !== null && typeof raw.value === 'object') {
+              const declared = (raw.value as Record<string, unknown>)['files'], unavailable = (raw.value as Record<string, unknown>)['unavailableFiles'];
+              const referenceCount = (Array.isArray(declared) ? declared.length : 0) + (Array.isArray(unavailable) ? unavailable.length : 0);
+              if (referenceCount > 4096) {
+                const reason = 'Inventory references exceed existing slot candidate capacity';
+                issues.add({kind: 'admission-limit', path: prefix + name, role: 'slot-json', limitName: 'slotCandidates', limit: 4096, observed: referenceCount, observation: 'exact', reason});
+                return {value: null, fact: raw.fact, availability: {status: 'malformed', path: prefix + name, reason}};
+              }
+            }
+            const doc = document(raw, schema, 'slot-json');
+            if (doc.value !== null && Object.entries(run.identity).some(([key, value]) => (doc.value as Record<string, unknown>)[key] !== value)) {
+              const failure = add(prefix + name, 'Reference document identity differs from original ledger row', 'identity', 'slot-json');
+              doc.value = null; doc.availability = {status: 'unreadable', path: prefix + name, reason: failure.reason};
+              return {...doc, referenceIssue: failure};
+            }
+            if (raw.status === 'failed' && raw.loadingIssues[0]) return {...doc, referenceIssue: raw.loadingIssues[0]};
+            return doc;
+          }
+          const names = (['evidence.json', 'raw-inventory.json'] as const).filter(name => files.has(name));
+          const inventory = names.length === 1 ? names[0] === 'evidence.json'
+            ? await referenceDocument<z.output<ComparisonSchemas['comparisonEvidenceSchema']>>(names[0], schemas.comparisonEvidenceSchema)
+            : await referenceDocument<z.output<ComparisonSchemas['comparisonRawInventorySchema']>>(names[0]!, schemas.comparisonRawInventorySchema) : null;
+          const capture = await referenceDocument<ComparisonReferenceInput['capture']>('capture-status.json', schemas.comparisonCaptureStatusSchema);
+          const acquisition = await referenceDocument<ComparisonReferenceInput['acquisition']>('provenance/acquisition.json', schemas.comparisonProvenanceAcquisitionSchema);
+          run.references = checkComparisonReferences({inventory: inventory?.value && names[0] ? {path: names[0], value: inventory.value} : null,
+            capture: capture.value, acquisition: acquisition.value, validation: run.captureValidation, row: ledger.runs[index]!, files, absent});
+          if (names.length > 1) {
+            run.references.inventory.status = 'partial'; run.references.inventory.issues[0] = {kind: 'membership', path: '.', role: 'slot-json', reason: 'Multiple original slot inventories are retained'};
+          }
+          for (const [key, doc] of [['inventory', inventory], ['capture', capture], ['acquisition', acquisition]] as const) {
+            if (doc?.value === null && doc.availability.status !== 'absent' && doc.availability.status !== 'parsed') {
+              const lane = run.references[key]; lane.status = 'partial'; lane.issues[0] = doc.referenceIssue
+                ? {...doc.referenceIssue, path: doc.referenceIssue.path.slice(prefix.length)}
+                : {kind: doc.availability.status, path: doc.availability.path.slice(prefix.length), role: 'slot-json', reason: doc.availability.reason};
+            }
+          }
+          async function graphOriginal(name: string): Promise<LoadedComparisonJson | null> {
+            if (!files.has(name)) return null;
+            const raw = await measuredJson(root, prefix + name, 'slot-json', owner);
+            if (raw.status === 'failed') hashComplete = false;
+            return raw;
+          }
+          const productRaw = await graphOriginal('provenance/build-evidence.json'), probeRaw = await graphOriginal('instrumentation/build-evidence.json');
+          const admission = provenanceGraphAdmission(productRaw?.status === 'admitted-json' ? productRaw.value : null, probeRaw?.status === 'admitted-json' ? probeRaw.value : null);
+          if (admission) {
+            issues.add({...admission, path: prefix + admission.path});
+            run.provenanceGraph = unavailableComparisonProvenanceGraph(admission.reason);
+            run.provenanceGraph.status = 'partial'; run.provenanceGraph.issues[0] = admission;
+          } else {
+            const product = productRaw === null ? null : document<ProductDeclaration>(productRaw, schemas.adapterBuildSchema, 'slot-json');
+            const probe = probeRaw === null ? null : document<ProbeDeclaration>(probeRaw, schemas.comparisonInstrumentationBuildSchema, 'slot-json');
+            const metadata = new Map<string, PackageMetadata | null>(), metadataFailures: ComparisonLoadingIssue[] = [];
+            const metadataWitnesses = provenanceMetadataCopiedWitnesses(acquisition.value, files);
+            if (product?.value && probe?.value) for (const name of provenanceMetadataPaths(product.value, probe.value)) {
+              if (!metadataWitnesses.has(name)) {metadata.set(name, null); continue;}
+              const raw = await graphOriginal(name), doc = raw === null ? null : document<PackageMetadata>(raw, comparisonPackageMetadataSchema, 'slot-json');
+              metadata.set(name, doc?.value ?? null);
+              if (doc?.value === null) metadataFailures.push(raw?.status === 'failed' && raw.loadingIssues[0]
+                ? {...raw.loadingIssues[0], path: raw.loadingIssues[0].path.slice(prefix.length)}
+                : {kind: doc.availability.status === 'malformed' ? 'malformed' : 'unreadable', path: name, role: 'slot-json', reason: 'Original package metadata unavailable: ' + (doc.availability.status === 'parsed' ? '' : doc.availability.reason)});
+            }
+            run.provenanceGraph = checkComparisonProvenanceGraph({product: product?.value ?? null, probe: probe?.value ?? null, acquisition: acquisition.value,
+              manifest: run.manifest, files, metadata});
+            const replaceGraphIssue = (failure: ComparisonLoadingIssue) => {
+              const index = run.provenanceGraph.issues.findIndex(issue => issue.path === failure.path);
+              if (index >= 0) run.provenanceGraph.issues[index] = failure;
+              else if (run.provenanceGraph.issues.length < 32) run.provenanceGraph.issues.push(failure);
+              else run.provenanceGraph.additionalIssueCount++;
+            };
+            for (const [name, raw, doc] of [['provenance/build-evidence.json', productRaw, product], ['instrumentation/build-evidence.json', probeRaw, probe]] as const) if (doc?.value === null) {
+              run.provenanceGraph.status = 'partial'; replaceGraphIssue(raw?.status === 'failed' && raw.loadingIssues[0]
+                ? {...raw.loadingIssues[0], path: raw.loadingIssues[0].path.slice(prefix.length)}
+                : {kind: doc.availability.status === 'malformed' ? 'malformed' : 'unreadable', path: name, role: 'slot-json', reason: doc.availability.status === 'parsed' ? 'Original build declaration unavailable' : doc.availability.reason});
+            }
+            if (acquisition.value === null && acquisition.availability.status !== 'absent' && acquisition.availability.status !== 'parsed') {
+              run.provenanceGraph.status = 'partial'; replaceGraphIssue(acquisition.referenceIssue
+                ? {...acquisition.referenceIssue, path: acquisition.referenceIssue.path.slice(prefix.length)}
+                : {kind: acquisition.availability.status, path: 'provenance/acquisition.json', role: 'slot-json', reason: acquisition.availability.reason});
+            }
+            for (const failure of metadataFailures) {
+              if (run.provenanceGraph.status === 'complete') run.provenanceGraph.status = 'partial';
+              if (run.provenanceGraph.issues.length < 32) run.provenanceGraph.issues.push(failure); else run.provenanceGraph.additionalIssueCount++;
+            }
+          }
+        }
+        if (owner.failedOwnedReads.size > 0) hashComplete = false;
         let absencesClosed = true;
         for (const member of seal?.absentMembers ?? []) {
           const issue = await checkDeclaredAbsence(root, member.path, owner);
@@ -845,6 +943,11 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
           }
           if (closure) result.byteIntegrity.seal = 'byte-closed';
         }
+        if (result.byteIntegrity.seal !== 'byte-closed') for (const run of result.runs) {revokeComparisonReferences(run.references); revokeComparisonProvenanceGraph(run.provenanceGraph);}
+        const referencesComplete = result.runs.every(run => Object.values(run.references).every(lane => lane.status === 'complete'));
+        result.collection.reasons = [...(referencesComplete ? [] : ['Slot inventory and acquisition reference schema agreement not yet verified']),
+          ...(result.runs.every(run => run.provenanceGraph.status === 'complete') ? [] : ['Captured provenance declaration graph not yet verified']),
+          'Build/source authenticity and executed graph, raw replay/page semantics, independent correctness and scoring eligibility not yet verified'];
       }
     }
   }

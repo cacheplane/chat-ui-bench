@@ -399,6 +399,635 @@ async function byteFixture(rounds = 1, version: '2.0.0' | '2.1.0' = '2.0.0') {
   await f.json('dataset-seal.json', seal);
   return {...f, members, seal, async total() {let total = 0; for (const path of [...paths, 'dataset-seal.json']) total += (await fs.lstat(join(f.root, path))).size; return total;}};
 }
+async function referenceFixture(version: '2.0.0' | '2.1.0', mutation?: 'stale-inventory' | 'orphan-acquisition', repetition: 1 | 2 | 3 = 1) {
+  const f = await rootFixture(repetition, 'headless', version);
+  const schemas = version === '2.1.0' ? comparisonSchemasForVersionPair({collectorVersion: '2.1.0', analyzerVersion: '2.1.0'}) : comparisonSchemasForVersionPair({collectorVersion: '2.0.0', analyzerVersion: '2.0.0'});
+  const members: {path: string; byteLength: number; sha256: string}[] = [];
+  const measure = async (path: string) => {const bytes = await readFile(join(f.root, path)); return {path, byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')};};
+  for (const row of f.runs) {
+    const prefix = row.artifactDirectory + '/', identity = {...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile};
+    const source = 'provenance/source/example.ts'; await f.json(prefix + source, {original: 'inert source bytes'});
+    const {path: _path, ...sourceFact} = await measure(prefix + source);
+    const acquisition = schemas.comparisonProvenanceAcquisitionSchema.parse({...identity, status: 'complete', members: mutation === 'orphan-acquisition' && row.caseIndex === 0 ? [] : [{
+      role: 'build-source', key: 'example.ts', path: source, originalSha256: sourceFact.sha256,
+      beforeCopy: {status: 'available', value: sourceFact}, copied: {status: 'available', value: sourceFact}, afterCopy: {status: 'available', value: sourceFact}, status: 'complete',
+    }]});
+    await f.json(prefix + 'provenance/acquisition.json', acquisition);
+    const validation = schemas.comparisonValidationSchema.parse({...identity, status: 'failed', reasons: ['not started'], checks: [{name: 'acquisition', passed: false, reason: 'not started', evidencePaths: ['descriptor.json']}]});
+    await f.json(prefix + 'validation.json', validation); await f.json(prefix + 'exceptions.json', schemas.comparisonExceptionsSchema.parse({...identity, exceptions: []}));
+    const rawNames = ['descriptor.json', 'exceptions.json', 'provenance/acquisition.json', source, 'validation.json'];
+    const payloads = rawNames.map(path => ({path, status: 'complete'}));
+    const unavailable = {status: 'unavailable', reason: 'not started'};
+    const capture = schemas.comparisonCaptureStatusSchema.parse({...identity, status: 'partial', reasons: ['not started'], payloads, unavailablePaths: [],
+      captureMetadata: unavailable, evidenceMetadata: unavailable, terminalPageDrain: unavailable, terminalProducerDrain: unavailable, finalPageInstrumentation: unavailable, traceEof: unavailable});
+    await f.json(prefix + 'capture-status.json', capture);
+    const raw = await Promise.all(['capture-status.json', ...rawNames].sort().map(async path => ({...(await measure(prefix + path)), path, status: 'complete'})));
+    const inventory = schemas.comparisonRawInventorySchema.parse({...identity, status: 'partial', reason: 'not started', files: raw});
+    if (mutation === 'stale-inventory' && row.caseIndex === 0) inventory.files.find(file => file.path === source)!.sha256 = '0'.repeat(64);
+    await f.json(prefix + 'raw-inventory.json', inventory);
+    members.push(...await Promise.all([...rawNames, 'capture-status.json', 'raw-inventory.json'].map(path => measure(prefix + path))));
+  }
+  members.push(await measure('invocation-claim.json'), await measure('invocation.json')); members.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  const directories = [...new Set(members.flatMap(member => member.path.split('/').slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join('/'))))].sort();
+  const seal = schemas.comparisonDatasetInventorySchema.parse({...f.versions, invocationId: f.claim.invocationId, status: 'sealed', configuration: f.ledger.configuration, invocationClaim: f.claim, invocationLedger: f.ledger,
+    root: '.', ledger: members.find(member => member.path === 'invocation.json'), members, absentMembers: [], directories,
+    slots: f.runs.map(row => ({identity: {...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile}, artifactDirectory: row.artifactDirectory, status: 'failed'})), ownershipSettled: true, finalizationSucceeded: true});
+  await f.json('dataset-seal.json', seal);
+  const refreshSeal = async (added: string[] = [], removed: string[] = []) => {
+    seal.members = await Promise.all([...seal.members.map(member => member.path).filter(path => !removed.includes(path)), ...added].sort().map(measure));
+    seal.directories = [...new Set([...seal.members.map(member => member.path), ...seal.absentMembers.map(member => member.path), ...seal.slots.map(slot => slot.artifactDirectory + '/descriptor.json')].flatMap(path => path.split('/').slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join('/'))))].sort();
+    seal.ledger = {...seal.members.find(member => member.path === 'invocation.json')!, path: 'invocation.json'};
+    await f.json('dataset-seal.json', schemas.comparisonDatasetInventorySchema.parse(seal));
+  };
+  return {...f, schemas, seal, refreshSeal};
+}
+async function provenanceGraphFixture(version: '2.0.0' | '2.1.0', repetitions: 1 | 2 | 3 = 1) {
+  const f = await referenceFixture(version, undefined, repetitions);
+  const measure = async (path: string) => {const bytes = await readFile(join(f.root, path)); return {byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')};};
+  const slots = new Map<string, string[]>();
+  for (const row of f.runs) {
+    const prefix = row.artifactDirectory + '/', sourceFact = await measure(prefix + 'provenance/source/example.ts');
+    const compiler = {name: 'typescript', version: '7.0.2', resolutionPath: 'node_modules/typescript', integrity: 'sha512-YQ==', nodeVersion: 'v24.20.0'};
+    const nativeCompiler = {name: '@typescript/typescript-linux-x64', version: '7.0.2', resolutionPath: 'node_modules/@typescript/typescript-linux-x64', integrity: 'sha512-Yg==', platform: 'linux', architecture: 'x64', executablePath: 'node_modules/@typescript/typescript-linux-x64/lib/tsc'};
+    const packages = [{name: 'p-queue', version: '9.0.0', resolutionPath: 'node_modules/p-queue', integrity: 'sha512-Yw=='}];
+    const metadata = [
+      {key: packages[0]!.resolutionPath, value: {name: 'p-queue', version: '9.0.0'}},
+      {key: compiler.resolutionPath, value: {name: compiler.name, version: compiler.version, optionalDependencies: {[nativeCompiler.name]: nativeCompiler.version}}},
+      {key: nativeCompiler.resolutionPath, value: {name: nativeCompiler.name, version: nativeCompiler.version, os: ['linux'], cpu: ['x64']}},
+    ];
+    for (const entry of metadata) await f.json(prefix + 'provenance/packages/' + entry.key + '/package.json', entry.value);
+    for (const path of ['instrumentation/source/probe.ts', 'instrumentation/compiled/probe.js', 'provenance/assets/main.js']) await f.json(prefix + path, {syntheticInertBytes: path});
+    const probeSource = await measure(prefix + 'instrumentation/source/probe.ts'), compiled = await measure(prefix + 'instrumentation/compiled/probe.js'), asset = await measure(prefix + 'provenance/assets/main.js');
+    const product = f.schemas.adapterBuildSchema.parse({packages, framework: {name: 'Angular', version: '21.2.25'}, production: true, sourceHashes: {'example.ts': sourceFact.sha256}, copiedSourceHashes: {}, assetHashes: {'main.js': asset.sha256}, settings: {optimization: true, sourceMaps: false}});
+    const probe = f.schemas.comparisonInstrumentationBuildSchema.parse({kind: 'comparison-instrumentation-build', formatVersion: 1, sourceHashes: {'probe.ts': probeSource.sha256}, compiledHashes: {'probe.js': compiled.sha256}, compiler, nativeCompiler,
+      compilerPackageMetadata: await measure(prefix + 'provenance/packages/' + compiler.resolutionPath + '/package.json'), nativeCompilerPackageMetadata: await measure(prefix + 'provenance/packages/' + nativeCompiler.resolutionPath + '/package.json')});
+    await f.json(prefix + 'provenance/build-evidence.json', product); await f.json(prefix + 'instrumentation/build-evidence.json', probe);
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8')));
+    const add = async (role: typeof acquisition.members[number]['role'], key: string, path: string, originalSha256?: string) => {
+      const fact = await measure(prefix + path); acquisition.members.push({role, key, path, ...(originalSha256 === undefined ? {} : {originalSha256}), beforeCopy: {status: 'available', value: {...fact}}, copied: {status: 'available', value: {...fact}}, afterCopy: {status: 'available', value: {...fact}}, status: 'complete'});
+    };
+    // Hand-authored deterministic tuples exercise the independent checker, not an imported collector planner.
+    await add('build-record', '.build-evidence.json', 'provenance/build-evidence.json');
+    await add('instrumentation-build-record', 'packages/runner/.comparison-build-evidence.json', 'instrumentation/build-evidence.json');
+    await add('instrumentation-source', 'probe.ts', 'instrumentation/source/probe.ts', probeSource.sha256);
+    await add('instrumentation-compiled-input', 'probe.js', 'instrumentation/compiled/probe.js', compiled.sha256);
+    await add('served-asset', 'main.js', 'provenance/assets/main.js', asset.sha256);
+    for (const entry of metadata) await add('installed-package-metadata', entry.key, 'provenance/packages/' + entry.key + '/package.json');
+    await f.json(prefix + 'provenance/acquisition.json', f.schemas.comparisonProvenanceAcquisitionSchema.parse(acquisition));
+    const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8')));
+    slots.set(prefix, [...new Set([...raw.files.map(file => file.path), ...acquisition.members.map(member => member.path)])].sort());
+  }
+  const refreshSlot = async (index: number, added: string[] = [], removed: string[] = [], remeasure: string[] = []) => {
+    const row = f.runs[index]!, prefix = row.artifactDirectory + '/';
+    const names = [...new Set([...slots.get(prefix)!.filter(path => !removed.includes(path)), ...added])].sort(); slots.set(prefix, names);
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8')));
+    for (const member of acquisition.members.filter(member => remeasure.includes(member.path))) {
+      const fact = await measure(prefix + member.path); member.beforeCopy = {status: 'available', value: {...fact}}; member.copied = {status: 'available', value: {...fact}}; member.afterCopy = {status: 'available', value: {...fact}};
+      if (member.originalSha256 !== undefined) member.originalSha256 = fact.sha256;
+    }
+    await f.json(prefix + 'provenance/acquisition.json', f.schemas.comparisonProvenanceAcquisitionSchema.parse(acquisition));
+    const capture = f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8'))), originalStatuses = new Map(capture.payloads.map(file => [file.path, file]));
+    capture.payloads = names.filter(path => path !== 'capture-status.json').map(path => originalStatuses.get(path) ?? {path, status: 'complete'});
+    await f.json(prefix + 'capture-status.json', f.schemas.comparisonCaptureStatusSchema.parse(capture));
+    const inventory = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8')));
+    inventory.files = await Promise.all(names.map(async path => ({path, status: 'complete' as const, ...(await measure(prefix + path))})));
+    await f.json(prefix + 'raw-inventory.json', f.schemas.comparisonRawInventorySchema.parse(inventory));
+    const current = new Set(f.seal.members.map(member => member.path)); await f.refreshSeal(names.map(path => prefix + path).filter(path => !current.has(path)), removed.map(path => prefix + path));
+  };
+  for (let index = 0; index < f.runs.length; index++) await refreshSlot(index);
+  return {...f, measure, refreshSlot};
+}
+describe('comparison independent captured provenance graph', () => {
+  it.each(['2.0.0', '2.1.0'] as const)('closes canonical declared graph in %s while retaining failed verdict and partial capture', async version => {
+    const f = await provenanceGraphFixture(version), result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs).toHaveLength(12);
+    expect(result.runs.every(row => Object.values(row.references).every(lane => lane.status === 'complete'))).toBe(true);
+    expect(result.runs.every(row => row.provenanceGraph.status === 'complete')).toBe(true);
+    expect(result.runs[0]!.provenanceGraph).toMatchObject({expectedMembers: 9, observedAcquisitionMembers: 9, manifestAgreement: 'unavailable'});
+    expect(result.runs.every(row => row.captureValidation?.status === 'failed')).toBe(true); expect(result.collection.status).toBe('partial');
+  });
+  it('rejects a build-declared source omitted from acquisition despite closed current references', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8')));
+    product.sourceHashes['missing.ts'] = 'a'.repeat(64); await f.json(prefix + 'provenance/build-evidence.json', product); await f.refreshSlot(0, [], [], ['provenance/build-evidence.json']);
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(Object.values(result.runs[0]!.references).every(lane => lane.status === 'complete')).toBe(true);
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'membership', path: 'provenance/source/missing.ts', reason: 'Expected build declaration has no acquisition member'}));
+  });
+  it('rejects an acquired source absent from product declarations despite closed current references', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', path = 'provenance/source/extra.ts'; await f.json(prefix + path, {inertExtraSource: true});
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))), fact = await f.measure(prefix + path);
+    acquisition.members.push({role: 'build-source', key: 'extra.ts', path, originalSha256: fact.sha256, beforeCopy: {status: 'available', value: fact}, copied: {status: 'available', value: fact}, afterCopy: {status: 'available', value: fact}, status: 'complete'});
+    await f.json(prefix + 'provenance/acquisition.json', acquisition); await f.refreshSlot(0, [path]); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(Object.values(result.runs[0]!.references).every(lane => lane.status === 'complete')).toBe(true);
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'membership', path, reason: 'Acquisition member is not declared by captured build records'}));
+  });
+});
+
+describe('comparison provenance metadata and shared declarations', () => {
+  it.each(['name', 'version'] as const)('checks actual inert package metadata %s against captured declaration', async field => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', path = 'provenance/packages/node_modules/p-queue/package.json';
+    await f.json(prefix + path, {name: field === 'name' ? 'other-package' : 'p-queue', version: field === 'version' ? '9.0.1' : '9.0.0'}); await f.refreshSlot(0, [], [], [path]);
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(Object.values(result.runs[0]!.references).every(lane => lane.status === 'complete')).toBe(true);
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'integrity', path, reason: 'Package metadata identity differs from captured declaration'}));
+  });
+  it.each(['compiler', 'nativeCompiler'] as const)('checks explicit %s metadata measurement against actual original bytes', async tool => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', path = 'instrumentation/build-evidence.json';
+    const probe = f.schemas.comparisonInstrumentationBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + path), 'utf8'))); probe[tool === 'compiler' ? 'compilerPackageMetadata' : 'nativeCompilerPackageMetadata'].sha256 = '0'.repeat(64);
+    await f.json(prefix + path, probe); await f.refreshSlot(0, [], [], [path]); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(Object.values(result.runs[0]!.references).every(lane => lane.status === 'complete')).toBe(true);
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'integrity', path: 'provenance/packages/' + probe[tool].resolutionPath + '/package.json', reason: 'Compiler metadata measurement differs from sealed original'}));
+  });
+  it.each(['optional-pin', 'os', 'cpu', 'executable'] as const)('checks source-grounded native tool %s relationship without executing it', async mutation => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', record = 'instrumentation/build-evidence.json';
+    const probe = f.schemas.comparisonInstrumentationBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + record), 'utf8')));
+    const compilerPath = 'provenance/packages/' + probe.compiler.resolutionPath + '/package.json', nativePath = 'provenance/packages/' + probe.nativeCompiler.resolutionPath + '/package.json';
+    if (mutation === 'optional-pin') {await f.json(prefix + compilerPath, {name: probe.compiler.name, version: probe.compiler.version, optionalDependencies: {[probe.nativeCompiler.name]: '7.0.3'}}); probe.compilerPackageMetadata = await f.measure(prefix + compilerPath);}
+    if (mutation === 'os' || mutation === 'cpu') {await f.json(prefix + nativePath, {name: probe.nativeCompiler.name, version: probe.nativeCompiler.version, os: mutation === 'os' ? ['darwin'] : ['linux'], cpu: mutation === 'cpu' ? ['arm64'] : ['x64']}); probe.nativeCompilerPackageMetadata = await f.measure(prefix + nativePath);}
+    if (mutation === 'executable') probe.nativeCompiler.executablePath = probe.nativeCompiler.resolutionPath + '/bin/other';
+    await f.json(prefix + record, probe); await f.refreshSlot(0, [], [], [record, ...(mutation === 'optional-pin' ? [compilerPath] : mutation === 'os' || mutation === 'cpu' ? [nativePath] : [])]);
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(Object.values(result.runs[0]!.references).every(lane => lane.status === 'complete')).toBe(true);
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'integrity', reason: mutation === 'optional-pin' ? 'Compiler optional native pin differs from captured native declaration' : mutation === 'executable' ? 'Native executable declaration differs from its recorded package context' : 'Native package metadata does not support declared platform and architecture'}));
+  });
+  it.each(['sourceHashes', 'compiledHashes'] as const)('checks shared original keys against probe %s instead of trusting individually consistent copies', async field => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', key = field === 'sourceHashes' ? 'probe.ts' : 'probe.js', path = 'provenance/source/' + key;
+    await f.json(prefix + path, {independentContradictoryProductCopy: true}); const fact = await f.measure(prefix + path);
+    const product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8'))); product.sourceHashes[key] = fact.sha256; await f.json(prefix + 'provenance/build-evidence.json', product);
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))); acquisition.members.push({role: 'build-source', key, path, originalSha256: fact.sha256, beforeCopy: {status: 'available', value: fact}, copied: {status: 'available', value: fact}, afterCopy: {status: 'available', value: fact}, status: 'complete'});
+    await f.json(prefix + 'provenance/acquisition.json', acquisition); await f.refreshSlot(0, [path], [], ['provenance/build-evidence.json']);
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(Object.values(result.runs[0]!.references).every(lane => lane.status === 'complete')).toBe(true);
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'integrity', path, reason: field === 'sourceHashes' ? 'Product and probe shared source declarations differ' : 'Product source and probe compiled declarations differ'}));
+  });
+});
+describe('comparison provenance graph compatibility and ownership', () => {
+  it.each((['2.0.0', '2.1.0'] as const).flatMap(version => ([1, 2, 3] as const).map(repetitions => ({version, repetitions}))))('retains the complete $version declaration graph for $repetitions repetitions', {timeout: 15000}, async ({version, repetitions}) => {
+    const f = await provenanceGraphFixture(version, repetitions), result = await loadComparisonInvocation(f.root);
+    expect(result.runs).toHaveLength(12 * repetitions); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs.every(row => row.provenanceGraph.status === 'complete')).toBe(true);
+    expect(result.runs.every(row => row.captureValidation?.status === 'failed')).toBe(true); expect(result.collection.status).toBe('partial');
+  });
+  it('retains duplicate package names at independent physical resolutions', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', key = 'apps/threadplane/node_modules/p-queue', path = 'provenance/packages/' + key + '/package.json';
+    await f.json(prefix + path, {name: 'p-queue', version: '9.0.1'}); const fact = await f.measure(prefix + path);
+    const product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8'))); product.packages.push({name: 'p-queue', version: '9.0.1', resolutionPath: key, integrity: 'sha512-ZA=='}); await f.json(prefix + 'provenance/build-evidence.json', f.schemas.adapterBuildSchema.parse(product));
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))); acquisition.members.push({role: 'installed-package-metadata', key, path, beforeCopy: {status: 'available', value: fact}, copied: {status: 'available', value: fact}, afterCopy: {status: 'available', value: fact}, status: 'complete'});
+    await f.json(prefix + 'provenance/acquisition.json', acquisition); await f.refreshSlot(0, [path], [], ['provenance/build-evidence.json']); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.provenanceGraph).toMatchObject({status: 'complete', expectedMembers: 10, observedAcquisitionMembers: 10});
+  });
+  it('deduplicates matching physical compiler metadata but retains contradictory declaration claims', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8'))), probe = f.schemas.comparisonInstrumentationBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'instrumentation/build-evidence.json'), 'utf8')));
+    product.packages.push({name: probe.compiler.name, version: probe.compiler.version, resolutionPath: probe.compiler.resolutionPath, integrity: probe.compiler.integrity});
+    const save = async () => {await f.json(prefix + 'provenance/build-evidence.json', f.schemas.adapterBuildSchema.parse(product)); await f.refreshSlot(0, [], [], ['provenance/build-evidence.json']);};
+    await save(); const positive = await loadComparisonInvocation(f.root); expect(positive.runs[0]!.provenanceGraph).toMatchObject({status: 'complete', expectedMembers: 9});
+    product.packages[1]!.integrity = 'sha512-ZQ=='; await save(); const negative = await loadComparisonInvocation(f.root);
+    expect(negative.byteIntegrity.seal).toBe('byte-closed'); expect(negative.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'integrity', path: 'provenance/packages/' + probe.compiler.resolutionPath + '/package.json', reason: 'Same physical metadata path has conflicting captured declarations'}));
+  });
+  it('keeps legacy package resolution unknown without guessing a new metadata read', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8'))); delete product.packages[0]!.resolutionPath;
+    await f.json(prefix + 'provenance/build-evidence.json', f.schemas.adapterBuildSchema.parse(product)); await f.refreshSlot(0, [], [], ['provenance/build-evidence.json']);
+    const original = fs.open.bind(fs), target = join(f.root, prefix + 'provenance/packages/node_modules/p-queue/package.json'); let opens = 0;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {if (String(args[0]) === target) opens++; return original(...args);});
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(opens).toBe(2);
+    expect(result.runs[0]!.provenanceGraph).toMatchObject({status: 'partial', issues: expect.arrayContaining([expect.objectContaining({reason: 'Legacy package declaration has no original physical resolution path'})])});
+  });
+  it('retains nonempty copiedSourceHashes as unsupported instead of creating another source projection', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8'))); product.copiedSourceHashes['legacy-copy.ts'] = 'a'.repeat(64);
+    await f.json(prefix + 'provenance/build-evidence.json', product); await f.refreshSlot(0, [], [], ['provenance/build-evidence.json']); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.provenanceGraph).toMatchObject({status: 'partial', expectedMembers: 9, issues: expect.arrayContaining([expect.objectContaining({reason: 'Nonempty legacy copiedSourceHashes has no supported comparison acquisition projection'})])});
+  });
+  it.each(['provenance/build-evidence.json', 'instrumentation/build-evidence.json'] as const)('retains missing required %s as unavailable with the exact original path', async path => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/'; await unlink(join(f.root, prefix + path)); await f.refreshSlot(0, [], [path]);
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.provenanceGraph.status).toBe('unavailable');
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({path, reason: 'Required captured build declaration unavailable from admitted originals'}));
+  });
+  it('revokes every earlier complete graph when a graph metadata original is substituted during final closure', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), target = join(f.root, f.runs[0]!.artifactDirectory, 'provenance/packages/node_modules/p-queue/package.json'), replacement = join(f.root, '..', 'graph-original-replacement.json'); await writeFile(replacement, await readFile(target));
+    const original = fs.opendir.bind(fs); let rootOpens = 0, changed = false;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {if (String(args[0]) === f.root && ++rootOpens === 3) {await rename(replacement, target); changed = true;} return original(...args);});
+    const result = await loadComparisonInvocation(f.root); expect(changed).toBe(true); expect(result.byteIntegrity.seal).toBe('partial');
+    expect(result.runs.every(row => row.provenanceGraph.status === 'partial' && row.provenanceGraph.issues.some(issue => issue.kind === 'integrity' && issue.reason === 'Original invocation ownership or membership was not closed'))).toBe(true);
+  });
+  it.each([undefined, null, false, 0, ''])('retains actual graph metadata descriptor-close failure %j and revokes other complete graphs', async primary => {
+    const f = await provenanceGraphFixture('2.1.0'), path = f.runs[0]!.artifactDirectory + '/provenance/packages/node_modules/p-queue/package.json', target = join(f.root, path), original = fs.open.bind(fs); let opens = 0, rejected = false;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const fd = await original(...args); if (String(args[0]) !== target || ++opens !== 3) return fd; return new Proxy(fd, {get(handle, key) {if (key === 'close') return async () => {await handle.close(); rejected = true; throw primary;}; const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;}});});
+    const result = await loadComparisonInvocation(f.root); expect(rejected).toBe(true); expect(result.byteIntegrity.seal).toBe('partial'); expect(result.runs.every(row => row.provenanceGraph.status !== 'complete')).toBe(true);
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'unreadable', path: 'provenance/packages/node_modules/p-queue/package.json'}));
+    const failure = result.byteIntegrity.ioFailures.find(issue => issue.path === path && issue.operation === 'close'); expect(failure).toBeDefined(); expect(Object.hasOwn(failure!, 'error')).toBe(true); expect(failure!.error).toBe(primary);
+  });
+});
+describe('comparison provenance graph remaining declaration relations', () => {
+  it('retains each malformed original build declaration diagnostic independently', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', paths = ['provenance/build-evidence.json', 'instrumentation/build-evidence.json'];
+    for (const path of paths) await f.json(prefix + path, {malformedOriginal: true}); await f.refreshSlot(0, [], [], paths); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.provenanceGraph.status).toBe('partial');
+    for (const path of paths) expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'malformed', path}));
+  });
+  it('retains malformed original acquisition as partial rather than missing', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', path = 'provenance/acquisition.json';
+    // Refresh the genuine envelope first, then replace only acquisition bytes and its inventory/seal facts.
+    await f.json(prefix + path, {malformedOriginal: true});
+    const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8'))), fact = await f.measure(prefix + path); Object.assign(raw.files.find(file => file.path === path)!, fact);
+    await f.json(prefix + 'raw-inventory.json', raw); await f.refreshSeal(); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.provenanceGraph.status).toBe('partial'); expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'malformed', path}));
+  });
+  it('retains an unregistered declared destination as unknown without opening it', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))), member = acquisition.members[0]!;
+    acquisition.status = 'partial'; acquisition.reason = 'original copy unavailable'; member.status = 'partial'; member.reason = 'original copy unavailable'; member.copied = {status: 'unavailable', reason: 'original copy unavailable'}; member.key = 'unregistered.ts'; member.path = 'provenance/source/unregistered.ts';
+    await f.json(prefix + 'provenance/acquisition.json', f.schemas.comparisonProvenanceAcquisitionSchema.parse(acquisition)); await f.refreshSlot(0);
+    const original = fs.open.bind(fs), opened: string[] = []; vi.spyOn(fs, 'open').mockImplementation(async (...args) => {opened.push(String(args[0])); return original(...args);}); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.provenanceGraph.status).toBe('partial'); expect(opened.some(path => path.endsWith('/unregistered.ts'))).toBe(false); expect(result.root.seal.value?.absentMembers).toEqual([]);
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({path: member.path, reason: 'Acquisition member is not declared by captured build records'})); expect(result.runs[0]!.references.acquisition.status).toBe('partial');
+  });
+  it.each(['sourceHashes', 'assetHashes', 'compiledHashes'] as const)('checks declared %s independently of current copied header facts', async field => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', record = field === 'compiledHashes' ? 'instrumentation/build-evidence.json' : 'provenance/build-evidence.json';
+    const product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8'))), probe = f.schemas.comparisonInstrumentationBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'instrumentation/build-evidence.json'), 'utf8')));
+    const declaration = field === 'compiledHashes' ? probe.compiledHashes : product[field], key = Object.keys(declaration)[0]!; declaration[key] = 'a'.repeat(64);
+    await f.json(prefix + record, field === 'compiledHashes' ? probe : product); await f.refreshSlot(0, [], [], [record]); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.references.acquisition.status).toBe('complete');
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'integrity', path: (field === 'sourceHashes' ? 'provenance/source/' : field === 'assetHashes' ? 'provenance/assets/' : 'instrumentation/compiled/') + key, reason: 'Build declared digest differs from acquired or retained original'}));
+  });
+  it('rejects a schema-valid product key that cannot name a normalized artifact destination', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8'))); product.sourceHashes['../outside.ts'] = 'a'.repeat(64);
+    await f.json(prefix + 'provenance/build-evidence.json', f.schemas.adapterBuildSchema.parse(product)); await f.refreshSlot(0, [], [], ['provenance/build-evidence.json']); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({path: 'provenance/build-evidence.json', reason: 'Build declaration key is not a normalized artifact path'}));
+  });
+  it.each(['2.0.0', '2.1.0'] as const)('compares a present %s manifest build without requiring a manifest for setup closure', async version => {
+    const f = await provenanceGraphFixture(version), row = f.runs[0]!, prefix = row.artifactDirectory + '/', product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8')));
+    const manifest = f.schemas.comparisonManifestSchema.parse({...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex,
+      caseOrder: f.ledger.configuration.caseOrder, workload: createLongThreadMatrix(1).find(value => value.scenarioId === row.scenarioId)!.workload, git: {revision: 'fixture-revision', dirty: false}, fixture: {sha256: 'a'.repeat(64), file: 'fixture.json'},
+      browser: {executable: 'fixture-browser', version: '156.0.0.0', revision: 'fixture-revision', flags: []}, environment: {os: 'fixture-os', architecture: 'fixture-arch', cpu: {status: 'unavailable', reason: 'fixture'}, gpu: {status: 'unavailable', reason: 'fixture'}},
+      mode: 'headless', viewport: {width: 1280, height: 800, deviceScaleFactor: 1}, cachePolicy: 'fresh-profile-empty-cache-assets-preloaded', fonts: 'local-system',
+      adapter: {id: 'fixture-adapter', profile: row.adapterProfile, capabilities: {rendering: 'all-mounted', scrollPolicy: 'bottom-follow', returnToResponse: 'native-control'}, configuration: {markdown: 'default', pinThresholdCssPx: null, telemetry: 'disabled'}, build: product}});
+    const save = async (added: string[] = []) => {await f.json(prefix + 'manifest.json', f.schemas.comparisonManifestSchema.parse(manifest)); await f.refreshSlot(0, added);};
+    await save(['manifest.json']); const positive = await loadComparisonInvocation(f.root); expect(positive.byteIntegrity.seal).toBe('byte-closed'); expect(positive.runs[0]!.provenanceGraph).toMatchObject({status: 'complete', manifestAgreement: 'matched'});
+    manifest.adapter.build.framework.version = '21.2.26'; await save(); const negative = await loadComparisonInvocation(f.root); expect(negative.byteIntegrity.seal).toBe('byte-closed'); expect(negative.runs[0]!.provenanceGraph).toMatchObject({status: 'partial', manifestAgreement: 'contradictory', issues: expect.arrayContaining([expect.objectContaining({kind: 'integrity', path: 'manifest.json', reason: 'Manifest build differs from captured product declaration'})])});
+  });
+  it('retains unknown copied measurement and partial acquisition without comparing retained destination to original stages', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))), member = acquisition.members[0]!;
+    acquisition.status = 'partial'; acquisition.reason = 'copy unavailable'; member.status = 'partial'; member.reason = 'copy unavailable'; member.copied = {status: 'unavailable', reason: 'copy unavailable'};
+    await f.json(prefix + 'provenance/acquisition.json', f.schemas.comparisonProvenanceAcquisitionSchema.parse(acquisition)); await f.refreshSlot(0); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.references.acquisition.status).toBe('partial'); expect(result.runs[0]!.provenanceGraph.status).toBe('partial');
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({path: member.path, reason: 'Expected acquisition retains partial or unavailable copied measurement'}));
+    expect(result.runs[0]!.provenanceGraph.issues.some(issue => issue.kind === 'integrity')).toBe(false);
+  });
+  it('does not equate a genuinely partial retained destination to the original declared digest when copied measurement is unknown', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))), member = acquisition.members[0]!;
+    acquisition.status = 'partial'; acquisition.reason = 'copy unavailable'; member.status = 'partial'; member.reason = 'copy unavailable'; member.copied = {status: 'unavailable', reason: 'copy unavailable'};
+    await f.json(prefix + member.path, {genuinelyPartialDestination: true}); await f.json(prefix + 'provenance/acquisition.json', f.schemas.comparisonProvenanceAcquisitionSchema.parse(acquisition)); await f.refreshSlot(0);
+    const capture = f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8'))), payload = capture.payloads.find(file => file.path === member.path)!; payload.status = 'partial'; payload.reason = 'copy unavailable'; await f.json(prefix + 'capture-status.json', capture);
+    const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8'))), retained = raw.files.find(file => file.path === member.path)!; retained.status = 'partial'; retained.reason = 'copy unavailable'; Object.assign(raw.files.find(file => file.path === 'capture-status.json')!, await f.measure(prefix + 'capture-status.json')); await f.json(prefix + 'raw-inventory.json', raw); await f.refreshSeal();
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.references.acquisition.status).toBe('partial'); expect(result.runs[0]!.references.acquisition.issues.some(issue => issue.kind === 'integrity')).toBe(false);
+    expect(result.runs[0]!.provenanceGraph.status).toBe('partial'); expect(result.runs[0]!.provenanceGraph.issues.some(issue => issue.kind === 'integrity')).toBe(false);
+    const measured = result.byteIntegrity.files.find(file => file.path === prefix + member.path)!; expect(measured.fact).not.toBeNull(); expect(measured.fact!.sha256).not.toBe(member.originalSha256);
+  });
+  it('revokes byte closure on a newly owned graph read mismatch while physical bytes remain unchanged', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), path = f.runs[0]!.artifactDirectory + '/provenance/packages/node_modules/p-queue/package.json', target = join(f.root, path), original = fs.open.bind(fs); let opens = 0, substituted = false;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const fd = await original(...args); if (String(args[0]) !== target || ++opens !== 3) return fd; return new Proxy(fd, {get(handle, key) {
+      if (key === 'read') return async (...parameters: Parameters<typeof handle.read>) => {const result = await handle.read(...parameters); if (!substituted && result.bytesRead) {const bytes = result.buffer as Buffer, index = bytes.indexOf('9.0.0'); expect(index).toBeGreaterThan(-1); bytes[index] = '8'.charCodeAt(0); substituted = true;} return result;};
+      const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+    }});});
+    const result = await loadComparisonInvocation(f.root); expect(substituted).toBe(true); expect(result.byteIntegrity.seal).toBe('partial'); expect(result.runs.every(row => row.provenanceGraph.status !== 'complete')).toBe(true);
+    expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'identity', path: 'provenance/packages/node_modules/p-queue/package.json', reason: 'Original bytes changed between owned reads'}));
+  });
+});
+describe('comparison provenance graph copied metadata witness', () => {
+  it.each((['compiler', 'nativeCompiler'] as const).flatMap(tool => (['minimal', 'changed-identity', 'missing-identity'] as const).map(shape => ({tool, shape}))))('keeps $tool $shape retained metadata unverified when copied is unavailable', async ({tool, shape}) => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', probe = f.schemas.comparisonInstrumentationBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'instrumentation/build-evidence.json'), 'utf8'))), path = 'provenance/packages/' + probe[tool].resolutionPath + '/package.json';
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))), member = acquisition.members.find(member => member.path === path)!;
+    acquisition.status = 'partial'; acquisition.reason = 'metadata copy unavailable'; member.status = 'partial'; member.reason = acquisition.reason; member.copied = {status: 'unavailable', reason: acquisition.reason};
+    const retained = shape === 'minimal' ? {name: probe[tool].name, version: probe[tool].version} : shape === 'changed-identity' ? {name: 'retained-prefix', version: '0.0.1'} : {};
+    await f.json(prefix + path, retained); await f.json(prefix + 'provenance/acquisition.json', acquisition); await f.refreshSlot(0);
+    const capture = f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8'))), payload = capture.payloads.find(file => file.path === path)!; payload.status = 'partial'; payload.reason = acquisition.reason; await f.json(prefix + 'capture-status.json', capture);
+    const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8'))), file = raw.files.find(file => file.path === path)!; file.status = 'partial'; file.reason = acquisition.reason; Object.assign(raw.files.find(file => file.path === 'capture-status.json')!, await f.measure(prefix + 'capture-status.json')); await f.json(prefix + 'raw-inventory.json', raw); await f.refreshSeal();
+    expect(await f.measure(prefix + path)).not.toEqual(probe[tool === 'compiler' ? 'compilerPackageMetadata' : 'nativeCompilerPackageMetadata']);
+    const result = await loadComparisonInvocation(f.root), row = result.runs[0]!; expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(row.references.acquisition.status).toBe('partial'); expect(row.references.acquisition.issues.some(issue => issue.kind === 'integrity')).toBe(false);
+    expect(row.provenanceGraph.status).toBe('partial'); expect(row.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'membership', path, reason: 'Original package metadata copy is unverified'})); expect(row.provenanceGraph.issues.some(issue => issue.kind === 'integrity' || issue.kind === 'malformed')).toBe(false);
+  });
+  it('retains same-physical declaration conflicts even when metadata is unavailable', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8'))), probe = f.schemas.comparisonInstrumentationBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'instrumentation/build-evidence.json'), 'utf8'))), key = probe.compiler.resolutionPath, path = 'provenance/packages/' + key + '/package.json';
+    product.packages.push({name: probe.compiler.name, version: probe.compiler.version, resolutionPath: key, integrity: 'sha512-ZQ=='}); await f.json(prefix + 'provenance/build-evidence.json', product);
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))), member = acquisition.members.find(member => member.path === path)!; acquisition.status = 'partial'; acquisition.reason = 'metadata copy unavailable'; member.status = 'partial'; member.reason = acquisition.reason; member.copied = {status: 'unavailable', reason: acquisition.reason}; await f.json(prefix + 'provenance/acquisition.json', acquisition);
+    await unlink(join(f.root, prefix + path)); f.seal.absentMembers.push({path: prefix + path, reason: acquisition.reason}); await f.refreshSlot(0, [], [path], ['provenance/build-evidence.json']);
+    const capture = f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8'))); capture.unavailablePaths.push({path, reason: acquisition.reason}); await f.json(prefix + 'capture-status.json', capture);
+    const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8'))); Object.assign(raw.files.find(file => file.path === 'capture-status.json')!, await f.measure(prefix + 'capture-status.json')); await f.json(prefix + 'raw-inventory.json', raw); await f.refreshSeal();
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'integrity', path, reason: 'Same physical metadata path has conflicting captured declarations'}));
+  });
+  it('still checks supported available copied metadata when operational acquisition is partial', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', path = 'provenance/packages/node_modules/p-queue/package.json'; await f.json(prefix + path, {name: 'different-package', version: '9.0.0'});
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))), member = acquisition.members.find(member => member.path === path)!; acquisition.status = 'partial'; acquisition.reason = 'source unavailable after copy'; member.status = 'partial'; member.reason = acquisition.reason; member.afterCopy = {status: 'unavailable', reason: acquisition.reason}; const fact = await f.measure(prefix + path); member.beforeCopy = {status: 'available', value: fact}; member.copied = {status: 'available', value: fact}; await f.json(prefix + 'provenance/acquisition.json', acquisition); await f.refreshSlot(0);
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'integrity', path, reason: 'Package metadata identity differs from captured declaration'}));
+  });
+  it.each(['name', 'version', 'executablePath'] as const)('retains native %s declaration contradictions independently of unknown metadata copy', async field => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', probe = f.schemas.comparisonInstrumentationBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'instrumentation/build-evidence.json'), 'utf8'))), path = 'provenance/packages/' + probe.nativeCompiler.resolutionPath + '/package.json';
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))), member = acquisition.members.find(member => member.path === path)!; acquisition.status = 'partial'; acquisition.reason = 'metadata copy unavailable'; member.status = 'partial'; member.reason = acquisition.reason; member.copied = {status: 'unavailable', reason: acquisition.reason}; await f.json(prefix + 'provenance/acquisition.json', acquisition);
+    probe.nativeCompiler[field] = field === 'name' ? '@typescript/typescript-different' : field === 'version' ? '7.0.3' : probe.nativeCompiler.resolutionPath + '/lib/different'; await f.json(prefix + 'instrumentation/build-evidence.json', f.schemas.comparisonInstrumentationBuildSchema.parse(probe)); await f.refreshSlot(0, [], [], ['instrumentation/build-evidence.json']);
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.provenanceGraph.issues).toContainEqual(expect.objectContaining({kind: 'integrity', path: 'instrumentation/build-evidence.json', reason: field === 'executablePath' ? 'Native executable declaration differs from its recorded package context' : 'Native compiler identity differs from recorded compiler context'}));
+  });
+  it('requires copied metadata witness to match owned and sealed bytes before semantics', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', path = 'provenance/packages/node_modules/p-queue/package.json'; await f.json(prefix + path, {name: 'different-retained-destination', version: '0.0.1'});
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))), member = acquisition.members.find(member => member.path === path)!; acquisition.status = 'partial'; acquisition.reason = 'copy changed'; member.status = 'partial'; member.reason = acquisition.reason; await f.json(prefix + 'provenance/acquisition.json', acquisition); await f.refreshSlot(0);
+    const result = await loadComparisonInvocation(f.root), graph = result.runs[0]!.provenanceGraph; expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(graph.status).toBe('partial');
+    expect(graph.issues).toContainEqual(expect.objectContaining({kind: 'integrity', path, reason: 'Declared acquisition copied fact differs from measured original'})); expect(graph.issues).toContainEqual(expect.objectContaining({kind: 'membership', path, reason: 'Original package metadata copy is unverified'})); expect(graph.issues.some(issue => issue.reason === 'Package metadata identity differs from captured declaration')).toBe(false);
+  });
+});
+describe('comparison provenance declaration capacity', () => {
+  it('bounds unsupported copiedSourceHashes before semantic traversal', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8')));
+    product.copiedSourceHashes = Object.fromEntries(Array.from({length: 4097}, (_, index) => ['copy-' + index + '.ts', 'a'.repeat(64)])); await f.json(prefix + 'provenance/build-evidence.json', f.schemas.adapterBuildSchema.parse(product)); await f.refreshSlot(0, [], [], ['provenance/build-evidence.json']); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', path: prefix + 'provenance/build-evidence.json', limitName: 'slotCandidates', observed: 4097, observation: 'exact'})); expect(result.runs[0]!.provenanceGraph.expectedMembers).toBeNull();
+  });
+  it('refuses a selected-schema-valid4097 source map before graph expansion', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/';
+    const product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8')));
+    product.sourceHashes = Object.fromEntries(Array.from({length: 4097}, (_, index) => ['declared-' + index + '.ts', 'a'.repeat(64)]));
+    await f.json(prefix + 'provenance/build-evidence.json', f.schemas.adapterBuildSchema.parse(product)); await f.refreshSlot(0, [], [], ['provenance/build-evidence.json']);
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', path: prefix + 'provenance/build-evidence.json', limitName: 'slotCandidates', limit: 4096, observed: 4097, observation: 'exact'}));
+    expect(result.runs[0]!.provenanceGraph.expectedMembers).toBeNull();
+  });
+  it('refuses4097 package declarations before metadata traversal', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8')));
+    product.packages = Array.from({length: 4097}, (_, index) => ({name: 'pkg-' + index, version: '1.0.0', integrity: 'sha512-YQ==', resolutionPath: 'node_modules/pkg-' + index})); await f.json(prefix + 'provenance/build-evidence.json', f.schemas.adapterBuildSchema.parse(product)); await f.refreshSlot(0, [], [], ['provenance/build-evidence.json']);
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', path: prefix + 'provenance/build-evidence.json', limitName: 'slotCandidates', observed: 4097, observation: 'exact'}));
+  });
+  it('bounds combined distinct metadata while admitting repeated physical metadata at exactly4096 declarations', async () => {
+    const f = await provenanceGraphFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8'))), probe = f.schemas.comparisonInstrumentationBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'instrumentation/build-evidence.json'), 'utf8')));
+    const save = async () => {await f.json(prefix + 'provenance/build-evidence.json', f.schemas.adapterBuildSchema.parse(product)); await f.refreshSlot(0, [], [], ['provenance/build-evidence.json']);};
+    product.sourceHashes = Object.fromEntries(Array.from({length: 4090}, (_, index) => ['declared-' + index + '.ts', 'a'.repeat(64)])); await save(); const over = await loadComparisonInvocation(f.root);
+    expect(over.byteIntegrity.seal).toBe('byte-closed'); expect(over.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', path: prefix + 'provenance/acquisition.json', limitName: 'slotCandidates', observed: 4097, observation: 'lower-bound'}));
+    product.sourceHashes = Object.fromEntries(Array.from({length: 4089}, (_, index) => ['declared-' + index + '.ts', 'a'.repeat(64)])); product.packages = [{name: probe.compiler.name, version: probe.compiler.version, integrity: probe.compiler.integrity, resolutionPath: probe.compiler.resolutionPath}]; await save(); const boundary = await loadComparisonInvocation(f.root);
+    expect(boundary.byteIntegrity.seal).toBe('byte-closed'); expect(boundary.loadingIssues.some(issue => issue.kind === 'admission-limit')).toBe(false); expect(boundary.runs[0]!.provenanceGraph).toMatchObject({status: 'partial', expectedMembers: 4096});
+    // 4,089 missing declared sources plus two real copies no longer declared: every omitted diagnostic is counted.
+    expect(boundary.runs[0]!.provenanceGraph.issues).toHaveLength(32); expect(boundary.runs[0]!.provenanceGraph.additionalIssueCount).toBe(4089 + 2 - 32);
+  });
+});
+describe('comparison loader independently checked slot references', () => {
+  it('revokes invocation closure when a newly owned reference read disagrees with earlier original bytes', async () => {
+    const f = await referenceFixture('2.1.0'), path = f.runs[0]!.artifactDirectory + '/capture-status.json', target = join(f.root, path), original = fs.open.bind(fs); let opens = 0, substituted = false;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      const fd = await original(...args); if (String(args[0]) !== target || ++opens !== 3) return fd;
+      return new Proxy(fd, {get(handle, key) {
+        if (key === 'read') return async (...parameters: Parameters<typeof handle.read>) => {
+          const result = await handle.read(...parameters);
+          if (!substituted && result.bytesRead) {const bytes = result.buffer as Buffer, index = bytes.indexOf('not started'); expect(index).toBeGreaterThan(-1); bytes[index] = 'N'.charCodeAt(0); substituted = true;}
+          return result;
+        };
+        const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+      }});
+    });
+    const result = await loadComparisonInvocation(f.root); expect(substituted).toBe(true); expect(result.byteIntegrity.seal).toBe('partial');
+    expect(result.runs.every(row => Object.values(row.references).every(lane => lane.status !== 'complete'))).toBe(true);
+    expect(result.runs[0]!.references.capture.issues).toContainEqual(expect.objectContaining({kind: 'identity', path: 'capture-status.json', reason: 'Original bytes changed between owned reads'}));
+  });
+  it('requires the original incomplete atomic temporary reason for a genuine admitted temporary', async () => {
+    const f = await referenceFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', temporary = 'fixture.json.00000000-0000-4000-8000-000000000001.tmp';
+    await writeFile(join(f.root, prefix + temporary), 'partial original');
+    const capture = f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8')));
+    capture.payloads.push({path: temporary, status: 'partial', reason: 'incomplete atomic temporary: interrupted write'}); capture.payloads.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
+    const save = async (reason: string, added: string[] = []) => {
+      capture.payloads.find(file => file.path === temporary)!.reason = reason; await f.json(prefix + 'capture-status.json', capture);
+      const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8')));
+      raw.files = raw.files.filter(file => file.path !== temporary);
+      const bytes = await readFile(join(f.root, prefix + temporary)); raw.files.push({path: temporary, status: 'partial', reason, byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')}); raw.files.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
+      const file = raw.files.find(file => file.path === 'capture-status.json')!, statusBytes = await readFile(join(f.root, prefix + file.path));file.byteLength=statusBytes.length;file.sha256=createHash('sha256').update(statusBytes).digest('hex');
+      await f.json(prefix + 'raw-inventory.json', f.schemas.comparisonRawInventorySchema.parse(raw)); await f.refreshSeal(added);
+    };
+    await save('incomplete atomic temporary: interrupted write', [prefix + temporary]); const positive = await loadComparisonInvocation(f.root);
+    expect(positive.byteIntegrity.seal).toBe('byte-closed'); expect(positive.runs[0]!.references.inventory.status).toBe('complete');
+    await save('unrelated reason'); const negative = await loadComparisonInvocation(f.root); expect(negative.byteIntegrity.seal).toBe('byte-closed');
+    expect(negative.runs[0]!.references.inventory.issues).toContainEqual(expect.objectContaining({path: temporary, reason: 'Temporary payload must preserve incomplete atomic temporary reason'}));
+  });
+  it.each(['beforeCopy','afterCopy','originalSha256'] as const)('checks contradictory available %s in a partial acquisition', async stage => {
+    const f = await referenceFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', name = 'provenance/acquisition.json';
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root,prefix+name),'utf8'))), member=acquisition.members[0]!;
+    acquisition.status='partial';acquisition.reason='source mutation recorded';member.status='partial';member.reason='source mutation recorded';
+    if(stage==='originalSha256')member.originalSha256='0'.repeat(64);else if(member[stage].status==='available')member[stage].value.sha256='0'.repeat(64);
+    await f.json(prefix+name,f.schemas.comparisonProvenanceAcquisitionSchema.parse(acquisition));
+    const raw=f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root,prefix+'raw-inventory.json'),'utf8'))),file=raw.files.find(file=>file.path===name)!,bytes=await readFile(join(f.root,prefix+name));file.byteLength=bytes.length;file.sha256=createHash('sha256').update(bytes).digest('hex');
+    await f.json(prefix+'raw-inventory.json',raw);await f.refreshSeal();const result=await loadComparisonInvocation(f.root);expect(result.byteIntegrity.seal).toBe('byte-closed');
+    expect(result.runs[0]!.references.acquisition.issues).toContainEqual(expect.objectContaining({kind:'integrity',path:'provenance/source/example.ts',reason:stage==='originalSha256'?'Acquisition original digest differs from available copied measurement':`Acquisition ${stage} measurement differs from available copied measurement`}));
+  });
+  it('compares available original source stages while copied measurement remains unknown', async () => {
+    const f = await referenceFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory+'/', name='provenance/acquisition.json';
+    const acquisition=f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root,prefix+name),'utf8'))),member=acquisition.members[0]!;
+    acquisition.status='partial';acquisition.reason='copy unavailable';member.status='partial';member.reason='copy unavailable';member.copied={status:'unavailable',reason:'copy unavailable'};
+    const save=async()=>{
+      await f.json(prefix+name,f.schemas.comparisonProvenanceAcquisitionSchema.parse(acquisition));
+      const raw=f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root,prefix+'raw-inventory.json'),'utf8'))),file=raw.files.find(file=>file.path===name)!,bytes=await readFile(join(f.root,prefix+name));file.byteLength=bytes.length;file.sha256=createHash('sha256').update(bytes).digest('hex');await f.json(prefix+'raw-inventory.json',raw);await f.refreshSeal();
+    };
+    await save();const positive=await loadComparisonInvocation(f.root);expect(positive.byteIntegrity.seal).toBe('byte-closed');expect(positive.runs[0]!.references.acquisition.status).toBe('partial');expect(positive.runs[0]!.references.acquisition.issues.some(issue=>issue.kind==='integrity')).toBe(false);
+    if(member.afterCopy.status!=='available')throw new Error('Canonical actual source stage absent');member.afterCopy.value.sha256='0'.repeat(64);
+    await save();const negative=await loadComparisonInvocation(f.root);expect(negative.byteIntegrity.seal).toBe('byte-closed');
+    expect(negative.runs[0]!.references.acquisition.issues).toContainEqual(expect.objectContaining({kind:'integrity',path:'provenance/source/example.ts',reason:'Acquisition afterCopy measurement differs from available beforeCopy measurement'}));
+    expect(member.copied).toEqual({status:'unavailable',reason:'copy unavailable'});
+  });
+  it.each((['2.0.0', '2.1.0'] as const).flatMap(version => ([1, 2, 3] as const).map(repetition => ({version, repetition}))))('retains all $repetition repetitions with independently closed references in $version', async ({version, repetition}) => {
+    const f = await referenceFixture(version, undefined, repetition), result = await loadComparisonInvocation(f.root);
+    expect(result.runs).toHaveLength(repetition * 12); expect(result.byteIntegrity.seal).toBe('byte-closed');
+    expect(result.runs.every(row => Object.values(row.references).every(lane => lane.status === 'complete'))).toBe(true);
+    expect(result.runs.every(row => row.captureValidation?.status === 'failed')).toBe(true);
+  });
+  it.each(['inventory-order', 'inventory-missing', 'capture-payload', 'validation-reason', 'copied-digest', 'partial-copy'] as const)('rejects contradictory %s with a current outer seal', async mutation => {
+    const f = await referenceFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/';
+    const load = async (name: string) => JSON.parse(await readFile(join(f.root, prefix + name), 'utf8'));
+    if (mutation.startsWith('inventory-')) {
+      const value = f.schemas.comparisonRawInventorySchema.parse(await load('raw-inventory.json'));
+      if (mutation === 'inventory-order') value.files.reverse(); else value.files.pop();
+      await f.json(prefix + 'raw-inventory.json', f.schemas.comparisonRawInventorySchema.parse(value));
+    } else if (mutation === 'capture-payload') {
+      const value = f.schemas.comparisonCaptureStatusSchema.parse(await load('capture-status.json')); value.payloads.pop();
+      await f.json(prefix + 'capture-status.json', f.schemas.comparisonCaptureStatusSchema.parse(value));
+    } else if (mutation === 'validation-reason') {
+      const value = f.schemas.comparisonValidationSchema.parse(await load('validation.json')); value.reasons = ['different original failure'];
+      await f.json(prefix + 'validation.json', f.schemas.comparisonValidationSchema.parse(value));
+    } else {
+      const value = f.schemas.comparisonProvenanceAcquisitionSchema.parse(await load('provenance/acquisition.json')), member = value.members[0]!;
+      if (mutation === 'copied-digest') {
+        member.originalSha256 = '0'.repeat(64);
+        for (const stage of [member.beforeCopy, member.copied, member.afterCopy]) if (stage.status === 'available') stage.value.sha256 = '0'.repeat(64);
+      }
+      if (mutation === 'partial-copy') {value.status = 'partial'; value.reason = 'copy interrupted'; member.status = 'partial'; member.reason = 'copy interrupted'; member.copied = {status: 'unavailable', reason: 'copy interrupted'};}
+      await f.json(prefix + 'provenance/acquisition.json', f.schemas.comparisonProvenanceAcquisitionSchema.parse(value));
+    }
+    // Rebind the genuine inventory to modified payload bytes, except when testing the inventory itself.
+    if (!mutation.startsWith('inventory-')) {
+      const value = f.schemas.comparisonRawInventorySchema.parse(await load('raw-inventory.json'));
+      for (const file of value.files) {const bytes = await readFile(join(f.root, prefix + file.path)); file.byteLength = bytes.length; file.sha256 = createHash('sha256').update(bytes).digest('hex');}
+      await f.json(prefix + 'raw-inventory.json', value);
+    }
+    await f.refreshSeal(); const result = await loadComparisonInvocation(f.root), row = result.runs[0]!;
+    expect(result.byteIntegrity.seal).toBe('byte-closed');
+    const lane = mutation.startsWith('inventory-') ? row.references.inventory : mutation === 'capture-payload' || mutation === 'validation-reason' ? row.references.capture : row.references.acquisition;
+    expect(lane.status).toBe('partial'); expect(lane.issues.length).toBeGreaterThan(0);
+    expect(row.captureValidation?.status).toBe('failed');
+  });
+  it('revokes every earlier complete reference when an original is replaced during final inspection', async () => {
+    const f = await referenceFixture('2.1.0'), target = join(f.root, f.runs[0]!.artifactDirectory, 'provenance/source/example.ts');
+    const replacement = join(f.root, '..', 'reference-replacement.json'); await writeFile(replacement, await readFile(target));
+    const original = fs.opendir.bind(fs); let rootOpens = 0, replaced = false;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {
+      if (String(args[0]) === f.root && ++rootOpens === 3) {await rename(replacement, target); replaced = true;}
+      return original(...args);
+    });
+    const result = await loadComparisonInvocation(f.root); expect(replaced).toBe(true); expect(result.byteIntegrity.seal).toBe('partial');
+    for (const row of result.runs) for (const lane of Object.values(row.references)) {
+      expect(lane.status).toBe('partial'); expect(lane.issues).toContainEqual(expect.objectContaining({kind: 'integrity', reason: 'Original invocation ownership or membership was not closed'}));
+    }
+  });
+  it.each([undefined, null, false, 0, ''])('revokes all reference lanes on genuine final directory-close failure %j', async originalError => {
+    const f = await referenceFixture('2.1.0'), original = fs.opendir.bind(fs); let rootOpens = 0, rejected = false;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {
+      const dir = await original(...args); if (String(args[0]) !== f.root || ++rootOpens !== 3) return dir;
+      return new Proxy(dir, {get(handle, key) {
+        if (key === 'close') return async () => {await handle.close(); rejected = true; throw originalError;};
+        const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+      }});
+    });
+    const result = await loadComparisonInvocation(f.root); expect(rejected).toBe(true); expect(result.byteIntegrity.seal).toBe('partial');
+    expect(result.runs.every(row => Object.values(row.references).every(lane => lane.status === 'partial'))).toBe(true);
+    const failure = result.physicalInventory.ioFailures.find(row => row.operation === 'directory-close' && row.path === '.');
+    expect(failure).toBeDefined(); expect(Object.hasOwn(failure!, 'error')).toBe(true); expect(failure!.error).toBe(originalError);
+  });
+  it.each([undefined, null, false, 0, ''])('retains genuine falsy owned reference-document close failure %j', async originalError => {
+    const f = await referenceFixture('2.1.0'), path = f.runs[0]!.artifactDirectory + '/capture-status.json', target = join(f.root, path), original = fs.open.bind(fs);
+    let opens = 0, rejected = false;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      const fd = await original(...args); if (String(args[0]) !== target || ++opens !== 3) return fd;
+      return new Proxy(fd, {get(handle, key) {
+        if (key === 'close') return async () => {await handle.close(); rejected = true; throw originalError;};
+        const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+      }});
+    });
+    const result = await loadComparisonInvocation(f.root); expect(rejected).toBe(true); expect(result.byteIntegrity.seal).toBe('partial');
+    expect(result.runs.every(row => Object.values(row.references).every(lane => lane.status !== 'complete'))).toBe(true);
+    expect(result.runs[0]!.references.capture.issues).toContainEqual(expect.objectContaining({kind: 'unreadable', path: 'capture-status.json'}));
+    const failure = result.byteIntegrity.ioFailures.find(row => row.operation === 'close' && row.path === path);
+    expect(failure).toBeDefined(); expect(Object.hasOwn(failure!, 'error')).toBe(true); expect(failure!.error).toBe(originalError);
+  });
+  it.each(['present-partial', 'declared-absent', 'unknown-destination'] as const)('retains copied-unavailable %s facts without inferring zero bytes or absence', async mode => {
+    const f = await referenceFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', source = 'provenance/source/example.ts';
+    const acquisition = f.schemas.comparisonProvenanceAcquisitionSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/acquisition.json'), 'utf8'))), member = acquisition.members[0]!;
+    acquisition.status = 'partial'; acquisition.reason = 'original copy unavailable'; member.status = 'partial'; member.reason = 'original copy unavailable'; member.copied = {status: 'unavailable', reason: 'original copy unavailable'};
+    if (mode === 'unknown-destination') {member.key = 'unregistered.ts'; member.path = 'provenance/source/unregistered.ts';}
+    await f.json(prefix + 'provenance/acquisition.json', f.schemas.comparisonProvenanceAcquisitionSchema.parse(acquisition));
+    const capture = f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8')));
+    if (mode === 'declared-absent') {
+      await unlink(join(f.root, prefix + source)); capture.payloads = capture.payloads.filter(file => file.path !== source);
+      capture.unavailablePaths = [{path: source, reason: 'original copy unavailable'}]; f.seal.absentMembers = [{path: prefix + source, reason: 'original copy unavailable'}];
+    } else if (mode === 'present-partial') {const payload = capture.payloads.find(file => file.path === source)!; payload.status = 'partial'; payload.reason = 'original copy unavailable';}
+    await f.json(prefix + 'capture-status.json', f.schemas.comparisonCaptureStatusSchema.parse(capture));
+    const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8')));
+    if (mode === 'declared-absent') raw.files = raw.files.filter(file => file.path !== source);
+    for (const file of raw.files) {
+      const bytes = await readFile(join(f.root, prefix + file.path)); file.byteLength = bytes.length; file.sha256 = createHash('sha256').update(bytes).digest('hex');
+      if (file.path === source && mode === 'present-partial') {file.status = 'partial'; file.reason = 'original copy unavailable';}
+    }
+    await f.json(prefix + 'raw-inventory.json', f.schemas.comparisonRawInventorySchema.parse(raw)); await f.refreshSeal([], mode === 'declared-absent' ? [prefix + source] : []);
+    const result = await loadComparisonInvocation(f.root), row = result.runs[0]!;
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(row.references.inventory.status).toBe('complete'); expect(row.references.capture.status).toBe('complete');
+    expect(row.references.acquisition).toMatchObject({status: 'partial', reportedStatus: 'partial'});
+    expect(result.byteIntegrity.files.some(file => file.path === prefix + source)).toBe(mode !== 'declared-absent');
+    expect(result.root.seal.value?.absentMembers.some(file => file.path === prefix + source)).toBe(mode === 'declared-absent');
+    expect(result.byteIntegrity.files.some(file => file.path.endsWith('/unregistered.ts'))).toBe(false);
+  });
+  it.each(['2.0.0', '2.1.0'] as const)('checks references for %s without promoting original partial capture or failed verdicts', async version => {
+    const f = await referenceFixture(version), result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs).toHaveLength(12);
+    for (const row of result.runs) expect(row).toMatchObject({captureValidation: {status: 'failed', reasons: ['not started']}, references: {
+      inventory: {status: 'complete', reportedStatus: 'partial'}, capture: {status: 'complete', reportedStatus: 'partial'}, acquisition: {status: 'complete', reportedStatus: 'complete'},
+    }});
+    expect(result.collection.status).toBe('partial'); expect(result.collection.onDiskConsistencyOnly).toBe(true);
+  });
+  it.each(['2.0.0', '2.1.0'] as const)('checks evidence and conditional instrumentation in selected family %s', async version => {
+    const f = await referenceFixture(version), prefix = f.runs[0]!.artifactDirectory + '/', unavailable = {status: 'unavailable', reason: 'not started'};
+    const probe = {intervalMs: 50, callbacks: 0, callbackDurationTotalMs: 0, maximumObservedGapMs: unavailable};
+    const instrumentation = f.schemas.comparisonInstrumentationSchema.parse({runtimeProbe: probe, domProbe: {...probe, selectionStrategy: 'bounded-visible-candidates'}, scrollProbe: probe, transportDrain: probe, eventTiming: unavailable, loaf: unavailable, buffers: [],
+      ...(version === '2.1.0' ? {freshScrollProbe: {samplingMode: 'on-demand', callbacks: 0, callbackDurationTotalMs: 0, maximumObservedGapMs: unavailable}} : {})});
+    const capture = f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8')));
+    capture.evidenceMetadata = {status: 'available'};
+    capture.finalPageInstrumentation = {status: 'available', value: instrumentation};
+    await f.json(prefix + 'capture-status.json', f.schemas.comparisonCaptureStatusSchema.parse(capture));
+    const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8')));
+    for (const file of raw.files) {const bytes = await readFile(join(f.root, prefix + file.path)); file.byteLength = bytes.length; file.sha256 = createHash('sha256').update(bytes).digest('hex');}
+    const evidence = f.schemas.comparisonEvidenceSchema.parse({...raw, unavailableFiles: [], trace: unavailable, instrumentation});
+    await f.json(prefix + 'evidence.json', evidence); await unlink(join(f.root, prefix + 'raw-inventory.json'));
+    await f.refreshSeal([prefix + 'evidence.json'], [prefix + 'raw-inventory.json']);
+    const positive = await loadComparisonInvocation(f.root); expect(positive.byteIntegrity.seal).toBe('byte-closed');
+    expect(positive.runs[0]!.references.capture.status).toBe('complete'); expect(positive.runs[0]!.references.inventory.status).toBe('complete');
+    evidence.instrumentation.runtimeProbe.callbackDurationTotalMs = 1;
+    await f.json(prefix + 'evidence.json', f.schemas.comparisonEvidenceSchema.parse(evidence)); await f.refreshSeal();
+    const negative = await loadComparisonInvocation(f.root); expect(negative.byteIntegrity.seal).toBe('byte-closed');
+    expect(negative.runs[0]!.references.capture.issues).toContainEqual(expect.objectContaining({reason: 'Capture instrumentation differs from original evidence'}));
+  });
+  it.each(['wrong-family', 'wrong-identity', 'missing-capture', 'missing-acquisition'] as const)('preserves byte closure but refuses %s reference authority', async mutation => {
+    const f = await referenceFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/';
+    if (mutation.startsWith('missing-')) {
+      const name = mutation === 'missing-capture' ? 'capture-status.json' : 'provenance/acquisition.json';
+      await unlink(join(f.root, prefix + name));
+      const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8')));
+      raw.files = raw.files.filter(file => file.path !== name); await f.json(prefix + 'raw-inventory.json', raw); await f.refreshSeal([], [prefix + name]);
+    } else {
+      const capture = JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8'));
+      if (mutation === 'wrong-family') {capture.collectorVersion = '2.0.0'; capture.analyzerVersion = '2.0.0';} else capture.caseIndex = 1;
+      await f.json(prefix + 'capture-status.json', capture);
+      const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8'))), file = raw.files.find(file => file.path === 'capture-status.json')!;
+      const bytes = await readFile(join(f.root, prefix + file.path)); file.byteLength = bytes.length; file.sha256 = createHash('sha256').update(bytes).digest('hex');
+      await f.json(prefix + 'raw-inventory.json', raw); await f.refreshSeal();
+    }
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed');
+    const lane = mutation === 'missing-acquisition' ? result.runs[0]!.references.acquisition : result.runs[0]!.references.capture;
+    expect(lane.status).toBe(mutation.startsWith('missing-') ? 'unavailable' : 'partial'); expect(lane.issues).not.toHaveLength(0);
+  });
+  it.each(['raw-inventory.json', 'provenance/acquisition.json'] as const)('rejects stale original identity and family in %s', async name => {
+    const f = await referenceFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/';
+    const value = JSON.parse(await readFile(join(f.root, prefix + name), 'utf8')); value.caseIndex = 1;
+    await f.json(prefix + name, value);
+    const refreshInventory = async () => {
+      if (name === 'raw-inventory.json') return;
+      const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8'))), file = raw.files.find(file => file.path === name)!;
+      const bytes = await readFile(join(f.root, prefix + name)); file.byteLength = bytes.length; file.sha256 = createHash('sha256').update(bytes).digest('hex'); await f.json(prefix + 'raw-inventory.json', raw);
+    };
+    await refreshInventory(); await f.refreshSeal(); let result = await loadComparisonInvocation(f.root);
+    const key = name === 'raw-inventory.json' ? 'inventory' : 'acquisition';
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.references[key].issues).toContainEqual(expect.objectContaining({kind: 'identity', path: name}));
+    value.caseIndex = 0; value.collectorVersion = '2.0.0'; value.analyzerVersion = '2.0.0';
+    await f.json(prefix + name, value); await refreshInventory(); await f.refreshSeal(); result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.references[key].issues).toContainEqual(expect.objectContaining({kind: 'malformed', path: name}));
+  });
+  it('compares exact capture absence reasons independently of acquisition unavailability', async () => {
+    const f = await referenceFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/', absentPath = 'fixture.json';
+    f.seal.absentMembers = [{path: prefix + absentPath, reason: 'never acquired'}];
+    const capture = f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8')));
+    capture.unavailablePaths = [{path: absentPath, reason: 'never acquired'}];
+    const save = async () => {
+      await f.json(prefix + 'capture-status.json', f.schemas.comparisonCaptureStatusSchema.parse(capture));
+      const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8'))), file = raw.files.find(file => file.path === 'capture-status.json')!;
+      const bytes = await readFile(join(f.root, prefix + file.path)); file.byteLength = bytes.length; file.sha256 = createHash('sha256').update(bytes).digest('hex'); await f.json(prefix + 'raw-inventory.json', raw); await f.refreshSeal();
+    };
+    await save(); const positive = await loadComparisonInvocation(f.root); expect(positive.byteIntegrity.seal).toBe('byte-closed'); expect(positive.runs[0]!.references.capture.status).toBe('complete');
+    capture.unavailablePaths[0]!.reason = 'different reason'; await save(); const negative = await loadComparisonInvocation(f.root);
+    expect(negative.byteIntegrity.seal).toBe('byte-closed'); expect(negative.runs[0]!.references.capture.issues).toContainEqual(expect.objectContaining({reason: 'Capture unavailable references differ from original declared absences'}));
+  });
+  it('rejects stale inventory digest despite a current outer seal', async () => {
+    const f = await referenceFixture('2.1.0', 'stale-inventory'), result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toMatchObject({references: {inventory: {status: 'partial', issues: [expect.objectContaining({path: 'provenance/source/example.ts', reason: 'Inventory digest differs from measured original or dataset seal'})]}}});
+  });
+  it('rejects an orphan retained acquisition payload with current inventory and seal bytes', async () => {
+    const f = await referenceFixture('2.1.0', 'orphan-acquisition'), result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toMatchObject({references: {inventory: {status: 'complete'}, acquisition: {status: 'partial', issues: [expect.objectContaining({path: 'provenance/source/example.ts', reason: 'Observed acquisition payload has no acquisition member'})]}}});
+  });
+  it.each(['files', 'unavailableFiles', 'combined'] as const)('rejects oversized selected-schema-valid evidence %s before reference traversal', async field => {
+    const f = await referenceFixture('2.1.0'), prefix = f.runs[0]!.artifactDirectory + '/';
+    const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8')));
+    const {files: _files, reason: _reason, ...identityAndStatus} = raw, unavailable = {status: 'unavailable', reason: 'not started'};
+    const probe = {intervalMs: 50, callbacks: 0, callbackDurationTotalMs: 0, maximumObservedGapMs: unavailable};
+    const evidence = f.schemas.comparisonEvidenceSchema.parse({...identityAndStatus, reason: 'not started', files: Array.from({length: field === 'files' ? 4097 : field === 'combined' ? 2048 : 0}, (_, index) => ({path: 'provenance/source/oversized-' + index + '.ts', status: 'complete', byteLength: 1, sha256: 'a'.repeat(64)})), unavailableFiles: Array.from({length: field === 'unavailableFiles' ? 4097 : field === 'combined' ? 2049 : 0}, (_, index) => ({path: 'provenance/source/absent-' + index + '.ts', reason: 'not acquired'})), trace: unavailable,
+      instrumentation: {runtimeProbe: probe, domProbe: {...probe, selectionStrategy: 'bounded-visible-candidates'}, scrollProbe: probe, transportDrain: probe, eventTiming: unavailable, loaf: unavailable, buffers: [], freshScrollProbe: {samplingMode: 'on-demand', callbacks: 0, callbackDurationTotalMs: 0, maximumObservedGapMs: unavailable}}});
+    await f.json(prefix + 'evidence.json', evidence); await unlink(join(f.root, prefix + 'raw-inventory.json'));
+    await f.refreshSeal([prefix + 'evidence.json'], [prefix + 'raw-inventory.json']);
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', path: prefix + 'evidence.json', limitName: 'slotCandidates', limit: 4096, observed: 4097, observation: 'exact'}));
+    expect(result.runs[0]!.references.inventory.additionalIssueCount).toBe(0);
+  });
+});
 describe('comparison loader aggregate owned bytes', () => {
   it('hashes the complete known raw graph and counts the original seal exactly once', async () => {
     const f = await byteFixture(), result = await loadComparisonInvocation(f.root);
