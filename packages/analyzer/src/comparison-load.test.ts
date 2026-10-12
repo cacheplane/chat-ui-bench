@@ -5,7 +5,7 @@ import {mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, unlink, open, w
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {loadComparisonMember, loadComparisonJson, loadComparisonJsonLines, loadComparisonInvocation, type ComparisonMemberReference} from './comparison-load.js';
-import {longThreadCaseOrder, createLongThreadMatrix, comparisonManifestSchema} from '@chat-ui-bench/contract';
+import {longThreadCaseOrder, createLongThreadMatrix, comparisonManifestSchema, comparisonDatasetInventorySchema} from '@chat-ui-bench/contract';
 
 const owned: string[] = [];
 afterEach(async () => {vi.restoreAllMocks(); for (const path of owned.splice(0)) await rm(path, {recursive: true, force: true});});
@@ -261,7 +261,7 @@ describe('comparison loader physical membership', () => {
     expect(observed.count).toBe(count);
     if (count === 4096) expect(result.physicalInventory.status).toBe('complete');
     else expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'slotCandidates', limit: 4096, observed: 4097}));
-  });
+  }, 20000);
   it('detects own directory membership changes after its original close without consuming the new payload', async () => {
     const f = await rootFixture(), original = fs.opendir.bind(fs); let mutated = false;
     vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {
@@ -382,6 +382,265 @@ async function rootFixture(rounds = 1, mode = 'headless') {
   for (const row of runs) await json(row.artifactDirectory + '/descriptor.json', {...versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile, seed: 1, mode, artifactDirectory: row.artifactDirectory});
   return {root, versions, ledger, claim, runs, json};
 }
+async function byteFixture(rounds = 1) {
+  const f = await rootFixture(rounds);
+  for (const row of f.runs) {
+    const identity = {...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile};
+    await f.json(row.artifactDirectory + '/validation.json', {...identity, status: 'failed', reasons: ['not started'], checks: [{name: 'acquisition', passed: false, reason: 'not started', evidencePaths: ['descriptor.json']}]});
+    await f.json(row.artifactDirectory + '/exceptions.json', {...identity, exceptions: []});
+    await f.json(row.artifactDirectory + '/raw-inventory.json', {...identity, status: 'partial', reason: 'not started', files: []});
+  }
+  const paths = ['invocation-claim.json', 'invocation.json', ...f.runs.flatMap(row => ['descriptor.json', 'validation.json', 'exceptions.json', 'raw-inventory.json'].map(name => row.artifactDirectory + '/' + name))].sort();
+  const members = await Promise.all(paths.map(async path => {const bytes = await readFile(join(f.root, path)); return {path, byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')};}));
+  const directories = [...new Set(f.runs.flatMap(row => row.artifactDirectory.split('/').map((_, index, parts) => parts.slice(0, index + 1).join('/'))))].sort();
+  const seal = comparisonDatasetInventorySchema.parse({...f.versions, invocationId: f.claim.invocationId, status: 'sealed', configuration: f.ledger.configuration, invocationClaim: f.claim, invocationLedger: f.ledger, root: '.', ledger: members.find(row => row.path === 'invocation.json'), members, absentMembers: [], directories,
+    slots: f.runs.map(row => ({identity: {...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile}, artifactDirectory: row.artifactDirectory, status: 'failed'})), ownershipSettled: true, finalizationSucceeded: true});
+  await f.json('dataset-seal.json', seal);
+  return {...f, members, seal, async total() {let total = 0; for (const path of [...paths, 'dataset-seal.json']) total += (await fs.lstat(join(f.root, path))).size; return total;}};
+}
+describe('comparison loader aggregate owned bytes', () => {
+  it('hashes the complete known raw graph and counts the original seal exactly once', async () => {
+    const f = await byteFixture(), result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.status).toBe('complete'); expect(result.byteIntegrity.admission).toBe('within-limit');
+    expect(result.byteIntegrity.observedUniqueBytes).toBe(await f.total()); expect(result.byteIntegrity.files).toHaveLength(51);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.collection.status).toBe('partial');
+    expect(result.byteIntegrity.files.filter(row => row.path === 'dataset-seal.json')).toHaveLength(1);
+  });
+  it('fails an actual changed original member against the original seal hash and preserves its bytes', async () => {
+    const f = await byteFixture(), path = f.runs[0]!.artifactDirectory + '/exceptions.json', bytes = Buffer.from('changed original'); await writeFile(join(f.root, path), bytes);
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.status).toBe('partial'); expect(result.byteIntegrity.seal).toBe('partial');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'integrity', path})); expect(await readFile(join(f.root, path))).toEqual(bytes);
+  });
+  it('fails an extra admitted raw file absent from the sealed member set instead of ignoring it', async () => {
+    const f = await byteFixture(), path = f.runs[0]!.artifactDirectory + '/fixture.json'; await writeFile(join(f.root, path), '{}');
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('partial'); expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'membership', path}));
+  });
+  it('retains all original36 failed rows and exact original byte accounting', async () => {
+    const f = await byteFixture(3), result = await loadComparisonInvocation(f.root);
+    expect(result.runs).toHaveLength(36); expect(result.byteIntegrity.status).toBe('complete'); expect(result.byteIntegrity.observedUniqueBytes).toBe(await f.total());
+    expect(result.runs.every(row => row.captureValidation?.status === 'failed')).toBe(true);
+  });
+  it.each([0, 1])('preflights real sparse invocation bytes at fixed16GiB plus %i before any large payload read', async extra => {
+    const f = await byteFixture(), path = 'invocation.json.00000000-0000-4000-8000-000000000001.tmp', target = join(f.root, path);
+    const limit = 16 * 1024 * 1024 * 1024, size = limit - await f.total() + extra;
+    const sparse = await open(target, 'wx'); try {await sparse.truncate(size);} finally {await sparse.close();}
+    const original = fs.open.bind(fs), originalError = false; let payloadReads = 0, ownedCloses = 0;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      const fd = await original(...args); if (String(args[0]) !== target) return fd;
+      return new Proxy(fd, {get(handle, key) {
+        if (key === 'read') return async (...parameters: Parameters<typeof handle.read>) => {
+          payloadReads++; await handle.read(...parameters); throw originalError;
+        };
+        if (key === 'close') return async () => {ownedCloses++; return handle.close();};
+        const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+      }});
+    });
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.observedUniqueBytes).toBe(limit + extra); expect(result.byteIntegrity.status).toBe('partial');
+    expect(result.byteIntegrity.admission).toBe(extra ? 'exceeded' : 'within-limit');
+    expect(payloadReads).toBe(extra ? 0 : 1); expect(ownedCloses).toBe(extra ? 1 : 2);
+    if (extra) expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'invocationUniqueBytes', limit, observed: limit + 1}));
+    else expect(result.byteIntegrity.ioFailures.find(row => row.path === path && row.operation === 'read')?.error).toBe(originalError);
+  });
+  it('preserves a genuine falsy preflight close rejection and never reports successful byte closure', async () => {
+    const f = await byteFixture(), path = f.runs[0]!.artifactDirectory + '/raw-inventory.json', target = join(f.root, path), original = fs.open.bind(fs); let rejected = false;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      const fd = await original(...args); if (String(args[0]) !== target || rejected) return fd;
+      return new Proxy(fd, {get(handle, key) {
+        if (key === 'close') return async () => {await handle.close(); rejected = true; throw 0;};
+        const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+      }});
+    });
+    const result = await loadComparisonInvocation(f.root);
+    expect(rejected).toBe(true); expect(result.byteIntegrity.admission).toBe('unavailable'); expect(result.byteIntegrity.seal).not.toBe('byte-closed');
+    expect(result.byteIntegrity.ioFailures.find(row => row.path === path && row.operation === 'close')?.error).toBe(0);
+  });
+  it('counts original observed bootstrap bytes even when a readable version pair rejects the root', async () => {
+    const f = await rootFixture(); await f.json('invocation.json', {...f.ledger, collectorVersion: '9.0.0'});
+    const expected = (await fs.lstat(join(f.root, 'invocation.json'))).size + (await fs.lstat(join(f.root, 'invocation-claim.json'))).size;
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.observedUniqueBytes).toBe(expected);
+    expect(result.byteIntegrity.files).toHaveLength(2); expect(result.family).toBeNull();
+  });
+  it('checks the original digest even when changed bytes retain the declared length', async () => {
+    const f = await byteFixture(), path = f.runs[0]!.artifactDirectory + '/raw-inventory.json', bytes = await readFile(join(f.root, path));
+    const changed = Buffer.from(bytes); changed[changed.indexOf('not started')] = 'N'.charCodeAt(0); await writeFile(join(f.root, path), changed);
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.status).toBe('partial');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'integrity', path, reason: 'Original digest differs from declared digest'}));
+    expect(await readFile(join(f.root, path))).toEqual(changed);
+  });
+  it('rejects a genuinely missing declared member while retaining all original rows', async () => {
+    const f = await byteFixture(), path = f.runs[0]!.artifactDirectory + '/raw-inventory.json'; await unlink(join(f.root, path));
+    const result = await loadComparisonInvocation(f.root); expect(result.runs).toHaveLength(12); expect(result.byteIntegrity.seal).toBe('partial');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'membership', path, reason: 'Declared seal member is physically absent'}));
+  });
+  it('distinguishes actual empty original bytes from an explicitly absent candidate', async () => {
+    const f = await byteFixture(), path = f.runs[0]!.artifactDirectory + '/fixture.json';
+    const seal = comparisonDatasetInventorySchema.parse({...f.seal, absentMembers: [{path, reason: 'never started'}]}); await f.json('dataset-seal.json', seal);
+    const absent = await loadComparisonInvocation(f.root); expect(absent.byteIntegrity.seal).toBe('byte-closed'); expect(absent.byteIntegrity.files.some(row => row.path === path)).toBe(false);
+    await writeFile(join(f.root, path), ''); const present = await loadComparisonInvocation(f.root);
+    expect(present.byteIntegrity.seal).not.toBe('byte-closed'); expect(present.physicalInventory.files).toContainEqual(expect.objectContaining({path, byteLength: 0}));
+    expect(present.loadingIssues).toContainEqual(expect.objectContaining({path, reason: 'Explicitly absent raw candidate is physically present'}));
+  });
+  it('includes an actual retained seal temporary in the root capacity and byte count without declaring publication closure', async () => {
+    const f = await byteFixture(), path = 'dataset-seal.json.00000000-0000-4000-8000-000000000001.tmp'; await writeFile(join(f.root, path), '');
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.admission).toBe('within-limit'); expect(result.byteIntegrity.seal).toBe('partial');
+    expect(result.byteIntegrity.files).toContainEqual({path, fact: {byteLength: 0, sha256: createHash('sha256').digest('hex')}});
+    expect(result.physicalInventory.candidates.root).toBe(4); expect(result.byteIntegrity.observedUniqueBytes).toBe(await f.total());
+  });
+  it('never upgrades a genuine bootstrap close failure after later successful descriptor reads', async () => {
+    const f = await byteFixture(), path = 'invocation-claim.json', original = fs.open.bind(fs); let rejected = false;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      const fd = await original(...args); if (String(args[0]) !== join(f.root, path) || rejected) return fd;
+      return new Proxy(fd, {get(handle, key) {
+        if (key === 'close') return async () => {await handle.close(); rejected = true; throw undefined;};
+        const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+      }});
+    });
+    const result = await loadComparisonInvocation(f.root); expect(rejected).toBe(true); expect(result.byteIntegrity.status).toBe('partial'); expect(result.root.claim.value).toBeNull();
+    const failure = result.byteIntegrity.ioFailures.find(row => row.path === path && row.operation === 'close');
+    expect(failure).toBeDefined(); expect(Object.hasOwn(failure!, 'error')).toBe(true); expect(failure!.error).toBeUndefined();
+  });
+  it('retains all36 diagnostic rows after aggregate overflow and performs no manifest payload reads', async () => {
+    const f = await byteFixture(3), path = 'invocation.json.00000000-0000-4000-8000-000000000001.tmp';
+    const sparse = await open(join(f.root, path), 'wx'); try {await sparse.truncate(16 * 1024 * 1024 * 1024);} finally {await sparse.close();}
+    const original = fs.open.bind(fs), opened: string[] = []; vi.spyOn(fs, 'open').mockImplementation(async (...args) => {opened.push(String(args[0])); return original(...args);});
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.admission).toBe('exceeded'); expect(result.runs).toHaveLength(36);
+    expect(result.runs.every(row => row.descriptor !== null && row.captureValidation?.status === 'failed')).toBe(true);
+    expect(result.runs.every(row => row.rawAvailability.manifest.status === 'unreadable')).toBe(true);
+    expect(opened.some(path => path.endsWith('/manifest.json'))).toBe(false);
+    expect(result.byteIntegrity.files.filter(row => row.path.endsWith('/descriptor.json') || row.path.endsWith('/validation.json') || row.path.endsWith('/exceptions.json')).length).toBe(108);
+  });
+  it('rejects a newly observed non-diagnostic original before payload allocation when it crosses the admitted aggregate', async () => {
+    const f = await byteFixture(), temporary = join(f.root, 'invocation.json.00000000-0000-4000-8000-000000000001.tmp');
+    const sparse = await open(temporary, 'wx'); try {await sparse.truncate(16 * 1024 * 1024 * 1024 - await f.total());} finally {await sparse.close();}
+    const descriptor = join(f.root, f.runs[0]!.artifactDirectory, 'descriptor.json'), manifest = join(f.root, f.runs[0]!.artifactDirectory, 'manifest.json');
+    const original = fs.open.bind(fs); let descriptorCloses = 0, manifestReads = 0, largeReads = 0;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      const fd = await original(...args), path = String(args[0]); if (![descriptor, manifest, temporary].includes(path)) return fd;
+      return new Proxy(fd, {get(handle, key) {
+        if (key === 'close') return async () => {await handle.close(); if (path === descriptor && ++descriptorCloses === 2) await writeFile(manifest, '{}');};
+        if (key === 'read') return async (...parameters: Parameters<typeof handle.read>) => {
+          if (path === manifest) manifestReads++; if (path === temporary) {largeReads++; await handle.read(...parameters); throw 'bounded sparse read';}
+          return handle.read(...parameters);
+        };
+        const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+      }});
+    });
+    const result = await loadComparisonInvocation(f.root);
+    expect(manifestReads).toBe(0); expect(largeReads).toBe(0); expect(result.byteIntegrity.admission).toBe('exceeded'); expect(descriptorCloses).toBe(2);
+    expect(result.byteIntegrity.observedUniqueBytes).toBe(16 * 1024 * 1024 * 1024 + 2); expect(result.runs).toHaveLength(12);
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', path: f.runs[0]!.artifactDirectory + '/manifest.json', limitName: 'invocationUniqueBytes'}));
+  });
+  it('rejects original file replacement between preflight and the owned payload read', async () => {
+    const f = await byteFixture(), path = f.runs[0]!.artifactDirectory + '/exceptions.json', target = join(f.root, path), descriptor = join(f.root, f.runs[0]!.artifactDirectory, 'descriptor.json');
+    const replacement = join(f.root, '..', 'replacement.json'), bytes = await readFile(target); await writeFile(replacement, bytes);
+    const original = fs.open.bind(fs); let closes = 0, replaced = false;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      const fd = await original(...args); if (String(args[0]) !== descriptor) return fd;
+      return new Proxy(fd, {get(handle, key) {
+        if (key === 'close') return async () => {await handle.close(); if (++closes === 2) {await rename(replacement, target); replaced = true;}};
+        const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+      }});
+    });
+    const result = await loadComparisonInvocation(f.root); expect(replaced).toBe(true); expect(result.byteIntegrity.status).toBe('partial');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'identity', path, reason: 'Original member identity changed between owned reads'}));
+    expect(await readFile(target)).toEqual(bytes);
+  });
+  it.each([undefined, null, false, 0, ''])('retains the exact original final membership close failure %j', async originalError => {
+    const f = await byteFixture(), original = fs.opendir.bind(fs); let rootOpens = 0, rejected = false;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {
+      const dir = await original(...args); if (String(args[0]) !== f.root || ++rootOpens !== 3) return dir;
+      return new Proxy(dir, {get(handle, key) {
+        if (key === 'close') return async () => {await handle.close(); rejected = true; throw originalError;};
+        const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+      }});
+    });
+    const result = await loadComparisonInvocation(f.root); expect(rejected).toBe(true); expect(result.byteIntegrity.status).toBe('partial');
+    const failure = result.physicalInventory.ioFailures.find(row => row.operation === 'directory-close' && row.path === '.');
+    expect(failure).toBeDefined(); expect(Object.hasOwn(failure!, 'error')).toBe(true); expect(failure!.error).toBe(originalError);
+  });
+  it.each([undefined, null, false, 0, ''])('retains known aggregate crossing and original falsy metadata-close failure %j together', async originalError => {
+    const f = await byteFixture(), path = 'invocation.json.00000000-0000-4000-8000-000000000001.tmp', target = join(f.root, path);
+    const limit = 16 * 1024 * 1024 * 1024, sparse = await open(target, 'wx'); try {await sparse.truncate(limit);} finally {await sparse.close();}
+    const original = fs.open.bind(fs); let closes = 0, payloadReads = 0;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      const fd = await original(...args); if (String(args[0]) !== target) return fd;
+      return new Proxy(fd, {get(handle, key) {
+        if (key === 'close') return async () => {await handle.close(); closes++; throw originalError;};
+        if (key === 'read') return async (...parameters: Parameters<typeof handle.read>) => {payloadReads++; return handle.read(...parameters);};
+        const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+      }});
+    });
+    const result = await loadComparisonInvocation(f.root);
+    expect(closes).toBe(1); expect(payloadReads).toBe(0);
+    expect(result.byteIntegrity.admission).toBe('exceeded'); expect(result.byteIntegrity.status).toBe('partial'); expect(result.runs).toHaveLength(12);
+    let rootBytes = 0, diagnosticBytes = 0;
+    for (const name of ['dataset-seal.json', 'invocation-claim.json', 'invocation.json']) rootBytes += (await fs.lstat(join(f.root, name))).size;
+    for (const row of f.runs) for (const name of ['descriptor.json', 'validation.json', 'exceptions.json']) diagnosticBytes += (await fs.lstat(join(f.root, row.artifactDirectory, name))).size;
+    expect(result.byteIntegrity.observedUniqueBytes).toBe(limit + rootBytes + diagnosticBytes);
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', path, limitName: 'invocationUniqueBytes', limit, observed: limit + rootBytes}));
+    const failure = result.byteIntegrity.ioFailures.find(row => row.path === path && row.operation === 'close');
+    expect(failure).toBeDefined(); expect(Object.hasOwn(failure!, 'error')).toBe(true); expect(failure!.error).toBe(originalError);
+  });
+  it.each([undefined, null, false, 0, '', Object.assign(new Error('Controlled original absence lookup denied'), {code: 'EACCES'})])('requires actual absent lookup and preserves original non-ENOENT failure %j', async originalError => {
+    const f = await byteFixture(), path = f.runs[0]!.artifactDirectory + '/fixture.json', target = join(f.root, path);
+    await f.json('dataset-seal.json', comparisonDatasetInventorySchema.parse({...f.seal, absentMembers: [{path, reason: 'never started'}]}));
+    const original = fs.lstat.bind(fs); let lookups = 0;
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      if (String(args[0]) !== target) return original(...args);
+      try {await original(...args);} catch (error) {expect(error).toMatchObject({code: 'ENOENT'}); lookups++; throw originalError;}
+      throw new Error('Controlled missing fixture unexpectedly exists');
+    });
+    const result = await loadComparisonInvocation(f.root); expect(lookups).toBeGreaterThan(0); expect(result.byteIntegrity.seal).toBe('partial');
+    const failure = result.byteIntegrity.ioFailures.find(row => row.path === path && row.operation === 'path-stat');
+    expect(failure).toBeDefined(); expect(Object.hasOwn(failure!, 'error')).toBe(true); expect(failure!.error).toBe(originalError);
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({path, kind: 'unreadable'}));
+    expect(result.byteIntegrity.files.some(row => row.path === path)).toBe(false);
+  });
+  it('verifies the actual missing leaf even when its declared ancestor is genuinely absent', async () => {
+    const f = await byteFixture(), path = f.runs[0]!.artifactDirectory + '/provenance/source/missing/package.json', target = join(f.root, path);
+    await f.json('dataset-seal.json', comparisonDatasetInventorySchema.parse({...f.seal, absentMembers: [{path, reason: 'not acquired'}]}));
+    const original = fs.lstat.bind(fs), originalOpen = fs.open.bind(fs); let nativeLeafMisses = 0, targetOpens = 0;
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      try {return await original(...args);} catch (error) {if (String(args[0]) === target) {expect(error).toMatchObject({code: 'ENOENT'}); nativeLeafMisses++;} throw error;}
+    });
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {if (String(args[0]) === target) targetOpens++; return originalOpen(...args);});
+    const result = await loadComparisonInvocation(f.root); expect(nativeLeafMisses).toBe(2); expect(targetOpens).toBe(0); expect(result.byteIntegrity.seal).toBe('byte-closed');
+    expect(result.byteIntegrity.observedUniqueBytes).toBe(await f.total()); expect(result.byteIntegrity.files.some(row => row.path === path)).toBe(false);
+  });
+  it.each(['empty', 'directory', 'symlink'] as const)('rejects a %s appearing at the actual declared-absence lookup without reading or charging it', async kind => {
+    const f = await byteFixture(), path = f.runs[0]!.artifactDirectory + '/fixture.json', target = join(f.root, path);
+    await f.json('dataset-seal.json', comparisonDatasetInventorySchema.parse({...f.seal, absentMembers: [{path, reason: 'never started'}]}));
+    const original = fs.lstat.bind(fs), originalOpen = fs.open.bind(fs); let appeared = false, targetOpens = 0;
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      if (String(args[0]) !== target || appeared) return original(...args);
+      try {await original(...args);} catch (error) {expect(error).toMatchObject({code: 'ENOENT'}); appeared = true;
+        if (kind === 'empty') await writeFile(target, ''); else if (kind === 'directory') await mkdir(target); else await symlink(join(f.root, 'invocation.json'), target);
+        return original(...args);
+      }
+      throw new Error('Controlled absence unexpectedly present');
+    });
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {if (String(args[0]) === target) targetOpens++; return originalOpen(...args);});
+    const result = await loadComparisonInvocation(f.root); expect(appeared).toBe(true); expect(targetOpens).toBe(0); expect(result.byteIntegrity.seal).toBe('partial');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({path, kind: 'membership', reason: 'Declared absent pathname is physically present'}));
+    expect(result.byteIntegrity.files.some(row => row.path === path)).toBe(false);
+  });
+  it('rejects ancestor replacement between genuine declared-absence lookups', async () => {
+    const f = await byteFixture(), slot = f.runs[0]!.artifactDirectory, path = slot + '/fixture.json', target = join(f.root, path), retained = f.root + '-retained-slot'; owned.push(retained);
+    await f.json('dataset-seal.json', comparisonDatasetInventorySchema.parse({...f.seal, absentMembers: [{path, reason: 'never started'}]}));
+    const original = fs.lstat.bind(fs); let replaced = false;
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      try {return await original(...args);} catch (error) {
+        if (String(args[0]) === target && !replaced) {expect(error).toMatchObject({code: 'ENOENT'}); await rename(join(f.root, slot), retained); await mkdir(join(f.root, slot)); replaced = true;}
+        throw error;
+      }
+    });
+    const result = await loadComparisonInvocation(f.root); expect(replaced).toBe(true); expect(result.byteIntegrity.seal).toBe('partial');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({path, kind: 'identity', reason: 'Declared absent ancestor identity changed during pathname lookup'}));
+  });
+});
 describe('comparison loader bounded root bootstrap', () => {
   it('retains every actual terminal ledger row when the seal and manifests are absent', async () => {
     const f = await rootFixture(), result = await loadComparisonInvocation(f.root);
@@ -391,7 +650,7 @@ describe('comparison loader bounded root bootstrap', () => {
     expect(result.runs[0]!.descriptor).not.toBeNull(); expect(result.runs[0]!.manifest).toBeNull();
     expect(result.runs[0]!.rawAvailability.manifest.status).toBe('absent');
     expect(result.collection).toMatchObject({status: 'partial', onDiskConsistencyOnly: true});
-    expect(result.collection.reasons).toContain('Physical inventory and dataset byte closure not yet verified');
+    expect(result.collection.reasons).toContain('Slot inventory and acquisition reference schema agreement not yet verified');
     const bytes = await readFile(join(f.root, 'invocation.json'));
     expect(result.root.ledger.fact).toEqual({byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')});
   });
