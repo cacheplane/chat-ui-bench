@@ -41,6 +41,24 @@ export function scopedClosure(row) {
  const roles=['loopback','loopback-request','browser','context','page'];
  return row.pending===0&&Array.isArray(row.cleanupErrors)&&row.cleanupErrors.length===0&&Array.isArray(row.observerErrors)&&row.observerErrors.length===0&&row.caseClosed===true&&Number.isInteger(row.caseExit?.code)&&row.caseExit?.signal===null&&row.ipcFlushed===true&&row.ipcDisconnected===true&&row.groupAuthorityComplete===true&&Array.isArray(row.groups)&&row.groups.length>0&&row.groups.every(scopedEmpty)&&Array.isArray(row.resources)&&row.resources.length<=5&&new Set(row.resources.map((/** @type {Data} */r)=>r.role)).size===row.resources.length&&row.resources.every((/** @type {Data} */r)=>roles.includes(r.role)&&r.closed===true)&&Array.isArray(row.spawns)&&row.spawns.length<=64&&row.spawns.every((/** @type {Data} */s)=>s.closed===true&&s.exited===true&&validIdentity(s.identity))&&Array.isArray(row.helperCommands)&&row.helperCommands.every((/** @type {Data} */c)=>c.closed===true&&c.exited===true);
 }
+/** Explicit dispatch absence is distinct from closure of an attempted case.
+ * @param {Data} row */
+export function caseNotAttempted(row) {
+ const life=row.lifecycle;
+ return row.caseSpawnAttempted===false&&['unavailable','failed-preparation-case-not-attempted'].includes(row.status)&&['casePid','child','caseOutput','caseIdentity','groups','groupAuthorityComplete','resources','spawns'].every(key=>!Object.hasOwn(row,key))&&Array.isArray(row.queries)&&row.queries.length===0&&life?.caseClosed===false&&life.caseExit===null&&life.ipcFlushed===false&&life.ipcDisconnected===false;
+}
+/** Settlement of observed public operations never proves pooled sockets or descendants absent.
+ * @param {Data} row */
+export function preparationSettled(row) {
+ const commands=row.commands,attempts=row.primarySourceAttempts;
+ return row.pending===0&&row.trackedSourceClosed===true&&!Object.hasOwn(row,'finalSourceError')&&Array.isArray(commands)&&commands.length>0&&commands.length<=32&&Array.from(commands).every(command=>command?.exited===true&&command.closed===true&&((Number.isInteger(command.code)&&command.signal===null)||(command.code===null&&typeof command.signal==='string'&&command.signal.length>0)))&&Array.isArray(attempts)&&attempts.length<=2&&Array.from(attempts).every((attempt,index)=>attempt?.index===index&&attempt.fetchCallAttempted===true&&attempt.fetchSettled===true&&Array.isArray(attempt.cleanupErrors)&&attempt.cleanupErrors.length===0&&(attempt.responsePresent===false?attempt.originalFailurePresent===true&&attempt.status===null&&attempt.ok===null&&attempt.bodyDisposition==='not-attempted':attempt.responsePresent===true&&Number.isInteger(attempt.status)&&attempt.status>=100&&attempt.status<=599&&attempt.ok===(attempt.status>=200&&attempt.status<=299)&&['absent','cancelled','read-eof'].includes(attempt.bodyDisposition)));
+}
+/** @param {Data} receipt @param {Data} closure */
+export function classifyCapabilityReceipt(receipt,closure) {
+ const noCase=caseNotAttempted(receipt),closed=!noCase&&scopedClosure(closure);
+ const closureStatus=closed?'observed-scoped-resources-closed':'unknown';
+ return {status:noCase?'failed-preparation-case-not-attempted':closed?receipt.status:'failed-uncontained',capabilityStatus:!noCase&&receipt.status==='supported-capability-only'?'supported':'unavailable',closureStatus,caseClosureStatus:noCase?'not-applicable-case-not-attempted':closureStatus,preparationOperationStatus:noCase&&preparationSettled(receipt)?'settled-observed':'unknown',overallResourceClosure:'unknown'};
+}
 /** @param {Data} row */
 export function supported(row) {
  const roles=['loopback','loopback-request','browser','context','page'];

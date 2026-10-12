@@ -213,7 +213,144 @@ for(const closureStatus of ['unknown','observed-scoped-resources-closed'])test('
  const construction=source.split('// BEGIN finalClosureConstruction\n')[1]?.split('// END finalClosureConstruction')[0];assert.ok(construction);
  const closure=Function('receipt','lifecycle','queries','pending',construction+';return closure;')(receipt,lifecycle,[{command:{closed:true,exited:true}}],pending);
  receipt.closureStatus=api.scopedClosure(closure)?'observed-scoped-resources-closed':'unknown';assert.equal(receipt.closureStatus,closureStatus);
- Function('receipt','pending','lifecycle','console','diagnostic','error',seam)(receipt,pending,lifecycle,{error:value=>logs.push(JSON.parse(value))},api.diagnostic,false);
+ Function('receipt','pending','lifecycle','console','diagnostic','caseNotAttempted','error',seam)(receipt,pending,lifecycle,{error:value=>logs.push(JSON.parse(value))},api.diagnostic,api.caseNotAttempted??(()=>false),false);
  assert.equal(logs[0].closureStatus,closureStatus);assert.equal(logs[0].originalScopedClosureUnknown,closureStatus==='unknown');assert.deepEqual(logs[0].publication,{type:'boolean',value:false});
  assert.equal(receipt.status,closureStatus==='unknown'?'failed-uncontained':'unavailable');
+});
+
+// Offline source-bound controls. Synthetic audited bytes are not Apple source authenticity.
+const syntheticAudited=[
+ {path:'libsyscall/wrappers/libproc/libproc.c',signature:'int fixture_one(void)',digest:'344db0ea4477eabfa640529dabe4a4535c0f17243e6776479477b680037079ca'},
+ {path:'bsd/kern/proc_info.c',signature:'int fixture_two(void)',digest:'5373334fe6cbffd381c449c2ad7f0ce7e1326c0323a8ae714bf721e7715f038c'}
+];
+const syntheticText=index=>'\n'+syntheticAudited[index].signature+'\n{\n return 0;\n}\n';
+async function primaryFixture(fetchOriginal,options={}) {
+ const {createHash}=await import('node:crypto');const {join}=await import('node:path');
+ const source=await readFile(new URL('./run.mjs',import.meta.url),'utf8');
+ const start=source.indexOf('async function primarySources('),end=source.indexOf('// BEGIN originalLoopbackRequest',start);assert.ok(start>=0&&end>start);
+ const writes=[];const owners=[];
+ const owned=body=>{const task=Promise.resolve().then(body);owners.push(task);return options.rejectFirstOwned&&owners.length===1?Promise.race([task,Promise.reject(false)]):task;};
+ const writeFile=async(path,bytes,args)=>{writes.push({path,bytes:Buffer.from(bytes),args});};
+ const fact=async path=>{const row=writes.find(x=>x.path===path);return {path,byteLength:row.bytes.length,sha256:createHash('sha256').update(row.bytes).digest('hex')};};
+ const primarySources=Function('assert','owned','fetch','audited','createHash','writeFile','fact','join','diagnostic','combineFailure','"use strict";'+source.slice(start,end)+';return primarySources;')(assert,owned,fetchOriginal,syntheticAudited,createHash,writeFile,fact,join,api.diagnostic,api.combineFailure);
+ const attempts=[];let result,present=false,error;
+ try{result=await primarySources(options.kernel??'Darwin root:xnu-12377.161.14~5/RELEASE','/controlled',attempts);}catch(value){present=true;error=value;}
+ options.settle?.();await Promise.allSettled(owners);return {attempts,writes,result,present,error};
+}
+for(const [status,index] of [[404,0],[503,1]])test('primary response records original URL/status/index before failure '+index,async()=> {
+ const calls=[];let cancels=0;
+ function fetchOriginal(url,options){'use strict';calls.push({receiver:this,url,options});if(calls.length-1===index)return new Response(new ReadableStream({cancel(){cancels++;}}),{status});return new Response(syntheticText(0));}
+ const value=await primaryFixture(fetchOriginal);assert.equal(value.present,true);assert.equal(calls.length,index+1);assert.equal(cancels,1);
+ assert.equal(value.attempts.length,index+1);const failed=value.attempts[index];assert.equal(failed.index,index);assert.equal(failed.status,status);assert.equal(failed.ok,false);assert.equal(failed.responsePresent,true);assert.equal(failed.bodyDisposition,'cancelled');assert.equal(failed.originalFailurePresent,true);
+ assert.equal(failed.requestedUrl,'https://raw.githubusercontent.com/apple-oss-distributions/xnu/xnu-12377.161.14/'+syntheticAudited[index].path);
+ for(const call of calls){assert.equal(call.receiver,undefined);assert.deepEqual(call.options,{redirect:'error'});}
+ if(index===1){assert.equal(value.attempts[0].bodyDisposition,'read-eof');assert.ok(value.attempts[0].sourceFact);assert.equal(value.writes.length,1);}
+});
+test('primary failed HTTP absent body remains explicit and no source is written',async()=> {
+ const value=await primaryFixture(()=>new Response(null,{status:404}));assert.equal(value.present,true);assert.equal(value.attempts[0].bodyDisposition,'absent');assert.equal(value.writes.length,0);
+});
+for(const failure of [false,0,'',null,undefined])test('primary fetch rejection retains original falsy cause '+String(failure),async()=> {
+ const value=await primaryFixture(()=>Promise.reject(failure));assert.equal(value.present,true);assert.equal(value.error,failure);assert.equal(value.attempts.length,1);assert.equal(value.attempts[0].responsePresent,false);assert.equal(value.attempts[0].status,null);assert.equal(value.attempts[0].originalFailurePresent,true);assert.deepEqual(value.attempts[0].originalFailure,api.diagnostic(failure));
+});
+test('primary non-ok body cancellation failure retains assertion and falsy cleanup independently',async()=> {
+ let count=0;const value=await primaryFixture(()=>new Response(new ReadableStream({cancel(){count++;return Promise.reject(false);}}),{status:404}));
+ assert.equal(count,1);assert.ok(value.error instanceof AggregateError);assert.ok(value.error.errors[0] instanceof assert.AssertionError);assert.equal(value.error.errors[1],false);assert.equal(value.attempts[0].bodyDisposition,'unknown');assert.deepEqual(value.attempts[0].cleanupErrors,[{type:'boolean',value:false}]);
+});
+test('primary original read and release-lock failures retain exact falsy identities/order',async()=> {
+ let reads=0,cancels=0,releases=0;const response=new Response('body');const original=response.body.getReader.bind(response.body);
+ Object.defineProperty(response.body,'getReader',{value(){const reader=original();const actualRead=reader.read.bind(reader),actualCancel=reader.cancel.bind(reader),actualRelease=reader.releaseLock.bind(reader);
+  reader.read=async()=>{await actualRead();reads++;throw false;};reader.cancel=async()=>{await actualCancel();cancels++;};reader.releaseLock=()=>{actualRelease();releases++;throw 0;};return reader;}});
+ const value=await primaryFixture(()=>response);assert.equal(reads,1);assert.equal(cancels,1);assert.equal(releases,1);assert.ok(value.error instanceof AggregateError);assert.equal(value.error.errors[0],false);assert.equal(value.error.errors[1],0);assert.deepEqual(value.attempts[0].originalFailure,{type:'boolean',value:false});assert.deepEqual(value.attempts[0].cleanupErrors,[{type:'number',value:0}]);
+});
+test('primary errored stream preserves null read and independent null cancellation rejection',async()=> {
+ const response=new Response(new ReadableStream({start(controller){controller.error(null);}}));const value=await primaryFixture(()=>response);assert.equal(value.present,true);assert.ok(value.error instanceof AggregateError);assert.equal(value.error.errors[0],null);assert.equal(value.error.errors[1],null);assert.equal(value.attempts[0].originalFailurePresent,true);
+});
+test('primary complete synthetic EOF and exact digest gate preserve both matching URLs',async()=> {
+ let index=0;const value=await primaryFixture(()=>new Response(syntheticText(index++)));assert.equal(value.present,false);assert.equal(value.result.length,2);assert.equal(value.writes.length,2);assert.equal(value.attempts.length,2);assert.ok(value.attempts.every(row=>row.bodyDisposition==='read-eof'&&row.sourceFact&&row.cleanupErrors.length===0));
+});
+test('primary altered synthetic function never passes unchanged digest gate',async()=> {
+ const value=await primaryFixture(()=>new Response(syntheticText(0).replace('return 0','return 1')));assert.equal(value.present,true);assert.match(value.error.message,/semantics changed/);assert.equal(value.writes.length,0);
+});
+test('primary oversized original URL rejects before the original fetch dispatch',async()=> {
+ let calls=0;const value=await primaryFixture(()=>{calls++;return new Response(null,{status:404});},{kernel:'xnu-'+('1'.repeat(4096))+'.1~'});assert.equal(calls,0);assert.equal(value.present,true);
+});
+for(const length of [262144,262145])test('primary response original inclusive byte cap '+length,async()=> {
+ let cancels=0;const first=Buffer.from(syntheticText(0));const data=Buffer.concat([first,Buffer.alloc(length-first.length,32)]);let index=0;
+ const value=await primaryFixture(()=>index++===0?new Response(new ReadableStream({start(c){c.enqueue(data);c.close();},cancel(){cancels++;}})):new Response(syntheticText(1)));
+ if(length===262144){assert.equal(value.present,false);assert.equal(value.writes[0].bytes.length,length);}else{assert.equal(value.present,true);assert.match(value.error.message,/bytes262144/);assert.equal(value.writes.length,0);assert.equal(value.attempts[0].originalFailurePresent,true);}
+});
+function preCaseReceipt(){return {status:'unavailable',caseSpawnAttempted:false,primaryPresent:true,oldLocalClosure:'UNKNOWN',pending:0,queries:[],lifecycle:{caseClosed:false,caseExit:null,ipcFlushed:false,ipcDisconnected:false},commands:[{exited:true,closed:true,code:0,signal:null}],trackedSourceClosed:true,primarySourceAttempts:[{index:0,fetchCallAttempted:true,fetchSettled:true,responsePresent:true,status:404,ok:false,bodyDisposition:'cancelled',originalFailurePresent:true,cleanupErrors:[]}]};}
+async function classifyCurrent(receipt,closure={}) {
+ if(api.classifyCapabilityReceipt)return api.classifyCapabilityReceipt(receipt,closure);
+ const source=await readFile(new URL('./run.mjs',import.meta.url),'utf8');const start=source.indexOf('  receipt.capabilityStatus='),end=source.indexOf('  try{const text=serialize',start);assert.ok(start>=0&&end>start);
+ Function('receipt','scopedClosure','closure',source.slice(start,end))(receipt,api.scopedClosure,closure);return receipt;
+}
+test('explicit no-case preparation failure is unavailable without escaped-case claim',async()=> {
+ const row=preCaseReceipt();const value=await classifyCurrent(row);assert.equal(value.status,'failed-preparation-case-not-attempted');assert.equal(value.capabilityStatus,'unavailable');assert.equal(value.caseClosureStatus,'not-applicable-case-not-attempted');assert.equal(value.overallResourceClosure,'unknown');assert.equal(value.preparationOperationStatus,'settled-observed');assert.equal(row.oldLocalClosure,'UNKNOWN');
+});
+for(const [name,change] of [['missing marker',r=>delete r.caseSpawnAttempted],['attempted marker',r=>r.caseSpawnAttempted=true],['PID present',r=>r.casePid=20],['child present',r=>r.child={}],['IPC progress',r=>r.lifecycle.ipcFlushed=true],['group facts',r=>r.groups=[]],['query admission',r=>r.queries=[{}]],['browser resource facts',r=>r.resources=[]]])test('no-case branch rejects original contradiction '+name,async()=> {
+ const r=preCaseReceipt();change(r);const value=await classifyCurrent(r);assert.notEqual(value.caseClosureStatus,'not-applicable-case-not-attempted');assert.equal(value.closureStatus,'unknown');assert.equal(value.capabilityStatus,'unavailable');
+});
+for(const [name,change] of [['pending',r=>r.pending=1],['command unclosed',r=>r.commands[0].closed=false],['source unclosed',r=>r.trackedSourceClosed=false],['unknown body',r=>r.primarySourceAttempts[0].bodyDisposition='unknown'],['cleanup failure',r=>r.primarySourceAttempts[0].cleanupErrors=[false]],['missing HTTP ledger',r=>delete r.primarySourceAttempts],['HTTP task unresolved',r=>r.primarySourceAttempts[0].fetchSettled=false]])test('pre-case original preparation remains unknown '+name,async()=> {
+ const r=preCaseReceipt();change(r);const value=await classifyCurrent(r);assert.equal(value.status,'failed-preparation-case-not-attempted');assert.equal(value.preparationOperationStatus,'unknown');assert.equal(value.overallResourceClosure,'unknown');
+});
+test('original case spawn attempt marker is recorded before genuine synchronous falsy rejection',async()=> {
+ const source=await readFile(new URL('./run.mjs',import.meta.url),'utf8');const existing=source.slice(source.indexOf('  child=originalSpawn('),source.indexOf('  stopTimer=setTimeout(',source.indexOf('  child=originalSpawn(')));
+ const seam=source.includes('// BEGIN originalCaseSpawn')?source.split('// BEGIN originalCaseSpawn\n')[1].split('// END originalCaseSpawn')[0]:existing;const receipt={caseSpawnAttempted:false};let calls=0;
+ const run=Function('receipt','originalSpawn','process','source','root','nonce','binding','let child=null;'+seam);const failure=false;
+ assert.throws(()=>run(receipt,()=>{calls++;throw failure;},{execPath:'selected-node',env:{}},'original-source','root','nonce',{}),error=>Object.is(error,failure));assert.equal(calls,1);assert.equal(receipt.caseSpawnAttempted,true);
+});
+
+test('primary EOF release-lock failure precedes original source digest/publication',async()=> {
+ let releases=0;const response=new Response(syntheticText(0));const original=response.body.getReader.bind(response.body);
+ Object.defineProperty(response.body,'getReader',{value(){const reader=original(),release=reader.releaseLock.bind(reader);reader.releaseLock=()=>{release();releases++;throw false;};return reader;}});
+ const value=await primaryFixture(()=>response);assert.equal(releases,1);assert.ok(value.error instanceof AggregateError);assert.equal(value.error.errors[0],false);assert.equal(value.writes.length,0);assert.equal(value.attempts[0].sourceFact,null);assert.deepEqual(value.attempts[0].cleanupErrors,[{type:'boolean',value:false}]);
+});
+for(const flag of [false,undefined])test('preparation settlement rejects missing or contradictory original fetch-call flag '+String(flag),async()=> {
+ const r=preCaseReceipt();r.primarySourceAttempts[0].fetchCallAttempted=flag;assert.equal((await classifyCurrent(r)).preparationOperationStatus,'unknown');
+});
+
+test('late original fetch response retains actual status and cannot masquerade as a rejected fetch',async()=> {
+ let resolve;const fetchResult=new Promise(done=>{resolve=done;});let cancels=0;const response=new Response(new ReadableStream({cancel(){cancels++;}}),{status:404});
+ const value=await primaryFixture(()=>fetchResult,{rejectFirstOwned:true,settle(){resolve(response);}});
+ assert.equal(value.present,true);assert.equal(value.error,false);assert.equal(value.attempts[0].fetchSettled,true);assert.equal(value.attempts[0].responsePresent,true);assert.equal(value.attempts[0].status,404);assert.equal(value.attempts[0].bodyDisposition,'not-attempted');assert.equal(cancels,0);
+ const r=preCaseReceipt();r.primarySourceAttempts=value.attempts;assert.equal((await classifyCurrent(r)).preparationOperationStatus,'unknown');
+ await response.body.cancel();assert.equal(cancels,1); // Owned fixture cleanup, not a claimed production cancellation.
+});
+for(const bytes of [4096,4097])test('original primary dispatched URL inclusive boundary '+bytes,async()=> {
+ const fixed='https://raw.githubusercontent.com/apple-oss-distributions/xnu/xnu-'+'.1/'+syntheticAudited[0].path;
+ const kernel='xnu-'+('1'.repeat(bytes-Buffer.byteLength(fixed)))+'.1~';let calls=0;
+ const value=await primaryFixture(url=>{calls++;assert.equal(Buffer.byteLength(url),bytes);return new Response(null,{status:404});},{kernel});
+ assert.equal(value.present,true);assert.equal(calls,bytes===4096?1:0);
+ if(bytes===4096)assert.equal(Buffer.byteLength(value.attempts[0].requestedUrl),4096);
+});
+
+test('actual final source check refreshes pending ownership before no-case classification',async()=> {
+ const source=await readFile(new URL('./run.mjs',import.meta.url),'utf8');const start=source.indexOf('  try{receipt.after=await trackedFacts(root)'),end=source.indexOf('  // BEGIN finalClosureConstruction',start);assert.ok(start>=0&&end>start);
+ const row=preCaseReceipt(),pending=new Set(),lateErrors=[];let settle;const held=new Promise(done=>{settle=done;});const before=[];
+ const run=Function('receipt','trackedFacts','root','before','assert','diagnostic','pending','lateErrors','return (async()=>{'+source.slice(start,end)+'})();');
+ await run(row,async()=>{pending.add(held);return before;},'controlled',before,assert,api.diagnostic,pending,lateErrors);
+ assert.equal(row.pending,1);assert.equal((await classifyCurrent(row)).preparationOperationStatus,'unknown');settle();await held;pending.delete(held);
+});
+test('actual final source rejection keeps original falsy diagnostic and cannot settle preparation',async()=> {
+ const source=await readFile(new URL('./run.mjs',import.meta.url),'utf8');const start=source.indexOf('  try{receipt.after=await trackedFacts(root)'),end=source.indexOf('  // BEGIN finalClosureConstruction',start);
+ const row=preCaseReceipt();const run=Function('receipt','trackedFacts','root','before','assert','diagnostic','pending','lateErrors','return (async()=>{'+source.slice(start,end)+'})();');
+ await run(row,()=>Promise.reject(false),'controlled',[],assert,api.diagnostic,new Set(),[]);assert.deepEqual(row.finalSourceError,{type:'boolean',value:false});assert.equal((await classifyCurrent(row)).preparationOperationStatus,'unknown');
+});
+test('actual no-case publication failure preserves phase distinction and unknown overall resource closure',async()=> {
+ const source=await readFile(new URL('./run.mjs',import.meta.url),'utf8');const seam=source.split('// BEGIN publicationFallback\n')[1].split('// END publicationFallback')[0];const row=preCaseReceipt();Object.assign(row,await classifyCurrent(row));const logs=[];
+ Function('receipt','pending','console','diagnostic','caseNotAttempted','error',seam)(row,new Set(),{error:text=>logs.push(JSON.parse(text))},api.diagnostic,api.caseNotAttempted,false);
+ assert.equal(logs[0].status,'failed-preparation-case-not-attempted');assert.equal(logs[0].caseClosureStatus,'not-applicable-case-not-attempted');assert.equal(logs[0].overallResourceClosure,'unknown');assert.deepEqual(logs[0].publication,{type:'boolean',value:false});
+});
+for(const [name,change] of [['sparse command',r=>r.commands=Array(1)],['sparse HTTP row',r=>r.primarySourceAttempts=Array(1)],['HTTP status contradiction',r=>r.primarySourceAttempts[0].ok=true],['HTTP boolean status',r=>r.primarySourceAttempts[0].status=true],['misordered HTTP index',r=>r.primarySourceAttempts[0].index=1]])test('preparation settlement refuses malformed original ledger '+name,async()=> {
+ const row=preCaseReceipt();change(row);assert.equal((await classifyCurrent(row)).preparationOperationStatus,'unknown');
+});
+test('classifying a closed attempted unavailable case preserves existing scoped proof independently',async()=> {
+ const closure={cleanupErrors:[],observerErrors:[],pending:0,resources:[],spawns:[],caseExit:{code:1,signal:null},caseClosed:true,ipcFlushed:true,ipcDisconnected:true,groupAuthorityComplete:true,groups:[empty],helperCommands:[]};
+ const result=await classifyCurrent({status:'unavailable',caseSpawnAttempted:true},closure);assert.equal(result.status,'unavailable');assert.equal(result.closureStatus,'observed-scoped-resources-closed');assert.equal(result.caseClosureStatus,'observed-scoped-resources-closed');assert.equal(result.capabilityStatus,'unavailable');assert.equal(result.overallResourceClosure,'unknown');
+});
+test('explicit no-case receipt cannot adopt an independently closed attempted-case argument',async()=> {
+ const closure={cleanupErrors:[],observerErrors:[],pending:0,resources:[],spawns:[],caseExit:{code:1,signal:null},caseClosed:true,ipcFlushed:true,ipcDisconnected:true,groupAuthorityComplete:true,groups:[empty],helperCommands:[]};
+ assert.equal(api.scopedClosure(closure),true);
+ const value=await classifyCurrent(preCaseReceipt(),closure);assert.equal(value.status,'failed-preparation-case-not-attempted');assert.equal(value.closureStatus,'unknown');assert.equal(value.caseClosureStatus,'not-applicable-case-not-attempted');assert.equal(value.overallResourceClosure,'unknown');assert.equal(value.capabilityStatus,'unavailable');
 });
