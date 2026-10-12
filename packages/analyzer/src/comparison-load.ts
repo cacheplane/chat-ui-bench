@@ -8,6 +8,7 @@ import {checkComparisonReferences, revokeComparisonReferences, unavailableCompar
 import {unavailableComparisonProvenanceGraph, provenanceGraphAdmission, provenanceMetadataPaths, provenanceMetadataCopiedWitnesses, checkComparisonProvenanceGraph, revokeComparisonProvenanceGraph, comparisonPackageMetadataSchema, type ComparisonProvenanceGraph, type ProductDeclaration, type ProbeDeclaration, type PackageMetadata} from './comparison-provenance-graph.js';
 import {longThreadFixtureSchema, type LongThreadFixture} from '@chat-ui-bench/contract';
 import {unavailableComparisonFinalContent, checkComparisonFinalContent, finalContentCardinalityIssues, replaceFinalContentIssue, revokeComparisonFinalContent, type ComparisonFinalContent, type FinalRuntime, type FinalVisible} from './comparison-final-content.js';
+import {unavailableComparisonRendererDiagnostic, checkComparisonRendererDiagnostic, revokeComparisonRendererDiagnostic, type ComparisonRendererDiagnostic} from './comparison-renderer-diagnostic.js';
 
 type ComparisonSchemas = ReturnType<typeof comparisonSchemasForVersionPair>;
 type ComparisonIdentity = z.output<ComparisonSchemas['comparisonIdentitySchema']>;
@@ -495,6 +496,7 @@ export interface ComparisonLoadedBootstrapRun {
   references: ComparisonSlotReferences;
   provenanceGraph: ComparisonProvenanceGraph;
   finalContent: ComparisonFinalContent;
+  rendererPresentationCapabilityDiagnostic: ComparisonRendererDiagnostic;
 }
 type Claim = z.output<ComparisonSchemas['comparisonDatasetInventorySchema']['shape']['invocationClaim']>;
 export interface ComparisonLoadedInvocationBootstrap {
@@ -518,16 +520,25 @@ function issueList() {
     count: () => additionalLoadingIssueCount};
 }
 /** Data-only measured bootstrap: no declared SHA is fabricated, and no absence mode is public. */
-async function measuredJson(root: string, path: string, role: 'root-json' | 'dataset-seal' | 'slot-json', owner?: InvocationBytes, diagnostic = false): Promise<LoadedComparisonJson> {
-  const reference = {path, role}, scanner = new JsonAdmission(reference), chunks: Buffer[] = [];
+async function measuredJson(root: string, path: string, role: 'root-json' | 'dataset-seal' | 'slot-json' | 'trace', owner?: InvocationBytes, diagnostic = false): Promise<LoadedComparisonJson & {traceSyntaxUnavailable?: true}> {
+  const reference = {path, role}, chunks: Buffer[] = [];
+  let scanner: JsonAdmission | null = new JsonAdmission(reference), syntaxFailure: ComparisonLoadingIssue | undefined;
   let admission: ComparisonJsonAdmission | undefined;
-  const loaded = await readCheckedMember(root, reference, bytes => {scanner.feed(bytes); chunks.push(Buffer.from(bytes));},
-    () => {admission = scanner.finish();}, 'measured-bootstrap', owner?.scope(diagnostic));
+  function stopTraceSyntax(error: unknown): void {
+    if (role !== 'trace' || !(error instanceof MemberFailure) || (error.issue.kind !== 'malformed' && error.issue.kind !== 'admission-limit')) throw error;
+    syntaxFailure = error.issue; scanner = null; chunks.length = 0;
+  }
+  const loaded = await readCheckedMember(root, reference, bytes => {
+    if (!scanner) return;
+    try {scanner.feed(bytes);} catch (error) {stopTraceSyntax(error);}
+    if (scanner) chunks.push(Buffer.from(bytes));
+  }, () => {if (scanner) try {admission = scanner.finish();} catch (error) {stopTraceSyntax(error);}}, 'measured-bootstrap', owner?.scope(diagnostic));
   try {owner?.retain(loaded);} catch (error) {
     if (!(error instanceof MemberFailure)) throw error;
     return {status: 'failed', path, fact: loaded.fact, loadingIssues: [error.issue]};
   }
-  if (loaded.status === 'failed') return loaded;
+  if (loaded.status === 'failed') return syntaxFailure ? {...loaded, loadingIssues: [syntaxFailure, ...loaded.loadingIssues]} : loaded;
+  if (syntaxFailure) return {status: 'failed', path, fact: loaded.fact, loadingIssues: [syntaxFailure], traceSyntaxUnavailable: true};
   try {return {status: 'admitted-json', path, fact: loaded.fact, value: JSON.parse(Buffer.concat(chunks, loaded.fact.byteLength).toString('utf8')) as unknown,
     admission: admission!, loadingIssues: []};}
   catch (error) {return {status: 'failed', path, fact: loaded.fact, loadingIssues: [{kind: 'malformed', path, role, reason: preview(error)}]};}
@@ -795,7 +806,7 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
         await slotDocument<ComparisonExceptions>('exceptions.json', schemas.comparisonExceptionsSchema);
         result.runs.push({identity, artifactDirectory: row.artifactDirectory, descriptor: descriptor.value, manifest: manifest.value, captureValidation: validation.value,
           rawAvailability: {descriptor: descriptor.availability, manifest: manifest.availability, captureValidation: validation.availability},
-          loadingIssues: rowIssues.loadingIssues, additionalLoadingIssueCount: rowIssues.count(), references: unavailableComparisonReferences('Slot references not admitted by invocation preflight'), provenanceGraph: unavailableComparisonProvenanceGraph('Captured provenance graph not yet checked'), finalContent: unavailableComparisonFinalContent('Final content not admitted by invocation preflight')});
+          loadingIssues: rowIssues.loadingIssues, additionalLoadingIssueCount: rowIssues.count(), references: unavailableComparisonReferences('Slot references not admitted by invocation preflight'), provenanceGraph: unavailableComparisonProvenanceGraph('Captured provenance graph not yet checked'), finalContent: unavailableComparisonFinalContent('Final content not admitted by invocation preflight'), rendererPresentationCapabilityDiagnostic: unavailableComparisonRendererDiagnostic('Renderer diagnostics not admitted by invocation preflight')});
       }
       if (result.byteIntegrity.admission === 'within-limit') {
         let hashComplete = owner.failedOwnedReads.size === 0;
@@ -921,6 +932,17 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
               ? {...raw.loadingIssues[0], path: raw.loadingIssues[0].path.slice(prefix.length)}
               : {kind: doc?.availability.status === 'malformed' ? 'malformed' : 'unreadable', path: name, role: 'slot-json', reason: doc?.availability.status === 'parsed' ? 'Original final content unavailable' : doc?.availability.reason ?? 'Owned original final content read unavailable'}));
           }
+          const phasesRaw = await graphOriginal('phases.json'), auxiliaryRaw = await graphOriginal('trace-auxiliary.json'), metadataRaw = await graphOriginal('capture-metadata.json');
+          const traceRaw = files.has('trace.json') ? await measuredJson(root, prefix + 'trace.json', 'trace', owner) : null;
+          if (traceRaw?.status === 'failed' && !traceRaw.traceSyntaxUnavailable) hashComplete = false;
+          const original = (raw: LoadedComparisonJson | null) => raw?.status === 'admitted-json' ? raw.value : null;
+          run.rendererPresentationCapabilityDiagnostic = checkComparisonRendererDiagnostic({schemas, identity: run.identity, manifest: run.manifest, descriptor: run.descriptor, originals: files,
+            trace: original(traceRaw), phases: original(phasesRaw), auxiliary: original(auxiliaryRaw), metadata: original(metadataRaw),
+            evidence: names[0] === 'evidence.json' ? inventory?.value : null, capture: capture.value});
+          for (const raw of [traceRaw, phasesRaw, auxiliaryRaw, metadataRaw]) if (raw?.status === 'failed') for (const issue of raw.loadingIssues) {
+            const diagnostic = run.rendererPresentationCapabilityDiagnostic;
+            if (diagnostic.issues.length < 32) diagnostic.issues.push({...issue, path: issue.path.slice(prefix.length)}); else diagnostic.additionalIssueCount++;
+          }
         }
         if (owner.failedOwnedReads.size > 0) hashComplete = false;
         let absencesClosed = true;
@@ -965,7 +987,7 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
           }
           if (closure) result.byteIntegrity.seal = 'byte-closed';
         }
-        if (result.byteIntegrity.seal !== 'byte-closed') for (const run of result.runs) {revokeComparisonReferences(run.references); revokeComparisonProvenanceGraph(run.provenanceGraph); revokeComparisonFinalContent(run.finalContent);}
+        if (result.byteIntegrity.seal !== 'byte-closed') for (const run of result.runs) {revokeComparisonReferences(run.references); revokeComparisonProvenanceGraph(run.provenanceGraph); revokeComparisonFinalContent(run.finalContent); revokeComparisonRendererDiagnostic(run.rendererPresentationCapabilityDiagnostic);}
         const referencesComplete = result.runs.every(run => Object.values(run.references).every(lane => lane.status === 'complete'));
         result.collection.reasons = [...(referencesComplete ? [] : ['Slot inventory and acquisition reference schema agreement not yet verified']),
           ...(result.runs.every(run => run.provenanceGraph.status === 'complete') ? [] : ['Captured provenance declaration graph not yet verified']),
