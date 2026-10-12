@@ -488,6 +488,16 @@ export type ComparisonRawAvailability = {status: 'parsed'; path: string}
 export interface ComparisonLoadedDocument<T> {
   value: T | null; fact: ComparisonByteFact | null; availability: ComparisonRawAvailability;
 }
+export type ComparisonCounterSnapshot = z.output<ComparisonSchemas['comparisonCheckpointsSchema']>['counters'][number];
+export interface ComparisonCounterCheckpoints {
+  status: 'verified-original' | 'unavailable'; originalFileFact: ComparisonByteFact | null;
+  rawAvailability: ComparisonRawAvailability; reason: string | null;
+  recordedSnapshotCount: number | null; snapshots: ComparisonCounterSnapshot[];
+}
+function unavailableCounterCheckpoints(path: string): ComparisonCounterCheckpoints {
+  return {status: 'unavailable', originalFileFact: null, rawAvailability: {status: 'unreadable', path, reason: 'Counter checkpoints not admitted by invocation preflight'},
+    reason: 'Counter checkpoints not admitted by invocation preflight', recordedSnapshotCount: null, snapshots: []};
+}
 export interface ComparisonLoadedBootstrapRun {
   identity: ComparisonIdentity; artifactDirectory: string; descriptor: ComparisonScheduledRun | null;
   manifest: ComparisonManifest | null; captureValidation: ComparisonValidation | null;
@@ -497,6 +507,7 @@ export interface ComparisonLoadedBootstrapRun {
   provenanceGraph: ComparisonProvenanceGraph;
   finalContent: ComparisonFinalContent;
   rendererPresentationCapabilityDiagnostic: ComparisonRendererDiagnostic;
+  counterCheckpoints: ComparisonCounterCheckpoints;
 }
 type Claim = z.output<ComparisonSchemas['comparisonDatasetInventorySchema']['shape']['invocationClaim']>;
 export interface ComparisonLoadedInvocationBootstrap {
@@ -806,7 +817,7 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
         await slotDocument<ComparisonExceptions>('exceptions.json', schemas.comparisonExceptionsSchema);
         result.runs.push({identity, artifactDirectory: row.artifactDirectory, descriptor: descriptor.value, manifest: manifest.value, captureValidation: validation.value,
           rawAvailability: {descriptor: descriptor.availability, manifest: manifest.availability, captureValidation: validation.availability},
-          loadingIssues: rowIssues.loadingIssues, additionalLoadingIssueCount: rowIssues.count(), references: unavailableComparisonReferences('Slot references not admitted by invocation preflight'), provenanceGraph: unavailableComparisonProvenanceGraph('Captured provenance graph not yet checked'), finalContent: unavailableComparisonFinalContent('Final content not admitted by invocation preflight'), rendererPresentationCapabilityDiagnostic: unavailableComparisonRendererDiagnostic('Renderer diagnostics not admitted by invocation preflight')});
+          loadingIssues: rowIssues.loadingIssues, additionalLoadingIssueCount: rowIssues.count(), references: unavailableComparisonReferences('Slot references not admitted by invocation preflight'), provenanceGraph: unavailableComparisonProvenanceGraph('Captured provenance graph not yet checked'), finalContent: unavailableComparisonFinalContent('Final content not admitted by invocation preflight'), rendererPresentationCapabilityDiagnostic: unavailableComparisonRendererDiagnostic('Renderer diagnostics not admitted by invocation preflight'), counterCheckpoints: unavailableCounterCheckpoints(row.artifactDirectory + '/checkpoints.json')});
       }
       if (result.byteIntegrity.admission === 'within-limit') {
         let hashComplete = owner.failedOwnedReads.size === 0;
@@ -829,6 +840,15 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
             if (!files.has(name)) return {value: null, fact: null, availability: {status: 'absent', path: prefix + name, reason: 'Required reference document is not an admitted original member'}};
             const raw = await measuredJson(root, prefix + name, 'slot-json', owner);
             if (raw.status === 'failed') hashComplete = false;
+            if (name === 'checkpoints.json' && raw.status === 'admitted-json' && raw.value !== null && typeof raw.value === 'object') {
+              const counters = (raw.value as Record<string, unknown>)['counters'];
+              if (Array.isArray(counters) && counters.length > 3) {
+                const reason = 'Counter checkpoints exceed the three ordered lifecycle snapshots';
+                const referenceIssue: ComparisonLoadingIssue = {kind: 'admission-limit', path: prefix + name, role: 'slot-json', limitName: 'counterSnapshots', limit: 3, observed: counters.length, observation: 'exact', reason};
+                issues.add(referenceIssue);
+                return {value: null, fact: raw.fact, availability: {status: 'malformed', path: prefix + name, reason}, referenceIssue};
+              }
+            }
             if ((name === 'evidence.json' || name === 'raw-inventory.json') && raw.status === 'admitted-json' && raw.value !== null && typeof raw.value === 'object') {
               const declared = (raw.value as Record<string, unknown>)['files'], unavailable = (raw.value as Record<string, unknown>)['unavailableFiles'];
               const referenceCount = (Array.isArray(declared) ? declared.length : 0) + (Array.isArray(unavailable) ? unavailable.length : 0);
@@ -846,6 +866,18 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
             }
             if (raw.status === 'failed' && raw.loadingIssues[0]) return {...doc, referenceIssue: raw.loadingIssues[0]};
             return doc;
+          }
+          const checkpoints = await referenceDocument<z.output<ComparisonSchemas['comparisonCheckpointsSchema']>>('checkpoints.json', schemas.comparisonCheckpointsSchema);
+          const counterFact = files.get('checkpoints.json');
+          const countersClosed = counterFact?.role === 'slot-json' && counterFact.actual !== null && counterFact.seal !== null && checkpoints.fact !== null
+            && counterFact.actual.byteLength === counterFact.seal.byteLength && counterFact.actual.sha256 === counterFact.seal.sha256
+            && checkpoints.fact.byteLength === counterFact.actual.byteLength && checkpoints.fact.sha256 === counterFact.actual.sha256;
+          run.counterCheckpoints = {status: checkpoints.value !== null && countersClosed ? 'verified-original' : 'unavailable', originalFileFact: checkpoints.fact,
+            rawAvailability: checkpoints.availability, reason: checkpoints.value === null ? checkpoints.availability.status === 'parsed' ? 'Strict counter checkpoint schema rejected' : checkpoints.availability.reason : countersClosed ? null : 'Counter checkpoint original and seal facts do not agree',
+            recordedSnapshotCount: checkpoints.value !== null && countersClosed ? checkpoints.value.counters.length : null, snapshots: checkpoints.value !== null && countersClosed ? checkpoints.value.counters : []};
+          if (run.counterCheckpoints.status === 'unavailable') {
+            const failure = checkpoints.referenceIssue ?? {kind: checkpoints.availability.status === 'absent' ? 'absent' : checkpoints.availability.status === 'malformed' ? 'malformed' : 'integrity', path: prefix + 'checkpoints.json', role: 'slot-json', reason: run.counterCheckpoints.reason!} satisfies ComparisonLoadingIssue;
+            if (run.loadingIssues.length < 32) run.loadingIssues.push(failure); else run.additionalLoadingIssueCount++;
           }
           const names = (['evidence.json', 'raw-inventory.json'] as const).filter(name => files.has(name));
           const inventory = names.length === 1 ? names[0] === 'evidence.json'
@@ -987,7 +1019,8 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
           }
           if (closure) result.byteIntegrity.seal = 'byte-closed';
         }
-        if (result.byteIntegrity.seal !== 'byte-closed') for (const run of result.runs) {revokeComparisonReferences(run.references); revokeComparisonProvenanceGraph(run.provenanceGraph); revokeComparisonFinalContent(run.finalContent); revokeComparisonRendererDiagnostic(run.rendererPresentationCapabilityDiagnostic);}
+        if (result.byteIntegrity.seal !== 'byte-closed') for (const run of result.runs) {revokeComparisonReferences(run.references); revokeComparisonProvenanceGraph(run.provenanceGraph); revokeComparisonFinalContent(run.finalContent); revokeComparisonRendererDiagnostic(run.rendererPresentationCapabilityDiagnostic);
+          run.counterCheckpoints.status = 'unavailable'; run.counterCheckpoints.recordedSnapshotCount = null; run.counterCheckpoints.snapshots = []; run.counterCheckpoints.reason = 'Final original byte and ownership closure not verified';}
         const referencesComplete = result.runs.every(run => Object.values(run.references).every(lane => lane.status === 'complete'));
         result.collection.reasons = [...(referencesComplete ? [] : ['Slot inventory and acquisition reference schema agreement not yet verified']),
           ...(result.runs.every(run => run.provenanceGraph.status === 'complete') ? [] : ['Captured provenance declaration graph not yet verified']),

@@ -44,6 +44,7 @@ export function projectComparisonReport(loaded: ComparisonLoadedInvocationBootst
   const ledger = loaded.root.ledger.value;
   const rows = rowsAdmitted ? loaded.runs.map((run, index) => {
     if (run.rendererPresentationCapabilityDiagnostic.presentation.status === 'available' && run.rendererPresentationCapabilityDiagnostic.presentation.value.phases.length > 6) throw new Error('Comparison report supports at most6 phases');
+    if (run.counterCheckpoints.snapshots.length > 3) throw new Error('Comparison report supports at most3 counter snapshots');
     const manifest = run.manifest;
     const originalManifestFact = loaded.byteIntegrity.files.find(file => file.path === run.artifactDirectory + '/manifest.json')?.fact ?? null;
     const originalManifest = {originalManifestFact, originalManifestFactReason: originalManifestFact === null ? 'Selected original manifest byte fact unavailable' as const : null};
@@ -81,6 +82,13 @@ export function projectComparisonReport(loaded: ComparisonLoadedInvocationBootst
         runtime: {...lane(run.finalContent.runtime), expectedMessages: run.finalContent.runtime.expectedMessages, observedMessages: run.finalContent.runtime.observedMessages},
         coverage: {...lane(run.finalContent.coverage), expectedMessages: run.finalContent.coverage.expectedMessages, observedMessages: run.finalContent.coverage.observedMessages, mode: run.finalContent.coverage.mode,
           projectedProseAgreement: run.finalContent.coverage.projectedProseAgreement, rawMountedRuntimeAgreement: run.finalContent.coverage.rawMountedRuntimeAgreement, activeResponseAgreement: run.finalContent.coverage.activeResponseAgreement, samplingCohort: run.finalContent.coverage.samplingCohort}},
+      counterCheckpoints: {status: run.counterCheckpoints.status, originalFileFact: run.counterCheckpoints.originalFileFact,
+        rawAvailability: availability(run.counterCheckpoints.rawAvailability), reason: run.counterCheckpoints.reason === null ? null : text(run.counterCheckpoints.reason), recordedSnapshotCount: run.counterCheckpoints.recordedSnapshotCount,
+        snapshots: run.counterCheckpoints.snapshots.map(snapshot => ({lifecycle: snapshot.lifecycle,
+          pageRequestBracket: snapshot.pageRequestBracket.status === 'available' ? {status: 'available' as const, value: {clockDomain: snapshot.pageRequestBracket.value.clockDomain, beforeMs: snapshot.pageRequestBracket.value.beforeMs, afterMs: snapshot.pageRequestBracket.value.afterMs}} : {status: 'unavailable' as const, reason: text(snapshot.pageRequestBracket.reason)},
+          hostReceipt: {heap: snapshot.hostReceipt.heap.status === 'available' ? {status: 'available' as const, value: {clockDomain: snapshot.hostReceipt.heap.value.clockDomain, timestampMs: snapshot.hostReceipt.heap.value.timestampMs}} : {status: 'unavailable' as const, reason: text(snapshot.hostReceipt.heap.reason)}, dom: snapshot.hostReceipt.dom.status === 'available' ? {status: 'available' as const, value: {clockDomain: snapshot.hostReceipt.dom.value.clockDomain, timestampMs: snapshot.hostReceipt.dom.value.timestampMs}} : {status: 'unavailable' as const, reason: text(snapshot.hostReceipt.dom.reason)}},
+          data: {heap: snapshot.data.heap.status === 'available' ? {status: 'available' as const, value: {jsHeapUsedBytes: snapshot.data.heap.value.jsHeapUsedBytes}} : {status: 'unavailable' as const, reason: text(snapshot.data.heap.reason)}, dom: snapshot.data.dom.status === 'available' ? {status: 'available' as const, value: {nodes: snapshot.data.dom.value.nodes, documents: snapshot.data.dom.value.documents, eventListeners: snapshot.data.dom.value.eventListeners}} : {status: 'unavailable' as const, reason: text(snapshot.data.dom.reason)}}})),
+        meaning: 'recorded V8 isolate heap and DOM object counters; independently timed requests, not atomic, library-exclusive, visible DOM or leak evidence' as const},
       renderer: {status: run.rendererPresentationCapabilityDiagnostic.status, scoringEligibility: false as const, notFullIntegratedDerivation: true as const,
         metricScope: run.rendererPresentationCapabilityDiagnostic.metricScope, measurementMeaning: run.rendererPresentationCapabilityDiagnostic.measurementMeaning,
         guards: {...run.rendererPresentationCapabilityDiagnostic.guards}, unresolvedDomains: [...run.rendererPresentationCapabilityDiagnostic.unresolvedDomains],
@@ -99,7 +107,7 @@ export function projectComparisonReport(loaded: ComparisonLoadedInvocationBootst
           rendererVisualUpdateFps: phase.rendererVisualUpdateFps.status === 'available' ? {status: 'available' as const, value: phase.rendererVisualUpdateFps.value, unit: phase.rendererVisualUpdateFps.unit, numerator: phase.rendererVisualUpdateFps.numerator, denominatorUs: phase.rendererVisualUpdateFps.denominatorUs} : {status: 'unavailable' as const, reason: text(phase.rendererVisualUpdateFps.reason)},
           presentationIntervals: phase.presentationIntervals.status === 'available' ? {status: 'available' as const, sampleCount: phase.presentationIntervals.intervalsUs.length, median: phase.presentationIntervals.median, p95: phase.presentationIntervals.p95, max: phase.presentationIntervals.max, unit: phase.presentationIntervals.unit} : {status: 'unavailable' as const, reason: text(phase.presentationIntervals.reason)},
         })) : [],
-        issues: issues(run.rendererPresentationCapabilityDiagnostic.issues, run.rendererPresentationCapabilityDiagnostic.additionalIssueCount)},
+        issues: issues(run.rendererPresentationCapabilityDiagnostic.issues, run.rendererPresentationCapabilityDiagnostic.additionalIssueCount, 2)},
     };
   }) : [];
   return {format: 'comparison-offline-diagnostic-v1' as const, scoringEligibility: false as const,

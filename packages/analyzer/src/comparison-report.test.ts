@@ -197,12 +197,60 @@ it('rejects oversized unwrapped report text before JSON encoding allocation', as
   expect(serialization).not.toHaveBeenCalled();
 });
 
+function syntheticCounterSnapshots() {
+  // Projection-only schema-parsed records, not a claim of original file admission.
+  const schema = comparisonSchemasForVersionPair({collectorVersion: '2.1.0', analyzerVersion: '2.1.0'}).comparisonCheckpointsSchema;
+  return schema.shape.counters.parse((['baseline', 'history-ready', 'replay-end'] as const).map(lifecycle => ({lifecycle,
+    pageRequestBracket: {status: 'unavailable', reason: 'page bracket'}, hostReceipt: {heap: {status: 'unavailable', reason: 'heap receipt'}, dom: {status: 'unavailable', reason: 'dom receipt'}}, data: {heap: {status: 'unavailable', reason: 'isolate heap'}, dom: {status: 'unavailable', reason: 'DOM objects'}}})));
+}
+
+it('counter report rejects more than three snapshots before copying output', async () => {
+  const f = await originalFixture(), snapshots = syntheticCounterSnapshots(); snapshots.push(snapshots[0]!);
+  f.loaded.runs[0]!.counterCheckpoints.snapshots = snapshots;
+  expect(() => projectComparisonReport(f.loaded)).toThrow(/at most3 counter/);
+});
+
+it('counter report explicitly copies only declared scalar fields rather than retaining extra graphs', async () => {
+  const f = await originalFixture(), snapshots = syntheticCounterSnapshots(), counter = snapshots[0]!;
+  counter.pageRequestBracket = {status: 'available', value: {clockDomain: 'page-performance-ms', beforeMs: 1, afterMs: 2}};
+  counter.hostReceipt.heap = {status: 'available', value: {clockDomain: 'host-monotonic-ms', timestampMs: 90}};
+  counter.hostReceipt.dom = {status: 'available', value: {clockDomain: 'host-monotonic-ms', timestampMs: 89}};
+  counter.data.heap = {status: 'available', value: {jsHeapUsedBytes: 0}};
+  counter.data.dom = {status: 'available', value: {nodes: 0, documents: 1, eventListeners: 0}};
+  // Deliberately malformed private input: do not project undeclared whole graphs.
+  for (const value of [counter.pageRequestBracket.value, counter.hostReceipt.heap.value, counter.hostReceipt.dom.value, counter.data.heap.value, counter.data.dom.value]) Object.assign(value, {extraGraph: [1, 2, 3]});
+  f.loaded.runs[0]!.counterCheckpoints.snapshots = snapshots;
+  const report = projectComparisonReport(f.loaded), projected = report.rows[0]!.counterCheckpoints.snapshots[0]!;
+  expect(projected.pageRequestBracket).toEqual({status: 'available', value: {clockDomain: 'page-performance-ms', beforeMs: 1, afterMs: 2}});
+  expect(projected.hostReceipt).toEqual({heap: {status: 'available', value: {clockDomain: 'host-monotonic-ms', timestampMs: 90}}, dom: {status: 'available', value: {clockDomain: 'host-monotonic-ms', timestampMs: 89}}});
+  expect(projected.data).toEqual({heap: {status: 'available', value: {jsHeapUsedBytes: 0}}, dom: {status: 'available', value: {nodes: 0, documents: 1, eventListeners: 0}}});
+  expect(serializeComparisonReport(report).json).not.toContain('extraGraph');
+});
+
+it('counter report retains all independent channel reasons and exact renderer issue omissions', async () => {
+  const f = await originalFixture(), row = f.loaded.runs[0]!;
+  row.counterCheckpoints = {status: 'verified-original', originalFileFact: {byteLength: 100, sha256: '5'.repeat(64)}, rawAvailability: {status: 'parsed', path: row.artifactDirectory + '/checkpoints.json'}, reason: null, recordedSnapshotCount: 3, snapshots: syntheticCounterSnapshots()};
+  row.rendererPresentationCapabilityDiagnostic.issues = Array.from({length: 32}, (_, i) => ({kind: 'unreadable', path: 'trace.json', role: 'trace', reason: 'renderer ' + i})); row.rendererPresentationCapabilityDiagnostic.additionalIssueCount = 7;
+  const report = projectComparisonReport(f.loaded), counters = report.rows[0]!.counterCheckpoints;
+  expect(counters.snapshots[0]!.data.dom).toEqual({status: 'unavailable', reason: expect.objectContaining({value: 'DOM objects'})});
+  expect(report.rows[0]!.renderer.issues.values).toHaveLength(2); expect(report.rows[0]!.renderer.issues.omittedCount).toBe(37);
+  const output = serializeComparisonReport(report); expect(output.markdown).toContain('not atomic'); expect(output.markdown).toContain('DOM objects'); expect(output.json).not.toContain('growthRate');
+});
+
+it('counter report preserves unknown availability without manufacturing zero snapshots', async () => {
+  const f = await originalFixture(), report = projectComparisonReport(f.loaded);
+  expect(Reflect.get(report.rows[0]!, 'counterCheckpoints')).toMatchObject({status: 'unavailable', recordedSnapshotCount: null, snapshots: [], originalFileFact: null});
+  expect(report.scoringEligibility).toBe(false);
+});
+
 it('closed36-row issue-heavy projection remains below derived output ceilings', async () => {
   const f = await originalFixture(3), large = '🙂'.repeat(2048);
-  const values = Array.from({length: 32}, () => ({kind: 'unreadable' as const, path: 'trace.json', role: 'trace' as const, reason: large}));
+  const values = Array.from({length: 32}, () => ({kind: 'admission-limit' as const, path: large, role: 'trace' as const, reason: large, limitName: large, observed: Number.MAX_SAFE_INTEGER, observation: 'lower-bound' as const, limit: Number.MAX_SAFE_INTEGER}));
   for (const row of f.loaded.runs) {
     row.loadingIssues = values;
     for (const lane of [row.references.inventory, row.references.capture, row.references.acquisition, row.provenanceGraph, row.finalContent.fixture, row.finalContent.runtime, row.finalContent.coverage, row.rendererPresentationCapabilityDiagnostic]) lane.issues = values;
+    row.counterCheckpoints = {status: 'unavailable', originalFileFact: {byteLength: Number.MAX_SAFE_INTEGER, sha256: '5'.repeat(64)}, rawAvailability: {status: 'unreadable', path: large, reason: large}, reason: large, recordedSnapshotCount: null,
+      snapshots: syntheticCounterSnapshots().map(snapshot => ({...snapshot, pageRequestBracket: {status: 'unavailable', reason: large}, hostReceipt: {heap: {status: 'unavailable', reason: large}, dom: {status: 'unavailable', reason: large}}, data: {heap: {status: 'unavailable', reason: large}, dom: {status: 'unavailable', reason: large}}}))};
   }
   const serialized = serializeComparisonReport(projectComparisonReport(f.loaded));
   expect(Buffer.byteLength(serialized.json)).toBeLessThanOrEqual(19251200);

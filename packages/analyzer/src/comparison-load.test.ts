@@ -2,6 +2,7 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 import fs from 'node:fs/promises';
 import {parseComparisonRendererPresentation} from './comparison-presentation.js';
 import * as presentationModule from './comparison-presentation.js';
+import {projectComparisonReport, serializeComparisonReport} from './comparison-report.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, unlink, open, writeFile, link} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -443,6 +444,151 @@ async function referenceFixture(version: '2.0.0' | '2.1.0', mutation?: 'stale-in
   };
   return {...f, schemas, seal, refreshSeal};
 }
+async function counterFixture(version: '2.0.0' | '2.1.0') {
+  const f = await referenceFixture(version), row = f.runs[0]!, prefix = row.artifactDirectory + '/';
+  // Synthetic schema-valid records: exact retention is the oracle, not growth or atomicity.
+  const counters = (['baseline', 'history-ready', 'replay-end'] as const).map((lifecycle, i) => ({lifecycle,
+    pageRequestBracket: {status: 'available' as const, value: {clockDomain: 'page-performance-ms' as const, beforeMs: 10 + i * 7, afterMs: 12 + i * 7}},
+    hostReceipt: {heap: {status: 'available' as const, value: {clockDomain: 'host-monotonic-ms' as const, timestampMs: 100 + i * 13}}, dom: {status: 'available' as const, value: {clockDomain: 'host-monotonic-ms' as const, timestampMs: 99 + i * 13}}},
+    data: {heap: {status: 'available' as const, value: {jsHeapUsedBytes: [0, 137, 59][i]!}}, dom: {status: 'available' as const, value: {nodes: 3 + i, documents: 1, eventListeners: i}}}}));
+  const checkpoints = f.schemas.comparisonCheckpointsSchema.parse({...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile,
+    inputRecipe: {wheel: {recipeId: 'wheel', deltasCssPx: [-100, -100, -100, -100], cadenceMs: 50}, composer: {recipeId: 'composer', text: 'calibrate', cadenceMs: 35, submit: false}}, hostDispatches: [], hostFrameGuards: [], scroll: [], counters, deadlines: []});
+  const measure = async (name: string) => {const bytes = await readFile(join(f.root, prefix + name)); return {path: name, byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), status: 'complete' as const};};
+  const refresh = async (value: unknown = checkpoints, bytes?: Buffer) => {
+    if (bytes) await writeFile(join(f.root, prefix + 'checkpoints.json'), bytes); else await f.json(prefix + 'checkpoints.json', value);
+    const capture = f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8')));
+    if (!capture.payloads.some(p => p.path === 'checkpoints.json')) capture.payloads.push({path: 'checkpoints.json', status: 'complete'});
+    await f.json(prefix + 'capture-status.json', capture);
+    const inventory = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8')));
+    inventory.files = inventory.files.filter(p => p.path !== 'checkpoints.json' && p.path !== 'capture-status.json');
+    inventory.files.push(await measure('checkpoints.json'), await measure('capture-status.json'));
+    await f.json(prefix + 'raw-inventory.json', inventory);
+    await f.refreshSeal(f.seal.members.some(p => p.path === prefix + 'checkpoints.json') ? [] : [prefix + 'checkpoints.json']);
+  };
+  await refresh();
+  return {...f, prefix, checkpoints, refresh, fact: await measure('checkpoints.json')};
+}
+
+describe('counter checkpoint original admission', () => {
+  it.each(['2.0.0', '2.1.0'] as const)('retains the three exact independent counter checkpoints for %s', async version => {
+    const f = await counterFixture(version), loaded = await loadComparisonInvocation(f.root);
+    expect(loaded.byteIntegrity.seal).toBe('byte-closed');
+    expect(Reflect.get(loaded.runs[0]!, 'counterCheckpoints')).toEqual({status: 'verified-original', originalFileFact: {byteLength: f.fact.byteLength, sha256: f.fact.sha256}, rawAvailability: {status: 'parsed', path: f.prefix + 'checkpoints.json'}, reason: null, recordedSnapshotCount: 3, snapshots: f.checkpoints.counters});
+    const report = projectComparisonReport(loaded), serialized = serializeComparisonReport(report);
+    expect(report.rows[0]!.counterCheckpoints.originalFileFact).toEqual({byteLength: f.fact.byteLength, sha256: f.fact.sha256});
+    expect(JSON.parse(serialized.json).rows[0].counterCheckpoints.snapshots).toEqual(f.checkpoints.counters); expect(serialized.markdown).toContain('jsHeapUsedBytes: 137');
+    expect(loaded.root.ledger.value?.runs[0]?.status).toBe('failed'); expect(loaded.collection.status).toBe('partial');
+  });
+  it('rejects a fourth counter before selected schema traversal and retains its bounded row issue', async () => {
+    const f = await counterFixture('2.1.0'); f.checkpoints.counters.push(structuredClone(f.checkpoints.counters[2]!)); await f.refresh();
+    const schema = vi.spyOn(f.schemas.comparisonCheckpointsSchema, 'safeParse'), loaded = await loadComparisonInvocation(f.root);
+    expect(schema).not.toHaveBeenCalled(); expect(loaded.byteIntegrity.seal).toBe('byte-closed');
+    expect(loaded.runs[0]!.counterCheckpoints).toMatchObject({status: 'unavailable', recordedSnapshotCount: null, snapshots: [], originalFileFact: expect.any(Object)});
+    expect(loaded.runs[0]!.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', path: f.prefix + 'checkpoints.json', limitName: 'counterSnapshots', observed: 4, observation: 'exact', limit: 3}));
+  });
+  it.each(['duplicate', 'reversed', 'wrong-row', 'wrong-profile', 'wrong-scenario', 'wrong-round', 'wrong-case', 'mixed-version', 'invalid-bracket', 'invalid-count'] as const)('rejects semantic %s with rebound bytes while keeping independent byte closure', async mode => {
+    const f = await counterFixture('2.1.0');
+    if (mode === 'duplicate') f.checkpoints.counters[1]!.lifecycle = 'baseline';
+    if (mode === 'reversed') f.checkpoints.counters.reverse();
+    if (mode === 'wrong-row') f.checkpoints.repetition = 'another-row';
+    if (mode === 'wrong-profile') f.checkpoints.adapterProfile = 'another-profile';
+    if (mode === 'wrong-scenario') f.checkpoints.scenarioId = 'another-scenario';
+    if (mode === 'wrong-round') f.checkpoints.round = 2;
+    if (mode === 'wrong-case') f.checkpoints.caseIndex = 1;
+    if (mode === 'invalid-bracket' && f.checkpoints.counters[0]!.pageRequestBracket.status === 'available') f.checkpoints.counters[0]!.pageRequestBracket.value.afterMs = 0;
+    if (mode === 'invalid-count') f.checkpoints.counters[0]!.data.heap = {status: 'available', value: {jsHeapUsedBytes: Number.MAX_SAFE_INTEGER + 1}};
+    await f.refresh(mode === 'mixed-version' ? {...f.checkpoints, analyzerVersion: '2.0.0'} : f.checkpoints);
+    const loaded = await loadComparisonInvocation(f.root), diagnostic = loaded.runs[0]!.counterCheckpoints;
+    expect(loaded.byteIntegrity.seal).toBe('byte-closed'); expect(diagnostic.status).toBe('unavailable'); expect(diagnostic.snapshots).toEqual([]); expect(diagnostic.recordedSnapshotCount).toBeNull(); expect(diagnostic.originalFileFact).not.toBeNull();
+    expect(loaded.runs[0]!.loadingIssues.some(issue => issue.path === f.prefix + 'checkpoints.json')).toBe(true);
+  });
+  it.each([0, 1, 2] as const)('retains an actual %i-record array without lifecycle completion inference', async count => {
+    const f = await counterFixture('2.0.0'); f.checkpoints.counters = f.checkpoints.counters.slice(3 - count); await f.refresh();
+    const loaded = await loadComparisonInvocation(f.root);
+    expect(loaded.runs[0]!.counterCheckpoints).toMatchObject({status: 'verified-original', recordedSnapshotCount: count, snapshots: f.checkpoints.counters});
+    expect(loaded.runs[1]!.counterCheckpoints).toMatchObject({status: 'unavailable', recordedSnapshotCount: null, snapshots: [], rawAvailability: {status: 'absent'}});
+  });
+  it('retains all five independently unavailable unions and original reasons without zero fill', async () => {
+    const f = await counterFixture('2.1.0'), counter = f.checkpoints.counters[1]!;
+    counter.pageRequestBracket = {status: 'unavailable', reason: 'page bracket unavailable'};
+    counter.hostReceipt.heap = {status: 'unavailable', reason: 'heap host receipt unavailable'};
+    counter.hostReceipt.dom = {status: 'unavailable', reason: 'dom host receipt unavailable'};
+    counter.data.heap = {status: 'unavailable', reason: 'heap received but invalid'};
+    counter.data.dom = {status: 'unavailable', reason: 'dom request failed'};
+    await f.refresh(); const loaded = await loadComparisonInvocation(f.root);
+    expect(loaded.runs[0]!.counterCheckpoints.snapshots).toEqual(f.checkpoints.counters);
+    const report = projectComparisonReport(loaded), result = serializeComparisonReport(report);
+    expect(report.rows[0]!.counterCheckpoints.snapshots[1]!.data.heap).toEqual({status: 'unavailable', reason: expect.objectContaining({value: 'heap received but invalid'})});
+    expect(report.rows[0]!.counterCheckpoints.snapshots[0]!.data.heap).toEqual({status: 'available', value: {jsHeapUsedBytes: 0}});
+    expect(JSON.parse(result.json).rows[0].counterCheckpoints.recordedSnapshotCount).toBe(3); expect(result.markdown).toContain('page bracket unavailable'); expect(report.rows[0]!.reportedLedgerStatus).toBe('failed'); expect(report.scoringEligibility).toBe(false);
+    expect(loaded.byteIntegrity.observedUniqueBytes).toBe((await Promise.all([...f.seal.members.map(m => m.path), 'dataset-seal.json'].map(async path => (await readFile(join(f.root, path))).length))).reduce((a, b) => a + b, 0));
+  });
+  it.each(['page', 'heap-receipt', 'dom-receipt', 'heap-data', 'dom-data'] as const)('retains %s unavailability independently from the other four channels', async channel => {
+    const f = await counterFixture('2.0.0'), counter = f.checkpoints.counters[0]!, missing = {status: 'unavailable' as const, reason: 'original ' + channel};
+    if (channel === 'page') counter.pageRequestBracket = missing;
+    if (channel === 'heap-receipt') counter.hostReceipt.heap = missing;
+    if (channel === 'dom-receipt') counter.hostReceipt.dom = missing;
+    if (channel === 'heap-data') counter.data.heap = missing;
+    if (channel === 'dom-data') counter.data.dom = missing;
+    await f.refresh(); const loaded = await loadComparisonInvocation(f.root);
+    expect(loaded.runs[0]!.counterCheckpoints).toMatchObject({status: 'verified-original', snapshots: f.checkpoints.counters});
+  });
+  it.each(['utf8', 'syntax', 'depth', 'work'] as const)('keeps slot-json %s failure as global original closure loss', async mode => {
+    const f = await counterFixture('2.1.0');
+    const bytes = mode === 'utf8' ? Buffer.from([0x7b, 0xff, 0x7d]) : mode === 'syntax' ? Buffer.from('{"counters":[') : mode === 'depth' ? Buffer.from('['.repeat(34) + 'null' + ']'.repeat(34)) : Buffer.from('[' + '0,'.repeat(2_097_152) + '0]');
+    await f.refresh(null, bytes); const loaded = await loadComparisonInvocation(f.root);
+    expect(loaded.byteIntegrity.seal).toBe('partial'); expect(loaded.runs[0]!.counterCheckpoints).toMatchObject({status: 'unavailable', recordedSnapshotCount: null, snapshots: []});
+    expect(loaded.runs[0]!.counterCheckpoints.rawAvailability.status).not.toBe('parsed');
+    expect(loaded.loadingIssues.some(issue => issue.path === f.prefix + 'checkpoints.json')).toBe(true);
+  }, 15000);
+  it.each([undefined, null, false, 0, ''] as const)('revokes a successful generic hash when the counter semantic close throws %j', async error => {
+    const f = await counterFixture('2.1.0'), path = f.prefix + 'checkpoints.json', original = fs.open.bind(fs); let opens = 0;
+    // One metadata descriptor, then generic hash, then this semantic JSON read.
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const handle = await original(...args); if (String(args[0]) !== join(f.root, path) || ++opens !== 3) return handle;
+      return new Proxy(handle, {get(target, key) {if (key === 'close') return async () => {await target.close(); throw error;}; const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;}});
+    });
+    const loaded = await loadComparisonInvocation(f.root); expect(opens).toBe(3); expect(loaded.byteIntegrity.seal).toBe('partial');
+    expect(loaded.byteIntegrity.ioFailures).toContainEqual({operation: 'close', path, error}); expect(loaded.runs[0]!.counterCheckpoints.snapshots).toEqual([]);
+  });
+  it('revokes already admitted numeric counters when an unrelated original is replaced at final inspection', async () => {
+    const f = await counterFixture('2.1.0'), target = join(f.root, f.prefix + 'descriptor.json'), prepared = f.root + '-counter-original-replacement.json'; owned.push(prepared); await writeFile(prepared, await readFile(target));
+    const original = fs.opendir.bind(fs); let rootOpens = 0, changed = false;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {if (String(args[0]) === f.root && ++rootOpens === 3) {await rename(prepared, target); changed = true;} return original(...args);});
+    const loaded = await loadComparisonInvocation(f.root), counters = loaded.runs[0]!.counterCheckpoints;
+    expect(changed).toBe(true); expect(loaded.byteIntegrity.seal).toBe('partial'); expect(counters).toMatchObject({status: 'unavailable', recordedSnapshotCount: null, snapshots: [], originalFileFact: expect.any(Object), rawAvailability: {status: 'parsed'}});
+    expect(counters.reason).toContain('Final original');
+  });
+  it('blocks counter opens and selected schema traversal on an explicit unknown root pair', async () => {
+    const f = await counterFixture('2.1.0'); await f.json('invocation-claim.json', {...f.claim, collectorVersion: 'unknown', analyzerVersion: 'unknown'});
+    const original = fs.open.bind(fs), opened: string[] = [], parser = vi.spyOn(f.schemas.comparisonCheckpointsSchema, 'safeParse');
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {opened.push(String(args[0])); return original(...args);});
+    const loaded = await loadComparisonInvocation(f.root); expect(loaded.runs).toEqual([]); expect(parser).not.toHaveBeenCalled(); expect(opened.some(path => path.endsWith('/checkpoints.json'))).toBe(false);
+  });
+  it('does not open or schema-traverse counters after invocation byte preflight exceeds its existing capacity', async () => {
+    const f = await counterFixture('2.1.0'), handle = await open(join(f.root, 'invocation.json.00000000-0000-4000-8000-000000000001.tmp'), 'wx'); try {await handle.truncate(16 * 1024 * 1024 * 1024);} finally {await handle.close();}
+    const original = fs.open.bind(fs), opened: string[] = [], parser = vi.spyOn(f.schemas.comparisonCheckpointsSchema, 'safeParse');
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {opened.push(String(args[0])); return original(...args);});
+    const loaded = await loadComparisonInvocation(f.root); expect(loaded.byteIntegrity.admission).toBe('exceeded'); expect(parser).not.toHaveBeenCalled(); expect(opened.some(path => path.endsWith('/checkpoints.json'))).toBe(false);
+    expect(loaded.runs[0]!.counterCheckpoints).toMatchObject({status: 'unavailable', recordedSnapshotCount: null, snapshots: []});
+  });
+  it('retains ordered original read and falsy close failures from the semantic counter descriptor', async () => {
+    const f = await counterFixture('2.1.0'), path = f.prefix + 'checkpoints.json', original = fs.open.bind(fs), primary = new Error('actual counter read failure'); let opens = 0;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const handle = await original(...args); if (String(args[0]) !== join(f.root, path) || ++opens !== 3) return handle;
+      return new Proxy(handle, {get(target, key) {if (key === 'read') return async () => {throw primary;}; if (key === 'close') return async () => {await target.close(); throw false;}; const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;}});
+    });
+    const loaded = await loadComparisonInvocation(f.root); expect(opens).toBe(3); expect(loaded.byteIntegrity.seal).toBe('partial');
+    const failures = loaded.byteIntegrity.ioFailures.filter(failure => failure.path === path);
+    expect(failures).toEqual([{operation: 'read', path, error: primary}, {operation: 'close', path, error: false}]); expect(failures[0]!.error).toBe(primary); expect(failures[1]!.error).toBe(false); expect(loaded.runs[0]!.counterCheckpoints.snapshots).toEqual([]);
+  });
+  it.each(['symlink', 'hardlink'] as const)('rejects a genuine counter %s without projecting numeric samples', async kind => {
+    const f = await counterFixture('2.1.0'), target = join(f.root, f.prefix + 'checkpoints.json'), peer = kind === 'symlink' ? f.root + '-counter-symlink.json' : join(f.root, f.runs[1]!.artifactDirectory + '/checkpoints.json'), bytes = await readFile(target); owned.push(peer);
+    if (kind === 'symlink') {await rename(target, peer); await symlink(peer, target);} else await link(target, peer);
+    const loaded = await loadComparisonInvocation(f.root);
+    expect(loaded.byteIntegrity.seal).not.toBe('byte-closed'); expect(loaded.runs[0]!.counterCheckpoints).toMatchObject({status: 'unavailable', recordedSnapshotCount: null, snapshots: []});
+    expect(loaded.loadingIssues.some(issue => issue.kind === 'identity' && (kind === 'symlink' ? issue.path === f.prefix + 'checkpoints.json' : issue.reason === 'Distinct physical paths have a hardlink alias'))).toBe(true); expect(await readFile(peer)).toEqual(bytes);
+  });
+});
+
 async function provenanceGraphFixture(version: '2.0.0' | '2.1.0', repetitions: 1 | 2 | 3 = 1) {
   const f = await referenceFixture(version, undefined, repetitions);
   const measure = async (path: string) => {const bytes = await readFile(join(f.root, path)); return {byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')};};
