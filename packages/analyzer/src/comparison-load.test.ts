@@ -5,7 +5,7 @@ import {mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, unlink, open, w
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {loadComparisonMember, loadComparisonJson, loadComparisonJsonLines, loadComparisonInvocation, type ComparisonMemberReference} from './comparison-load.js';
-import {longThreadCaseOrder, createLongThreadMatrix, comparisonManifestSchema, comparisonDatasetInventorySchema} from '@chat-ui-bench/contract';
+import {longThreadCaseOrder, createLongThreadMatrix, comparisonManifestSchema, comparisonDatasetInventorySchema, comparisonSchemasForVersionPair} from '@chat-ui-bench/contract';
 
 const owned: string[] = [];
 afterEach(async () => {vi.restoreAllMocks(); for (const path of owned.splice(0)) await rm(path, {recursive: true, force: true});});
@@ -368,9 +368,9 @@ describe('comparison loader physical membership', () => {
   });
 });
 
-async function rootFixture(rounds = 1, mode = 'headless') {
+async function rootFixture(rounds = 1, mode = 'headless', version: '2.0.0' | '2.1.0' = '2.0.0') {
   const root = await mkdtemp(join(await realpath(tmpdir()), 'chat-ui-bench-analysis-root-')); owned.push(root);
-  const versions = {schemaVersion: 2, suite: 'long-thread-prose-v1', suiteVersion: '1.0.0', collectorVersion: '2.0.0', analyzerVersion: '2.0.0'};
+  const versions = {schemaVersion: 2, suite: 'long-thread-prose-v1', suiteVersion: '1.0.0', collectorVersion: version, analyzerVersion: version};
   const configuration = {schemaVersion: 2, suite: 'long-thread-prose-v1', seed: 1, rounds, adapterProfiles: ['threadplane-langgraph-custom-transport'], caseOrder: longThreadCaseOrder(1), mode, deadlinesMs: {historySetup: 60000, replay: 30000, disposal: 10000}};
   const createdAt = '2026-10-10T00:00:00.000Z';
   const runs = Array.from({length: rounds}, (_, index) => index + 1).flatMap(round => configuration.caseOrder.map((scenarioId, caseIndex) => ({round, caseIndex, scenarioId, adapterProfile: configuration.adapterProfiles[0], repetition: `${round}-${caseIndex}-0`, artifactDirectory: `runs/round-${round}/case-${caseIndex}/profile-0`, status: 'failed', reasons: ['not started']})));
@@ -382,8 +382,8 @@ async function rootFixture(rounds = 1, mode = 'headless') {
   for (const row of runs) await json(row.artifactDirectory + '/descriptor.json', {...versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile, seed: 1, mode, artifactDirectory: row.artifactDirectory});
   return {root, versions, ledger, claim, runs, json};
 }
-async function byteFixture(rounds = 1) {
-  const f = await rootFixture(rounds);
+async function byteFixture(rounds = 1, version: '2.0.0' | '2.1.0' = '2.0.0') {
+  const f = await rootFixture(rounds, 'headless', version);
   for (const row of f.runs) {
     const identity = {...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile};
     await f.json(row.artifactDirectory + '/validation.json', {...identity, status: 'failed', reasons: ['not started'], checks: [{name: 'acquisition', passed: false, reason: 'not started', evidencePaths: ['descriptor.json']}]});
@@ -393,7 +393,8 @@ async function byteFixture(rounds = 1) {
   const paths = ['invocation-claim.json', 'invocation.json', ...f.runs.flatMap(row => ['descriptor.json', 'validation.json', 'exceptions.json', 'raw-inventory.json'].map(name => row.artifactDirectory + '/' + name))].sort();
   const members = await Promise.all(paths.map(async path => {const bytes = await readFile(join(f.root, path)); return {path, byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')};}));
   const directories = [...new Set(f.runs.flatMap(row => row.artifactDirectory.split('/').map((_, index, parts) => parts.slice(0, index + 1).join('/'))))].sort();
-  const seal = comparisonDatasetInventorySchema.parse({...f.versions, invocationId: f.claim.invocationId, status: 'sealed', configuration: f.ledger.configuration, invocationClaim: f.claim, invocationLedger: f.ledger, root: '.', ledger: members.find(row => row.path === 'invocation.json'), members, absentMembers: [], directories,
+  const schemas = version === '2.1.0' ? comparisonSchemasForVersionPair({collectorVersion: '2.1.0', analyzerVersion: '2.1.0'}) : comparisonSchemasForVersionPair({collectorVersion: '2.0.0', analyzerVersion: '2.0.0'});
+  const seal = schemas.comparisonDatasetInventorySchema.parse({...f.versions, invocationId: f.claim.invocationId, status: 'sealed', configuration: f.ledger.configuration, invocationClaim: f.claim, invocationLedger: f.ledger, root: '.', ledger: members.find(row => row.path === 'invocation.json'), members, absentMembers: [], directories,
     slots: f.runs.map(row => ({identity: {...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile}, artifactDirectory: row.artifactDirectory, status: 'failed'})), ownershipSettled: true, finalizationSucceeded: true});
   await f.json('dataset-seal.json', seal);
   return {...f, members, seal, async total() {let total = 0; for (const path of [...paths, 'dataset-seal.json']) total += (await fs.lstat(join(f.root, path))).size; return total;}};
@@ -642,6 +643,31 @@ describe('comparison loader aggregate owned bytes', () => {
   });
 });
 describe('comparison loader bounded root bootstrap', () => {
+  it('admits genuine fresh sealed originals without upgrading partial collection', async () => {
+    const f = await byteFixture(1, '2.1.0');
+    const schemas = comparisonSchemasForVersionPair({collectorVersion: '2.1.0', analyzerVersion: '2.1.0'});
+    expect(schemas.comparisonCaptureInvocationSchema.parse(f.ledger)).toEqual(f.ledger);
+    expect(schemas.comparisonDatasetInventorySchema.shape.invocationClaim.parse(f.claim)).toEqual(f.claim);
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.family).toEqual({collectorVersion: '2.1.0', analyzerVersion: '2.1.0'});
+    expect(result.scheduled).toBe(12); expect(result.runs).toHaveLength(12);
+    expect(result.runs.every(row => row.identity.collectorVersion === '2.1.0' && row.descriptor !== null && row.captureValidation !== null)).toBe(true);
+    expect(result.byteIntegrity).toMatchObject({status: 'complete', admission: 'within-limit', observedUniqueBytes: await f.total(), seal: 'byte-closed'});
+    expect(result.collection).toMatchObject({status: 'partial', onDiskConsistencyOnly: true});
+    expect(result.loadingIssues).toHaveLength(12);
+    expect(result.loadingIssues.every(issue => issue.kind === 'absent' && issue.path.endsWith('/manifest.json'))).toBe(true);
+  });
+  it.each([['2.0.0', '2.1.0'], ['2.1.0', '2.0.0']] as const)('blocks cross-root %s ledger / %s claim before any dependent IO', async (ledgerVersion, claimVersion) => {
+    const f = await rootFixture(1, 'headless', ledgerVersion);
+    await f.json('invocation-claim.json', {...f.claim, collectorVersion: claimVersion, analyzerVersion: claimVersion});
+    const original = fs.open.bind(fs), opened: string[] = [];
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {opened.push(String(args[0])); return original(...args);});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.family).toBeNull(); expect(result.scheduled).toBeNull(); expect(result.runs).toEqual([]);
+    expect(result.root.ledger.fact).not.toBeNull(); expect(result.root.claim.fact).not.toBeNull();
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({path: 'invocation-claim.json', kind: 'malformed', reason: expect.stringMatching(/contradic|differ.*famil/i)}));
+    expect(opened.some(path => path.endsWith('/dataset-seal.json') || path.endsWith('/descriptor.json'))).toBe(false);
+  });
   it('retains every actual terminal ledger row when the seal and manifests are absent', async () => {
     const f = await rootFixture(), result = await loadComparisonInvocation(f.root);
     expect(result.family).toEqual({collectorVersion: '2.0.0', analyzerVersion: '2.0.0'});
@@ -673,7 +699,7 @@ describe('comparison loader bounded root bootstrap', () => {
     expect(result.scheduled).toBe(12); expect(result.runs).toHaveLength(12);
     expect(result.loadingIssues).toContainEqual(expect.objectContaining({path: 'invocation.json', kind: 'malformed', reason: expect.stringMatching(/terminal/i)}));
   });
-  it.each([['2.1.0', '2.1.0'], ['2.0.0', '2.1.0'], ['9.0.0', '9.0.0']])('rejects unsupported root pair %s/%s before dependent descriptor IO', async (collectorVersion, analyzerVersion) => {
+  it.each([['2.0.0', '2.1.0'], ['9.0.0', '9.0.0']])('rejects unsupported root pair %s/%s before dependent descriptor IO', async (collectorVersion, analyzerVersion) => {
     const f = await rootFixture(); await f.json('invocation.json', {...f.ledger, collectorVersion, analyzerVersion});
     const original = fs.open.bind(fs), paths: string[] = []; vi.spyOn(fs, 'open').mockImplementation(async (...args) => {paths.push(String(args[0])); return original(...args);});
     const result = await loadComparisonInvocation(f.root);
@@ -684,8 +710,39 @@ describe('comparison loader bounded root bootstrap', () => {
   it('rejects claim/ledger version disagreement instead of choosing another family', async () => {
     const f = await rootFixture(); await f.json('invocation-claim.json', {...f.claim, collectorVersion: '2.1.0', analyzerVersion: '2.1.0'});
     const result = await loadComparisonInvocation(f.root);
-    expect(result.root.claim.value).toBeNull(); expect(result.runs).toHaveLength(12);
+    expect(result.root.claim.value).toBeNull(); expect(result.runs).toHaveLength(0); expect(result.family).toBeNull();
     expect(result.loadingIssues).toContainEqual(expect.objectContaining({path: 'invocation-claim.json', kind: 'malformed'}));
+  });
+  it.each([['9.0.0', '9.0.0'], ['2.0.0', '2.1.0']])('rejects a later explicit unsupported claim %s/%s behind a valid ledger', async (collectorVersion, analyzerVersion) => {
+    const f = await rootFixture(); await f.json('invocation-claim.json', {...f.claim, collectorVersion, analyzerVersion});
+    const original = fs.open.bind(fs), opened: string[] = [];
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {opened.push(String(args[0])); return original(...args);});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.family).toBeNull(); expect(result.runs).toEqual([]);
+    expect(result.root.ledger.value).toEqual(f.ledger); expect(result.root.claim.value).toBeNull();
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({path: 'invocation-claim.json', reason: expect.stringMatching(/unsupported.*pair/i)}));
+    expect(opened.some(path => path.endsWith('/dataset-seal.json') || path.endsWith('/descriptor.json'))).toBe(false);
+  });
+  it('retains fresh claim bytes but manufactures no rows when its ledger is absent', async () => {
+    const f = await rootFixture(1, 'headless', '2.1.0'); await unlink(join(f.root, 'invocation.json'));
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.family).toEqual({collectorVersion: '2.1.0', analyzerVersion: '2.1.0'});
+    expect(result.root.claim.value).toEqual(f.claim); expect(result.root.ledger.availability.status).toBe('absent');
+    expect(result.scheduled).toBeNull(); expect(result.runs).toEqual([]); expect(result.collection.status).toBe('unavailable');
+  });
+  it('preserves fresh ledger rows for a structurally malformed agreeing claim', async () => {
+    const f = await rootFixture(1, 'headless', '2.1.0'); await f.json('invocation-claim.json', {...f.claim, extra: true});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.family).toEqual({collectorVersion: '2.1.0', analyzerVersion: '2.1.0'});
+    expect(result.root.claim.value).toBeNull(); expect(result.root.claim.availability.status).toBe('malformed');
+    expect(result.runs).toHaveLength(12); expect(result.runs.every(row => row.descriptor !== null)).toBe(true);
+  });
+  it.each([[2, 'headless', 24], [3, 'headed', 36]] as const)('retains all fresh original rows for %i rounds/%s', async (rounds, mode, count) => {
+    const f = await rootFixture(rounds, mode, '2.1.0'), result = await loadComparisonInvocation(f.root);
+    expect(result.scheduled).toBe(count); expect(result.runs).toHaveLength(count);
+    expect(result.runs.map(row => row.identity.repetition)).toEqual(f.runs.map(row => row.repetition));
+    expect(result.runs.every(row => row.descriptor?.collectorVersion === '2.1.0')).toBe(true);
+    expect(result.collection.status).toBe('partial');
   });
   it('rejects a strict claim extra field and descriptor identity disagreement', async () => {
     const f = await rootFixture(); await f.json('invocation-claim.json', {...f.claim, extra: true});
@@ -731,9 +788,10 @@ describe('comparison loader bounded root bootstrap', () => {
     expect(result.root.ledger.availability.status).toBe('malformed'); expect(result.scheduled).toBeNull(); expect(result.runs).toEqual([]);
     expect(opened.some(path => path.endsWith('/descriptor.json'))).toBe(false);
   });
-  it.each([false, true])('reads the manifest adapter.profile identity explicitly (mismatch=%s)', async mismatch => {
-    const f = await rootFixture(), row = f.runs[0]!, workload = createLongThreadMatrix(1).find(value => value.scenarioId === row.scenarioId)!.workload;
-    const manifest = comparisonManifestSchema.parse({...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex,
+  it.each([['2.0.0', false], ['2.0.0', true], ['2.1.0', false], ['2.1.0', true]] as const)('reads %s manifest adapter.profile identity explicitly (mismatch=%s)', async (version, mismatch) => {
+    const f = await rootFixture(1, 'headless', version), row = f.runs[0]!, workload = createLongThreadMatrix(1).find(value => value.scenarioId === row.scenarioId)!.workload;
+    const schemas = version === '2.1.0' ? comparisonSchemasForVersionPair({collectorVersion: '2.1.0', analyzerVersion: '2.1.0'}) : comparisonSchemasForVersionPair({collectorVersion: '2.0.0', analyzerVersion: '2.0.0'});
+    const manifest = schemas.comparisonManifestSchema.parse({...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex,
       caseOrder: f.ledger.configuration.caseOrder, workload, git: {revision: 'fixture-revision', dirty: false}, fixture: {sha256: 'a'.repeat(64), file: 'fixture.json'},
       browser: {executable: 'fixture-browser', version: '156.0.0.0', revision: 'fixture-revision', flags: []}, environment: {os: 'fixture-os', architecture: 'fixture-arch', cpu: {status: 'unavailable', reason: 'fixture'}, gpu: {status: 'unavailable', reason: 'fixture'}},
       mode: 'headless', viewport: {width: 1280, height: 800, deviceScaleFactor: 1}, cachePolicy: 'fresh-profile-empty-cache-assets-preloaded', fonts: 'local-system',
@@ -744,6 +802,38 @@ describe('comparison loader bounded root bootstrap', () => {
     const result = await loadComparisonInvocation(f.root);
     if (!mismatch) {expect(result.runs[0]!.manifest).toEqual(manifest); expect(result.runs[0]!.rawAvailability.manifest.status).toBe('parsed');}
     else {expect(result.runs[0]!.manifest).toBeNull(); expect(result.runs[0]!.loadingIssues).toContainEqual(expect.objectContaining({kind: 'identity', path: row.artifactDirectory + '/manifest.json'}));}
+    const wrongFamily = version === '2.1.0' ? '2.0.0' : '2.1.0';
+    await f.json(row.artifactDirectory + '/manifest.json', {...manifest, collectorVersion: wrongFamily, analyzerVersion: wrongFamily});
+    const changed = await loadComparisonInvocation(f.root);
+    expect(changed.runs[0]!.manifest).toBeNull(); expect(changed.runs[0]!.rawAvailability.manifest.status).toBe('malformed');
+    await f.json(row.artifactDirectory + '/manifest.json', {...manifest, extra: true});
+    expect((await loadComparisonInvocation(f.root)).runs[0]!.rawAvailability.manifest.status).toBe('malformed');
+  });
+  it.each((['2.0.0', '2.1.0'] as const).flatMap(version => (['descriptor.json', 'validation.json', 'exceptions.json', 'dataset-seal.json'] as const).map(name => [version, name] as const)))('rejects wrong-family %s/%s against its genuine rebound seal', async (version, name) => {
+    const f = await byteFixture(1, version), path = name === 'dataset-seal.json' ? name : f.runs[0]!.artifactDirectory + '/' + name;
+    const canonical = JSON.parse(await readFile(join(f.root, path), 'utf8')), wrongFamily = version === '2.1.0' ? '2.0.0' : '2.1.0';
+    await f.json(path, {...canonical, collectorVersion: wrongFamily, analyzerVersion: wrongFamily});
+    const bytes = await readFile(join(f.root, path)), fact = {byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')};
+    if (name !== 'dataset-seal.json') await f.json('dataset-seal.json', {...f.seal, members: f.members.map(member => member.path === path ? {...member, ...fact} : member)});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.family).toEqual({collectorVersion: version, analyzerVersion: version});
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({path, kind: 'malformed', reason: expect.stringMatching(/strict raw schema/i)}));
+    expect(result.byteIntegrity.files.find(member => member.path === path)?.fact).toEqual(fact);
+    if (name === 'dataset-seal.json') {expect(result.root.seal.value).toBeNull(); expect(result.byteIntegrity.seal).toBe('partial');}
+    else {expect(result.runs[0]!.loadingIssues).toContainEqual(expect.objectContaining({path, kind: 'malformed'})); expect(result.loadingIssues.some(issue => issue.kind === 'integrity' && issue.path === path)).toBe(false);}
+    expect(await readFile(join(f.root, path))).toEqual(bytes);
+  });
+  it.each((['2.0.0', '2.1.0'] as const).flatMap(version => (['invocationClaim', 'invocationLedger', 'slots'] as const).map(name => [version, name] as const)))('rejects %s seal with a wrong-family embedded %s', async (version, name) => {
+    const f = await byteFixture(1, version), other = version === '2.1.0' ? '2.0.0' : '2.1.0';
+    const pair = {collectorVersion: other, analyzerVersion: other};
+    const replacement = name === 'slots' ? f.seal.slots.map((slot, i) => i ? slot : {...slot, identity: {...slot.identity, ...pair}}) : {...f.seal[name], ...pair};
+    await f.json('dataset-seal.json', {...f.seal, [name]: replacement});
+    const bytes = await readFile(join(f.root, 'dataset-seal.json')), result = await loadComparisonInvocation(f.root);
+    expect(result.family).toEqual({collectorVersion: version, analyzerVersion: version});
+    expect(result.root.seal.value).toBeNull(); expect(result.root.seal.availability.status).toBe('malformed');
+    expect(result.root.seal.fact).toEqual({byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')});
+    expect(result.byteIntegrity.seal).toBe('partial'); expect(result.collection.status).toBe('partial');
+    expect(await readFile(join(f.root, 'dataset-seal.json'))).toEqual(bytes);
   });
 });
 
