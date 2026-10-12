@@ -19,7 +19,8 @@
     "bench:calibrate": "node packages/runner/dist/cli.js",
     "bench:analyze": "node packages/analyzer/dist/cli.js",
     "test:browser:threadplane": "npm run build && vitest run --config vitest.threadplane.browser.config.ts",
-    "bench:long-thread": "node packages/runner/dist/long-thread-main.js"
+    "bench:long-thread": "node packages/runner/dist/long-thread-main.js",
+    "test:browser:comparison": "vitest run --config vitest.comparison.browser.config.ts --no-color"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

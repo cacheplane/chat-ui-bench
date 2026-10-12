@@ -17,7 +17,7 @@ jobs:
   conformance:
     name: Instrumentation conformance
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       CI: true
     defaults:
@@ -69,6 +69,22 @@ jobs:
 
       - name: Run production Threadplane browser conformance
         run: npm run test:browser:threadplane 2>&1 | tee ci-logs/threadplane-browser.log
+
+      - name: Run long-thread comparison browser conformance
+        run: npm run test:browser:comparison 2>&1 | tee ci-logs/comparison-browser.log
+
+      - name: Preserve comparison browser evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: comparison-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-logs/comparison-browser.log
+            ${{ runner.temp }}/ci-evidence/comparison-browser-*/
+            ${{ runner.temp }}/ci-evidence/comparison-browser-root-result-*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Preserve failure logs and browser evidence
         if: failure()

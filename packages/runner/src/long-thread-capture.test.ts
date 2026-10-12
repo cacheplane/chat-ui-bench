@@ -5,13 +5,40 @@ import {ComparisonOwnership} from './comparison-ownership.js';
 import {ComparisonArtifactWriter,type ComparisonFileOperations} from './comparison-artifacts.js';
 import {createLongThreadLedger,runLongThreadInvocation} from './long-thread-run.js';
 import {createLongThreadFixture,mainOptionsSchema,preNavigationOptionsSchema,canonicalSerialize,comparisonAdapterSchema,comparisonInstrumentationBuildSchema,comparisonInstrumentationSchema} from '@chat-ui-bench/contract';
-import type {Browser,BrowserContext,Page,CDPSession} from 'playwright';
+import {chromium,type Browser,type BrowserContext,type Page,type CDPSession} from 'playwright';
 import {assembleComparisonInstaller} from './comparison-installer.js';
 import {createComparisonTraceCapture} from './comparison-trace.js';
 import {mkdtemp,rm,readFile,open,stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 const actualTimer=setTimeout;
+test('default comparison launch explicitly requests genuine browser command-line identity',async()=>{
+ let directory:string|undefined,owner:ComparisonOwnership|undefined,writer:ComparisonArtifactWriter|undefined,restore:(()=>void)|undefined;
+ let primaryFailed=false,primaryError:unknown;
+ const cleanupErrors:unknown[]=[];
+ try{
+   directory=await mkdtemp(join(tmpdir(),'g-capture-launch-'));owner=new ComparisonOwnership();writer=await ComparisonArtifactWriter.create(directory);
+   const config=configuration(),slot=createLongThreadLedger(config).runs[0]!;
+   const identity={schemaVersion:2,suite:'long-thread-prose-v1',suiteVersion:'1.0.0',collectorVersion:'2.0.0',analyzerVersion:'2.0.0',repetition:slot.repetition,scenarioId:slot.scenarioId,round:slot.round,caseIndex:slot.caseIndex,adapterProfile:slot.adapterProfile} as const;
+   const sentinel=new Error('Observed original default launch boundary'),launch=vi.spyOn(chromium,'launch');restore=()=>launch.mockRestore();launch.mockRejectedValue(sentinel);
+   const driver=createLongThreadCaptureDriver({originalRoot:directory,configuration:config},{async acquireInstrumentation(_session,pre,main){return assembleComparisonInstaller(pre,main);},async resolveProfile(){return profile();}});
+   const actualWriter=writer;let operationFailed=false,operationError:unknown;
+   const result=await owner.run('setup',async ownership=>{try{return await driver.setup({identity,descriptor:{...identity,seed:1,mode:'headless',artifactDirectory:slot.artifactDirectory},fixture:createLongThreadFixture({seed:1,historyCount:100,responseBytes:6400,journey:'follow'}),ownership,writer:actualWriter.scoped(()=>ownership.assertActive())});}catch(value){operationFailed=true;operationError=value;throw value;}});
+   expect(result.status).toBe('failed');expect(operationFailed).toBe(true);expect(operationError).toBe(sentinel);expect(launch).toHaveBeenCalledExactlyOnceWith({headless:true,args:['--enable-automation']});
+ }catch(error){primaryFailed=true;primaryError=error;}
+ finally{
+   // Restore the real launch method even if another cleanup operation fails.
+   try{restore?.();}catch(error){cleanupErrors.push(error);}
+   const closing:Promise<unknown>[]=[];
+   function start(call:()=>Promise<unknown>){try{const task=call();void task.catch(()=>{});closing.push(task);}catch(error){cleanupErrors.push(error);}}
+   if(owner){const actualOwner=owner;start(()=>actualOwner.dispose());start(()=>actualOwner.ownershipSettled);}
+   if(writer){const actualWriter=writer;start(()=>actualWriter.drain());}
+   const results=await Promise.allSettled(closing);for(const result of results)if(result.status==='rejected')cleanupErrors.push(result.reason);
+   if(directory){try{await rm(directory,{recursive:true,force:true});}catch(error){cleanupErrors.push(error);}}
+ }
+ if(primaryFailed){if(cleanupErrors.length)console.error('Default-launch regression cleanup failures',cleanupErrors);throw primaryError;}
+ if(cleanupErrors.length)throw new AggregateError(cleanupErrors,'Default-launch regression cleanup failed');
+});
 const actualImmediate=setImmediate;
 const configuration=()=>{const parsed=parseLongThreadArgs(['--out','/private/tmp/g-test-unused','--mode','headless','--rounds','1']);if(parsed.help)throw new Error('Unexpected help');return parsed;};
 test('factory validates configuration and original root before any acquisition',()=>{
@@ -89,9 +116,14 @@ test('profile operation follows retained original acquisition and fails before b
 function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>{resolve=done;});void promise.catch(()=>{});return {promise,resolve};}
 const profile=()=>comparisonAdapterSchema.parse({id:'threadplane',profile:'threadplane-langgraph-custom-transport',capabilities:{rendering:'all-mounted',scrollPolicy:'bottom-follow',returnToResponse:'native-control'},configuration:{markdown:'default',pinThresholdCssPx:150,telemetry:'disabled'},build:{packages:[{name:'@threadplane/chat',version:'0.3.2',integrity:'sha512-example'}],framework:{name:'Angular',version:'21.2.25'},production:true,sourceHashes:{'adapter.ts':'a'.repeat(64)},copiedSourceHashes:{},assetHashes:{'main.js':'a'.repeat(64)},settings:{optimization:true,sourceMaps:false}}});
 /** Individual browser/host/protocol operations, never a substituted G capture/evidence verdict. */
-async function lifecycleFixture(body:(fixture:{driver:ReturnType<typeof createLongThreadCaptureDriver>;owner:ComparisonOwnership;writer:ComparisonArtifactWriter;directory:string;context:(ownership:import('./comparison-ownership.js').ComparisonOwnershipContext)=>import('./long-thread-run.js').ComparisonSlotContext;order:string[];pageCalls:()=>number;scrollReads:{hostMs:number;pageMs:number}[];wheelDispatches:number[];pendingDriverTimers:()=>number[];request:(url:string,completion?:Promise<void>)=>Promise<void>;producerStateReads:number[];structuralObservations:{oldConnected:boolean;oldText:string;currentText:string;selectedHostMounted:boolean;hostContainsSelected:boolean;oldStillCurrent:boolean}[]})=>Promise<void>,options:{lateOriginLookupMs?:number;observeLocatorOptions?:(value:unknown)=>void;geometryCase?:string;missingReturn?:boolean;invisibleReturn?:boolean;producerState?:'failed'|'disposed';hostWaitHold?:Promise<void>;io?:ComparisonFileOperations;boundary?:string;boundaryHold?:Promise<void>;boundaryNth?:number;observeDetach?:(task:Promise<void>)=>void;traceDetachRejection?:{value:unknown};routeRegistrationHold?:Promise<void>;routeDisposalHold?:Promise<void>;routeDisposalRejection?:{value:unknown};routeRemovalRejection?:{value:unknown};pressHold?:Promise<void>;counterEndpointHold?:Promise<void>;pageAcquireHold?:Promise<void>;pageCloseHold?:Promise<void>;navigationRoute?:string;producerCompletionHold?:Promise<void>;connectionHold?:Promise<void>;productProgress?:unknown;traceFactoryRejection?:{value:unknown};traceAcquireHold?:Promise<void>;traceDetachHold?:Promise<void>;stopHold?:Promise<void>;disposeRejection?:{value:unknown};guardPending?:boolean;history?:boolean;preparationMs?:number;wheelHold?:Promise<void>;stalePostScroll?:boolean;staleScroll?:boolean;unavailableScrollGeometry?:boolean;unknownResponseGeometry?:boolean;visibleUnselectedHistory?:boolean;omitActiveCandidate?:boolean;wrongResponseProse?:boolean}={}){
- const directory=await mkdtemp(join(tmpdir(),'g-capture-lifecycle-')),config=configuration(),slot=createLongThreadLedger(config).runs[options.history?1:0]!,owner=new ComparisonOwnership({now:Date.now}),writer=await ComparisonArtifactWriter.create(directory,options.io),order:string[]=[];
- const nativeDispose=owner.dispose.bind(owner);let firstDisposal:ReturnType<ComparisonOwnership['dispose']>|undefined;
+async function lifecycleFixture(body:(fixture:{driver:ReturnType<typeof createLongThreadCaptureDriver>;owner:ComparisonOwnership;writer:ComparisonArtifactWriter;directory:string;context:(ownership:import('./comparison-ownership.js').ComparisonOwnershipContext)=>import('./long-thread-run.js').ComparisonSlotContext;order:string[];pageCalls:()=>number;scrollReads:{hostMs:number;pageMs:number}[];wheelDispatches:number[];pendingDriverTimers:()=>number[];request:(url:string,completion?:Promise<void>)=>Promise<void>;producerStateReads:number[];structuralObservations:{oldConnected:boolean;oldText:string;currentText:string;selectedHostMounted:boolean;hostContainsSelected:boolean;oldStillCurrent:boolean}[]})=>Promise<void>,options:{lateOriginLookupMs?:number;observeLocatorOptions?:(value:unknown)=>void;geometryCase?:string;missingReturn?:boolean;invisibleReturn?:boolean;producerState?:'failed'|'disposed';hostWaitHold?:Promise<void>;io?:ComparisonFileOperations;boundary?:string;boundaryHold?:Promise<void>;boundaryNth?:number;observeDetach?:(task:Promise<void>)=>void;traceDetachRejection?:{value:unknown};routeRegistrationHold?:Promise<void>;routeDisposalHold?:Promise<void>;routeDisposalRejection?:{value:unknown};routeRemovalRejection?:{value:unknown};routeRemovalHold?:Promise<void>;routeAbortHold?:Promise<void>;routeAbortRejection?:{value:unknown};pressHold?:Promise<void>;counterEndpointHold?:Promise<void>;counterEndpointEntered?:()=>void;pageAcquireHold?:Promise<void>;pageCloseHold?:Promise<void>;navigationRoute?:string;producerCompletionHold?:Promise<void>;connectionHold?:Promise<void>;productProgress?:unknown;traceFactoryRejection?:{value:unknown};traceAcquireHold?:Promise<void>;traceDetachHold?:Promise<void>;stopHold?:Promise<void>;disposeRejection?:{value:unknown};guardPending?:boolean;history?:boolean;preparationMs?:number;wheelHold?:Promise<void>;stalePostScroll?:boolean;staleScroll?:boolean;unavailableScrollGeometry?:boolean;unknownResponseGeometry?:boolean;visibleUnselectedHistory?:boolean;omitActiveCandidate?:boolean;wrongResponseProse?:boolean}={}){
+ let acquiredDirectory:string|undefined,acquiredOwner:ComparisonOwnership|undefined,firstDisposal:ReturnType<ComparisonOwnership['dispose']>|undefined,bodyFailed=false,bodyError:unknown;
+ const cleanupErrors:unknown[]=[];
+ try{
+ const directory=await mkdtemp(join(tmpdir(),'g-capture-lifecycle-'));acquiredDirectory=directory;
+ const config=configuration(),slot=createLongThreadLedger(config).runs[options.history?1:0]!,owner=new ComparisonOwnership({now:Date.now});acquiredOwner=owner;
+ const writer=await ComparisonArtifactWriter.create(directory,options.io),order:string[]=[];
+ const nativeDispose=owner.dispose.bind(owner);
  owner.dispose=()=>{const actual=nativeDispose();void actual.catch(()=>{});firstDisposal??=actual;return actual;};
  const identity={schemaVersion:2,suite:'long-thread-prose-v1',suiteVersion:'1.0.0',collectorVersion:'2.0.0',analyzerVersion:'2.0.0',repetition:slot.repetition,scenarioId:slot.scenarioId,round:slot.round,caseIndex:slot.caseIndex,adapterProfile:slot.adapterProfile} as const,fixture=createLongThreadFixture({seed:1,historyCount:100,responseBytes:6400,journey:options.history?'history-reading':'follow'});
  const response={id:fixture.events[0]!.messageId,role:'assistant' as const,text:fixture.events.filter(event=>event.type==='text-delta').map(event=>event.text).join(''),status:'complete' as const};
@@ -119,10 +151,10 @@ async function lifecycleFixture(body:(fixture:{driver:ReturnType<typeof createLo
  const traceSession={on(event:string,listener:(value:unknown)=>void){listeners.set(event,listener);},off(event:string){listeners.delete(event);},async send(method:string){order.push(method);if(method==='Page.getFrameTree')return {frameTree:{frame:{id:'root',url:'http://localhost:4010/'}}};if(method==='Target.getTargetInfo')return {targetInfo:{targetId:'root',type:'page',url:'http://localhost:4010/'}};if(method==='Tracing.end'){await gate('trace-completion');listeners.get('Tracing.tracingComplete')?.({stream:'stream',dataLossOccurred:false,traceFormat:'json',streamCompression:'none'});}if(method==='IO.read'){if(options.boundary==='trace-eof'&&traceReads++===0)return {data:'{"traceEvents":[',eof:false};await gate('trace-eof');if(options.boundary==='trace-eof')throw false;return {data:options.boundary==='trace-eof'?'{}]}':'{"traceEvents":[]}',eof:true};}return {};},detach(){order.push('trace-detach');const actual=(async()=>{listeners.get('close')?.(undefined);if(options.traceDetachHold)await options.traceDetachHold;if(options.traceDetachRejection)throw options.traceDetachRejection.value;})();void actual.catch(()=>{});options.observeDetach?.(actual);return actual;}} as unknown as CDPSession;
  const counter={async send(method:string){order.push(method);return method==='Runtime.getHeapUsage'?{usedSize:1}:{nodes:1,documents:1,jsEventListeners:1};},async detach(){order.push('counter-detach');}} as unknown as CDPSession;
  const locator={async boundingBox(value:unknown){options.observeLocatorOptions?.(value);order.push('wheel-prepare');await gate('native-preparation');if(options.preparationMs)await new Promise<void>(resolve=>setTimeout(resolve,options.preparationMs));return {x:0,y:0,width:1280,height:800};},async click(value:unknown){options.observeLocatorOptions?.(value);order.push('native-click');},async isVisible(){return !options.invisibleReturn;}};
- const page={async close(){pageClosed=true;order.push('page-close');if(options.pageCloseHold)await options.pageCloseHold;},async addInitScript(){order.push('pre-install');await gate('pre-install');},async goto(){order.push('navigation');await gate('navigation');if(options.navigationRoute)await request(options.navigationRoute);},async waitForFunction(){},locator(){return locator;},mouse:{async move(){},async wheel(){order.push('wheel');wheelDispatches.push(Date.now());if(wheelDispatches.length===1&&options.wheelHold)await options.wheelHold;}},keyboard:{async press(key:string){order.push('press:'+key);if(options.pressHold)await options.pressHold;},async up(){}},async evaluate(callback:unknown,arg:unknown){calls++;if(pageClosed)throw new Error('Page call after actual close');if(typeof callback==='string'){order.push('main-install');await gate('main-install');return;}if(String(callback).includes('.readScroll('))await gate('checkpoint-before');const result=await Function('arg',`return (${String(callback)})(arg)`)(arg);if(String(callback).includes('.readHostGuard('))await gate('guard');if(String(callback).includes('.readScroll('))await gate('checkpoint');if(String(callback).includes('.drain(')&&completed)await gate('page-drain');if(String(callback).includes('Actual host unavailable for full validation')&&arg&&typeof arg==='object'&&Reflect.get(arg,'responseId')!==null)await gate('coverage');if(String(callback).includes('performance.now()')&&options.counterEndpointHold){order.push('counter-endpoint');await options.counterEndpointHold;}if(String(callback).includes('capture.stop()')&&options.stopHold)await options.stopHold;return result;}} as unknown as Page;
+ const page={async close(){pageClosed=true;order.push('page-close');if(options.pageCloseHold)await options.pageCloseHold;},async addInitScript(){order.push('pre-install');await gate('pre-install');},async goto(){order.push('navigation');await gate('navigation');if(options.navigationRoute)await request(options.navigationRoute);},async waitForFunction(){},locator(){return locator;},mouse:{async move(){},async wheel(){order.push('wheel');wheelDispatches.push(Date.now());if(wheelDispatches.length===1&&options.wheelHold)await options.wheelHold;}},keyboard:{async press(key:string){order.push('press:'+key);if(options.pressHold)await options.pressHold;},async up(){}},async evaluate(callback:unknown,arg:unknown){calls++;if(pageClosed)throw new Error('Page call after actual close');if(typeof callback==='string'){order.push('main-install');await gate('main-install');return;}if(String(callback).includes('.readScroll('))await gate('checkpoint-before');const result=await Function('arg',`return (${String(callback)})(arg)`)(arg);if(String(callback).includes('.readHostGuard('))await gate('guard');if(String(callback).includes('.readScroll('))await gate('checkpoint');if(String(callback).includes('.drain(')&&completed)await gate('page-drain');if(String(callback).includes('Actual host unavailable for full validation')&&arg&&typeof arg==='object'&&Reflect.get(arg,'responseId')!==null)await gate('coverage');if(String(callback).includes('performance.now()')&&options.counterEndpointHold){order.push('counter-endpoint');options.counterEndpointEntered?.();await options.counterEndpointHold;}if(String(callback).includes('capture.stop(')&&options.stopHold)await options.stopHold;return result;}} as unknown as Page;
  let sessions=0,routeHandler:((route:import('playwright').Route)=>Promise<void>)|undefined;
- const request=async(url:string,completion:Promise<void>=Promise.resolve())=>{if(!routeHandler)throw new Error('Route handler not actually registered');await routeHandler({request(){return {url(){return url;}};},continue(){order.push('route-continue');return completion;}} as unknown as import('playwright').Route);};
- const browserContext={async close(){order.push('context-close');},async newPage(){if(options.pageAcquireHold){order.push('page-acquire');await options.pageAcquireHold;}return page;},async newCDPSession(){if(sessions++===0)return counter;order.push('trace-acquire');if(options.traceAcquireHold)await options.traceAcquireHold;return traceSession;},async route(_pattern:string,handler:(route:import('playwright').Route)=>Promise<void>){routeHandler=handler;order.push('route-register');if(options.routeRegistrationHold)await options.routeRegistrationHold;return {async dispose(){order.push('route-dispose');if(options.routeDisposalHold)await options.routeDisposalHold;if(options.routeDisposalRejection)throw options.routeDisposalRejection.value;}};},async unrouteAll(){order.push('unroute');if(options.routeRemovalRejection)throw options.routeRemovalRejection.value;}} as unknown as BrowserContext;
+ const request=async(url:string,completion:Promise<void>=Promise.resolve())=>{if(!routeHandler)throw new Error('Route handler not actually registered');await routeHandler({request(){return {url(){return url;}};},continue(){order.push('route-continue');return completion;},async abort(){order.push('route-abort');if(options.routeAbortHold)await options.routeAbortHold;if(options.routeAbortRejection)throw options.routeAbortRejection.value;}} as unknown as import('playwright').Route);};
+ const browserContext={async close(){order.push('context-close');},async newPage(){if(options.pageAcquireHold){order.push('page-acquire');await options.pageAcquireHold;}return page;},async newCDPSession(){if(sessions++===0)return counter;order.push('trace-acquire');if(options.traceAcquireHold)await options.traceAcquireHold;return traceSession;},async route(_pattern:string,handler:(route:import('playwright').Route)=>Promise<void>){routeHandler=handler;order.push('route-register');if(options.routeRegistrationHold)await options.routeRegistrationHold;return {async dispose(){order.push('route-dispose');if(options.routeDisposalHold)await options.routeDisposalHold;if(options.routeDisposalRejection)throw options.routeDisposalRejection.value;}};},async unrouteAll(){order.push('unroute');if(options.routeRemovalHold)await options.routeRemovalHold;if(options.routeRemovalRejection)throw options.routeRemovalRejection.value;}} as unknown as BrowserContext;
  const browser={async close(){order.push('browser-close');},async newContext(){return browserContext;},async newBrowserCDPSession(){return counter;}} as unknown as Browser;
  const facts={git:{revision:'fixture',dirty:false},assets:adapter.build.assetHashes,browser:{executable:'/fixture',version:'fixture',revision:'fixture',flags:[]},environment:{os:'fixture',architecture:'fixture',cpu:unavailable,gpu:unavailable},browserProtocol:{protocolVersion:'fixture',product:'fixture',revision:'fixture',userAgent:'fixture',jsVersion:'fixture'},chromiumDownloadRevision:'fixture',playwrightVersion:'fixture'};
  let lateOriginApplied=false;const driverTimers=new Map<ReturnType<typeof setTimeout>,number>();
@@ -130,14 +162,15 @@ async function lifecycleFixture(body:(fixture:{driver:ReturnType<typeof createLo
  const driver=createLongThreadCaptureDriver({originalRoot:directory,configuration:config},{clock:driverClock,createTrace(traceOptions){order.push('trace-factory');if(options.traceFactoryRejection)throw options.traceFactoryRejection.value;return createComparisonTraceCapture(traceOptions);},async acquireInstrumentation(_session,pre,main){return assembleComparisonInstaller(pre,main);},async resolveProfile(){return adapter;},async launch(){return browser;},async collectEnvironment(){return {facts,async recheckBeforeServing(){return facts;}};},async recheckServing(){return {originalRoot:directory,build:adapter.build,probe:build,assets:adapter.build.assetHashes};},async recheckProfile(){return adapter;},async serveAssets(){return {url:'http://localhost:4010/',async close(){order.push('assets-close');}};},async createReplayServer(){return {url:'http://localhost:4011/replay',get state(){producerStateReads.push(Date.now());return options.producerState??(completed&&producerReady?'complete':'waiting');},drain(){order.push('producer-drain');return [];},async close(){order.push('producer-close');}} as unknown as Awaited<ReturnType<NonNullable<import('./long-thread-capture.js').LongThreadCaptureDependencies['createReplayServer']>>>;}});
  const context=(ownership:import('./comparison-ownership.js').ComparisonOwnershipContext)=>({identity,descriptor:{...identity,seed:1,mode:'headless' as const,artifactDirectory:slot.artifactDirectory},fixture,ownership,writer:writer.scoped(()=>ownership.assertActive())});
  vi.stubGlobal('window',{benchHost:host,comparisonCapture:capture});vi.stubGlobal('document',{querySelector(){return scroller;},querySelectorAll(){return mounted;},createTreeWalker(element:ElementFixture){let read=false;return {nextNode(){if(read)return null;read=true;return {textContent:element.textContent,parentElement:element};}};},createRange(){let node:{parentElement:ElementFixture}|undefined;return {selectNodeContents(value:typeof node){node=value;},getClientRects(){return [node!.parentElement.getBoundingClientRect()];},detach(){}};}});vi.stubGlobal('HTMLElement',ElementFixture);vi.stubGlobal('NodeFilter',{SHOW_TEXT:4});vi.stubGlobal('innerWidth',1280);vi.stubGlobal('innerHeight',800);vi.stubGlobal('getComputedStyle',(element:ElementFixture)=>({transform:options.unknownResponseGeometry&&element.message?.id===response.id?'matrix(1,0,0,1,0,0)':'none',perspective:'none',clipPath:'none',filter:'none',contain:'none',display:'block',visibility:'visible',overflowX:options.geometryCase==='clip-x'&&element.content?'hidden':'visible',overflowY:options.geometryCase==='clip-y'&&element.content?'hidden':'visible'}));vi.stubGlobal('performance',{now});
- let bodyFailed=false,bodyError:unknown,cleanupFailed=false,cleanupError:unknown;
- try{await body({driver,owner,writer,directory,context,order,pageCalls:()=>calls,scrollReads,wheelDispatches,pendingDriverTimers:()=>[...driverTimers.values()],request,producerStateReads,structuralObservations});}catch(error){bodyFailed=true;bodyError=error;}
- const retainCleanup=(error:unknown)=>{if(!cleanupFailed){cleanupFailed=true;cleanupError=error;}};
- try{await (firstDisposal??owner.dispose());}catch(error){retainCleanup(error);}
- try{await owner.ownershipSettled;}catch(error){retainCleanup(error);}
- try{vi.unstubAllGlobals();}catch(error){retainCleanup(error);}
- try{await rm(directory,{recursive:true,force:true});}catch(error){retainCleanup(error);}
- if(bodyFailed)throw bodyError;if(cleanupFailed)throw cleanupError;
+ await body({driver,owner,writer,directory,context,order,pageCalls:()=>calls,scrollReads,wheelDispatches,pendingDriverTimers:()=>[...driverTimers.values()],request,producerStateReads,structuralObservations});
+ }catch(error){bodyFailed=true;bodyError=error;}
+ const closing:Promise<unknown>[]=[];
+ if(acquiredOwner){try{closing.push(firstDisposal??acquiredOwner.dispose());}catch(error){cleanupErrors.push(error);}try{closing.push(acquiredOwner.ownershipSettled);}catch(error){cleanupErrors.push(error);}}
+ for(const result of await Promise.allSettled(closing))if(result.status==='rejected')cleanupErrors.push(result.reason);
+ // These dependent restorations follow original operation settlement, even if disposal failed.
+ try{vi.unstubAllGlobals();}catch(error){cleanupErrors.push(error);}
+ if(acquiredDirectory)try{await rm(acquiredDirectory,{recursive:true,force:true});}catch(error){cleanupErrors.push(error);}
+ if(bodyFailed)throw bodyError;if(cleanupErrors.length===1)throw cleanupErrors[0];if(cleanupErrors.length)throw new AggregateError(cleanupErrors,'Lifecycle fixture cleanup failed');
 }
 for(const [label,value] of [['undefined',undefined],['null',null],['false',false],['zero',0],['empty','']] as const)test(`lifecycle cleanup preserves ${label} body failure while first native disposal is pending`,async()=>{
  const hold=deferred<void>(),originalWindow=Reflect.get(globalThis,'window');let first:ReturnType<ComparisonOwnership['dispose']>|undefined,owned:ComparisonOwnership|undefined,directory:string|undefined,firstSettled=false,pendingAtRetry=false,bodyExitPending=false,settledAtEscape=false,unsafeAtEscape=true,globalsRestoredAtEscape=false,directoryAbsentAtEscape=false,failed=false,error:unknown,attempts=0,closeCalls=0;
@@ -214,7 +247,7 @@ for(const rejection of ['removal','disposal'] as const)test(`route ${rejection} 
    const setup=await owner.run('setup',async ownership=>{try{state=await driver.setup(context(ownership));}catch(value){failed=true;error=value;throw value;}});if(failed)throw error;expect(setup.status).toBe('complete');
    const replay=owner.run('replay',async ownership=>{try{await driver.replay(context(ownership),state!);}catch(value){failed=true;error=value;throw value;}});void replay.catch(()=>{});let admitted:Promise<void>|undefined;
    try{
-     for(let index=0;index<1000&&!order.includes('connect');index++)await new Promise<void>(resolve=>actualTimer(resolve,1));expect(order).toContain('connect');admitted=request('http://localhost:4010/pending',continuation.promise);void admitted.catch(()=>{});await request('https://unexpected.example/rejected');expect(order).toContain('context-close');expect(order).toContain('browser-close');
+     for(let index=0;index<1000&&!order.includes('connect');index++)await new Promise<void>(resolve=>actualTimer(resolve,1));expect(order).toContain('connect');admitted=request('http://localhost:4010/pending',continuation.promise);void admitted.catch(()=>{});await request('https://unexpected.example/rejected');const failureAt=Date.now();await new Promise<void>(resolve=>actualImmediate(resolve));expect(Date.now()).toBe(failureAt);expect(order).toContain('context-close');expect(order).toContain('browser-close');
      connection.resolve();expect((await replay).status).toBe('failed');expect(failed).toBe(true);disposal=owner.dispose();void disposal.catch(()=>{});await vi.advanceTimersByTimeAsync(10000);expect((await disposal).status).toBe('expired');expect(owner.unsafeOutstanding).toBe(true);
      continuation.resolve();await admitted;await owner.ownershipSettled;expect(owner.unsafeOutstanding).toBe(false);expect(order.filter(value=>value==='unroute')).toHaveLength(1);expect(order.filter(value=>value==='route-dispose')).toHaveLength(1);expect(owner.failures.some(row=>row.message==='false')).toBe(true);
    }finally{disposal??=owner.dispose();void disposal.catch(()=>{});connection.resolve();continuation.resolve();await Promise.allSettled([replay,disposal,admitted]);await owner.ownershipSettled;}
@@ -229,7 +262,7 @@ test('an admitted continue settled after original setup revocation cannot borrow
      for(let index=0;index<1000&&!order.includes('counter-endpoint')&&!failed;index++)await new Promise<void>(resolve=>actualTimer(resolve,1));if(failed)throw error;expect(order).toContain('counter-endpoint');
      admitted=request('http://localhost:4010/original',continuation.promise);void admitted.catch(()=>{});expect(order.filter(value=>value==='route-continue')).toHaveLength(1);
      await vi.advanceTimersByTimeAsync(60000);expect((await setup).status).toBe('expired');await expect(owner.run('replay',async()=>{replayAdmissions++;})).rejects.toThrow('unsettled');expect(replayAdmissions).toBe(0);
-     continuation.resolve();await admitted;expect(order).toContain('context-close');expect(order).toContain('browser-close');expect(order).not.toContain('connect');
+     continuation.resolve();await admitted;const failureAt=Date.now();await new Promise<void>(resolve=>actualImmediate(resolve));expect(Date.now()).toBe(failureAt);expect(order).toContain('context-close');expect(order).toContain('browser-close');expect(order).not.toContain('connect');
      disposal=owner.dispose();void disposal.catch(()=>{});endpoint.resolve();await disposal;await owner.ownershipSettled;expect(failed).toBe(true);expect(String(error)).toContain('Counter capture closed');expect(owner.failures.some(row=>row.message.includes('revoked'))).toBe(true);
    }finally{disposal??=owner.dispose();void disposal.catch(()=>{});continuation.resolve();endpoint.resolve();await Promise.allSettled([setup,disposal,admitted]);await owner.ownershipSettled;}
  },{counterEndpointHold:endpoint.promise});}finally{endpoint.resolve();continuation.resolve();vi.useRealTimers();}
@@ -403,6 +436,57 @@ test('independent controller close cancels admitted G state timers before joinin
    expect(bodyFailed).toBe(true);expect(bodyError).toBeInstanceOf(Error);expect((await replay).status).toBe('failed');expect(owner.unsafeOutstanding).toBe(false);
  },{guardPending:true});}finally{vi.useRealTimers();}
 });
+test('native parent cleanup waits for one acquired trace detach without waiting for unrelated closes',async()=>{
+ const detach=deferred<void>();
+ try{await lifecycleFixture(async({driver,owner,context,order,pendingDriverTimers})=>{
+   let state:Awaited<ReturnType<typeof driver.setup>>|undefined;
+   let disposal:ReturnType<ComparisonOwnership['dispose']>|undefined;
+   try{
+   const setup=await owner.run('setup',async ownership=>{state=await driver.setup(context(ownership));});expect(setup.status).toBe('complete');
+   const replay=await owner.run('replay',ownership=>driver.replay(context(ownership),state!));expect(replay.status).toBe('complete');
+     disposal=owner.dispose();void disposal.catch(()=>{});await new Promise<void>(resolve=>actualImmediate(resolve));
+     expect(order.filter(value=>value==='trace-detach')).toHaveLength(1);expect(order).toContain('assets-close');expect(order).toContain('producer-close');expect(order).toContain('unroute');
+     for(const parent of ['page-close','context-close','browser-close'])expect(order).not.toContain(parent);
+     expect(pendingDriverTimers()).toEqual([1000]);
+   }finally{detach.resolve();disposal??=owner.dispose();await Promise.allSettled([disposal,owner.ownershipSettled]);}
+   for(const parent of ['page-close','context-close','browser-close'])expect(order.filter(value=>value===parent)).toHaveLength(1);
+   expect(order.indexOf('page-close')).toBeLessThan(order.indexOf('context-close'));expect(order.indexOf('context-close')).toBeLessThan(order.indexOf('browser-close'));
+   expect(order.filter(value=>value==='trace-detach')).toHaveLength(1);expect(pendingDriverTimers()).toEqual([]);
+ },{traceDetachHold:detach.promise});}finally{detach.resolve();}
+});
+test('one shared native cleanup escape does not replace original disposal expiry or release held ownership',async()=>{
+ const detach=deferred<void>();
+ try{vi.useFakeTimers({toFake:['Date','setTimeout','clearTimeout']});vi.setSystemTime(0);await lifecycleFixture(async({driver,owner,context,order,pendingDriverTimers})=>{
+   let state:Awaited<ReturnType<typeof driver.setup>>|undefined;
+   let disposal:ReturnType<ComparisonOwnership['dispose']>|undefined,settled=false,settlement:Promise<void>|undefined,replay:ReturnType<ComparisonOwnership['run']>|undefined,primaryFailed=false;
+   try{
+   expect((await owner.run('setup',async ownership=>{state=await driver.setup(context(ownership));})).status).toBe('complete');
+   let replayFinished=false;replay=owner.run('replay',ownership=>driver.replay(context(ownership),state!));void replay.then(()=>{replayFinished=true;},()=>{replayFinished=true;});
+   for(let index=0;index<200&&!replayFinished;index++){await vi.advanceTimersByTimeAsync(50);await new Promise<void>(resolve=>actualTimer(resolve,1));}
+   expect(replayFinished).toBe(true);expect((await replay).status).toBe('complete');
+   disposal=owner.dispose();void disposal.catch(()=>{});settlement=owner.ownershipSettled.then(()=>{settled=true;});void settlement.catch(()=>{});
+     await vi.advanceTimersByTimeAsync(999);for(const parent of ['page-close','context-close','browser-close'])expect(order).not.toContain(parent);
+     expect(pendingDriverTimers()).toEqual([1000]);await vi.advanceTimersByTimeAsync(1);
+     for(const parent of ['page-close','context-close','browser-close'])expect(order.filter(value=>value===parent)).toHaveLength(1);
+     expect(settled).toBe(false);expect(pendingDriverTimers()).toEqual([]);await vi.advanceTimersByTimeAsync(9000);
+     expect((await disposal).status).toBe('expired');expect(owner.unsafeOutstanding).toBe(true);expect(settled).toBe(false);
+   }catch(error){primaryFailed=true;throw error;}finally{detach.resolve();disposal??=owner.dispose();void disposal.catch(()=>{});const cleanup=await Promise.allSettled([vi.advanceTimersByTimeAsync(10000),disposal,replay,settlement??owner.ownershipSettled]);if(!primaryFailed)for(const result of cleanup)if(result.status==='rejected')throw result.reason;}
+   expect((await disposal!).status).toBe('expired');expect(owner.deadlines.at(-1)?.outcome).toBe('expired');expect(owner.canContinue).toBe(false);expect(order.filter(value=>value==='trace-detach')).toHaveLength(1);expect(owner.unsafeOutstanding).toBe(false);
+ },{traceDetachHold:detach.promise});}finally{detach.resolve();vi.useRealTimers();}
+});
+test('native parent cleanup does not wait for a held stop RPC during disposal',async()=>{
+ const hold=deferred<void>();
+ try{await lifecycleFixture(async({driver,owner,context,order})=>{
+   let state:Awaited<ReturnType<typeof driver.setup>>|undefined;
+   expect((await owner.run('setup',async ownership=>{state=await driver.setup(context(ownership));})).status).toBe('complete');
+   const replay=owner.run('replay',ownership=>driver.replay(context(ownership),state!));void replay.catch(()=>{});let disposal:ReturnType<ComparisonOwnership['dispose']>|undefined;
+   try{for(let index=0;index<1000&&!order.includes('stop');index++)await new Promise<void>(resolve=>actualTimer(resolve,1));expect(order).toContain('stop');
+     disposal=owner.dispose();void disposal.catch(()=>{});await new Promise<void>(resolve=>actualImmediate(resolve));
+     for(const parent of ['page-close','context-close','browser-close'])expect(order).toContain(parent);expect(order).toContain('assets-close');expect(order).toContain('producer-close');
+   }finally{hold.resolve();disposal??=owner.dispose();await Promise.allSettled([replay,disposal,owner.ownershipSettled]);}
+   expect(order.filter(value=>value==='stop')).toHaveLength(1);expect(order.filter(value=>value==='trace-detach')).toHaveLength(1);
+ },{stopHold:hold.promise});}finally{hold.resolve();}
+});
 test('normal held stop retains its first RPC and disposes the host only after subsequent final collection',async()=>{
  const hold=deferred<void>();
  try{await lifecycleFixture(async({driver,owner,context,order})=>{
@@ -445,8 +529,49 @@ test('persistent route controller rejects the actual setup/replay handoff gap by
 test('unexpected setup origin freezes G admissions before any following page RPC while original setup context remains active',async()=>{
  await lifecycleFixture(async({driver,owner,context,order,pageCalls})=>{
    let failed=false,error:unknown;
-   const setup=await owner.run('setup',async ownership=>{try{await driver.setup(context(ownership));}catch(value){failed=true;error=value;throw value;}});expect(setup.status).toBe('failed');expect(failed).toBe(true);expect(String(error)).toContain('Capture operation controller closed');expect(pageCalls()).toBe(0);expect(order).not.toContain('route-continue');expect(order).not.toContain('main-install');expect(order).toContain('context-close');expect(order).toContain('browser-close');
+   const setup=await owner.run('setup',async ownership=>{try{await driver.setup(context(ownership));}catch(value){failed=true;error=value;throw value;}});expect(setup.status).toBe('failed');expect(failed).toBe(true);expect(String(error)).toContain('Capture operation controller closed');expect(pageCalls()).toBe(0);await new Promise<void>(resolve=>actualImmediate(resolve));expect(pageCalls()).toBe(0);expect(order).not.toContain('route-continue');expect(order).not.toContain('main-install');expect(order).toContain('context-close');expect(order).toContain('browser-close');
  },{navigationRoute:'https://unexpected.example/blocked'});
+});
+test('native rejected-route abort stays owned before removal while independent closes start',async()=>{
+ const endpoint=deferred<void>(),abort=deferred<void>();
+ try{vi.useFakeTimers({toFake:['Date','setTimeout','clearTimeout']});vi.setSystemTime(0);await lifecycleFixture(async({driver,owner,context,order,request})=>{
+   let bodyFailed=false,bodyError:unknown,disposal:ReturnType<ComparisonOwnership['dispose']>|undefined,rejected:Promise<void>|undefined;
+   const setup=owner.run('setup',async ownership=>{try{await driver.setup(context(ownership));}catch(error){bodyFailed=true;bodyError=error;throw error;}});void setup.catch(()=>{});
+   try{
+     for(let index=0;index<1000&&!order.includes('counter-endpoint')&&!bodyFailed;index++)await new Promise<void>(resolve=>actualTimer(resolve,1));if(bodyFailed)throw bodyError;expect(order).toContain('counter-endpoint');
+     rejected=request('https://unexpected.example/rejected');void rejected.catch(()=>{});await new Promise<void>(resolve=>actualImmediate(resolve));expect(order.filter(value=>value==='route-abort')).toHaveLength(1);expect(order).not.toContain('route-continue');expect(order).not.toContain('unroute');expect(order).not.toContain('route-dispose');expect(order).toContain('context-close');expect(order).toContain('browser-close');expect(Date.now()).toBe(0);
+     disposal=owner.dispose();void disposal.catch(()=>{});await vi.advanceTimersByTimeAsync(10000);expect((await disposal).status).toBe('expired');expect(owner.unsafeOutstanding).toBe(true);expect(order).not.toContain('unroute');
+     abort.resolve();await rejected;await new Promise<void>(resolve=>actualImmediate(resolve));expect(order.filter(value=>value==='unroute')).toHaveLength(1);expect(order.filter(value=>value==='route-dispose')).toHaveLength(1);expect(owner.unsafeOutstanding).toBe(true);
+   }finally{disposal??=owner.dispose();void disposal.catch(()=>{});abort.resolve();endpoint.resolve();await vi.advanceTimersByTimeAsync(10000);await Promise.allSettled([setup,disposal,rejected]);await owner.ownershipSettled;}
+   expect(owner.unsafeOutstanding).toBe(false);expect(owner.failures.some(row=>row.message.includes('Unexpected request origin'))).toBe(true);
+ },{counterEndpointHold:endpoint.promise,routeAbortHold:abort.promise});}finally{abort.resolve();endpoint.resolve();vi.useRealTimers();}
+});
+test('native route removal settles before registration disposal without holding independent closes',async()=>{
+ const removal=deferred<void>();
+ try{vi.useFakeTimers({toFake:['Date','setTimeout','clearTimeout']});vi.setSystemTime(0);await lifecycleFixture(async({driver,owner,context,order})=>{
+   let failed=false,error:unknown,disposal:ReturnType<ComparisonOwnership['dispose']>|undefined;
+   try{const setup=await owner.run('setup',async ownership=>{try{await driver.setup(context(ownership));}catch(value){failed=true;error=value;throw value;}});if(failed)throw error;expect(setup.status).toBe('complete');
+   disposal=owner.dispose();void disposal.catch(()=>{});await new Promise<void>(resolve=>actualImmediate(resolve));expect(order.filter(value=>value==='unroute')).toHaveLength(1);expect(order).not.toContain('route-dispose');expect(order).toContain('context-close');expect(order).toContain('browser-close');expect(Date.now()).toBe(0);}
+   finally{disposal??=owner.dispose();void disposal.catch(()=>{});removal.resolve();await Promise.allSettled([disposal]);await owner.ownershipSettled;}
+   expect(order.filter(value=>value==='route-dispose')).toHaveLength(1);expect(owner.unsafeOutstanding).toBe(false);
+ },{routeRemovalHold:removal.promise});}finally{removal.resolve();vi.useRealTimers();}
+});
+for(const nativeFailure of ['abort','continue'] as const)test(`native route ${nativeFailure} rejection preserves false without duplicate terminal handling`,async()=>{
+ const endpoint=deferred<void>(),counterEntered=deferred<void>(),writeEntered=deferred<void>(),writeRelease=deferred<void>();let writeHeld=false;
+ const io:ComparisonFileOperations={async open(...args){const handle=await open(...args);if(!String(args[0]).includes('page-exceptions.jsonl')||writeHeld)return handle;return new Proxy(handle,{get(target,key){if(key==='writeFile')return async(...values:Parameters<typeof handle.writeFile>)=>{writeHeld=true;writeEntered.resolve();await writeRelease.promise;return target.writeFile(...values);};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;}});}};
+ try{await lifecycleFixture(async({driver,owner,context,order,request,writer})=>{
+   let failed=false,error:unknown,disposal:ReturnType<ComparisonOwnership['dispose']>|undefined,identity:import('./long-thread-run.js').ComparisonSlotContext['identity']|undefined;
+   let original:import('./comparison-ownership.js').ComparisonOwnershipContext|undefined;const setup=owner.run('setup',async ownership=>{original=ownership;try{const actual=context(ownership);identity=actual.identity;await driver.setup(actual);}catch(value){failed=true;error=value;throw value;}});void setup.catch(()=>{});
+   try{
+     await Promise.race([writeEntered.promise,setup]);if(failed)throw error;expect(writeHeld).toBe(true);original!.assertActive();
+     // Original immediate-turn count is a controlled delay witness, never a readiness bound.
+     for(let index=0;index<1000;index++)await new Promise<void>(resolve=>actualImmediate(resolve));expect(order).not.toContain('counter-endpoint');expect(failed).toBe(false);original!.assertActive();
+     writeRelease.resolve();await Promise.race([counterEntered.promise,setup]);if(failed)throw error;expect(order).toContain('counter-endpoint');original!.assertActive();
+     await expect(request(nativeFailure==='abort'?'https://unexpected.example/rejected':'http://localhost:4010/rejected',nativeFailure==='continue'?Promise.reject(false):Promise.resolve())).rejects.toBe(false);
+     expect(order.filter(value=>value==='route-abort')).toHaveLength(nativeFailure==='abort'?1:0);expect(order.filter(value=>value==='route-continue')).toHaveLength(nativeFailure==='continue'?1:0);await new Promise<void>(resolve=>actualImmediate(resolve));expect(order).toContain('context-close');expect(order).toContain('browser-close');
+   }finally{writeRelease.resolve();disposal??=owner.dispose();void disposal.catch(()=>{});endpoint.resolve();await Promise.allSettled([setup,disposal]);await owner.ownershipSettled;}
+   expect(owner.failures.some(row=>row.message==='false')).toBe(true);if(nativeFailure==='abort'){const final=await driver.finalize!({identity:identity!,deadlines:owner.deadlines,writer:writer.scoped(()=>{})},null);expect(final?.captureStatus.reasons).toContain('Unexpected request origin or replay URL');expect(final?.captureStatus.reasons).toContain('false');}
+ },{io,counterEndpointHold:endpoint.promise,counterEndpointEntered:()=>counterEntered.resolve(),...(nativeFailure==='abort'?{routeAbortRejection:{value:false}}:{})});}finally{writeRelease.resolve();endpoint.resolve();}
 });
 test('64 real pending route continues are retained and the 65th begins independent context closure before joining',async()=>{
  const connection=deferred<void>(),continuation=deferred<void>();

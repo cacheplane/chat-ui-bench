@@ -1,5 +1,5 @@
 import {test,expect,vi,afterEach} from 'vitest';
-import {createComparisonBuffer,COMPARISON_CAPTURE_LIMITS,comparisonObservationSchema,comparisonInstrumentationSchema} from '@chat-ui-bench/contract';
+import {createComparisonBuffer,COMPARISON_CAPTURE_LIMITS,comparisonObservationSchema,comparisonInstrumentationSchema,comparisonHostFrameGuardSchema} from '@chat-ui-bench/contract';
 import * as implementation from './comparison-observations.js';
 import {runInNewContext} from 'node:vm';
 
@@ -201,4 +201,83 @@ test('all geometry samples share the ancestor cap before the next style inspecti
 });
 test('invalid owned transfer shape is an integrity rejection, not fake factory overflow, and complete only means exhaustion',()=>{
   const p=page(),source=createComparisonBuffer('pre-navigation-errors');source.enqueue('null');p.context.comparisonPreNavigation={state:source.state,stop:()=>{},drain:(size:number)=>source.drain(size as 4096)};const state=install(p,false);expect(state.readPreNavigationTransfer()).toMatchObject({attempted:1,accepted:0,rejected:1,complete:true,failureReason:'Owned pre-navigation source integrity failure'});expect(state.readInstrumentation().buffers.find((b:any)=>b.name==='page-observations').rejectedRecordCount).toBe(0);
+});
+
+// Controlled installer fixtures use the actual bounded queue; native H receipts stay strict.
+test.each([true,false])('terminal transport transfer is explicit; normal terminal=%s',terminal=>{
+  const p=page(),transport=createComparisonBuffer('transport');
+  const drain=vi.fn(()=>transport.drain().map(serialized=>JSON.parse(JSON.parse(serialized))));
+  p.bridge.drainCaptureEvents=drain;p.bridge.readCaptureBufferState=()=>{const {pendingEntries,pendingSerializedBytes,...state}=transport.state();return state;};
+  const state=install(p);p.setTime(50);state.setPhase('streaming-follow');p.tick(51);observations(state);
+  const originalRecords=[
+    {kind:'receipt',timestampMs:52,sequence:200,data:{event:{type:'text-delta',sequence:200,scheduledMs:10000,messageId:'response',text:'🌍'}}},
+    {kind:'translation',timestampMs:52,sequence:200,data:{protocolEvent:'text-delta',messageId:'response',text:'🌍'}},
+    {kind:'receipt',timestampMs:53,sequence:201,data:{event:{type:'assistant-complete',sequence:201,scheduledMs:10000,messageId:'response',text:''}}},
+    {kind:'translation',timestampMs:53,sequence:201,data:{protocolEvent:'complete',messageId:'response',text:''}},
+  ];
+  for(const record of originalRecords)expect(transport.enqueue('string',JSON.stringify(record))).toBe(true);
+  expect(transport.state().pendingEntries).toBe(4);p.setTime(54);state.closePhase();p.setTime(55);
+  if(terminal)Reflect.apply(state.stop,state,[{drainTransport:true}]);else state.stop();
+  const records=observations(state),transferred=records.filter(record=>record.kind==='receipt'||record.kind==='translation');
+  expect(transferred.map(record=>({kind:record.kind,timestampMs:record.timestampMs,sequence:record.sequence,data:record.data}))).toEqual(terminal?originalRecords:[]);
+  for(const record of transferred){comparisonObservationSchema.parse(record);expect(record.phase).toBe('streaming-follow');expect(record.phaseInstanceId).toBe('1');expect(record.attributionReason).toBe(null);}
+  expect(transport.state().pendingEntries).toBe(terminal?0:4);expect(drain).toHaveBeenCalledTimes(terminal?2:1);
+  const instrumentation=state.readInstrumentation();expect(instrumentation.transportDrain.callbacks).toBe(terminal?2:1);
+  expect(instrumentation.runtimeProbe.callbacks).toBe(1);expect(instrumentation.domProbe.callbacks).toBe(1);expect(instrumentation.scrollProbe.callbacks).toBe(1);
+  expect(p.timers.size).toBe(0);expect([...p.listeners.values()].every(listeners=>listeners.size===0)).toBe(true);
+  expect(p.context.console.warn).toBe(p.nativeConsole.warn);expect(p.context.console.error).toBe(p.nativeConsole.error);
+  Reflect.apply(state.stop,state,[{drainTransport:true}]);expect(drain).toHaveBeenCalledTimes(terminal?2:1);
+});
+test('normal terminal transport failure stays factual while all cleanup still runs',()=>{
+  const p=page(),state=install(p);p.tick(51);observations(state);const drain=vi.fn(()=>{throw false;});p.bridge.drainCaptureEvents=drain;p.setTime(55);
+  Reflect.apply(state.stop,state,[{drainTransport:true}]);
+  expect(observations(state).filter(record=>record.kind==='failure').map(record=>record.data.reason)).toEqual(['Transport drain unavailable: false']);
+  expect(drain).toHaveBeenCalledTimes(1);expect(p.timers.size).toBe(0);expect([...p.listeners.values()].every(listeners=>listeners.size===0)).toBe(true);
+  expect(p.context.console.warn).toBe(p.nativeConsole.warn);expect(p.context.console.error).toBe(p.nativeConsole.error);
+  state.stop();expect(drain).toHaveBeenCalledTimes(1);
+});
+
+
+function withChronologyHost(inspect:(p:ReturnType<typeof page>,state:ReturnType<typeof install>)=>void,hostTime=100){
+  let state:ReturnType<typeof install>|undefined,failed=false,originalError:unknown;const cleanupFailures:unknown[]=[];
+  try{const p=page();state=install(p);state.armHostGuard();p.frame(hostTime);inspect(p,state);}
+  catch(error){failed=true;originalError=error;}
+  finally{try{state?.stop();}catch(error){cleanupFailures.push(error);}}
+  if(failed){if(cleanupFailures.length)console.error('Original chronology fixture cleanup failures',cleanupFailures);throw originalError;}
+  if(cleanupFailures.length)throw cleanupFailures[0];
+}
+function originalChronologyCallback(p:ReturnType<typeof page>,value:unknown){
+  expect(p.frames.size).toBe(1);const [handle,callback]=p.frames.entries().next().value!;p.frames.delete(handle);Reflect.apply(callback,undefined,[value]);
+}
+test('rAF chronology policy keeps backdated first callbacks pending without extra records or state growth',()=>{
+  withChronologyHost((p,state)=>{
+    const initial=observations(state);expect(initial.filter(row=>row.kind==='assistant-host')).toHaveLength(1);expect(initial.filter(row=>row.kind==='runtime-checkpoint')).toHaveLength(1);expect(initial.filter(row=>row.kind==='animation-frame-checkpoint')).toEqual([]);
+    const timerCount=p.timers.size,clock=p.context.performance.now;const now=vi.fn(clock);p.context.performance.now=now;
+    for(const value of [99,98,99]){originalChronologyCallback(p,value);expect(state.readHostGuard()).toEqual({status:'pending'});expect(p.frames.size).toBe(1);expect(p.timers.size).toBe(timerCount);expect(observations(state)).toEqual([]);expect(now).not.toHaveBeenCalled();}
+    originalChronologyCallback(p,100);expect(state.readHostGuard()).toEqual({status:'pending'});expect(p.frames.size).toBe(1);expect(observations(state).filter(row=>row.kind==='animation-frame-checkpoint').map(row=>({ordinal:row.data.ordinal,timestampMs:row.timestampMs}))).toEqual([{ordinal:1,timestampMs:100}]);
+    originalChronologyCallback(p,120);const guard=state.readHostGuard();expect(guard.status).toBe('ready');if(guard.status!=='ready')throw Error('Two eligible original samples required');expect(guard.value.hostObservation).toEqual({clockDomain:'page-performance-ms',timestampMs:100,hostMounted:true,contentMounted:true});expect(guard.value.frames.map(row=>row.timestampMs)).toEqual([100,120]);expect(comparisonHostFrameGuardSchema.safeParse(guard.value).success).toBe(true);expect(p.frames.size).toBe(0);expect(p.timers.size).toBe(timerCount);
+    expect(observations(state).filter(row=>row.kind==='animation-frame-checkpoint').map(row=>({ordinal:row.data.ordinal,timestampMs:row.timestampMs}))).toEqual([{ordinal:2,timestampMs:120}]);
+  });
+});
+test('rAF chronology policy treats negative zero as pending before a positive host sample',()=>{
+  withChronologyHost((p,state)=>{observations(state);originalChronologyCallback(p,-0);expect(state.readHostGuard()).toEqual({status:'pending'});expect(observations(state)).toEqual([]);originalChronologyCallback(p,100);originalChronologyCallback(p,120);const guard=state.readHostGuard();expect(guard.status).toBe('ready');if(guard.status==='ready')expect(guard.value.frames.map(row=>row.timestampMs)).toEqual([100,120]);});
+});
+test('rAF chronology policy preserves eligible negative zero at host time zero',()=>{
+  withChronologyHost((p,state)=>{originalChronologyCallback(p,-0);expect(state.readHostGuard()).toEqual({status:'pending'});originalChronologyCallback(p,20);const guard=state.readHostGuard();expect(guard.status).toBe('ready');if(guard.status!=='ready')throw Error('Eligible zero must remain original');expect(Object.is(guard.value.frames[0].timestampMs,-0)).toBe(true);expect(guard.value.frames[1].timestampMs).toBe(20);expect(comparisonHostFrameGuardSchema.safeParse(guard.value).success).toBe(true);},0);
+});
+test.each([NaN,Infinity,-Infinity,-1,Symbol('native anomaly'),null,undefined,'99',{[Symbol.toPrimitive](){throw false;},toJSON(){throw '';}}])('rAF chronology policy rejects malformed or negative first sample without coercion %s',value=>{
+  withChronologyHost((p,state)=>{observations(state);originalChronologyCallback(p,value);expect(state.readHostGuard()).toEqual({status:'unavailable',reason:'Distinct chronological rAF timestamp unavailable'});expect(p.frames.size).toBe(0);expect(observations(state)).toEqual([]);});
+});
+test.each([120,110,99,-0,-1,NaN])('rAF chronology policy rejects post-first nonincreasing or invalid sample %s',value=>{
+  withChronologyHost((p,state)=>{originalChronologyCallback(p,120);observations(state);originalChronologyCallback(p,value);expect(state.readHostGuard()).toEqual({status:'unavailable',reason:'Distinct chronological rAF timestamp unavailable'});expect(p.frames.size).toBe(0);expect(observations(state)).toEqual([]);});
+});
+test.each(['identity','replacement','disconnection'] as const)('rAF chronology policy cannot pend across retained host %s change',change=>{
+  withChronologyHost((p,state)=>{originalChronologyCallback(p,99);expect(state.readHostGuard()).toEqual({status:'pending'});observations(state);if(change==='identity')p.bridge.readActiveHost=()=>({activeMessageId:'other',hostMounted:true});else if(change==='replacement')p.candidate.hostElement={...p.host};else p.host.isConnected=false;
+    originalChronologyCallback(p,98);expect(state.readHostGuard()).toEqual({status:'unavailable',reason:'Original streaming host removed or replaced'});expect(p.frames.size).toBe(0);expect(observations(state)).toEqual([]);});
+});
+test('rAF chronology policy stop cancels the sole pending callback and all original cleanup',()=>{
+  withChronologyHost((p,state)=>{originalChronologyCallback(p,99);expect(state.readHostGuard()).toEqual({status:'pending'});expect(p.frames.size).toBe(1);observations(state);state.stop();expect(state.readHostGuard()).toEqual({status:'unavailable',reason:'Capture stopped before host readiness'});expect(p.frames.size).toBe(0);expect(p.timers.size).toBe(0);expect([...p.listeners.values()].every(listeners=>listeners.size===0)).toBe(true);expect(p.context.console.warn).toBe(p.nativeConsole.warn);expect(p.context.console.error).toBe(p.nativeConsole.error);expect(observations(state).filter(row=>['assistant-host','runtime-checkpoint','animation-frame-checkpoint'].includes(row.kind))).toEqual([]);state.stop();expect(p.frames.size).toBe(0);expect(p.timers.size).toBe(0);expect(observations(state)).toEqual([]);});
+});
+test('rAF chronology policy preserves successful guard schema inequality rejection',()=>{
+  withChronologyHost((p,state)=>{originalChronologyCallback(p,120);originalChronologyCallback(p,140);const guard=state.readHostGuard();expect(guard.status).toBe('ready');if(guard.status!=='ready')throw Error('Original success must remain ready');expect(comparisonHostFrameGuardSchema.safeParse(guard.value).success).toBe(true);for(const frames of [[{...guard.value.frames[0],timestampMs:99},guard.value.frames[1]],[guard.value.frames[0],{...guard.value.frames[1],timestampMs:120}],[guard.value.frames[0],{...guard.value.frames[1],timestampMs:110}]])expect(comparisonHostFrameGuardSchema.safeParse({...guard.value,frames}).success).toBe(false);});
 });

@@ -96,21 +96,36 @@ export function createLongThreadCaptureDriver(_options:LongThreadCaptureOptions,
  }
  function reason(state:SlotEntry,error:unknown){if(state.reasons.length<32)state.reasons.push((error instanceof Error?error.message:String(error)).slice(0,4096)||'Empty operation rejection');}
  function closeIndependent(state:SlotEntry){for(const close of state.closures.values()){let task:Promise<void>;try{task=close();}catch(error){task=Promise.reject(error);}void task.catch(error=>reason(state,error));}}
+ const nativeGuards=new WeakMap<SlotEntry,{escape:Promise<void>;release:()=>void}>();
+ const traceNativeClosers=new WeakMap<SlotEntry,()=>Promise<void>>();
+ function nativeParents(state:SlotEntry,children:readonly(()=>Promise<void>)[],close:()=>Promise<void>):Promise<void>{
+   if(!children.length)return close();
+   let guard=nativeGuards.get(state);
+   if(!guard){let release!:()=>void;const escape=new Promise<void>(resolve=>{release=resolve;});const timer=(clock.setTimer??setTimeout)(release,1000);guard={escape,release:()=>{(clock.clearTimer??clearTimeout)(timer);release();}};nativeGuards.set(state,guard);}
+   const pending=children.map(child=>{try{return child();}catch(error){return Promise.reject(error);}});
+   // Only native child settlement orders parents. Owned child failures remain original failures.
+   return Promise.race([Promise.allSettled(pending),guard.escape]).then(close);
+ }
+ function acquiredClosers(state:SlotEntry,names:readonly string[]):(()=>Promise<void>)[]{return names.flatMap(name=>{const close=state.closures.get(name);return close?[close]:[];});}
  async function installRoutes(context:ComparisonSlotContext,state:SlotEntry){
    const browserContext=state.browserContext!,assetOrigin=new URL(state.assets!.url).origin,replayUrl=state.producer!.url;
-   let registration:Awaited<ReturnType<BrowserContext['route']>>|undefined,registerPromise:Promise<Awaited<ReturnType<BrowserContext['route']>>>|undefined,closed=false,removal:Promise<void>|undefined,dispose:Promise<void>|undefined,closing:Promise<void>|undefined,failed=false,firstError:unknown;
+   let registration:Awaited<ReturnType<BrowserContext['route']>>|undefined,registerPromise:Promise<Awaited<ReturnType<BrowserContext['route']>>>|undefined,closed=false,removal:Promise<void>|undefined,dispose:Promise<void>|undefined,closing:Promise<void>|undefined,rejectedAbort:Promise<void>|undefined,failed=false,firstError:unknown;
    function disposeRegistration(){if(dispose)return dispose;if(!registration)return Promise.resolve();try{dispose=registration.dispose();}catch(error){dispose=Promise.reject(error);}void dispose.catch(()=>{});return dispose;}
-   function close(){if(closing)return closing;closed=true;try{removal=browserContext.unrouteAll({behavior:'wait'});}catch(error){removal=Promise.reject(error);}void removal.catch(()=>{});const existingDispose=disposeRegistration();
-     closing=(async()=>{const results=await Promise.allSettled([removal,existingDispose,registerPromise]);const lateDisposal=await Promise.allSettled([disposeRegistration()]);await Promise.allSettled([...state.routePending]);for(const result of [...results,...lateDisposal])if(result.status==='rejected')throw result.reason;if(failed)throw firstError;})();void closing.catch(()=>{});return closing;
+   function close(){if(closing)return closing;closed=true;
+     closing=(async()=>{const terminal=rejectedAbort?await Promise.allSettled([rejectedAbort]):[];try{removal=browserContext.unrouteAll({behavior:'wait'});}catch(error){removal=Promise.reject(error);}void removal.catch(()=>{});
+       const results=await Promise.allSettled([removal,registerPromise]);const lateDisposal=await Promise.allSettled([disposeRegistration()]);await Promise.allSettled([...state.routePending]);for(const result of [...terminal,...results,...lateDisposal])if(result.status==='rejected')throw result.reason;if(failed)throw firstError;})();void closing.catch(()=>{});return closing;
    }
    function fail(error:unknown){if(!failed){failed=true;firstError=error;}reason(state,error);const removing=close();void removing.catch(()=>{});closeIndependent(state);}
    await context.ownership.adopt({name:'route-registration-and-handlers',close});state.closures.set('route-registration-and-handlers',close);
-   const handler=async(route:Route)=>{const authority=state.currentContext;
+   const handler=async(route:Route)=>{const authority=state.currentContext;let attempted=false,continued=false;
      try{if(closed||!authority)throw new Error('Route admission during ownership handoff gap');authority.ownership.assertActive();if(state.routePending.size>=64)throw new Error('Route pending operation capacity exceeded');const url=new URL(route.request().url());if(url.origin!==assetOrigin&&url.href!==replayUrl)throw new Error('Unexpected request origin or replay URL');
-       let actual:Promise<void>;try{actual=route.continue();}catch(error){actual=Promise.reject(error);}const observed=actual.then(()=>{authority.ownership.assertActive();if(state.currentContext!==authority)throw new Error('Route authority changed after request settlement');});state.routePending.add(observed);void observed.then(()=>state.routePending.delete(observed),()=>state.routePending.delete(observed));await observed;
-     }catch(error){fail(error);}
+       let actual:Promise<void>;attempted=true;try{actual=route.continue();}catch(error){actual=Promise.reject(error);}const observed=actual.then(()=>{continued=true;authority.ownership.assertActive();if(state.currentContext!==authority)throw new Error('Route authority changed after request settlement');});state.routePending.add(observed);void observed.then(()=>state.routePending.delete(observed),()=>state.routePending.delete(observed));await observed;
+     }catch(error){
+       if(!attempted&&!failed){try{rejectedAbort=route.abort();}catch(abortError){rejectedAbort=Promise.reject(abortError);}void rejectedAbort.catch(()=>{});fail(error);try{await rejectedAbort;}catch(abortError){reason(state,abortError);throw abortError;}}
+       else{fail(error);if(!continued)throw error;}
+     }
    };
-   context.ownership.assertActive();registerPromise=browserContext.route('**/*',handler).then(async value=>{registration=value;if(closed)await disposeRegistration();return value;});void registerPromise.catch(fail);await track(state,registerPromise);context.ownership.assertActive();
+   context.ownership.assertActive();registerPromise=browserContext.route('**/*',handler).then(async value=>{registration=value;return value;});void registerPromise.catch(fail);await track(state,registerPromise);context.ownership.assertActive();
  }
  function waitUntil(context:ComparisonSlotContext,state:SlotEntry,target:number):Promise<void>{
    context.ownership.assertActive();if(state.closed)throw new Error('Capture timer controller closed');let timer:ReturnType<typeof setTimeout>|undefined;
@@ -127,11 +142,16 @@ export function createLongThreadCaptureDriver(_options:LongThreadCaptureOptions,
  }
  async function acquireTrace(context:ComparisonSlotContext,state:SlotEntry){
    let session:CDPSession|undefined,creation:Promise<CDPSession>|undefined,closed=false,transferred=false,detach:Promise<void>|undefined;
-   const firstDetach=()=>{if(detach)return detach;if(!session||transferred)return Promise.resolve();try{detach=session.detach();}catch(error){detach=Promise.reject(error);}void detach.catch(()=>{});return detach;};
+   const nativeDetach=()=>{if(detach)return detach;if(!session)return Promise.resolve();try{detach=session.detach();}catch(error){detach=Promise.reject(error);}void detach.catch(()=>{});return detach;};
+   const firstDetach=()=>transferred?Promise.resolve():nativeDetach();
    let closing:Promise<void>|undefined;const close=()=>{if(closing)return closing;closed=true;const initial=firstDetach();closing=(async()=>{const results=await Promise.allSettled([initial,creation]);await firstDetach();for(const result of results)if(result.status==='rejected')throw result.reason;})();void closing.catch(()=>{});return closing;};state.closures.set('trace-session-before-transfer',close);await context.ownership.adopt({name:'trace-session-before-transfer',close});
    admission(context,state);try{creation=state.browserContext!.newCDPSession(state.page!);}catch(error){creation=Promise.reject(error);}
    const observed=creation.then(async value=>{session=value;if(closed||state.closed){await firstDetach();throw new Error('Late trace session detached before transfer');}return value;});void observed.catch(()=>{});
-   const actual=await track(state,observed);try{admission(context,state);state.trace=(dependencies.createTrace??createComparisonTraceCapture)({context,session:actual,isolatedBrowserProcess:true,singleWorkloadPage:true,now:clock.now});transferred=true;state.closures.set('transferred-trace',()=>state.trace!.close());if(state.closed){void state.trace.close().catch(()=>{});admission(context,state);}}catch(error){const closing=firstDetach();void closing.catch(()=>{});throw error;}
+   const actual=await track(state,observed);try{admission(context,state);
+     const forwarded=new Proxy(actual,{get(target,key){if(key==='detach')return nativeDetach;const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+     state.trace=(dependencies.createTrace??createComparisonTraceCapture)({context,session:forwarded,isolatedBrowserProcess:true,singleWorkloadPage:true,now:clock.now});transferred=true;
+     traceNativeClosers.set(state,()=>{const closing=state.trace!.close();void closing.catch(()=>{});return nativeDetach();});
+     state.closures.set('transferred-trace',()=>state.trace!.close());if(state.closed){void state.trace.close().catch(()=>{});admission(context,state);}}catch(error){const closing=firstDetach();void closing.catch(()=>{});throw error;}
  }
  return {async setup(context){
    context.ownership.assertActive();if(entry)throw new Error('An earlier slot is still retained');
@@ -149,11 +169,11 @@ export function createLongThreadCaptureDriver(_options:LongThreadCaptureOptions,
    entry.session=(dependencies.createProvenanceSession??createComparisonProvenanceSession)(context,_options.originalRoot);
    entry.pair=await operation(context,current,()=> (dependencies.acquireInstrumentation??((session,pre,main)=>session.acquire(pre,main)))(current.session!,pre,main));
    current.profile=await operation(context,current,()=> (dependencies.resolveProfile??resolveComparisonThreadplaneProfile)(current.session!));
-   current.browser=await resource(context,current,'browser',()=> (dependencies.launch??chromium.launch.bind(chromium))({headless:descriptor.mode==='headless'}),browser=>browser.close());
-   current.browserContext=await resource(context,current,'browser-context',()=>current.browser!.newContext({viewport:{width:1280,height:800},deviceScaleFactor:1}),browserContext=>browserContext.close());
+   current.browser=await resource(context,current,'browser',()=> (dependencies.launch??chromium.launch.bind(chromium))({headless:descriptor.mode==='headless',args:['--enable-automation']}),browser=>nativeParents(current,acquiredClosers(current,['browser-context','environment-CDP']),()=>browser.close()).finally(()=>nativeGuards.get(current)?.release()));
+   current.browserContext=await resource(context,current,'browser-context',()=>current.browser!.newContext({viewport:{width:1280,height:800},deviceScaleFactor:1}),browserContext=>nativeParents(current,acquiredClosers(current,['workload-page']),()=>browserContext.close()));
    await context.ownership.adopt({name:'page-stop-host-dispose',close:()=>stopPage(current)});
    current.closures.set('page-stop-host-dispose',()=>stopPage(current));
-   current.page=await resource(context,current,'workload-page',()=>current.browserContext!.newPage(),page=>page.close());
+   current.page=await resource(context,current,'workload-page',()=>current.browserContext!.newPage(),page=>{const children=acquiredClosers(current,['counter-CDP']),trace=traceNativeClosers.get(current);if(trace)children.push(trace);return nativeParents(current,children,()=>page.close());});
    current.environmentSession=await resource(context,current,'environment-CDP',()=>current.browser!.newBrowserCDPSession(),session=>session.detach());
    current.environment=await operation(context,current,()=> (dependencies.collectEnvironment??collectComparisonEnvironment)(current.session!,current.environmentSession!,configuration.purpose));
    const serving=await operation(context,current,()=> (dependencies.recheckServing??(session=>session.recheckBeforeServing()))(current.session!));
@@ -230,7 +250,7 @@ export function createLongThreadCaptureDriver(_options:LongThreadCaptureOptions,
    const product=runtimeProgressSchema.parse(await operation(context,current,()=>page.evaluate(()=>{const host=(window as CaptureWindow).benchHost;if(!host)throw new Error('Host absent');return host.readProgress();})));
    if(product.delivery!=='complete'||product.outcome!=='success'||product.loading||product.error!==null)throw new Error('Actual product delivery did not complete successfully');
    await operation(context,current,()=>page.evaluate(()=>{const capture=(window as CaptureWindow).comparisonCapture;if(!capture)throw new Error('Page capture absent');capture.closePhase();}));
-   current.stop=operation(context,current,()=>page.evaluate(()=>{const capture=(window as CaptureWindow).comparisonCapture;if(!capture)throw new Error('Page capture absent');capture.stop();}));void current.stop.catch(()=>{});await current.stop;
+   current.stop=operation(context,current,()=>page.evaluate(()=>{const capture=(window as CaptureWindow).comparisonCapture;if(!capture)throw new Error('Page capture absent');capture.stop({drainTransport:true});}));void current.stop.catch(()=>{});await current.stop;
    current.terminal=await current.journal.finishStage();current.reasons.push(...current.terminal.reasons.slice(0,32-current.reasons.length));
    current.instrumentation=comparisonInstrumentationSchema.parse(await operation(context,current,()=>page.evaluate(()=>{const capture=(window as CaptureWindow).comparisonCapture;if(!capture)throw new Error('Page capture absent');return capture.readInstrumentation();})));
    current.finalInstrumentation=current.instrumentation;

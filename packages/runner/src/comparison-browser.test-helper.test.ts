@@ -1,0 +1,343 @@
+// Controlled filesystem tests only: these do not launch a browser or add capture attempts.
+import {afterEach, expect, test} from 'vitest';
+import * as helper from './comparison-browser.test-helper.js';
+import {mkdtemp, mkdir, readFile, writeFile, copyFile, cp, open, rm, readdir, stat, unlink, link, symlink, rename, realpath} from 'node:fs/promises';
+import {constants} from 'node:fs';
+import {join, dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {tmpdir} from 'node:os';
+import {createHash, randomUUID} from 'node:crypto';
+import {
+  adapterBuildSchema, comparisonInstrumentationBuildSchema, canonicalSerialize, createLongThreadFixture,
+  comparisonDatasetInventorySchema, comparisonCaptureInvocationSchema, comparisonScheduledRunSchema,
+  comparisonValidationSchema, comparisonExceptionsSchema, comparisonRawInventorySchema, comparisonManifestSchema,
+} from '@chat-ui-bench/contract';
+import {parseLongThreadArgs} from './long-thread-cli.js';
+import {createLongThreadLedger} from './long-thread-run.js';
+
+const repository = fileURLToPath(new URL('../../../', import.meta.url));
+const directories: string[] = [];
+afterEach(async () => {
+  const failures: unknown[] = [];
+  for (const directory of directories.splice(0)) try {await rm(directory, {recursive: true, force: true});} catch (error) {failures.push(error);}
+  if (failures.length) throw new AggregateError(failures, 'Controlled snapshot fixture cleanup failed');
+});
+const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+const versions = {schemaVersion: 2, suite: 'long-thread-prose-v1', suiteVersion: '1.0.0', collectorVersion: '2.0.0', analyzerVersion: '2.0.0'} as const;
+const reason = 'Synthetic filesystem fixture; no browser collection was attempted';
+// Explicit maintained audit scope. Product/probe/output/package inventories below come from current inputs.
+const source36 = [
+  '.github/workflows/ci.yml', 'apps/threadplane/probe-provenance.mjs', 'apps/threadplane/probe-provenance.test.ts', 'package.json',
+  'packages/runner/src/comparison-assembly-worker.test.ts', 'packages/runner/src/comparison-assembly-worker.ts',
+  'packages/runner/src/comparison-browser.test-helper.test.ts', 'packages/runner/src/comparison-browser.test-helper.ts', 'packages/runner/src/comparison-browser.test.ts',
+  'packages/runner/src/comparison-capture-journal.test.ts', 'packages/runner/src/comparison-capture-journal.ts',
+  'packages/runner/src/comparison-counters.test.ts', 'packages/runner/src/comparison-counters.ts',
+  'packages/runner/src/comparison-native-input.test.ts', 'packages/runner/src/comparison-native-input.ts',
+  'packages/runner/src/comparison-observations.test.ts', 'packages/runner/src/comparison-observations.ts',
+  'packages/runner/src/comparison-ownership.test.ts', 'packages/runner/src/comparison-ownership.ts',
+  'packages/runner/src/comparison-provenance.test.ts', 'packages/runner/src/comparison-provenance.ts',
+  'packages/runner/src/comparison-threadplane.test.ts', 'packages/runner/src/comparison-threadplane.ts',
+  'packages/runner/src/comparison-trace.test.ts', 'packages/runner/src/comparison-trace.ts',
+  'packages/runner/src/environment.test.ts', 'packages/runner/src/environment.ts', 'packages/runner/src/index.ts',
+  'packages/runner/src/long-thread-capture.test.ts', 'packages/runner/src/long-thread-capture.ts',
+  'packages/runner/src/long-thread-main.test.ts', 'packages/runner/src/long-thread-main.ts',
+  'packages/runner/src/long-thread-run.test.ts', 'packages/runner/src/long-thread-run.ts',
+  'vitest.comparison.browser.config.ts', 'vitest.config.ts',
+].sort();
+async function physicalFiles(root: string, relative: string): Promise<string[]> {
+  const result: string[] = [];
+  for (const entry of await readdir(join(root, relative), {withFileTypes: true})) {
+    const key = relative + '/' + entry.name;
+    if (entry.isDirectory()) result.push(...await physicalFiles(root, key));
+    else {expect(entry.isFile()).toBe(true); result.push(key);}
+  }
+  return result.sort();
+}
+const canonicalFixtures = new Map<number, {bytes: Buffer; workload: ReturnType<typeof createLongThreadFixture>['workload']}>();
+function canonicalFixture(caseIndex: number) {
+  let value = canonicalFixtures.get(caseIndex);
+  if (!value) {
+    const fixture = createLongThreadFixture({seed: 1, historyCount: ([100, 1000, 10000] as const)[Math.floor(caseIndex / 4)]!, responseBytes: caseIndex % 4 < 2 ? 6400 : 262144, journey: caseIndex % 2 === 0 ? 'follow' : 'history-reading'});
+    value = {bytes: Buffer.from(canonicalSerialize(fixture) + '\n'), workload: fixture.workload}; canonicalFixtures.set(caseIndex, value);
+  }
+  return value;
+}
+async function fixture() {
+  const directory = await mkdtemp(join(await realpath(tmpdir()), 'comparison-snapshot-unit-')); directories.push(directory);
+  const workspace = join(directory, 'original'), evidenceRoot = join(directory, 'evidence'), root = join(evidenceRoot, 'comparison-browser-root-controlled');
+  await mkdir(workspace, {recursive: true}); await mkdir(root, {recursive: true});
+  const build = adapterBuildSchema.parse(JSON.parse(await readFile(join(repository, 'apps/threadplane/.build-evidence.json'), 'utf8')));
+  const probe = comparisonInstrumentationBuildSchema.parse(JSON.parse(await readFile(join(repository, 'packages/runner/.comparison-build-evidence.json'), 'utf8')));
+  const lock = JSON.parse(await readFile(join(repository, 'package-lock.json'), 'utf8')) as {packages: Record<string, {version: string; integrity: string}>};
+  const nativePath = 'node_modules/@typescript/typescript-linux-x64', nativeLock = lock.packages[nativePath]!;
+  expect(nativeLock).toBeDefined();
+  // This is controlled Linux metadata emulation, not a claim about this decoder's OS or an actual Linux capture.
+  probe.nativeCompiler = {...probe.nativeCompiler, name: '@typescript/typescript-linux-x64', resolutionPath: nativePath, executablePath: nativePath + '/lib/tsc', platform: 'linux', architecture: 'x64', integrity: nativeLock.integrity, version: nativeLock.version};
+  const output114 = [...await physicalFiles(repository, 'packages/contract/dist'), ...await physicalFiles(repository, 'packages/runner/dist')].sort();
+  expect(output114).toHaveLength(114);
+  const metadata43 = [...new Set([...build.packages, probe.compiler, probe.nativeCompiler].map(pkg => pkg.resolutionPath + '/package.json'))].sort();
+  expect(metadata43).toHaveLength(43);
+  const assets = Object.keys(build.assetHashes).map(key => 'apps/threadplane/dist/' + key);
+  const raw2 = ['apps/threadplane/.build-evidence.json', 'packages/runner/.comparison-build-evidence.json'];
+  const union = [...new Set([...source36, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output114, ...metadata43, ...assets, ...raw2])].sort();
+  for (const key of union) {
+    if (raw2.includes(key) || key === nativePath + '/package.json') continue;
+    await mkdir(dirname(join(workspace, key)), {recursive: true});
+    // The new maintained test supplies its own bytes in the defect-baseline projection too.
+    await copyFile(key === 'packages/runner/src/comparison-browser.test-helper.test.ts' ? fileURLToPath(import.meta.url) : join(repository, key), join(workspace, key));
+  }
+  await mkdir(join(workspace, nativePath), {recursive: true});
+  await writeFile(join(workspace, nativePath, 'package.json'), JSON.stringify({name: probe.nativeCompiler.name, version: probe.nativeCompiler.version}) + '\n');
+  const fact = async (key: string) => {const bytes = await readFile(join(workspace, key)); return {byteLength: bytes.length, sha256: sha256(bytes)};};
+  for (const key of Object.keys(build.sourceHashes)) build.sourceHashes[key] = (await fact(key)).sha256;
+  for (const key of Object.keys(probe.sourceHashes)) probe.sourceHashes[key] = (await fact(key)).sha256;
+  for (const key of Object.keys(probe.compiledHashes)) probe.compiledHashes[key] = (await fact(key)).sha256;
+  probe.compilerPackageMetadata = await fact('node_modules/typescript/package.json'); probe.nativeCompilerPackageMetadata = await fact(nativePath + '/package.json');
+  await writeFile(join(workspace, raw2[0]!), canonicalSerialize(adapterBuildSchema.parse(build)) + '\n');
+  await writeFile(join(workspace, raw2[1]!), canonicalSerialize(comparisonInstrumentationBuildSchema.parse(probe)) + '\n');
+  const context = {ci: 'true', runId: '123', runAttempt: '1', repository: 'cacheplane/chat-ui-bench', workflowRef: 'cacheplane/chat-ui-bench/.github/workflows/ci.yml@refs/heads/main', eventName: 'push', sha: '1'.repeat(40), platform: 'linux', architecture: 'x64'};
+  const config = parseLongThreadArgs(['--mode', 'headless', '--rounds', '1', '--seed', '1', '--out', root]);
+  if (config.help) throw new Error('Controlled fixture configuration unexpectedly requested help');
+  const ledger = createLongThreadLedger(config); ledger.status = 'failed';
+  for (const row of ledger.runs) {row.status = 'failed'; row.reasons = [reason];}
+  const terminalLedger = comparisonCaptureInvocationSchema.parse(ledger), invocationId = randomUUID();
+  const claim = {...versions, kind: 'invocation-ownership-claim', invocationId, createdAt: terminalLedger.createdAt, purpose: 'conformance', configuration: config.configuration};
+  const members: {path: string; byteLength: number; sha256: string}[] = [];
+  const put = async (path: string, value: unknown) => {const bytes = Buffer.from(canonicalSerialize(value) + '\n'); await mkdir(dirname(join(root, path)), {recursive: true}); await writeFile(join(root, path), bytes); const row = {path, byteLength: bytes.length, sha256: sha256(bytes)}; members.push(row); return row;};
+  await put('invocation-claim.json', claim); const ledgerMember = await put('invocation.json', terminalLedger);
+  const slots = [];
+  for (const row of terminalLedger.runs) {
+    const identity = {...versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile};
+    const base = row.artifactDirectory, canonical = canonicalFixture(row.caseIndex);
+    await put(base + '/descriptor.json', comparisonScheduledRunSchema.parse({...identity, seed: 1, mode: 'headless', artifactDirectory: base}));
+    await put(base + '/validation.json', comparisonValidationSchema.parse({...identity, status: 'failed', checks: [{name: 'synthetic-only', passed: false, reason, evidencePaths: ['descriptor.json']}], reasons: [reason]}));
+    await put(base + '/exceptions.json', comparisonExceptionsSchema.parse({...identity, exceptions: []}));
+    await put(base + '/raw-inventory.json', comparisonRawInventorySchema.parse({...identity, status: 'partial', reason, files: []}));
+    await writeFile(join(root, base, 'fixture.json'), canonical.bytes); members.push({path: base + '/fixture.json', byteLength: canonical.bytes.length, sha256: sha256(canonical.bytes)});
+    const {adapterProfile: _profile, ...manifestIdentity} = identity;
+    await put(base + '/manifest.json', comparisonManifestSchema.parse({...manifestIdentity, caseOrder: config.configuration.caseOrder, workload: canonical.workload,
+      git: {revision: context.sha, dirty: false}, fixture: {file: 'fixture.json', sha256: sha256(canonical.bytes)}, browser: {executable: 'controlled-no-browser', version: 'controlled', revision: 'controlled', flags: []},
+      environment: {os: 'controlled', architecture: 'controlled', cpu: {status: 'unavailable', reason}, gpu: {status: 'unavailable', reason}}, mode: 'headless', viewport: {width: 1280, height: 800, deviceScaleFactor: 1}, cachePolicy: 'fresh-profile-empty-cache-assets-preloaded', fonts: 'local-system',
+      adapter: {id: 'threadplane', profile: row.adapterProfile, capabilities: {rendering: 'all-mounted', scrollPolicy: 'bottom-follow', returnToResponse: 'native-control'}, build, configuration: {markdown: 'default', pinThresholdCssPx: 150, telemetry: 'disabled'}},
+    }));
+    slots.push({identity, artifactDirectory: base, status: 'failed' as const});
+  }
+  const datasetDirectories = new Set<string>();
+  for (const member of members) {let path = dirname(member.path); while (path !== '.') {datasetDirectories.add(path); path = dirname(path);}}
+  const seal = comparisonDatasetInventorySchema.parse({...versions, invocationId, status: 'sealed', configuration: config.configuration, invocationClaim: claim, invocationLedger: terminalLedger, root: '.', ledger: ledgerMember, members: members.sort((a, b) => a.path.localeCompare(b.path)), absentMembers: [], directories: [...datasetDirectories].sort(), slots, ownershipSettled: true, finalizationSucceeded: true});
+  await writeFile(join(root, 'dataset-seal.json'), canonicalSerialize(seal) + '\n');
+  const hashed = new Set([...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...Object.keys(probe.compiledHashes), ...assets]);
+  const paddingKeys = source36.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
+  return {root, workspace, evidenceRoot, context, union, paddingKeys};
+}
+const writer = () => helper.writeComparisonCiSnapshot;
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+const COPY_TRIGGER = '/workspace/vitest.config.ts';
+function duringLastCopy(f: Fixture, mutation: (ownRoot: string) => Promise<void>): typeof open {
+  let invoked = false;
+  return (async (...args: Parameters<typeof open>) => {
+    const fd = await open(...args), path = String(args[0]);
+    if (!invoked && typeof args[1] === 'number' && (args[1] & constants.O_CREAT) !== 0 && path.includes('comparison-browser-ci-context-') && path.endsWith(COPY_TRIGGER)) {
+      invoked = true;
+      try {await mutation(path.slice(0, -COPY_TRIGGER.length));} catch (error) {try {await fd.close();} catch (closeError) {throw new AggregateError([error, closeError], 'Controlled mutation and descriptor close failed');} throw error;}
+    }
+    return fd;
+  }) as typeof open;
+}
+async function padUnion(f: Fixture, target: number) {
+  let total = 0; for (const key of f.union) total += (await stat(join(f.workspace, key))).size;
+  expect(total).toBeLessThan(target);
+  for (const key of f.paddingKeys) {
+    const path = join(f.workspace, key), bytes = await readFile(path), addition = Math.min(target - total, 1024 * 1024 - bytes.length);
+    if (addition > 0) {await writeFile(path, Buffer.concat([bytes, Buffer.alloc(addition, 32)])); total += addition;}
+    if (total === target) break;
+  }
+  expect(total).toBe(target);
+}
+async function lockExtension(f: Fixture, scalarOrContainer: string) {
+  const key = 'package-lock.json', path = join(f.workspace, key), original = (await readFile(path, 'utf8')).trimEnd();
+  expect(original.endsWith('}')).toBe(true);
+  const bytes = Buffer.from(original.slice(0, -1) + ',"controlledExtension":' + scalarOrContainer + '}\n');
+  await writeFile(path, bytes);
+  const buildPath = join(f.workspace, 'apps/threadplane/.build-evidence.json'), probePath = join(f.workspace, 'packages/runner/.comparison-build-evidence.json');
+  const build = adapterBuildSchema.parse(JSON.parse(await readFile(buildPath, 'utf8'))), probe = comparisonInstrumentationBuildSchema.parse(JSON.parse(await readFile(probePath, 'utf8')));
+  // Keep all original package rows, records and manifest digests consistent; only the bounded JSON obligation differs.
+  for (const hashes of [build.sourceHashes, build.copiedSourceHashes, probe.sourceHashes]) if (Object.hasOwn(hashes, key)) hashes[key] = sha256(bytes);
+  await writeFile(buildPath, canonicalSerialize(build) + '\n'); await writeFile(probePath, canonicalSerialize(probe) + '\n');
+  const sealPath = join(f.root, 'dataset-seal.json'), seal = comparisonDatasetInventorySchema.parse(JSON.parse(await readFile(sealPath, 'utf8')));
+  for (const slot of seal.slots) {
+    const relative = slot.artifactDirectory + '/manifest.json', manifestPath = join(f.root, relative);
+    const manifest = comparisonManifestSchema.parse(JSON.parse(await readFile(manifestPath, 'utf8'))); manifest.adapter.build = build;
+    const manifestBytes = Buffer.from(canonicalSerialize(manifest) + '\n'); await writeFile(manifestPath, manifestBytes);
+    const member = seal.members.find(row => row.path === relative)!; member.byteLength = manifestBytes.length; member.sha256 = sha256(manifestBytes);
+  }
+  await writeFile(sealPath, canonicalSerialize(comparisonDatasetInventorySchema.parse(seal)) + '\n');
+}
+
+test('CI off performs no filesystem access', async () => {
+  expect(await writer()('/not-present', {context: {ci: 'false', runId: undefined, runAttempt: undefined, repository: undefined, workflowRef: undefined, eventName: undefined, sha: undefined, platform: 'darwin', architecture: 'arm64'}, open: (() => {throw Error('must not open');}) as typeof open})).toBeNull();
+});
+test('closed original snapshot retains actual copy bytes and controlled Linux metadata', async () => {
+  const f = await fixture(), receipt = await writer()(f.root, f); expect(receipt).not.toBeNull();
+  const bytes = await readFile(receipt!.path), manifest = JSON.parse(bytes.toString());
+  expect(bytes.length).toBe(receipt!.byteLength); expect(sha256(bytes)).toBe(receipt!.sha256);
+  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source36).toEqual(source36); expect(manifest.inventories.output114).toHaveLength(114); expect(manifest.inventories.contract39).toHaveLength(39); expect(manifest.inventories.metadata43).toHaveLength(43);
+  for (const row of manifest.records) {expect((await readFile(join(receipt!.directory, row.copied.path))).equals(await readFile(row.originalPath))).toBe(true); expect(row.before).toEqual(row.after); expect(row.copied.fact).toEqual(row.before.fact);}
+  expect(receipt!.lifetime.manifest.fact).toEqual({byteLength: receipt!.byteLength, sha256: receipt!.sha256});
+  expect(receipt!.lifetime.directories.length).toBeGreaterThan(0);
+  for (const row of receipt!.lifetime.directories) {expect(row.identity.dev).toBe(row.created.dev); expect(row.identity.ino).toBe(row.created.ino); expect((await readdir(join(receipt!.directory, row.path))).sort()).toEqual(row.members);}
+  expect(receipt!.work.readBytes).toBeGreaterThan(manifest.work.beforeManifestReadBytes);
+  expect(receipt!.work.writtenBytes).toBe(manifest.originalBytes + receipt!.byteLength);
+  expect(receipt!.work.jsonFiles).toBe(59);
+});
+test.each(['read', 'close'] as const)('shared ancestor sibling churn after %s preserves the original snapshot', async seam => {
+  const f = await fixture(), ancestor = dirname(f.workspace), before = await stat(ancestor, {bigint: true});
+  const source = join(f.workspace, seam === 'read' ? 'apps/threadplane/.build-evidence.json' : '.github/workflows/ci.yml');
+  let selected = false, changed = false, readBytes = false;
+  const churn = async () => {
+    await mkdir(join(ancestor, 'unrelated-sibling'));
+    const after = await stat(ancestor, {bigint: true});
+    expect(after.isDirectory()).toBe(true); expect(after.dev).toBe(before.dev); expect(after.ino).toBe(before.ino);
+    expect(after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs).toBe(true);
+    changed = true;
+  };
+  const injected = (async (...args: Parameters<typeof open>) => {
+    const fd = await open(...args);
+    if (selected || String(args[0]) !== source) return fd;
+    selected = true;
+    return new Proxy(fd, {get(original, key) {
+      if (key === 'read') return async (buffer: Buffer, offset: number, length: number, position: number | null) => {
+        const result = await original.read(buffer, offset, length, position);
+        if (result.bytesRead > 0) {
+          readBytes = true;
+          if (seam === 'read' && !changed) await churn();
+        }
+        return result;
+      };
+      if (key === 'close' && seam === 'close') return async () => {
+        const result = await original.close();
+        if (readBytes && !changed) await churn();
+        return result;
+      };
+      const value = Reflect.get(original, key); return typeof value === 'function' ? value.bind(original) : value;
+    }});
+  }) as typeof open;
+  let receipt: Awaited<ReturnType<typeof helper.writeComparisonCiSnapshot>>;
+  try {receipt = await writer()(f.root, {...f, open: injected});}
+  finally {expect(selected).toBe(true); expect(readBytes).toBe(true); expect(changed).toBe(true);}
+  expect(receipt).not.toBeNull();
+  const manifest = JSON.parse((await readFile(receipt!.path)).toString()), row = manifest.ancestors.find((value: {path: string}) => value.path === ancestor);
+  expect(row).toBeDefined(); expect(row.before.dev).toBe(row.after.dev); expect(row.before.ino).toBe(row.after.ino);
+  if (seam === 'close') expect(row.before.mtimeNs !== row.after.mtimeNs || row.before.ctimeNs !== row.after.ctimeNs).toBe(true);
+});
+test.each(['repository', 'sha', 'runId', 'workflowRef'])('unsafe CI context %s fails before copying', async key => {const f = await fixture(); await expect(writer()(f.root, {...f, context: {...f.context, [key]: 'unsafe\nvalue'}})).rejects.toThrow();});
+test('equal workspace and evidence roots fail at the domain obligation', async () => {
+  const f = await fixture(), root = join(f.workspace, 'comparison-browser-root-controlled');
+  // All required originals and root metadata remain present. V1 can complete this equal-root snapshot.
+  await cp(f.root, root, {recursive: true});
+  await expect(writer()(root, {...f, evidenceRoot: f.workspace})).rejects.toThrow('root domains');
+});
+test('earlier own copy corruption is rejected at lifetime closure', async () => {
+  const f = await fixture(), injected = duringLastCopy(f, async own => {const path = join(own, 'workspace/.github/workflows/ci.yml'), bytes = await readFile(path); bytes[0] = bytes[0]! ^ 1; await writeFile(path, bytes);});
+  await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('own physical member identity');
+});
+test('earlier own copy replacement with identical bytes is rejected at lifetime closure', async () => {
+  const f = await fixture(), injected = duringLastCopy(f, async own => {const path = join(own, 'workspace/.github/workflows/ci.yml'), bytes = await readFile(path); await unlink(path); await writeFile(path, bytes);});
+  await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('own physical member identity');
+});
+test('earlier own directory replacement fails its original creation identity', async () => {
+  const f = await fixture(), injected = duringLastCopy(f, async own => {
+    const original = join(own, 'workspace/.github'), moved = join(f.evidenceRoot, 'moved-own-github');
+    await rename(original, moved); await mkdir(join(original, 'workflows'), {recursive: true});
+    await rename(join(moved, 'workflows/ci.yml'), join(original, 'workflows/ci.yml'));
+  });
+  await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('own directory creation identity');
+});
+test.each(['file', 'directory'])('extra own %s admitted after an earlier copy fails closure', async kind => {
+  const f = await fixture(), injected = duringLastCopy(f, async own => {const path = join(own, 'workspace/extra-own'); if (kind === 'file') await writeFile(path, 'extra'); else await mkdir(path);});
+  await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow(kind === 'file' ? 'unexpected own member' : 'extra copied directory');
+});
+test('earlier own nonregular copy fails closure', async () => {
+  const f = await fixture(), injected = duringLastCopy(f, async own => {const path = join(own, 'workspace/.github/workflows/ci.yml'); await unlink(path); await mkdir(path);});
+  await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('extra copied directory');
+});
+test('earlier own symlink copy fails closure', async () => {
+  const f = await fixture(), injected = duringLastCopy(f, async own => {const path = join(own, 'workspace/.github/workflows/ci.yml'); await unlink(path); await symlink(join(f.workspace, '.github/workflows/ci.yml'), path);});
+  await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('symlink');
+});
+test.each(['output', 'asset'])('scoped %s membership mutation after copy fails final closure', async scope => {
+  const f = await fixture(), injected = duringLastCopy(f, async () => {await mkdir(join(f.workspace, scope === 'output' ? 'packages/contract/dist/extra' : 'apps/threadplane/dist/extra'));});
+  await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow(scope === 'output' ? 'unexpected output directory' : 'asset directory entry cap');
+});
+test('scoped served asset bytes changed after copy fail original lifetime identity', async () => {
+  const f = await fixture(), asset = f.union.find(key => key.startsWith('apps/threadplane/dist/'))!, injected = duringLastCopy(f, async () => {const path = join(f.workspace, asset), bytes = await readFile(path); bytes[0] = bytes[0]! ^ 1; await writeFile(path, bytes);});
+  await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('original identity changed');
+});
+test('scoped unselected output bytes changed after copy fail original lifetime identity', async () => {
+  const f = await fixture(), key = f.union.find(key => key.startsWith('packages/contract/dist/') && key.endsWith('.d.ts'))!, injected = duringLastCopy(f, async () => {
+    const path = join(f.workspace, key), bytes = await readFile(path); bytes[0] = bytes[0]! ^ 1; await writeFile(path, bytes);
+  });
+  await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('original identity changed');
+});
+test('original ancestor symlink fails without resolving to a convenient copy', async () => {const f = await fixture(), alias = join(dirname(f.workspace), 'alias'); await symlink(f.workspace, alias); await expect(writer()(f.root, {...f, workspace: alias})).rejects.toThrow('symlink');});
+test('nonregular original fails the genuine pre-read type check', async () => {const f = await fixture(), path = join(f.workspace, f.paddingKeys[0]!); await unlink(path); await mkdir(path); await expect(writer()(f.root, f)).rejects.toThrow('pre-read file cap');});
+test('named original output symlink fails physical output closure', async () => {
+  const f = await fixture(), key = f.union.find(key => key.startsWith('packages/contract/dist/') && key.endsWith('.d.ts'))!, path = join(f.workspace, key);
+  await unlink(path); await symlink(join(f.workspace, f.paddingKeys[0]!), path);
+  await expect(writer()(f.root, f)).rejects.toThrow('output symlink');
+});
+test('named original nonregular output fails physical output closure', async () => {
+  const f = await fixture(), key = f.union.find(key => key.startsWith('packages/contract/dist/') && key.endsWith('.d.ts'))!, path = join(f.workspace, key);
+  await unlink(path); await mkdir(path);
+  await expect(writer()(f.root, f)).rejects.toThrow('unexpected output directory');
+});
+test('distinct named originals cannot share a hardlink inode', async () => {const f = await fixture(), a = join(f.workspace, f.paddingKeys[0]!), b = join(f.workspace, f.paddingKeys[1]!); await unlink(b); await link(a, b); await expect(writer()(f.root, f)).rejects.toThrow('original hardlink');});
+test.each(['stat', 'read', 'write'])('falsy descriptor %s and genuine close error both survive', async fault => {
+  const f = await fixture(), closeError = Error('controlled close failure');
+  const injected = (async (...args: Parameters<typeof open>) => {
+    const fd = await open(...args), path = String(args[0]), target = fault === 'write' ? path.includes('comparison-browser-ci-context-') && path.endsWith('/workspace/.github/workflows/ci.yml') : path.endsWith('/dataset-seal.json');
+    if (!target) return fd;
+    return new Proxy(fd, {get(original, key) {if (key === fault) return async () => {throw false;}; if (key === 'close') return async () => {await original.close(); throw closeError;}; const value = Reflect.get(original, key); return typeof value === 'function' ? value.bind(original) : value;}});
+  }) as typeof open;
+  let caught: unknown; try {await writer()(f.root, {...f, open: injected});} catch (error) {caught = error;}
+  expect(caught).toBeInstanceOf(AggregateError); expect((caught as AggregateError).errors).toEqual([false, closeError]);
+  expect((caught as AggregateError).errors[0]).toBe(false); expect((caught as AggregateError).errors[1]).toBe(closeError);
+});
+test.each([0, 1])('end-to-end file cap exact plus %i uses an unhashed maintained source', async excess => {
+  const f = await fixture(), key = f.paddingKeys[0]!, path = join(f.workspace, key), bytes = await readFile(path);
+  await writeFile(path, Buffer.concat([bytes, Buffer.alloc(1024 * 1024 + excess - bytes.length, 32)]));
+  if (excess) await expect(writer()(f.root, f)).rejects.toThrow('pre-read file cap');
+  else {const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8')); expect(manifest.records.find((row: {key: string}) => row.key === key).before.fact.byteLength).toBe(1024 * 1024);}
+});
+test.each([0, 1])('end-to-end union cap exact plus %i preserves every hashed record', async excess => {
+  const f = await fixture(); await padUnion(f, 8 * 1024 * 1024 + excess);
+  if (excess) await expect(writer()(f.root, f)).rejects.toThrow('pre-read aggregate cap');
+  else {const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8')); expect(manifest.originalBytes).toBe(8 * 1024 * 1024);}
+});
+test.each([['manifest', 21099328], ['read work', 155444864], ['write work', 29487936]])('budget predicate %s exact and plus one; not a full-writer ceiling-reach claim', (_label, maximum) => {
+  const cap = Number(maximum), budget = helper.comparisonCiSnapshotBudget;
+  expect(budget(cap - 1, 1, cap, 'controlled cap')).toBe(cap); expect(() => budget(cap - 1, 2, cap, 'controlled cap')).toThrow('controlled cap');
+});
+test.each([-1, NaN, Infinity, 0.5, Number.MAX_SAFE_INTEGER + 1])('budget predicate rejects malformed operand %s before arithmetic', value => {
+  const budget = helper.comparisonCiSnapshotBudget;
+  for (const args of [[value, 0, 1], [0, value, 1], [0, 0, value]]) expect(() => budget(args[0]!, args[1]!, args[2]!, 'malformed')).toThrow('malformed');
+});
+test('budget predicate rejects safe operands whose sum would overflow', () => {expect(() => helper.comparisonCiSnapshotBudget(Number.MAX_SAFE_INTEGER, 1, Number.MAX_SAFE_INTEGER, 'overflow')).toThrow('overflow');});
+test('changed original build source fails its actual digest', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'apps/threadplane/src/app.ts'), 'changed'); await expect(writer()(f.root, f)).rejects.toThrow('original digest');});
+test('Linux compiler integrity remains bound to the actual lock row', async () => {const f = await fixture(), path = join(f.workspace, 'packages/runner/.comparison-build-evidence.json'), probe = JSON.parse(await readFile(path, 'utf8')); probe.nativeCompiler.integrity = 'sha512-incorrect'; await writeFile(path, JSON.stringify(probe) + '\n'); await expect(writer()(f.root, f)).rejects.toThrow('locked package');});
+test('duplicate decoded metadata keys fail bounded parsing', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'package-lock.json'), '{"packages":{},"\\u0070ackages":{}}'); await expect(writer()(f.root, f)).rejects.toThrow('duplicate key');});
+test('metadata depth fails bounded parsing', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'package-lock.json'), '{"packages":{},"nested":' + '['.repeat(34) + 'null' + ']'.repeat(34) + '}'); await expect(writer()(f.root, f)).rejects.toThrow('depth/AWU');});
+test.each([32, 33])('metadata exact depth %i retains valid lock packages and matching source records', async depth => {
+  const f = await fixture(); await lockExtension(f, '['.repeat(depth - 1) + 'null' + ']'.repeat(depth - 1));
+  if (depth === 32) expect(await writer()(f.root, f)).not.toBeNull();
+  else await expect(writer()(f.root, f)).rejects.toThrow('depth/AWU');
+});
+test('metadata 33-character scalar fails its token bound with valid lock packages', async () => {
+  const f = await fixture(); await lockExtension(f, '1'.repeat(33));
+  await expect(writer()(f.root, f)).rejects.toThrow('JSON scalar');
+});
+test('metadata finite overflow fails its numeric bound with valid lock packages', async () => {
+  const f = await fixture(); await lockExtension(f, '1e309');
+  await expect(writer()(f.root, f)).rejects.toThrow('finite scalar');
+});
+test('invalid UTF8 metadata fails closed', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'package-lock.json'), Buffer.from([0x7b, 0xff, 0x7d])); await expect(writer()(f.root, f)).rejects.toThrow();});
