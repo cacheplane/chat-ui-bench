@@ -5,7 +5,7 @@ import {mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, unlink, open, w
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {loadComparisonMember, loadComparisonJson, loadComparisonJsonLines, loadComparisonInvocation, type ComparisonMemberReference} from './comparison-load.js';
-import {longThreadCaseOrder, createLongThreadMatrix, comparisonManifestSchema, comparisonDatasetInventorySchema, comparisonSchemasForVersionPair} from '@chat-ui-bench/contract';
+import {longThreadCaseOrder, createLongThreadMatrix, createLongThreadFixture, longThreadFixtureSchema, canonicalSerialize, comparisonManifestSchema, comparisonDatasetInventorySchema, comparisonSchemasForVersionPair} from '@chat-ui-bench/contract';
 
 const owned: string[] = [];
 afterEach(async () => {vi.restoreAllMocks(); for (const path of owned.splice(0)) await rm(path, {recursive: true, force: true});});
@@ -497,6 +497,215 @@ async function provenanceGraphFixture(version: '2.0.0' | '2.1.0', repetitions: 1
   for (let index = 0; index < f.runs.length; index++) await refreshSlot(index);
   return {...f, measure, refreshSlot};
 }
+/** Explicitly synthetic final records; no collector validator, journal replay or live DOM is invoked. */
+async function finalContentFixture(version: '2.0.0' | '2.1.0', selectedIndex = 0, repetitions: 1 | 2 | 3 = 1, allRows = false) {
+  const f = await provenanceGraphFixture(version, repetitions);
+  async function prepare(index: number) {
+  const row = f.runs[index]!, prefix = row.artifactDirectory + '/';
+  const scenario = /^long-thread-prose-v1-h(100|1000|10000)-r(6400|262144)-(follow|history-reading)-s([0-9]+)$/.exec(row.scenarioId)!;
+  const fixture = createLongThreadFixture({historyCount: Number(scenario[1]) as 100 | 1000 | 10000, responseBytes: Number(scenario[2]) as 6400 | 262144,
+    journey: scenario[3] as 'follow' | 'history-reading', seed: f.ledger.configuration.seed});
+  expect(fixture.scenarioId).toBe(row.scenarioId); const serialized = canonicalSerialize(fixture);
+  await writeFile(join(f.root, prefix + 'fixture.json'), serialized);
+  const identity = {...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile};
+  const response = {id: fixture.events[0]!.messageId, role: 'assistant' as const, status: 'complete' as const, text: fixture.events.filter(event => event.type === 'text-delta').map(event => event.text).join('')};
+  const runtime = f.schemas.comparisonFinalRuntimeSchema.parse({...identity, timestampMs: 27, clockDomain: 'page-performance-ms', snapshot: {
+    transcript: [...fixture.history, response], activeMessageId: null, delivery: 'complete', outcome: 'success', loading: false, error: null}});
+  const visible = f.schemas.comparisonVisibleValidationSchema.parse({...identity, timestampMs: runtime.timestampMs, clockDomain: 'page-performance-ms', coverage: {
+    mode: 'all-mounted', messages: runtime.snapshot.transcript.map(message => ({id: message.id, text: message.text})), activeResponse: {id: response.id, text: response.text}}});
+  const product = f.schemas.adapterBuildSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'provenance/build-evidence.json'), 'utf8')));
+  const manifest = f.schemas.comparisonManifestSchema.parse({...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex,
+    caseOrder: f.ledger.configuration.caseOrder, workload: fixture.workload, git: {revision: 'synthetic-fixture', dirty: false}, fixture: {sha256: createHash('sha256').update(serialized).digest('hex'), file: 'fixture.json'},
+    browser: {executable: 'synthetic-browser', version: '156.0.0.0', revision: 'synthetic-revision', flags: []}, environment: {os: 'synthetic-os', architecture: 'synthetic-arch', cpu: {status: 'unavailable', reason: 'synthetic'}, gpu: {status: 'unavailable', reason: 'synthetic'}},
+    mode: 'headless', viewport: {width: 1280, height: 800, deviceScaleFactor: 1}, cachePolicy: 'fresh-profile-empty-cache-assets-preloaded', fonts: 'local-system',
+    adapter: {id: 'synthetic-adapter', profile: row.adapterProfile, capabilities: {rendering: 'all-mounted', scrollPolicy: 'bottom-follow', returnToResponse: 'native-control'}, configuration: {markdown: 'default', pinThresholdCssPx: null, telemetry: 'disabled'}, build: product}});
+  await f.json(prefix + 'manifest.json', manifest); await f.json(prefix + 'final-runtime.json', runtime); await f.json(prefix + 'visible-validation.json', visible);
+  await f.refreshSlot(index, ['fixture.json', 'manifest.json', 'final-runtime.json', 'visible-validation.json']);
+  return {row, prefix, fixture, runtime, visible, manifest};
+  }
+  const selected = await prepare(selectedIndex);
+  if (allRows) for (let index = 0; index < f.runs.length; index++) if (index !== selectedIndex) await prepare(index);
+  return {...f, ...selected, selectedIndex, async refreshContent() {await f.refreshSlot(selectedIndex);}};
+}
+describe('comparison independent final content initial capabilities', () => {
+  it.each(['2.0.0', '2.1.0'] as const)('checks canonical %s final records independently without promoting the reported failed verdict', async version => {
+    const f = await finalContentFixture(version), result = await loadComparisonInvocation(f.root), row = result.runs[f.selectedIndex]!;
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(row.provenanceGraph.status).toBe('complete'); expect(Object.values(row.references).every(lane => lane.status === 'complete')).toBe(true);
+    expect(row.captureValidation?.status).toBe('failed'); expect(result.collection.status).toBe('partial');
+    expect(row).toHaveProperty('finalContent', expect.objectContaining({fixture: expect.objectContaining({status: 'complete'}), runtime: expect.objectContaining({status: 'complete'}), coverage: expect.objectContaining({status: 'complete'})}));
+  });
+});
+describe('comparison independent final content semantic controls', () => {
+  it('rejects a structurally valid changed fixture despite current declared and outer hashes', async () => {
+    const f = await finalContentFixture('2.1.0'); f.fixture.history[0]!.text = 'X' + f.fixture.history[0]!.text.slice(1); const serialized = canonicalSerialize(longThreadFixtureSchema.parse(f.fixture));
+    await writeFile(join(f.root, f.prefix + 'fixture.json'), serialized); f.manifest.fixture.sha256 = createHash('sha256').update(serialized).digest('hex'); await f.json(f.prefix + 'manifest.json', f.schemas.comparisonManifestSchema.parse(f.manifest)); await f.refreshContent();
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.provenanceGraph.status).toBe('complete');
+    expect(result.runs[0]).toHaveProperty('finalContent', expect.objectContaining({fixture: expect.objectContaining({status: 'partial', issues: expect.arrayContaining([expect.objectContaining({path: 'fixture.json', reason: 'Canonical fixture content differs from deterministic generator'})])})}));
+  });
+  it('rejects noncanonical fixture serialization even when parsed content and the rebound manifest hash agree', async () => {
+    const f = await finalContentFixture('2.1.0'), bytes = canonicalSerialize(f.fixture) + '\n'; await writeFile(join(f.root, f.prefix + 'fixture.json'), bytes); f.manifest.fixture.sha256 = createHash('sha256').update(bytes).digest('hex'); await f.json(f.prefix + 'manifest.json', f.manifest); await f.refreshContent();
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed');
+    expect(result.runs[0]).toHaveProperty('finalContent', expect.objectContaining({fixture: expect.objectContaining({status: 'partial', issues: expect.arrayContaining([expect.objectContaining({path: 'fixture.json', reason: 'Fixture original serialization differs from canonical generator bytes'})])})}));
+  });
+  it('rejects a schema-valid wrong final response without trusting reported validation', async () => {
+    const f = await finalContentFixture('2.1.0'), response = f.runtime.snapshot.transcript.at(-1)!; response.text = 'X' + response.text.slice(1); await f.json(f.prefix + 'final-runtime.json', f.schemas.comparisonFinalRuntimeSchema.parse(f.runtime)); await f.refreshContent();
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]!.captureValidation?.status).toBe('failed');
+    expect(result.runs[0]).toHaveProperty('finalContent', expect.objectContaining({runtime: expect.objectContaining({status: 'partial', issues: expect.arrayContaining([expect.objectContaining({path: 'final-runtime.json', reason: 'Runtime response raw text differs from canonical response'})])})}));
+  });
+  it('rejects omitted mounted history independently of canonical runtime and current byte closure', async () => {
+    const f = await finalContentFixture('2.1.0'); if (f.visible.coverage.mode !== 'all-mounted') throw new Error('Controlled all-mounted prerequisite'); f.visible.coverage.messages.shift(); await f.json(f.prefix + 'visible-validation.json', f.schemas.comparisonVisibleValidationSchema.parse(f.visible)); await f.refreshContent();
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed');
+    expect(result.runs[0]).toHaveProperty('finalContent', expect.objectContaining({runtime: expect.objectContaining({status: 'complete'}), coverage: expect.objectContaining({status: 'partial', issues: expect.arrayContaining([expect.objectContaining({path: 'visible-validation.json', reason: 'Mounted coverage identity or order differs from canonical final transcript'})])})}));
+  });
+});
+describe('comparison independent final content observed boundaries', () => {
+  it('bounds the combined distinct virtualized cohorts before semantic schema traversal', async () => {
+    const f = await finalContentFixture('2.1.0'), response = f.runtime.snapshot.transcript.at(-1)!, coverage = {mode: 'virtualized' as const,
+      visibleMessages: f.runtime.snapshot.transcript.map(message => ({id: message.id, text: message.text})), historySamples: [{id: 'additional-history', text: 'raw', sampleIndex: 0, pageTimestampMs: 26}], activeResponse: {id: response.id, text: response.text}, samplingRecipe: {seed: 42, count: 1}};
+    await f.json(f.prefix + 'visible-validation.json', f.schemas.comparisonVisibleValidationSchema.parse({...f.visible, coverage})); await f.refreshContent(); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toHaveProperty('finalContent.runtime.status', 'complete'); expect(result.runs[0]).toHaveProperty('finalContent.coverage.issues', expect.arrayContaining([expect.objectContaining({path: 'visible-validation.json', reason: 'Virtualized combined cohort cardinality exceeds canonical final count before schema traversal'})]));
+  });
+  it('retains a new owned-read failure even when the manifest prerequisite is unavailable', async () => {
+    const f = await finalContentFixture('2.1.0'); await unlink(join(f.root, f.prefix + 'manifest.json')); await f.refreshSlot(0, [], ['manifest.json']);
+    const path = f.prefix + 'visible-validation.json', target = join(f.root, path), original = fs.open.bind(fs); let opens = 0, failed = false;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const fd = await original(...args); if (String(args[0]) !== target || ++opens !== 3) return fd; return new Proxy(fd, {get(handle, key) {if (key === 'close') return async () => {await handle.close(); failed = true; throw false;}; const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;}});});
+    const result = await loadComparisonInvocation(f.root); expect(failed).toBe(true); expect(result.byteIntegrity.seal).toBe('partial'); expect(result.runs[0]).toHaveProperty('finalContent.coverage.issues', expect.arrayContaining([expect.objectContaining({kind: 'unreadable', path: 'visible-validation.json'})]));
+    expect(result.byteIntegrity.ioFailures).toContainEqual(expect.objectContaining({operation: 'close', path, error: false}));
+  });
+  it.each(['unknown-visible', 'unknown-history', 'wrong-text', 'response-as-history'] as const)('keeps a known virtualized %s contradiction visible despite unsupported cohort selection', async mode => {
+    const f = await finalContentFixture('2.1.0'), first = f.fixture.history[0]!, second = f.fixture.history[1]!, response = f.runtime.snapshot.transcript.at(-1)!;
+    const coverage = {mode: 'virtualized' as const, visibleMessages: [{id: first.id, text: first.text}], historySamples: [{id: second.id, text: second.text, sampleIndex: 0, pageTimestampMs: 26}], activeResponse: {id: response.id, text: response.text}, samplingRecipe: {seed: 42, count: 1}};
+    if (mode === 'unknown-visible') coverage.visibleMessages[0]!.id = 'not-canonical';
+    if (mode === 'unknown-history') coverage.historySamples[0]!.id = 'not-canonical';
+    if (mode === 'wrong-text') coverage.visibleMessages[0]!.text = 'X' + first.text.slice(1);
+    if (mode === 'response-as-history') {coverage.historySamples[0]!.id = response.id; coverage.historySamples[0]!.text = response.text;}
+    await f.json(f.prefix + 'visible-validation.json', f.schemas.comparisonVisibleValidationSchema.parse({...f.visible, coverage})); await f.refreshContent();
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toHaveProperty('finalContent.runtime.status', 'complete');
+    expect(result.runs[0]).toHaveProperty('finalContent.coverage', expect.objectContaining({status: 'partial', samplingCohort: 'unsupported', issues: expect.arrayContaining([
+      expect.objectContaining({path: 'visible-validation.json', reason: mode === 'unknown-visible' ? 'Virtualized observed message is not in canonical final transcript' : mode === 'wrong-text' ? 'Virtualized observed prose differs from canonical message' : 'Virtualized history sample is not in canonical history'}),
+      expect.objectContaining({reason: 'Virtualized sampling cohort has no maintained independent selection contract'}),
+    ])}));
+  });
+  it('rejects excess schema-valid runtime cardinality before semantic schema traversal', async () => {
+    const f = await finalContentFixture('2.1.0'); f.runtime.snapshot.transcript.push({...f.runtime.snapshot.transcript[0]!}); await f.json(f.prefix + 'final-runtime.json', f.schemas.comparisonFinalRuntimeSchema.parse(f.runtime)); await f.refreshContent();
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed');
+    expect(result.runs[0]).toHaveProperty('finalContent.runtime', expect.objectContaining({status: 'partial', issues: expect.arrayContaining([expect.objectContaining({path: 'final-runtime.json', reason: 'Runtime transcript cardinality exceeds canonical final count before schema traversal'})])}));
+  });
+});
+describe('comparison independent final content absence and identity', () => {
+  it.each(['seal', 'owned-hash'] as const)('keeps unknown fixture %s measurement separate from a proven serialization mismatch', async missing => {
+    const f = await finalContentFixture('2.1.0'), path = f.prefix + 'fixture.json', target = join(f.root, path); let rejected = false;
+    if (missing === 'seal') {f.seal.members = f.seal.members.filter(member => member.path !== path); await f.refreshSeal();}
+    else {
+      const original = fs.open.bind(fs); let opens = 0;
+      vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const fd = await original(...args); if (String(args[0]) !== target || ++opens !== 2) return fd; return new Proxy(fd, {get(handle, key) {
+        if (key === 'read') return async (...parameters: Parameters<typeof handle.read>) => {await handle.read(...parameters); rejected = true; throw false;}; const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+      }});});
+    }
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('partial'); if (missing === 'owned-hash') {expect(rejected).toBe(true); expect(result.byteIntegrity.ioFailures).toContainEqual(expect.objectContaining({operation: 'read', path, error: false}));}
+    expect(result.runs[0]).toHaveProperty('finalContent.fixture.issues', expect.arrayContaining([expect.objectContaining({kind: 'membership', path: 'fixture.json', reason: missing === 'seal' ? 'Sealed original fixture measurement unavailable' : 'Owned original fixture measurement unavailable'})]));
+    expect(result.runs[0]!.finalContent.fixture.issues.some(issue => issue.reason === 'Fixture original serialization differs from canonical generator bytes')).toBe(false);
+  });
+  it('names a missing canonical fixture prerequisite without misreporting retained runtime or coverage as missing', async () => {
+    const f = await finalContentFixture('2.1.0'); await unlink(join(f.root, f.prefix + 'fixture.json')); await f.refreshSlot(0, [], ['fixture.json']); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); for (const key of ['runtime', 'coverage']) expect(result.runs[0]).toHaveProperty('finalContent.' + key, expect.objectContaining({status: 'unavailable', issues: expect.arrayContaining([expect.objectContaining({path: 'fixture.json', reason: 'Canonical fixture agreement unavailable or contradictory'})])}));
+  });
+  it('names the missing runtime prerequisite for a retained paired coverage document', async () => {
+    const f = await finalContentFixture('2.1.0'); await unlink(join(f.root, f.prefix + 'final-runtime.json')); await f.refreshSlot(0, [], ['final-runtime.json']); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toHaveProperty('finalContent.coverage', expect.objectContaining({status: 'unavailable', issues: expect.arrayContaining([expect.objectContaining({path: 'final-runtime.json', reason: 'Recorded final runtime unavailable for paired coverage'})])}));
+  });
+  it('retains exact identity disagreement as an identity diagnostic', async () => {
+    const f = await finalContentFixture('2.1.0'); f.runtime.repetition = 'different-original-row'; await f.json(f.prefix + 'final-runtime.json', f.schemas.comparisonFinalRuntimeSchema.parse(f.runtime)); await f.refreshContent();
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toHaveProperty('finalContent.runtime', expect.objectContaining({status: 'partial', issues: expect.arrayContaining([expect.objectContaining({kind: 'identity', path: 'final-runtime.json', reason: 'Final content identity differs from original invocation row'})])}));
+  });
+  it('retains a true declared absent final record separately from an unregistered missing record', async () => {
+    const f = await finalContentFixture('2.1.0'), path = 'final-runtime.json'; await unlink(join(f.root, f.prefix + path)); f.seal.absentMembers.push({path: f.prefix + path, reason: 'original final sample unavailable'}); await f.refreshSlot(0, [], [path]);
+    const capture = f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, f.prefix + 'capture-status.json'), 'utf8'))); capture.unavailablePaths.push({path, reason: 'original final sample unavailable'}); await f.json(f.prefix + 'capture-status.json', capture);
+    const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, f.prefix + 'raw-inventory.json'), 'utf8'))); Object.assign(raw.files.find(file => file.path === 'capture-status.json')!, await f.measure(f.prefix + 'capture-status.json')); await f.json(f.prefix + 'raw-inventory.json', raw); await f.refreshSeal();
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toHaveProperty('finalContent.runtime', expect.objectContaining({status: 'unavailable', issues: expect.arrayContaining([expect.objectContaining({kind: 'absent', path, reason: 'original final sample unavailable'})])}));
+  });
+});
+describe('comparison independent final content text and lifecycle', () => {
+  it.each(['digest', 'seed', 'case-order'] as const)('checks manifest fixture %s against the original canonical context', async mode => {
+    const f = await finalContentFixture('2.1.0'); if (mode === 'digest') f.manifest.fixture.sha256 = '0'.repeat(64); if (mode === 'seed') f.manifest.workload.seed = 2; if (mode === 'case-order') f.manifest.caseOrder[1] = 'different-case';
+    if (mode === 'digest') f.schemas.comparisonManifestSchema.parse(f.manifest);
+    else expect(f.schemas.comparisonManifestSchema.safeParse(f.manifest).success).toBe(false);
+    await f.json(f.prefix + 'manifest.json', f.manifest); await f.refreshContent(); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toHaveProperty('finalContent.fixture.status', mode === 'digest' ? 'partial' : 'unavailable'); expect(result.runs[0]).toHaveProperty('finalContent.runtime.status', 'unavailable');
+    if (mode !== 'digest') expect(result.runs[0]!.rawAvailability.manifest.status).toBe('malformed');
+  });
+  it('detects changed bytes in a new owned content read while the actual original and stat remain stable', async () => {
+    const f = await finalContentFixture('2.1.0'), path = f.prefix + 'visible-validation.json', target = join(f.root, path), actualBefore = await readFile(target), original = fs.open.bind(fs); let opens = 0, substituted = false;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const fd = await original(...args); if (String(args[0]) !== target || ++opens !== 3) return fd; return new Proxy(fd, {get(handle, key) {
+      if (key === 'read') return async (...parameters: Parameters<typeof handle.read>) => {const result = await handle.read(...parameters); if (!substituted && result.bytesRead) {const bytes = result.buffer as Buffer, index = bytes.indexOf('The reader'); expect(index).toBeGreaterThan(-1); bytes[index] = 'X'.charCodeAt(0); substituted = true;} return result;};
+      const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;
+    }});});
+    const result = await loadComparisonInvocation(f.root); expect(substituted).toBe(true); expect(await readFile(target)).toEqual(actualBefore); expect(result.byteIntegrity.seal).toBe('partial'); expect(Object.values(result.runs[0]!.finalContent).every(lane => lane.status !== 'complete')).toBe(true);
+    expect(result.runs[0]).toHaveProperty('finalContent.coverage.issues', expect.arrayContaining([expect.objectContaining({kind: 'identity', path: 'visible-validation.json', reason: 'Original bytes changed between owned reads'})]));
+  });
+  it.each(['ascii-space', 'nbsp', 'unicode'] as const)('preserves the separate projected and raw DOM relations for %s', async mode => {
+    const f = await finalContentFixture('2.1.0'); if (f.visible.coverage.mode !== 'all-mounted') throw new Error('Controlled all-mounted prerequisite'); const message = f.visible.coverage.messages[0]!;
+    message.text = mode === 'ascii-space' ? message.text.replace(' ', ' \t ') : mode === 'nbsp' ? message.text.replace(' ', '\u00a0') : '🙂' + message.text.slice(1);
+    await f.json(f.prefix + 'visible-validation.json', f.schemas.comparisonVisibleValidationSchema.parse(f.visible)); await f.refreshContent(); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toHaveProperty('finalContent.runtime.status', 'complete'); expect(result.runs[0]).toHaveProperty('finalContent.coverage', expect.objectContaining({status: 'partial', projectedProseAgreement: mode === 'ascii-space', rawMountedRuntimeAgreement: false}));
+  });
+  it.each(['unfinished', 'raw-nbsp', 'history-order', 'history-role', 'response-id'] as const)('checks final runtime %s independently', async mode => {
+    const f = await finalContentFixture('2.1.0');
+    if (mode === 'unfinished') {f.runtime.snapshot.delivery = 'streaming'; f.runtime.snapshot.loading = true;}
+    if (mode === 'raw-nbsp') f.runtime.snapshot.transcript.at(-1)!.text = f.runtime.snapshot.transcript.at(-1)!.text.replace(' ', '\u00a0');
+    if (mode === 'history-order') [f.runtime.snapshot.transcript[0], f.runtime.snapshot.transcript[1]] = [f.runtime.snapshot.transcript[1]!, f.runtime.snapshot.transcript[0]!];
+    if (mode === 'history-role') f.runtime.snapshot.transcript[0]!.role = 'user';
+    if (mode === 'response-id') f.runtime.snapshot.transcript.at(-1)!.id = 'different-response';
+    await f.json(f.prefix + 'final-runtime.json', f.schemas.comparisonFinalRuntimeSchema.parse(f.runtime)); await f.refreshContent(); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toHaveProperty('finalContent.fixture.status', 'complete'); expect(result.runs[0]).toHaveProperty('finalContent.runtime.status', 'partial'); expect(result.runs[0]).toHaveProperty('finalContent.coverage.status', 'partial');
+  });
+  it('counts genuinely observed runtime history diagnostics after the fixed32 output records', async () => {
+    const f = await finalContentFixture('2.1.0'); for (const message of f.runtime.snapshot.transcript.slice(0, -1)) message.text = 'X' + message.text.slice(1); await f.json(f.prefix + 'final-runtime.json', f.runtime); await f.refreshContent(); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toHaveProperty('finalContent.runtime.issues.length', 32); expect(result.runs[0]).toHaveProperty('finalContent.runtime.additionalIssueCount', 100 - 32);
+  });
+  it.each(['timestamp', 'active-unavailable', 'active-wrong', 'virtual-zero', 'virtual-observed'] as const)('retains coverage %s facts honestly', async mode => {
+    const f = await finalContentFixture('2.1.0'), response = f.runtime.snapshot.transcript.at(-1)!;
+    if (mode === 'timestamp') f.visible.timestampMs++;
+    if (mode === 'active-unavailable') f.visible.coverage.activeResponse = {status: 'unavailable', reason: 'original response not mounted'};
+    if (mode === 'active-wrong') f.visible.coverage.activeResponse = {id: 'wrong-response', text: response.text};
+    if (mode === 'virtual-zero' || mode === 'virtual-observed') f.visible.coverage = {mode: 'virtualized', visibleMessages: mode === 'virtual-zero' ? [] : [{id: f.fixture.history[0]!.id, text: f.fixture.history[0]!.text}], historySamples: [], activeResponse: {id: response.id, text: response.text}, samplingRecipe: {seed: 42, count: 0}};
+    await f.json(f.prefix + 'visible-validation.json', f.schemas.comparisonVisibleValidationSchema.parse(f.visible)); await f.refreshContent(); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toHaveProperty('finalContent.runtime.status', 'complete'); expect(result.runs[0]).toHaveProperty('finalContent.coverage.status', 'partial');
+    if (mode.startsWith('virtual')) expect(result.runs[0]).toHaveProperty('finalContent.coverage', expect.objectContaining({samplingCohort: 'unsupported', projectedProseAgreement: true}));
+  });
+  it.each(['fixture.json', 'final-runtime.json', 'visible-validation.json'] as const)('retains missing %s without inferring a declared absence', async path => {
+    const f = await finalContentFixture('2.1.0'); await unlink(join(f.root, f.prefix + path)); await f.refreshSlot(0, [], [path]); const result = await loadComparisonInvocation(f.root), key = path === 'fixture.json' ? 'fixture' : path === 'final-runtime.json' ? 'runtime' : 'coverage';
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.root.seal.value?.absentMembers).toEqual([]); expect(result.runs[0]).toHaveProperty('finalContent.' + key, expect.objectContaining({status: 'unavailable', issues: expect.arrayContaining([expect.objectContaining({kind: 'membership', path, reason: 'Required original final content is not in admitted original inventory'})])}));
+  });
+  it.each(['fixture.json', 'final-runtime.json', 'visible-validation.json'] as const)('keeps malformed %s as a separate partial diagnostic', async path => {
+    const f = await finalContentFixture('2.1.0'); await f.json(f.prefix + path, {malformedOriginal: true}); await f.refreshContent(); const result = await loadComparisonInvocation(f.root), key = path === 'fixture.json' ? 'fixture' : path === 'final-runtime.json' ? 'runtime' : 'coverage';
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[0]).toHaveProperty('finalContent.' + key, expect.objectContaining({status: 'partial', issues: expect.arrayContaining([expect.objectContaining({kind: 'malformed', path})])}));
+  });
+  it('does not open a manifest-declared alternate fixture path', async () => {
+    const f = await finalContentFixture('2.1.0'); f.manifest.fixture.file = 'alternate/fixture.json'; await f.json(f.prefix + 'manifest.json', f.schemas.comparisonManifestSchema.parse(f.manifest)); await f.refreshContent();
+    const original = fs.open.bind(fs), opened: string[] = []; vi.spyOn(fs, 'open').mockImplementation(async (...args) => {opened.push(String(args[0])); return original(...args);}); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(opened.some(path => path.endsWith('/alternate/fixture.json'))).toBe(false); expect(result.runs[0]).toHaveProperty('finalContent.fixture.status', 'partial');
+  });
+  it('revokes earlier favorable content when retained runtime is replaced at final ownership closure', async () => {
+    const f = await finalContentFixture('2.1.0'), target = join(f.root, f.prefix + 'final-runtime.json'), prepared = f.root + '-final-content-replacement.json'; owned.push(prepared); await writeFile(prepared, await readFile(target));
+    const original = fs.opendir.bind(fs); let rootOpens = 0, changed = false;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {if (String(args[0]) === f.root && ++rootOpens === 3) {await rename(prepared, target); changed = true;} return original(...args);}); const result = await loadComparisonInvocation(f.root);
+    expect(changed).toBe(true); expect(result.byteIntegrity.seal).toBe('partial'); for (const lane of Object.values(result.runs[0]!.finalContent)) expect(lane).toMatchObject({status: 'partial', issues: expect.arrayContaining([expect.objectContaining({kind: 'integrity', reason: 'Original invocation ownership or membership was not closed'})])});
+  });
+  it.each([undefined, null, false, 0, ''])('retains original final-record close failure %j and revokes favorable dependencies', async primary => {
+    const f = await finalContentFixture('2.1.0'), path = f.prefix + 'visible-validation.json', target = join(f.root, path), original = fs.open.bind(fs); let opens = 0, closed = false;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const fd = await original(...args); if (String(args[0]) !== target || ++opens !== 3) return fd; return new Proxy(fd, {get(handle, key) {if (key === 'close') return async () => {await handle.close(); closed = true; throw primary;}; const value: unknown = Reflect.get(handle, key, handle); return typeof value === 'function' ? value.bind(handle) : value;}});});
+    const result = await loadComparisonInvocation(f.root); expect(closed).toBe(true); expect(result.byteIntegrity.seal).toBe('partial'); expect(Object.values(result.runs[0]!.finalContent).every(lane => lane.status !== 'complete')).toBe(true);
+    expect(result.runs[0]).toHaveProperty('finalContent.coverage.issues', expect.arrayContaining([expect.objectContaining({kind: 'unreadable', path: 'visible-validation.json'})])); const failure = result.byteIntegrity.ioFailures.find(row => row.path === path && row.operation === 'close')!; expect(failure).toBeDefined(); expect(Object.hasOwn(failure, 'error')).toBe(true); expect(failure.error).toBe(primary);
+  });
+});
+describe('comparison independent final content complete families', () => {
+  it.each((['2.0.0', '2.1.0'] as const).flatMap(version => ([1, 2, 3] as const).map(repetitions => ({version, repetitions}))))('retains all canonical $version final documents for $repetitions repetitions under original budgets', {timeout: 60000}, async ({version, repetitions}) => {
+    const f = await finalContentFixture(version, 0, repetitions, true), result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs).toHaveLength(12 * repetitions);
+    expect(result.runs.every(row => Object.values(row.finalContent).every(lane => lane.status === 'complete'))).toBe(true); expect(result.runs.every(row => row.captureValidation?.status === 'failed')).toBe(true); expect(result.collection.status).toBe('partial');
+    expect(result.runs.some(row => row.finalContent.runtime.observedMessages === 10001)).toBe(true); expect(result.loadingIssues.some(issue => issue.kind === 'admission-limit')).toBe(false);
+  });
+});
 describe('comparison independent captured provenance graph', () => {
   it.each(['2.0.0', '2.1.0'] as const)('closes canonical declared graph in %s while retaining failed verdict and partial capture', async version => {
     const f = await provenanceGraphFixture(version), result = await loadComparisonInvocation(f.root);
