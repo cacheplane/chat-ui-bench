@@ -1,10 +1,11 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import fs from 'node:fs/promises';
-import {createHash} from 'node:crypto';
-import {mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, unlink, open, writeFile} from 'node:fs/promises';
+import {createHash, randomUUID} from 'node:crypto';
+import {mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, unlink, open, writeFile, link} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {loadComparisonMember, loadComparisonJson, loadComparisonJsonLines, type ComparisonMemberReference} from './comparison-load.js';
+import {loadComparisonMember, loadComparisonJson, loadComparisonJsonLines, loadComparisonInvocation, type ComparisonMemberReference} from './comparison-load.js';
+import {longThreadCaseOrder, createLongThreadMatrix, comparisonManifestSchema} from '@chat-ui-bench/contract';
 
 const owned: string[] = [];
 afterEach(async () => {vi.restoreAllMocks(); for (const path of owned.splice(0)) await rm(path, {recursive: true, force: true});});
@@ -202,6 +203,288 @@ describe('comparison loader checked original-byte admission', () => {
     const encodedStrings = encoding.mock.calls.map(args => args[0]).filter(value => typeof value === 'string');
     for (const value of encodedStrings) expect(Buffer.byteLength(value, 'utf8')).toBeLessThanOrEqual(4096);
     for (const issue of result.loadingIssues) expect(Buffer.byteLength(issue.reason, 'utf8')).toBeLessThanOrEqual(4096);
+  });
+});
+
+describe('comparison loader physical membership', () => {
+  const temporary = (index: number) => 'invocation.json.00000000-0000-4000-8000-' + index.toString(16).padStart(12, '0') + '.tmp';
+  it('enumerates only the declared physical slots with incremental directory reads', async () => {
+    const f = await rootFixture(), readdir = vi.spyOn(fs, 'readdir'), result = await loadComparisonInvocation(f.root);
+    expect(result.physicalInventory.status).toBe('complete'); expect(result.physicalInventory.files).toHaveLength(14);
+    expect(result.physicalInventory.files.map(file => file.path)).toContain('invocation.json');
+    expect(result.physicalInventory.candidates.root).toBe(2); expect(result.physicalInventory.candidates.slots).toHaveLength(12);
+    expect(readdir).not.toHaveBeenCalled();
+  });
+  it.each(['metrics.json', 'unknown-directory'])('reports unknown root %s without opening its payload/tree', async name => {
+    const f = await rootFixture(); if (name === 'metrics.json') await writeFile(join(f.root, name), 'untrusted bytes'); else {await mkdir(join(f.root, name)); await writeFile(join(f.root, name, 'payload'), 'outside');}
+    const original = fs.open.bind(fs), opened: string[] = []; vi.spyOn(fs, 'open').mockImplementation(async (...args) => {opened.push(String(args[0])); return original(...args);});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.physicalInventory.status).toBe('partial');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'membership', path: name}));
+    expect(opened.some(path => path.includes(name))).toBe(false);
+    expect(result.physicalInventory.files.some(file => file.path.includes(name))).toBe(false);
+  });
+  it('excludes only exact regular derived locations and retains raw temporary names', async () => {
+    const f = await rootFixture(); await writeFile(join(f.root, 'comparison-results.json'), '{}'); await writeFile(join(f.root, 'comparison-summary.md'), 'summary');
+    await writeFile(join(f.root, f.runs[0]!.artifactDirectory, 'results.json'), '{}'); await writeFile(join(f.root, temporary(1)), 'partial original bytes');
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.physicalInventory.files.some(file => file.path.endsWith('results.json'))).toBe(false);
+    expect(result.physicalInventory.files).toContainEqual(expect.objectContaining({path: temporary(1), role: 'temporary', byteLength: 22}));
+    expect(result.physicalInventory.candidates.root).toBe(3);
+  });
+  it('rejects a hardlink alias between two distinct admitted original paths', async () => {
+    const f = await rootFixture(); await link(join(f.root, 'invocation.json'), join(f.root, temporary(1)));
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.physicalInventory.status).toBe('partial');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'identity', reason: expect.stringMatching(/hardlink/i)}));
+  });
+  it.each(['symlink', 'directory'])('rejects a %s at an admitted temporary leaf', async kind => {
+    const f = await rootFixture(), path = join(f.root, temporary(1));
+    if (kind === 'symlink') await symlink(join(f.root, 'invocation.json'), path); else await mkdir(path);
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.physicalInventory.status).toBe('partial');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'identity', path: temporary(1)}));
+  });
+  it.each([16, 17])('counts seal within inclusive root capacity %i', async count => {
+    const f = await rootFixture(); await writeFile(join(f.root, 'dataset-seal.json'), '{}');
+    for (let index = 0; index < count - 3; index++) await writeFile(join(f.root, temporary(index)), '');
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.physicalInventory.candidates.root).toBe(count);
+    if (count === 16) expect(result.physicalInventory.status).toBe('complete');
+    else expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'rootCandidates', limit: 16, observed: 17}));
+  });
+  it.each([4096, 4097])('counts actual slot temporary candidates at inclusive capacity %i', async count => {
+    const f = await rootFixture(), slot = f.runs[0]!.artifactDirectory;
+    for (let offset = 0; offset < count - 1; offset += 32) await Promise.all(Array.from({length: Math.min(32, count - 1 - offset)}, (_, index) =>
+      writeFile(join(f.root, slot, temporary(offset + index).replace('invocation.json.', 'page.jsonl.')), '')));
+    const result = await loadComparisonInvocation(f.root), observed = result.physicalInventory.candidates.slots.find(row => row.path === slot)!;
+    expect(observed.count).toBe(count);
+    if (count === 4096) expect(result.physicalInventory.status).toBe('complete');
+    else expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'slotCandidates', limit: 4096, observed: 4097}));
+  });
+  it('detects own directory membership changes after its original close without consuming the new payload', async () => {
+    const f = await rootFixture(), original = fs.opendir.bind(fs); let mutated = false;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {
+      const dir = await original(...args); if (String(args[0]) !== f.root || mutated) return dir;
+      return new Proxy(dir, {get(target, key) {if (key === 'close') return async () => {await target.close(); mutated = true; await writeFile(join(f.root, 'changed-membership'), 'not consumed');};
+        const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;}});
+    });
+    const result = await loadComparisonInvocation(f.root);
+    expect(mutated).toBe(true); expect(result.physicalInventory.status).toBe('partial');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'identity', reason: expect.stringMatching(/directory membership changed/i)}));
+  });
+  it('permits unrelated shared ancestor sibling creation during physical inspection', async () => {
+    const f = await rootFixture(), original = fs.opendir.bind(fs); let changed = false;
+    const sibling = f.root + '-unrelated'; owned.push(sibling);
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {
+      const dir = await original(...args); if (String(args[0]) !== f.root || changed) return dir;
+      return new Proxy(dir, {get(target, key) {if (key === 'close') return async () => {await target.close(); changed = true; await mkdir(sibling);};
+        const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;}});
+    });
+    expect((await loadComparisonInvocation(f.root)).physicalInventory.status).toBe('complete'); expect(changed).toBe(true);
+  });
+  it('detects regular file substitution after the original directory enumeration', async () => {
+    const f = await rootFixture(), original = fs.opendir.bind(fs), leaf = join(f.root, temporary(1)); await writeFile(leaf, 'original'); let replaced = false;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {
+      const dir = await original(...args); if (String(args[0]) !== f.root || replaced) return dir;
+      return new Proxy(dir, {get(target, key) {if (key === 'close') return async () => {await target.close(); replaced = true; await unlink(leaf); await writeFile(leaf, 'replacement');};
+        const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;}});
+    });
+    const result = await loadComparisonInvocation(f.root); expect(replaced).toBe(true); expect(result.physicalInventory.status).toBe('partial');
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'identity', reason: expect.stringMatching(/regular file identity changed/i)}));
+  });
+  it('rechecks owned directory identity after the final original enumeration closes', async () => {
+    const f = await rootFixture(), original = fs.opendir.bind(fs), retained = f.root + '-retained'; owned.push(retained); let closes = 0;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {
+      const dir = await original(...args); if (String(args[0]) !== f.root) return dir;
+      return new Proxy(dir, {get(target, key) {if (key === 'close') return async () => {await target.close(); if (++closes === 2) {await rename(f.root, retained); await mkdir(f.root);}};
+        const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;}});
+    });
+    const result = await loadComparisonInvocation(f.root); expect(closes).toBe(2);
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'identity', reason: expect.stringMatching(/directory identity changed during final enumeration/i)}));
+  });
+  it.each([undefined, null, false, 0, ''])('preserves original directory read/close failures %j independently', async originalError => {
+    const f = await rootFixture(), original = fs.opendir.bind(fs); let intercepted = false, readCalls = 0, closeCalls = 0;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {
+      const dir = await original(...args); if (String(args[0]) !== f.root || intercepted) return dir; intercepted = true;
+      return new Proxy(dir, {get(target, key) {
+        if (key === 'read') return async () => {expect(await target.read()).not.toBeNull(); readCalls++; throw originalError;};
+        if (key === 'close') return async () => {await target.close(); closeCalls++; throw originalError;};
+        const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
+      }});
+    });
+    const result = await loadComparisonInvocation(f.root);
+    expect([readCalls, closeCalls]).toEqual([1, 1]); expect(result.physicalInventory.status).toBe('partial');
+    expect(result.physicalInventory.ioFailures.map(row => row.operation)).toEqual(['directory-read', 'directory-close']);
+    for (const failure of result.physicalInventory.ioFailures) {expect(Object.hasOwn(failure, 'error')).toBe(true); expect(failure.error).toBe(originalError);}
+  });
+  it.each([undefined, null, false, 0, ''])('preserves exact original outer final-directory stat failure %j', async originalError => {
+    const f = await rootFixture(), originalStat = fs.lstat.bind(fs), originalDirectory = fs.opendir.bind(fs); let physical = false, rejected = false;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {physical = true; return originalDirectory(...args);});
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      const stat = await originalStat(...args); if (physical && String(args[0]) === f.root && !rejected) {rejected = true; throw originalError;} return stat;
+    });
+    const result = await loadComparisonInvocation(f.root); expect(rejected).toBe(true);
+    const failure = result.physicalInventory.ioFailures.find(row => row.operation === 'path-stat' && row.path === '.');
+    expect(failure).toBeDefined(); expect(Object.hasOwn(failure!, 'error')).toBe(true); expect(failure!.error).toBe(originalError);
+  });
+  it.each([undefined, null, false, 0, ''])('preserves exact original final-file stat failure %j', async originalError => {
+    const f = await rootFixture(), name = temporary(2), target = join(f.root, name); await writeFile(target, 'retained');
+    const original = fs.lstat.bind(fs); let calls = 0;
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {const stat = await original(...args); if (String(args[0]) === target && ++calls === 2) throw originalError; return stat;});
+    const result = await loadComparisonInvocation(f.root); expect(calls).toBe(2);
+    const failure = result.physicalInventory.ioFailures.find(row => row.operation === 'path-stat' && row.path === name);
+    expect(failure).toBeDefined(); expect(Object.hasOwn(failure!, 'error')).toBe(true); expect(failure!.error).toBe(originalError);
+  });
+  it('admits a genuine writer UUIDv4 temporary but rejects the broad-contract hyphen suffix', async () => {
+    const f = await rootFixture(), actual = 'invocation.json.' + randomUUID() + '.tmp', unknown = 'invocation.json.' + '-'.repeat(36) + '.tmp';
+    await writeFile(join(f.root, actual), ''); await writeFile(join(f.root, unknown), '');
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.physicalInventory.files).toContainEqual(expect.objectContaining({path: actual, role: 'temporary'}));
+    expect(result.physicalInventory.files.some(file => file.path === unknown)).toBe(false);
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'membership', path: unknown}));
+  });
+  it('retains bounded truthful unknown type/size metadata without consuming payloads or trees', async () => {
+    const f = await rootFixture(); await writeFile(join(f.root, 'unknown-file'), 'not consumed'); await mkdir(join(f.root, 'unknown-tree'));
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.physicalInventory).toHaveProperty('unknownEntries');
+    expect(result.physicalInventory.unknownEntries).toContainEqual(expect.objectContaining({path: 'unknown-file', type: 'file', byteLength: 12}));
+    expect(result.physicalInventory.unknownEntries).toContainEqual(expect.objectContaining({path: 'unknown-tree', type: 'directory', byteLength: null}));
+  });
+  it('counts only genuinely observed omitted unknown metadata after the fixed32 diagnostics', async () => {
+    const f = await rootFixture(); for (let index = 0; index < 36; index++) await writeFile(join(f.root, 'unknown-' + index), '');
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.physicalInventory.unknownEntries).toHaveLength(32); expect(result.physicalInventory.additionalUnknownEntryCount).toBe(4);
+    expect(result.physicalInventory.unknownEntries.every(entry => entry.type === 'file' && entry.byteLength === 0)).toBe(true);
+  });
+  it('retains actual unknown stat failure path/error with unavailable metadata rather than inventing a size', async () => {
+    const f = await rootFixture(), target = join(f.root, 'unknown-stat'); await writeFile(target, 'original');
+    const original = fs.lstat.bind(fs), error = false;
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {const stat = await original(...args); if (String(args[0]) === target) throw error; return stat;});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.physicalInventory.unknownEntries).toContainEqual(expect.objectContaining({path: 'unknown-stat', type: 'unavailable', byteLength: null}));
+    const failure = result.physicalInventory.ioFailures.find(row => row.path === 'unknown-stat'); expect(failure?.operation).toBe('path-stat'); expect(failure?.error).toBe(error);
+    expect(result.physicalInventory.ioFailures.filter(row => row.path === 'unknown-stat')).toHaveLength(1);
+  });
+});
+
+async function rootFixture(rounds = 1, mode = 'headless') {
+  const root = await mkdtemp(join(await realpath(tmpdir()), 'chat-ui-bench-analysis-root-')); owned.push(root);
+  const versions = {schemaVersion: 2, suite: 'long-thread-prose-v1', suiteVersion: '1.0.0', collectorVersion: '2.0.0', analyzerVersion: '2.0.0'};
+  const configuration = {schemaVersion: 2, suite: 'long-thread-prose-v1', seed: 1, rounds, adapterProfiles: ['threadplane-langgraph-custom-transport'], caseOrder: longThreadCaseOrder(1), mode, deadlinesMs: {historySetup: 60000, replay: 30000, disposal: 10000}};
+  const createdAt = '2026-10-10T00:00:00.000Z';
+  const runs = Array.from({length: rounds}, (_, index) => index + 1).flatMap(round => configuration.caseOrder.map((scenarioId, caseIndex) => ({round, caseIndex, scenarioId, adapterProfile: configuration.adapterProfiles[0], repetition: `${round}-${caseIndex}-0`, artifactDirectory: `runs/round-${round}/case-${caseIndex}/profile-0`, status: 'failed', reasons: ['not started']})));
+  const purpose = mode === 'headed' ? 'publication' : 'conformance';
+  const ledger = {...versions, createdAt, purpose, status: 'failed', configuration, runs};
+  const claim = {...versions, kind: 'invocation-ownership-claim', invocationId: '46dcd970-87f8-4d58-b9c1-490a5d9b9c05', createdAt, purpose, configuration};
+  const json = async (path: string, value: unknown) => {await mkdir(join(root, path, '..'), {recursive: true}); await writeFile(join(root, path), JSON.stringify(value));};
+  await json('invocation.json', ledger); await json('invocation-claim.json', claim);
+  for (const row of runs) await json(row.artifactDirectory + '/descriptor.json', {...versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile, seed: 1, mode, artifactDirectory: row.artifactDirectory});
+  return {root, versions, ledger, claim, runs, json};
+}
+describe('comparison loader bounded root bootstrap', () => {
+  it('retains every actual terminal ledger row when the seal and manifests are absent', async () => {
+    const f = await rootFixture(), result = await loadComparisonInvocation(f.root);
+    expect(result.family).toEqual({collectorVersion: '2.0.0', analyzerVersion: '2.0.0'});
+    expect(result.scheduled).toBe(12); expect(result.runs).toHaveLength(12);
+    expect(result.runs.map(r => r.identity.repetition)).toEqual(f.runs.map(r => r.repetition));
+    expect(result.runs[0]!.descriptor).not.toBeNull(); expect(result.runs[0]!.manifest).toBeNull();
+    expect(result.runs[0]!.rawAvailability.manifest.status).toBe('absent');
+    expect(result.collection).toMatchObject({status: 'partial', onDiskConsistencyOnly: true});
+    expect(result.collection.reasons).toContain('Physical inventory and dataset byte closure not yet verified');
+    const bytes = await readFile(join(f.root, 'invocation.json'));
+    expect(result.root.ledger.fact).toEqual({byteLength: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')});
+  });
+  it('retains ledger identity rather than fabricating a missing descriptor', async () => {
+    const f = await rootFixture(); await unlink(join(f.root, f.runs[3]!.artifactDirectory, 'descriptor.json'));
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.runs).toHaveLength(12); expect(result.runs[3]!.descriptor).toBeNull();
+    expect(result.runs[3]!.identity.repetition).toBe(f.runs[3]!.repetition);
+    expect(result.runs[3]!.rawAvailability.descriptor.status).toBe('absent');
+  });
+  it('keeps valid ledger rows on malformed seal and original seal bytes unchanged', async () => {
+    const f = await rootFixture(), bytes = Buffer.from('{bad seal}'); await writeFile(join(f.root, 'dataset-seal.json'), bytes);
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.runs).toHaveLength(12); expect(result.root.seal.value).toBeNull();
+    expect(result.root.seal.availability.status).toBe('malformed'); expect(await readFile(join(f.root, 'dataset-seal.json'))).toEqual(bytes);
+  });
+  it.each(['scheduled', 'running'])('rejects nonterminal ledger row %s without losing its actual scheduled identity', async status => {
+    const f = await rootFixture(); await f.json('invocation.json', {...f.ledger, status: 'pending', runs: f.runs.map((row, i) => i ? row : {...row, status, reasons: []})});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.scheduled).toBe(12); expect(result.runs).toHaveLength(12);
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({path: 'invocation.json', kind: 'malformed', reason: expect.stringMatching(/terminal/i)}));
+  });
+  it.each([['2.1.0', '2.1.0'], ['2.0.0', '2.1.0'], ['9.0.0', '9.0.0']])('rejects unsupported root pair %s/%s before dependent descriptor IO', async (collectorVersion, analyzerVersion) => {
+    const f = await rootFixture(); await f.json('invocation.json', {...f.ledger, collectorVersion, analyzerVersion});
+    const original = fs.open.bind(fs), paths: string[] = []; vi.spyOn(fs, 'open').mockImplementation(async (...args) => {paths.push(String(args[0])); return original(...args);});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.family).toBeNull(); expect(result.runs).toEqual([]);
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({path: 'invocation.json', kind: 'malformed', reason: expect.stringMatching(/unsupported.*pair/i)}));
+    expect(paths.some(path => path.endsWith('/descriptor.json'))).toBe(false);
+  });
+  it('rejects claim/ledger version disagreement instead of choosing another family', async () => {
+    const f = await rootFixture(); await f.json('invocation-claim.json', {...f.claim, collectorVersion: '2.1.0', analyzerVersion: '2.1.0'});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.root.claim.value).toBeNull(); expect(result.runs).toHaveLength(12);
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({path: 'invocation-claim.json', kind: 'malformed'}));
+  });
+  it('rejects a strict claim extra field and descriptor identity disagreement', async () => {
+    const f = await rootFixture(); await f.json('invocation-claim.json', {...f.claim, extra: true});
+    await f.json(f.runs[0]!.artifactDirectory + '/descriptor.json', {...f.versions, repetition: 'wrong', scenarioId: f.runs[0]!.scenarioId, round: 1, caseIndex: 0, adapterProfile: f.runs[0]!.adapterProfile, seed: 1, mode: 'headless', artifactDirectory: f.runs[0]!.artifactDirectory});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.runs).toHaveLength(12); expect(result.root.claim.value).toBeNull(); expect(result.runs[0]!.descriptor).toBeNull();
+    expect(result.runs[0]!.identity.repetition).toBe(f.runs[0]!.repetition);
+    expect(result.runs[0]!.loadingIssues).toContainEqual(expect.objectContaining({kind: 'identity'}));
+  });
+  it('bounds retained diagnostics to32 and counts only actually observed omitted issues', async () => {
+    const f = await rootFixture(); for (const row of f.runs) await unlink(join(f.root, row.artifactDirectory, 'descriptor.json'));
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.loadingIssues).toHaveLength(32); expect(result.additionalLoadingIssueCount).toBe(17);
+    expect(result.runs).toHaveLength(12); expect(result.runs.every(row => row.descriptor === null)).toBe(true);
+  });
+  it('does not manufacture scheduled rows from a claim when the actual ledger is absent', async () => {
+    const f = await rootFixture(); await unlink(join(f.root, 'invocation.json'));
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.family).toEqual({collectorVersion: '2.0.0', analyzerVersion: '2.0.0'});
+    expect(result.scheduled).toBeNull(); expect(result.runs).toEqual([]);
+    expect(result.root.ledger.availability.status).toBe('absent');
+    expect(result.collection.status).toBe('unavailable');
+  });
+  it('retains supported strict ledger rows but diagnoses a contradictory original claim', async () => {
+    const f = await rootFixture(); await f.json('invocation-claim.json', {...f.claim, createdAt: '2026-10-11T00:00:00.000Z'});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.runs).toHaveLength(12);
+    expect(result.loadingIssues).toContainEqual(expect.objectContaining({path: 'invocation-claim.json', kind: 'identity'}));
+  });
+  it.each([[2, 'headless', 24], [3, 'headed', 36]] as const)('retains all original rows for %i rounds/%s', async (rounds, mode, count) => {
+    const f = await rootFixture(rounds, mode), result = await loadComparisonInvocation(f.root);
+    expect(result.scheduled).toBe(count); expect(result.runs).toHaveLength(count);
+    expect(result.runs.map(row => row.identity.repetition)).toEqual(f.runs.map(row => row.repetition));
+    expect(result.runs.every(row => row.descriptor !== null && row.manifest === null)).toBe(true);
+    expect(result.collection.status).toBe('partial');
+  });
+  it.each([{}, {schemaVersion: 'broken', collectorVersion: null, analyzerVersion: 2}])('uses a strict valid claim when the ledger header is unusable %j', async ledger => {
+    const f = await rootFixture(); await f.json('invocation.json', ledger);
+    const original = fs.open.bind(fs), opened: string[] = []; vi.spyOn(fs, 'open').mockImplementation(async (...args) => {opened.push(String(args[0])); return original(...args);});
+    const result = await loadComparisonInvocation(f.root);
+    expect(result.family).toEqual({collectorVersion: '2.0.0', analyzerVersion: '2.0.0'});
+    expect(result.root.claim.value).toEqual(f.claim); expect(result.root.ledger.value).toBeNull();
+    expect(result.root.ledger.availability.status).toBe('malformed'); expect(result.scheduled).toBeNull(); expect(result.runs).toEqual([]);
+    expect(opened.some(path => path.endsWith('/descriptor.json'))).toBe(false);
+  });
+  it.each([false, true])('reads the manifest adapter.profile identity explicitly (mismatch=%s)', async mismatch => {
+    const f = await rootFixture(), row = f.runs[0]!, workload = createLongThreadMatrix(1).find(value => value.scenarioId === row.scenarioId)!.workload;
+    const manifest = comparisonManifestSchema.parse({...f.versions, repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex,
+      caseOrder: f.ledger.configuration.caseOrder, workload, git: {revision: 'fixture-revision', dirty: false}, fixture: {sha256: 'a'.repeat(64), file: 'fixture.json'},
+      browser: {executable: 'fixture-browser', version: '156.0.0.0', revision: 'fixture-revision', flags: []}, environment: {os: 'fixture-os', architecture: 'fixture-arch', cpu: {status: 'unavailable', reason: 'fixture'}, gpu: {status: 'unavailable', reason: 'fixture'}},
+      mode: 'headless', viewport: {width: 1280, height: 800, deviceScaleFactor: 1}, cachePolicy: 'fresh-profile-empty-cache-assets-preloaded', fonts: 'local-system',
+      adapter: {id: 'fixture-adapter', profile: mismatch ? 'different-profile' : row.adapterProfile, capabilities: {rendering: 'all-mounted', scrollPolicy: 'bottom-follow', returnToResponse: 'native-control'},
+        configuration: {markdown: 'default', pinThresholdCssPx: null, telemetry: 'disabled'}, build: {packages: [{name: 'fixture-package', version: '1.0.0', integrity: 'sha512-YQ=='}], framework: {name: 'Angular', version: '21.0.0'}, production: true,
+          sourceHashes: {'src/source.ts': 'b'.repeat(64)}, copiedSourceHashes: {}, assetHashes: {'main.js': 'c'.repeat(64)}, settings: {optimization: true, sourceMaps: false}}}});
+    await f.json(row.artifactDirectory + '/manifest.json', manifest);
+    const result = await loadComparisonInvocation(f.root);
+    if (!mismatch) {expect(result.runs[0]!.manifest).toEqual(manifest); expect(result.runs[0]!.rawAvailability.manifest.status).toBe('parsed');}
+    else {expect(result.runs[0]!.manifest).toBeNull(); expect(result.runs[0]!.loadingIssues).toContainEqual(expect.objectContaining({kind: 'identity', path: row.artifactDirectory + '/manifest.json'}));}
   });
 });
 
