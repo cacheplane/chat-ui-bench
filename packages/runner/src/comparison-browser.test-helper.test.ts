@@ -14,6 +14,41 @@ import {
 } from '@chat-ui-bench/contract';
 import {parseLongThreadArgs} from './long-thread-cli.js';
 import {createLongThreadLedger} from './long-thread-run.js';
+import {runInNewContext} from 'node:vm';
+
+function emptyHostObserver(observedAt=100) {
+  const callbacks=new Map<number,(value:unknown)=>void>();let next=0;
+  const body={isConnected:true,textContent:''};let currentBody=body;
+  const element={isConnected:true,textContent:'',outerHTML:'<controlled-empty-assistant/>',contains:(candidate:unknown)=>candidate===currentBody,querySelector:()=>currentBody};let currentElement=element;
+  const active={id:'response',text:''};
+  const context={window:{benchHost:{readProgress:()=>({activeMessage:active}),locators:{messageContent:()=>'.controlled-content'}}},document:{querySelector:(selector:string)=>selector==='.controlled-content'?currentBody:currentElement},performance:{now:()=>observedAt},requestAnimationFrame:(callback:(value:unknown)=>void)=>{callbacks.set(++next,callback);return next;}};
+  const task=runInNewContext(`(${helper.observeEmptyHostFrames.toString()})('response')`,context) as ReturnType<typeof helper.observeEmptyHostFrames>;
+  let settled=false;void task.then(()=>{settled=true;},()=>{settled=true;});
+  return {task,callbacks,active,body,element,isSettled:()=>settled,replaceHost:()=>{currentElement={...element};},replaceBody:()=>{currentBody={...body};},async emit(value:unknown){expect(callbacks.size).toBe(1);const [handle,callback]=callbacks.entries().next().value!;callbacks.delete(handle);callback(value);await Promise.resolve();await Promise.resolve();}};
+}
+
+test('H01 observer preserves the exact earlier original CI timestamp until two eligible callbacks',async()=>{
+  const p=emptyHostObserver(519.1000000000931);await p.emit(519.1);await p.emit(535.8);
+  expect(p.isSettled()).toBe(false);await p.emit(552.5);const observed=await p.task;
+  expect(observed.frames).toEqual([535.8,552.5]);expect(observed.observedAt).toBe(519.1000000000931);
+  expect(Reflect.get(observed,'callbacks').map((row:{timestampMs:number})=>row.timestampMs)).toEqual([519.1,535.8,552.5]);
+  expect(observed.snapshots).toHaveLength(4);expect(observed.empty).toBe(true);expect(observed.retained).toBe(true);expect(p.callbacks.size).toBe(0);
+});
+test('H01 observer retains every repeated earlier callback and its snapshot',async()=>{
+  const p=emptyHostObserver();for(const time of [99,98,99]){await p.emit(time);expect(p.isSettled()).toBe(false);}await p.emit(100);await p.emit(120);const observed=await p.task;
+  expect(observed.frames).toEqual([100,120]);expect(Reflect.get(observed,'callbacks').map((row:{timestampMs:number;eligible:boolean})=>[row.timestampMs,row.eligible])).toEqual([[99,false],[98,false],[99,false],[100,true],[120,true]]);expect(observed.snapshots).toHaveLength(6);
+});
+test.each([NaN,Infinity,-Infinity,-1,undefined,null,'100',Symbol('invalid')])('H01 observer rejects malformed original first timestamp %s',async value=>{
+  const p=emptyHostObserver();await p.emit(value);expect(p.isSettled()).toBe(true);await expect(p.task).rejects.toThrow('Distinct chronological rAF timestamp unavailable');expect(p.callbacks.size).toBe(0);
+});
+test.each([100,99,NaN])('H01 observer rejects post-first nonprogressing timestamp %s',async value=>{
+  const p=emptyHostObserver();await p.emit(100);await p.emit(value);await expect(p.task).rejects.toThrow('Distinct chronological rAF timestamp unavailable');expect(p.callbacks.size).toBe(0);
+});
+test.each(['host','body','text'] as const)('H01 observer checks original %s on every rejected callback',async change=>{
+  const p=emptyHostObserver();if(change==='host')p.replaceHost();else if(change==='body')p.replaceBody();else p.active.text='early';await p.emit(99);await p.emit(100);expect(p.isSettled()).toBe(false);await p.emit(120);const observed=await p.task;
+  expect(change==='host'?observed.retained:observed.empty).toBe(false);
+  const first=observed.callbacks[0];if(first===undefined)throw new Error('Original rejected callback was not retained');expect(first.timestampMs).toBe(99);expect(first.eligible).toBe(false);expect(change==='host'?first.retained:first.empty).toBe(false);expect(observed.snapshots).toHaveLength(4);
+});
 
 const repository = fileURLToPath(new URL('../../../', import.meta.url));
 const directories: string[] = [];

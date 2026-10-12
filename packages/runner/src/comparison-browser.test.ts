@@ -16,7 +16,7 @@ import {
 import {
   directCase, forwardingFactory, healthyRaw, readiness, json, digest, deferred, intercept, slotRaw, rootCase, checkedDataset,
   retainOriginalCapture,deriveAdmittedLifecycle,writeRootControl,writeComparisonCiSnapshot,traceCausalReceipt,originalRoot,type OriginalCaptureBucket,
-  type BrowserControl, type TestWindow, type Resources,
+  type BrowserControl, type TestWindow, type Resources, observeEmptyHostFrames,
 } from './comparison-browser.test-helper.js';
 
 beforeAll(readiness, 180000);
@@ -147,7 +147,7 @@ function negativeSlotOracle(raw:Parameters<typeof originalSlotOracle>[0],fixture
 test('H01 retains an empty real host through two subsequent frames before original text', async () => {
   const control: BrowserControl = {closeInvocations: []};
   let forwarding: ReturnType<typeof forwardingFactory> | undefined;
-  let observation: Promise<{messageId: string; empty: boolean; retained: boolean; frames: number[]; observedAt: number}> | undefined;
+  let observation: ReturnType<typeof observeEmptyHostFrames> | undefined;
   let resources: Resources | undefined;
   control.evaluate = (page, args, invoke) => {
     const actual = invoke();
@@ -156,25 +156,7 @@ test('H01 retains an empty real host through two subsequent frames before origin
         await forwarding!.start;
         await page.waitForFunction(id => (window as TestWindow).benchHost?.readProgress().activeMessage?.id === id,
           control.context!.fixture.events[0]!.messageId, {timeout: 8000});
-        const observed = await page.evaluate(async id => {
-          const host = (window as TestWindow).benchHost!;
-          const element = document.querySelector<HTMLElement>(`chat-message[data-bench-message-id="${id}"]`);
-          if (!element) throw new Error('Actual assistant host is absent');
-          const body=element.querySelector('.chat-message__assistant-body');
-          if(!body||!body.isConnected||!element.contains(body))throw new Error('Actual assistant body is absent');
-          const observedAt = performance.now();
-          const empty = () => host.readProgress().activeMessage?.id === id && host.readProgress().activeMessage?.text === '' && element.textContent === '' && body.textContent === '' && body.isConnected && element.contains(body) && element.querySelector('.chat-message__assistant-body')===body;
-          const snapshot=()=>{const content=document.querySelector(host.locators.messageContent(id));return {at:performance.now(),active:host.readProgress().activeMessage,selector:host.locators.messageContent(id),contentPresent:content!==null,contentConnected:content?.isConnected??null,contentText:content?.textContent??null,hostText:element.textContent,bodyText:body.textContent,outerHTML:element.outerHTML};};
-          const snapshots=[snapshot()];let allEmpty = empty(), retained = element.isConnected;
-          const frames: number[] = [];
-          for (let i = 0; i < 2; i++) {
-            frames.push(await new Promise<number>(done => requestAnimationFrame(done)));
-            allEmpty &&= empty();
-            retained &&= element.isConnected && document.querySelector(`chat-message[data-bench-message-id="${id}"]`) === element;
-            snapshots.push(snapshot());
-          }
-          return {messageId: id, empty: allEmpty, retained, frames, observedAt,snapshots};
-        }, control.context!.fixture.events[0]!.messageId);
+        const observed = await page.evaluate(observeEmptyHostFrames, control.context!.fixture.events[0]!.messageId);
         forwarding!.release(); return observed;
       })();
       resources!.observe(observation);
@@ -191,6 +173,12 @@ test('H01 retains an empty real host through two subsequent frames before origin
     expect(observed.empty).toBe(true); expect(observed.retained).toBe(true);
     expect(observed.frames[0]).toBeGreaterThanOrEqual(observed.observedAt);
     expect(observed.frames[1]).toBeGreaterThan(observed.frames[0]!);
+    expect(observed.callbacks.filter(callback=>callback.eligible).map(callback=>callback.timestampMs)).toEqual(observed.frames);
+    expect(observed.snapshots).toHaveLength(observed.callbacks.length+1);
+    for(const [index,callback] of observed.callbacks.entries()){
+      expect(callback.snapshotIndex).toBe(index+1);expect(callback.empty).toBe(true);expect(callback.retained).toBe(true);
+      if(!callback.eligible)expect(callback.timestampMs).toBeLessThan(observed.observedAt);
+    }
     expect(forwarding!.facts.fallbackUsed).toBe(false);
     expect(forwarding!.facts.upstreamConnections).toBe(1); expect(forwarding!.facts.downstreamConnections).toBe(1);
     expect(forwarding!.facts.firstTextAdmitted).toBeGreaterThanOrEqual(forwarding!.facts.released!);
