@@ -251,7 +251,9 @@ export function installComparisonObservations(createComparisonBuffer:BufferFacto
         observation('assistant-host',object(['messageId',s(c.id)],['hostMounted',b(true)],['contentMounted',b(hostObservation.contentMounted)]),time);runtime(time);frameRequest=requestAnimationFrame(frame);return;
       }
       if(!c||c.id!==guardId||active.activeMessageId!==guardId||!active.hostMounted||c.hostElement!==guardElement||!guardElement.isConnected)throw new Error('Original streaming host removed or replaced');
-      if(!Number.isFinite(timestamp)||timestamp<hostObservation!.timestampMs||firstFrame&&timestamp<=firstFrame.timestampMs)throw new Error('Distinct chronological rAF timestamp unavailable');
+      if(!Number.isFinite(timestamp)||timestamp<0)throw new Error('Distinct chronological rAF timestamp unavailable');
+      if(firstFrame===null&&timestamp<hostObservation!.timestampMs){frameRequest=requestAnimationFrame(frame);return;}
+      if(timestamp<hostObservation!.timestampMs||firstFrame&&timestamp<=firstFrame.timestampMs)throw new Error('Distinct chronological rAF timestamp unavailable');
       const ordinal=firstFrame===null?1:2;observation('animation-frame-checkpoint',object(['messageId',s(guardId!)],['ordinal',n(ordinal)]),timestamp);
       if(firstFrame===null){firstFrame={ordinal:1,clockDomain:'page-performance-ms',timestampMs:timestamp};frameRequest=requestAnimationFrame(frame);}else{guard={status:'ready',value:{messageId:guardId!,hostObservation:{...hostObservation!},frames:[{...firstFrame},{ordinal:2,clockDomain:'page-performance-ms',timestampMs:timestamp}]}};guardElement=null;guardId=null;}
     }catch(error){guardFail(failureMessage(error));}
@@ -324,10 +326,13 @@ export function installComparisonObservations(createComparisonBuffer:BufferFacto
       const value=JSON.parse(serialized) as {cohort:unknown;serialized:unknown};if(Object.keys(value).join(',')!=='cohort,serialized'||value.cohort!=='exception'||typeof value.serialized!=='string')throw new Error('Owned cohort envelope integrity failure');return {cohort:'exception' as const,serialized:value.serialized};
     });
   }
-  function stop():void {
+  function stop(options?:{drainTransport:true}):void {
     if(stopped)return;
     function attempt(cleanup:()=>void):void{try{cleanup();}catch(error){observation('failure',object(['stage',s(stage)],['reason',s('Capture cleanup failed: '+failureMessage(error))]));}}
     if(timer!==null)attempt(()=>clearTimeout(timer!));timer=null;
+    // Only the owned normal terminal capture transfers remaining bridge evidence.
+    // Cleanup stop performs no new destructive transport read after revocation.
+    if(options?.drainTransport===true)measured('transportDrain',transport);
     if(armed&&guard.status==='pending')attempt(()=>guardFail('Capture stopped before host readiness'));
     // Final acquisition precedes disconnect for each observer; every cleanup is attempted.
     for(const slot of [eventTiming,loaf])if(slot.observer){
