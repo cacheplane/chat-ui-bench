@@ -1,0 +1,69 @@
+name: macOS capability only
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact reviewed main commit (40 lowercase hexadecimal characters)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-capability-only
+  cancel-in-progress: false
+
+jobs:
+  capability:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    timeout-minutes: 12
+    env:
+      CI: true
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+    steps:
+      - name: Admit exact reviewed main before checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "cacheplane/chat-ui-bench" ]]
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$EXPECTED_SHA" == "$GITHUB_SHA" ]]
+
+      - name: Check out exact workflow commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Use exact Node runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.20.0'
+
+      - name: Install current locked repository dependencies
+        run: npm ci --loglevel=error
+
+      - name: Audit locked dependencies
+        run: npm audit --audit-level=high
+
+      - name: Check pure receipt controls
+        run: npm test -- tools/macos-capability/receipt.test.mjs
+
+      - name: Install locked regular Chromium for blank headed smoke
+        run: npx --no-install playwright install chromium
+
+      - name: Observe fresh hosted capabilities
+        run: node tools/macos-capability/run.mjs
+
+      - name: Preserve one small original capability receipt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-capability-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/macos-capability-${{ github.run_id }}-${{ github.run_attempt }}/receipt.json
+          if-no-files-found: warn
+          retention-days: 1
