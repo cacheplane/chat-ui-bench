@@ -6,6 +6,8 @@ import {z} from 'zod';
 import {comparisonSchemasForVersionPair, type ComparisonSchemaPair} from '@chat-ui-bench/contract';
 import {checkComparisonReferences, revokeComparisonReferences, unavailableComparisonReferences, type ComparisonSlotReferences, type ComparisonReferenceInput} from './comparison-reference-closure.js';
 import {unavailableComparisonProvenanceGraph, provenanceGraphAdmission, provenanceMetadataPaths, provenanceMetadataCopiedWitnesses, checkComparisonProvenanceGraph, revokeComparisonProvenanceGraph, comparisonPackageMetadataSchema, type ComparisonProvenanceGraph, type ProductDeclaration, type ProbeDeclaration, type PackageMetadata} from './comparison-provenance-graph.js';
+import {longThreadFixtureSchema, type LongThreadFixture} from '@chat-ui-bench/contract';
+import {unavailableComparisonFinalContent, checkComparisonFinalContent, finalContentCardinalityIssues, replaceFinalContentIssue, revokeComparisonFinalContent, type ComparisonFinalContent, type FinalRuntime, type FinalVisible} from './comparison-final-content.js';
 
 type ComparisonSchemas = ReturnType<typeof comparisonSchemasForVersionPair>;
 type ComparisonIdentity = z.output<ComparisonSchemas['comparisonIdentitySchema']>;
@@ -492,6 +494,7 @@ export interface ComparisonLoadedBootstrapRun {
   loadingIssues: ComparisonLoadingIssue[]; additionalLoadingIssueCount: number;
   references: ComparisonSlotReferences;
   provenanceGraph: ComparisonProvenanceGraph;
+  finalContent: ComparisonFinalContent;
 }
 type Claim = z.output<ComparisonSchemas['comparisonDatasetInventorySchema']['shape']['invocationClaim']>;
 export interface ComparisonLoadedInvocationBootstrap {
@@ -792,7 +795,7 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
         await slotDocument<ComparisonExceptions>('exceptions.json', schemas.comparisonExceptionsSchema);
         result.runs.push({identity, artifactDirectory: row.artifactDirectory, descriptor: descriptor.value, manifest: manifest.value, captureValidation: validation.value,
           rawAvailability: {descriptor: descriptor.availability, manifest: manifest.availability, captureValidation: validation.availability},
-          loadingIssues: rowIssues.loadingIssues, additionalLoadingIssueCount: rowIssues.count(), references: unavailableComparisonReferences('Slot references not admitted by invocation preflight'), provenanceGraph: unavailableComparisonProvenanceGraph('Captured provenance graph not yet checked')});
+          loadingIssues: rowIssues.loadingIssues, additionalLoadingIssueCount: rowIssues.count(), references: unavailableComparisonReferences('Slot references not admitted by invocation preflight'), provenanceGraph: unavailableComparisonProvenanceGraph('Captured provenance graph not yet checked'), finalContent: unavailableComparisonFinalContent('Final content not admitted by invocation preflight')});
       }
       if (result.byteIntegrity.admission === 'within-limit') {
         let hashComplete = owner.failedOwnedReads.size === 0;
@@ -899,6 +902,25 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
               if (run.provenanceGraph.issues.length < 32) run.provenanceGraph.issues.push(failure); else run.provenanceGraph.additionalIssueCount++;
             }
           }
+          const fixtureRaw = await graphOriginal('fixture.json'), runtimeRaw = await graphOriginal('final-runtime.json'), visibleRaw = await graphOriginal('visible-validation.json');
+          const contentBounds = finalContentCardinalityIssues(fixtureRaw?.status === 'admitted-json' ? fixtureRaw.value : null, runtimeRaw?.status === 'admitted-json' ? runtimeRaw.value : null, visibleRaw?.status === 'admitted-json' ? visibleRaw.value : null, run.manifest);
+          const fixture = fixtureRaw === null || !run.manifest || contentBounds.has('fixture') ? null : document<LongThreadFixture>(fixtureRaw, longThreadFixtureSchema, 'slot-json');
+          const runtime = runtimeRaw === null || !run.manifest || contentBounds.has('runtime') ? null : document<FinalRuntime>(runtimeRaw, schemas.comparisonFinalRuntimeSchema, 'slot-json');
+          const visible = visibleRaw === null || !run.manifest || contentBounds.has('coverage') ? null : document<FinalVisible>(visibleRaw, schemas.comparisonVisibleValidationSchema, 'slot-json');
+          const contentIdentityFailures = new Map<'runtime' | 'coverage', ComparisonLoadingIssue>();
+          for (const [key, name, doc] of [['runtime', 'final-runtime.json', runtime], ['coverage', 'visible-validation.json', visible]] as const) if (doc?.value && Object.entries(run.identity).some(([key, value]) => Reflect.get(doc.value!, key) !== value)) {
+            contentIdentityFailures.set(key, {kind: 'identity', path: name, role: 'slot-json', reason: 'Final content identity differs from original invocation row'});
+            doc.value = null; doc.availability = {status: 'unreadable', path: doc.availability.path, reason: 'Final content identity differs from original invocation row'};
+          }
+          run.finalContent = checkComparisonFinalContent({fixture: fixture?.value ?? null, runtime: runtime?.value ?? null, visible: visible?.value ?? null,
+            manifest: run.manifest, row: ledger.runs[index]!, seed: ledger.configuration.seed, caseOrder: ledger.configuration.caseOrder, files, absent});
+          for (const [key, failure] of contentBounds) replaceFinalContentIssue(run.finalContent[key], failure);
+          for (const [key, name, raw, doc] of [['fixture', 'fixture.json', fixtureRaw, fixture], ['runtime', 'final-runtime.json', runtimeRaw, runtime], ['coverage', 'visible-validation.json', visibleRaw, visible]] as const) if (raw?.status === 'failed' || doc?.value === null) {
+            const identityFailure = key === 'fixture' ? undefined : contentIdentityFailures.get(key);
+            replaceFinalContentIssue(run.finalContent[key], identityFailure ?? (raw?.status === 'failed' && raw.loadingIssues[0]
+              ? {...raw.loadingIssues[0], path: raw.loadingIssues[0].path.slice(prefix.length)}
+              : {kind: doc?.availability.status === 'malformed' ? 'malformed' : 'unreadable', path: name, role: 'slot-json', reason: doc?.availability.status === 'parsed' ? 'Original final content unavailable' : doc?.availability.reason ?? 'Owned original final content read unavailable'}));
+          }
         }
         if (owner.failedOwnedReads.size > 0) hashComplete = false;
         let absencesClosed = true;
@@ -943,11 +965,12 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
           }
           if (closure) result.byteIntegrity.seal = 'byte-closed';
         }
-        if (result.byteIntegrity.seal !== 'byte-closed') for (const run of result.runs) {revokeComparisonReferences(run.references); revokeComparisonProvenanceGraph(run.provenanceGraph);}
+        if (result.byteIntegrity.seal !== 'byte-closed') for (const run of result.runs) {revokeComparisonReferences(run.references); revokeComparisonProvenanceGraph(run.provenanceGraph); revokeComparisonFinalContent(run.finalContent);}
         const referencesComplete = result.runs.every(run => Object.values(run.references).every(lane => lane.status === 'complete'));
         result.collection.reasons = [...(referencesComplete ? [] : ['Slot inventory and acquisition reference schema agreement not yet verified']),
           ...(result.runs.every(run => run.provenanceGraph.status === 'complete') ? [] : ['Captured provenance declaration graph not yet verified']),
-          'Build/source authenticity and executed graph, raw replay/page semantics, independent correctness and scoring eligibility not yet verified'];
+          ...(result.runs.every(run => Object.values(run.finalContent).every(lane => lane.status === 'complete')) ? [] : ['Independent final transcript and persisted coverage agreement not yet verified']),
+          'Build/source authenticity and executed graph, replay delivery/application/EOF, phase/native/geometry semantics, renderer presentation, independent correctness and scoring eligibility not yet verified'];
       }
     }
   }
