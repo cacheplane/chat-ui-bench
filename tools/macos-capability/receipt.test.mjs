@@ -1,4 +1,4 @@
-import test from 'node:test';
+import {test} from 'vitest';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 const api=await import(process.env.CAPABILITY_TEST_BASELINE??'./receipt.mjs');
