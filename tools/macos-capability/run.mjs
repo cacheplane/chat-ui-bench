@@ -8,7 +8,7 @@ import {resolve,join,relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {hostname,release,totalmem} from 'node:os';
 import {installObserver} from './spawn-observer.mjs';
-import {admitRuntime,validIdentity,sameIdentity,exclusiveCase,displaySupported,scopedEmpty,supported,serialize,diagnostic,combineFailure,ownedGroup,ipcLatch,capabilityBudget,scopedClosure} from './receipt.mjs';
+import {admitRuntime,validIdentity,sameIdentity,exclusiveCase,displaySupported,scopedEmpty,supported,serialize,diagnostic,combineFailure,ownedGroup,ipcLatch,capabilityBudget,scopedClosure,caseNotAttempted,classifyCapabilityReceipt} from './receipt.mjs';
 /** @typedef {Record<string, any>} Data */
 const admission=admitRuntime(process.env,process.platform,process.arch);
 assert.equal(process.version,'v24.20.0','Actual capability Node runtime must match selected exact version');
@@ -99,20 +99,45 @@ const audited=[
  {path:'libsyscall/wrappers/libproc/libproc.c',signature:'proc_listpids(uint32_t type, uint32_t typeinfo, void *buffer, int buffersize)',digest:'7d1f676bdbeca470322d72ad5d1f0257b0efab3d6e2713c89deecce9a1fa98bc'},
  {path:'bsd/kern/proc_info.c',signature:'proc_listpids(uint32_t type, uint32_t typeinfo, user_addr_t buffer, uint32_t  buffersize, int32_t * retval)',digest:'30221118bb08c367545c9eee30ac100676ea8d94ba3264e38c379087809d0657'}
 ];
-/** @param {string} kernel @param {string} out */async function primarySources(kernel,out) {
+/** @param {string} kernel @param {string} out @param {Data[]} attempts */async function primarySources(kernel,out,attempts) {
  const match=/xnu-(\d+(?:\.\d+)+)~/.exec(kernel);if(!match)throw Error('Matching primary kernel tag unavailable');
  const rows=[];
  for(const [index,item] of audited.entries()) {
   const url='https://raw.githubusercontent.com/apple-oss-distributions/xnu/xnu-'+match[1]+'/'+item.path;
-  const response=await owned(()=>fetch(url,{redirect:'error'}));
-  assert.ok(/** @type {Response} */(response).ok);const reader=/** @type {Response} */(response).body?.getReader();if(!reader)throw Error('Original primary source body unavailable');
+  if(Buffer.byteLength(url)>4096)throw Error('Original primary source URL capacity4096');
+  assert.equal(attempts.length,index);assert.ok(attempts.length<2);
+  /** @type {Data} */const attempt={index,requestedUrl:url,tag:'xnu-'+match[1],fetchCallAttempted:false,fetchSettled:false,responsePresent:false,status:null,ok:null,bodyDisposition:'not-attempted',originalFailurePresent:false,originalFailure:null,cleanupErrors:[],sourceFact:null};attempts.push(attempt);
+  /** @type {Response|null} */let response=null;
+  /** @type {ReadableStreamDefaultReader<Uint8Array>|undefined} */let reader;
   /** @type {Uint8Array[]} */const chunks=[];let bytes=0;
-  try {for(;;){const part=/** @type {ReadableStreamReadResult<Uint8Array>} */(await owned(()=>reader.read()));if(part.done)break;bytes+=part.value.length;if(bytes>262144)throw Error('Primary source bytes262144');chunks.push(part.value);}}finally{reader.releaseLock();}
-  const original=Buffer.concat(chunks),text=new TextDecoder('utf-8',{fatal:true}).decode(original);
-  const start=text.indexOf('\n'+item.signature+'\n')+1;if(start<=0)throw Error('Original audited API function missing');
-  const end=text.indexOf('\n}\n',start)+3;if(end<=start)throw Error('Original audited API boundary unavailable');
-  const digest=createHash('sha256').update(text.slice(start,end)).digest('hex');assert.equal(digest,item.digest,'Matching kernel scoped enumeration semantics changed');
-  const path=join(out,'primary-'+index+'.c');await owned(()=>writeFile(path,original,{flag:'wx'}));rows.push({url,tag:'xnu-'+match[1],auditedFunctionSha256:digest,...await fact(path)});
+  let present=false;/** @type {unknown} */let primary;/** @type {unknown[]} */const cleanup=[];
+  try {
+   response=/** @type {Response} */(await owned(()=>{
+    attempt.fetchCallAttempted=true;
+    try{return Promise.resolve(fetch(url,{redirect:'error'})).then(value=>{response=value;attempt.fetchSettled=true;attempt.responsePresent=true;attempt.status=value.status;attempt.ok=value.ok;return value;},error=>{attempt.fetchSettled=true;throw error;});}catch(error){attempt.fetchSettled=true;throw error;}
+   }));
+   assert.ok(response.ok);reader=response.body?.getReader();if(!reader)throw Error('Original primary source body unavailable');
+   const originalReader=reader;
+   for(;;){const part=/** @type {ReadableStreamReadResult<Uint8Array>} */(await owned(()=>originalReader.read()));if(part.done)break;bytes+=part.value.length;if(bytes>262144)throw Error('Primary source bytes262144');chunks.push(part.value);}
+   attempt.bodyDisposition='read-eof';
+  }catch(error){present=true;primary=error;attempt.originalFailurePresent=true;attempt.originalFailure=diagnostic(error);}
+  finally {
+   if(response&&!response.body)attempt.bodyDisposition='absent';
+   else if(response&&attempt.bodyDisposition!=='read-eof') {
+    const originalResponse=response;
+    try{await owned(()=>reader?reader.cancel():originalResponse.body?.cancel());attempt.bodyDisposition='cancelled';}catch(error){attempt.bodyDisposition='unknown';cleanup.push(error);}
+   }
+   if(reader){try{reader.releaseLock();}catch(error){cleanup.push(error);}}
+   attempt.cleanupErrors=cleanup.map(diagnostic);
+  }
+  if(present||cleanup.length)throw combineFailure(present,primary,cleanup);
+  try {
+   const original=Buffer.concat(chunks),text=new TextDecoder('utf-8',{fatal:true}).decode(original);
+   const start=text.indexOf('\n'+item.signature+'\n')+1;if(start<=0)throw Error('Original audited API function missing');
+   const end=text.indexOf('\n}\n',start)+3;if(end<=start)throw Error('Original audited API boundary unavailable');
+   const digest=createHash('sha256').update(text.slice(start,end)).digest('hex');assert.equal(digest,item.digest,'Matching kernel scoped enumeration semantics changed');
+   const path=join(out,'primary-'+index+'.c');await owned(()=>writeFile(path,original,{flag:'wx'}));const sourceFact={url,tag:'xnu-'+match[1],auditedFunctionSha256:digest,...await fact(path)};attempt.sourceFact=sourceFact;rows.push(sourceFact);
+  }catch(error){attempt.originalFailurePresent=true;attempt.originalFailure=diagnostic(error);throw error;}
  }
  return rows;
 }
@@ -201,7 +226,7 @@ function originalLoopbackRequest(originalGet,receiver,origin,register) {
 async function parent() {
  const temp=await realpath(process.env.RUNNER_TEMP??'');const out=join(temp,'macos-capability-'+process.env.GITHUB_RUN_ID+'-'+process.env.GITHUB_RUN_ATTEMPT);
  await mkdir(out);const before=await trackedFacts(root);
- /** @type {Data} */const receipt={format:'macos-capability-v1',status:'unavailable',unscored:true,canonicalMatrix:false,onsetAlignment:false,oldLocalClosure:'UNKNOWN',admission,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,hostname:hostname(),kernelRelease:release(),imageOS:process.env.ImageOS,imageVersion:process.env.ImageVersion,workflowRef:process.env.GITHUB_WORKFLOW_REF,workflowSha:process.env.GITHUB_WORKFLOW_SHA,memoryBytes:totalmem(),node:process.version,v8:process.versions.v8,viewport:{width:1280,height:800},before};
+ /** @type {Data} */const receipt={format:'macos-capability-v1',status:'unavailable',unscored:true,canonicalMatrix:false,onsetAlignment:false,oldLocalClosure:'UNKNOWN',caseSpawnAttempted:false,primarySourceAttempts:[],trackedSourceClosed:false,admission,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,hostname:hostname(),kernelRelease:release(),imageOS:process.env.ImageOS,imageVersion:process.env.ImageVersion,workflowRef:process.env.GITHUB_WORKFLOW_REF,workflowSha:process.env.GITHUB_WORKFLOW_SHA,memoryBytes:totalmem(),node:process.version,v8:process.versions.v8,viewport:{width:1280,height:800},before};
  let primaryPresent=false;
  /** @type {unknown} */
  let primary;
@@ -224,14 +249,17 @@ async function parent() {
   const sdk=(await command('/usr/bin/xcrun',['--sdk','macosx','--show-sdk-path'])).stdout.trim();
   const clang=(await command('/usr/bin/xcrun',['--find','clang'])).stdout.trim();receipt.compilerVersion=(await command(clang,['--version'])).stdout;
   receipt.sdk={path:sdk,clang:await fact(clang),headers:[]};for(const name of ['usr/include/libproc.h','usr/include/sys/proc_info.h','usr/include/sys/proc.h','System/Library/Frameworks/CoreGraphics.framework/Headers/CGSession.h','System/Library/Frameworks/CoreGraphics.framework/Headers/CGDirectDisplay.h'])receipt.sdk.headers.push(await fact(join(sdk,name)));
-  receipt.primarySources=await primarySources(version,out);
+  receipt.primarySources=await primarySources(version,out,receipt.primarySourceAttempts);
   const helper=join(out,'kernel-probe');await command(clang,['-Wall','-Wextra','-Werror','-isysroot',sdk,join(directory,'kernel-probe.c'),'-framework','CoreGraphics','-framework','CoreFoundation','-o',helper]);
   const binding={helper:await fact(helper),source:await fact(join(directory,'kernel-probe.c'))};receipt.binding=binding;
   assert.equal(JSON.parse(await readFile(join(root,'node_modules/playwright/package.json'),'utf8')).version,'1.64.0');
   receipt.playwright=await fact(join(root,'node_modules/playwright/package.json'));receipt.lock=await fact(join(root,'package-lock.json'));
   const budget=capabilityBudget(performance.now());deadline=budget.acquisition;reportUntil=budget.closureReport;receipt.budget={...budget,acquisitionMs:60000,closureReportMs:10000};nonce=randomUUID();
+  // BEGIN originalCaseSpawn
+  receipt.caseSpawnAttempted=true;
   child=originalSpawn(process.execPath,[source,'--case'],{detached:true,cwd:root,env:{...process.env,CAPABILITY_NONCE:nonce,CAPABILITY_BINDING:JSON.stringify(binding)},stdio:['ignore','pipe','pipe','ipc']});
   receipt.casePid=child.pid;
+  // END originalCaseSpawn
   stopTimer=setTimeout(()=>{if(!acquisitionComplete){expired=true;if(child?.connected)void sendCase({type:'stop',nonce}).catch(failure);}},Math.max(0,budget.acquisition-performance.now()));
   /** @type {{value:Data|null}} */
   const childReport={value:null};let outputBytes=0;
@@ -267,17 +295,16 @@ async function parent() {
   clearTimeout(stopTimer);
   if(receipt.budget)deadline=receipt.budget.closureReport;
   receipt.primaryPresent=primaryPresent;receipt.primary=primaryPresent?diagnostic(primary):null;receipt.lifecycle=lifecycle;receipt.expired=expired;receipt.pending=pending.size;receipt.queries=queries;receipt.commands=commands;receipt.lateErrors=lateErrors.map(diagnostic);
-  try{receipt.after=await trackedFacts(root);assert.deepEqual(receipt.after,before);}catch(error){receipt.finalSourceError=diagnostic(error);receipt.status='unavailable';}
+  try{receipt.after=await trackedFacts(root);assert.deepEqual(receipt.after,before);receipt.trackedSourceClosed=true;}catch(error){receipt.finalSourceError=diagnostic(error);receipt.status='unavailable';}
+  receipt.pending=pending.size;receipt.lateErrors=lateErrors.map(diagnostic);
   // BEGIN finalClosureConstruction
   const helperLedgersKnown=Array.isArray(receipt.child?.queries)&&queries.length+receipt.child.queries.length<=256&&[...queries,...receipt.child.queries].every(q=>q!==null&&typeof q==='object'&&!Array.isArray(q)&&q.command!==null&&typeof q.command==='object'&&!Array.isArray(q.command));
   const closure={...receipt.child,...lifecycle,groups:receipt.groups,groupAuthorityComplete:receipt.groupAuthorityComplete===true,helperCommands:helperLedgersKnown?[...queries,...receipt.child.queries].map(q=>q.command):null,pending:pending.size+(receipt.child?.pending??0)};
   // END finalClosureConstruction
-  receipt.capabilityStatus=receipt.status==='supported-capability-only'?'supported':'unavailable';
-  receipt.closureStatus=scopedClosure(closure)?'observed-scoped-resources-closed':'unknown';
-  if(receipt.closureStatus==='unknown')receipt.status='failed-uncontained';
+  Object.assign(receipt,classifyCapabilityReceipt(receipt,closure));
   try{const text=serialize(receipt);await owned(()=>writeFile(join(out,'receipt.json'),text,{flag:'wx'}),deadline);console.log(JSON.stringify({status:receipt.status,receipt:join(out,'receipt.json'),bytes:Buffer.byteLength(text),unscored:true,canonicalMatrix:false}));}catch(error){
    // BEGIN publicationFallback
-   receipt.status=receipt.closureStatus==='observed-scoped-resources-closed'?'unavailable':'failed-uncontained';console.error(JSON.stringify({status:receipt.status,publication:diagnostic(error),pending:pending.size,closureStatus:receipt.closureStatus??'unknown',originalScopedClosureUnknown:receipt.closureStatus!=='observed-scoped-resources-closed'}));
+   receipt.status=caseNotAttempted(receipt)?'failed-preparation-case-not-attempted':receipt.closureStatus==='observed-scoped-resources-closed'?'unavailable':'failed-uncontained';console.error(JSON.stringify({status:receipt.status,publication:diagnostic(error),pending:pending.size,closureStatus:receipt.closureStatus??'unknown',caseClosureStatus:receipt.caseClosureStatus??'unknown',overallResourceClosure:'unknown',originalScopedClosureUnknown:receipt.closureStatus!=='observed-scoped-resources-closed'}));
    // END publicationFallback
   }
   if(receipt.status!=='supported-capability-only')process.exitCode=1;
