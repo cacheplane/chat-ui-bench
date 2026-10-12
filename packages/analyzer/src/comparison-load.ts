@@ -3,10 +3,16 @@ import {constants, type BigIntStats} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {isAbsolute, join, normalize, parse} from 'node:path';
 import {z} from 'zod';
-import {comparisonVersionShape, comparisonInvocationSchema, comparisonCaptureInvocationSchema,
-  comparisonDatasetInventorySchema, comparisonScheduledRunSchema, comparisonManifestSchema,
-  comparisonValidationSchema, comparisonExceptionsSchema, type ComparisonIdentity,
-  type ComparisonScheduledRun, type ComparisonManifest, type ComparisonValidation} from '@chat-ui-bench/contract';
+import {comparisonSchemasForVersionPair, type ComparisonSchemaPair} from '@chat-ui-bench/contract';
+
+type ComparisonSchemas = ReturnType<typeof comparisonSchemasForVersionPair>;
+type ComparisonIdentity = z.output<ComparisonSchemas['comparisonIdentitySchema']>;
+type ComparisonScheduledRun = z.output<ComparisonSchemas['comparisonScheduledRunSchema']>;
+type ComparisonManifest = z.output<ComparisonSchemas['comparisonManifestSchema']>;
+type ComparisonValidation = z.output<ComparisonSchemas['comparisonValidationSchema']>;
+type ComparisonExceptions = z.output<ComparisonSchemas['comparisonExceptionsSchema']>;
+type ComparisonInvocation = z.output<ComparisonSchemas['comparisonCaptureInvocationSchema']>;
+type ComparisonDataset = z.output<ComparisonSchemas['comparisonDatasetInventorySchema']>;
 
 export type ComparisonRawRole =
   | 'root-json' | 'dataset-seal' | 'slot-json' | 'jsonl' | 'trace'
@@ -483,13 +489,11 @@ export interface ComparisonLoadedBootstrapRun {
   rawAvailability: {descriptor: ComparisonRawAvailability; manifest: ComparisonRawAvailability; captureValidation: ComparisonRawAvailability};
   loadingIssues: ComparisonLoadingIssue[]; additionalLoadingIssueCount: number;
 }
-const claimSchema = z.strictObject({...comparisonVersionShape, kind: z.literal('invocation-ownership-claim'),
-  invocationId: z.uuid(), createdAt: z.iso.datetime(), purpose: z.enum(['publication', 'conformance']), configuration: comparisonInvocationSchema});
-type Claim = z.infer<typeof claimSchema>;
+type Claim = z.output<ComparisonSchemas['comparisonDatasetInventorySchema']['shape']['invocationClaim']>;
 export interface ComparisonLoadedInvocationBootstrap {
-  family: {collectorVersion: '2.0.0'; analyzerVersion: '2.0.0'} | null;
-  root: {claim: ComparisonLoadedDocument<Claim>; ledger: ComparisonLoadedDocument<z.infer<typeof comparisonCaptureInvocationSchema>>;
-    seal: ComparisonLoadedDocument<z.infer<typeof comparisonDatasetInventorySchema>>};
+  family: ComparisonSchemaPair | null;
+  root: {claim: ComparisonLoadedDocument<Claim>; ledger: ComparisonLoadedDocument<ComparisonInvocation>;
+    seal: ComparisonLoadedDocument<ComparisonDataset>};
   scheduled: number | null; runs: ComparisonLoadedBootstrapRun[];
   byteIntegrity: {status: 'not-inspected' | 'complete' | 'partial'; admission: 'unavailable' | 'within-limit' | 'exceeded'; observedUniqueBytes: number;
     files: {path: string; fact: ComparisonByteFact | null}[]; seal: 'not-verified' | 'byte-closed' | 'partial';
@@ -522,7 +526,7 @@ async function measuredJson(root: string, path: string, role: 'root-json' | 'dat
   catch (error) {return {status: 'failed', path, fact: loaded.fact, loadingIssues: [{kind: 'malformed', path, role, reason: preview(error)}]};}
 }
 /** Bounded physical membership only: file SHA/aggregate/reference closure follows separately. */
-async function physicalInventory(root: string, slots: string[], seal: z.infer<typeof comparisonDatasetInventorySchema> | null,
+async function physicalInventory(root: string, slots: string[], seal: ComparisonDataset | null,
   add: (issue: ComparisonLoadingIssue) => void): Promise<ComparisonLoadedInvocationBootstrap['physicalInventory']> {
   const result: ComparisonLoadedInvocationBootstrap['physicalInventory'] = {status: 'complete', files: [], directories: [], candidates: {root: 0, slots: slots.map(path => ({path, count: 0}))}, inspectedEntries: 0, ioFailures: [], additionalIoFailureCount: 0, unknownEntries: [], additionalUnknownEntryCount: 0};
   const directories = new Set<string>(['']), declared = new Set([...(seal?.members ?? []), ...(seal?.absentMembers ?? [])].map(member => member.path)), candidates = new Set<string>();
@@ -644,7 +648,7 @@ async function physicalInventory(root: string, slots: string[], seal: z.infer<ty
   } catch (error) {result.status = 'partial'; if (error instanceof MemberFailure) add(error.issue); else issue('.', 'unreadable', preview(error));}
   result.files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0); result.directories.sort(); return result;
 }
-/** Strict legacy bootstrap and owned byte closure; semantic reference closure remains partial. */
+/** Closed-family bootstrap and owned byte closure; semantic reference closure remains partial. */
 export async function loadComparisonInvocation(root: string): Promise<ComparisonLoadedInvocationBootstrap> {
   const issues = issueList();
   const owner = new InvocationBytes();
@@ -679,29 +683,44 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
       return {value: null, fact: raw.fact, availability: {status: 'malformed', path: raw.path, reason: issue.reason}};}
     return {value: parsed.data, fact: raw.fact, availability: {status: 'parsed', path: raw.path}};
   }
+  let schemas: ComparisonSchemas | null = null, explicitPair: ComparisonSchemaPair | null = null, contradiction = false;
   for (const rootRaw of [ledgerRaw, claimRaw]) {
     if (rootRaw.status !== 'admitted-json') continue;
     const value = rootRaw.value;
     if (value === null || typeof value !== 'object' || Array.isArray(value)) continue;
     const header = value as Record<string, unknown>;
-    // A missing/malformed header may use the independently admitted claim. An explicit
-    // readable unknown/mixed pair is a contradiction, never permission to fall back.
-    if (typeof header['collectorVersion'] === 'string' && typeof header['analyzerVersion'] === 'string'
-      && (header['collectorVersion'] !== '2.0.0' || header['analyzerVersion'] !== '2.0.0')) {
+    const collector = header['collectorVersion'], analyzer = header['analyzerVersion'];
+    if (typeof collector !== 'string' || typeof analyzer !== 'string') continue;
+    const pair: ComparisonSchemaPair | null = collector === '2.0.0' && analyzer === '2.0.0'
+      ? {collectorVersion: '2.0.0', analyzerVersion: '2.0.0'}
+      : collector === '2.1.0' && analyzer === '2.1.0' ? {collectorVersion: '2.1.0', analyzerVersion: '2.1.0'} : null;
+    // Scan both roots before dependent reads; a later contradiction cannot hide
+    // behind an earlier valid ledger or select a different parser as a fallback.
+    if (pair === null) {
       const issue = add(rootRaw.path, 'Unsupported comparison root version pair or suite');
       const rejected = rootRaw.path === 'invocation.json' ? result.root.ledger : result.root.claim;
       rejected.availability = {status: 'malformed', path: rootRaw.path, reason: issue.reason};
-      for (const raw of [ledgerRaw, claimRaw]) if (raw.status === 'failed') raw.loadingIssues.forEach(issue => issues.add(issue));
-      return finishResult();
+      contradiction = true; continue;
     }
-    if (z.strictObject(comparisonVersionShape).safeParse(Object.fromEntries(Object.keys(comparisonVersionShape).map(key => [key, header[key]]))).success) {
-      result.family = {collectorVersion: '2.0.0', analyzerVersion: '2.0.0'}; break;
+    if (explicitPair !== null && explicitPair.collectorVersion !== pair.collectorVersion) {
+      add(rootRaw.path, 'Comparison root version pairs contradict the selected family'); contradiction = true;
+    }
+    explicitPair ??= pair;
+    if (schemas === null) {
+      const candidate = comparisonSchemasForVersionPair(pair), shape = candidate.comparisonVersionShape;
+      if (z.strictObject(shape).safeParse(Object.fromEntries(Object.keys(shape).map(key => [key, header[key]]))).success) {
+        schemas = candidate; result.family = pair;
+      }
     }
   }
-  result.root.ledger = document(ledgerRaw, comparisonCaptureInvocationSchema, 'root-json');
-  result.root.claim = document(claimRaw, claimSchema, 'root-json');
-  if (result.family === null) return finishResult();
-  result.root.seal = document(await measuredJson(root, 'dataset-seal.json', 'dataset-seal', owner), comparisonDatasetInventorySchema, 'dataset-seal');
+  if (schemas === null) {
+    for (const raw of [ledgerRaw, claimRaw]) if (raw.status === 'failed') raw.loadingIssues.forEach(issue => issues.add(issue));
+    return finishResult();
+  }
+  result.root.ledger = document<ComparisonInvocation>(ledgerRaw, schemas.comparisonCaptureInvocationSchema, 'root-json');
+  result.root.claim = document<Claim>(claimRaw, schemas.comparisonDatasetInventorySchema.shape.invocationClaim, 'root-json');
+  if (contradiction) {result.family = null; return finishResult();}
+  result.root.seal = document<ComparisonDataset>(await measuredJson(root, 'dataset-seal.json', 'dataset-seal', owner), schemas.comparisonDatasetInventorySchema, 'dataset-seal');
   const ledger = result.root.ledger.value, claim = result.root.claim.value;
   if (ledger && claim && (ledger.createdAt !== claim.createdAt || ledger.purpose !== claim.purpose
     || JSON.stringify(ledger.configuration) !== JSON.stringify(claim.configuration))) add('invocation-claim.json', 'Actual claim differs from ledger configuration, purpose or creation time', 'identity');
@@ -739,9 +758,9 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
       owner.exceeded = result.byteIntegrity.admission === 'exceeded';
       if (ledger.status === 'pending' || ledger.runs.some(row => row.status === 'scheduled' || row.status === 'running')) add('invocation.json', 'Invocation ledger is not terminal');
       for (const row of ledger.runs) {
-        const rowIssues = issueList(), identity: ComparisonIdentity = {
+        const rowIssues = issueList(), identity = schemas.comparisonIdentitySchema.parse({
           schemaVersion: ledger.schemaVersion, suite: ledger.suite, suiteVersion: ledger.suiteVersion, collectorVersion: ledger.collectorVersion, analyzerVersion: ledger.analyzerVersion,
-          repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile};
+          repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile});
         async function slotDocument<T>(name: string, schema: z.ZodType<T>): Promise<ComparisonLoadedDocument<T>> {
           const path = row.artifactDirectory + '/' + name;
           if (name === 'manifest.json' && result.byteIntegrity.admission !== 'within-limit') return {value: null, fact: null,
@@ -763,10 +782,10 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
           }
           return doc;
         }
-        const descriptor = await slotDocument('descriptor.json', comparisonScheduledRunSchema), manifest = await slotDocument('manifest.json', comparisonManifestSchema),
-          validation = await slotDocument('validation.json', comparisonValidationSchema);
+        const descriptor = await slotDocument<ComparisonScheduledRun>('descriptor.json', schemas.comparisonScheduledRunSchema), manifest = await slotDocument<ComparisonManifest>('manifest.json', schemas.comparisonManifestSchema),
+          validation = await slotDocument<ComparisonValidation>('validation.json', schemas.comparisonValidationSchema);
         // Exceptions are baseline diagnostic evidence; their absence cannot be hidden by a failed-not-started label.
-        await slotDocument('exceptions.json', comparisonExceptionsSchema);
+        await slotDocument<ComparisonExceptions>('exceptions.json', schemas.comparisonExceptionsSchema);
         result.runs.push({identity, artifactDirectory: row.artifactDirectory, descriptor: descriptor.value, manifest: manifest.value, captureValidation: validation.value,
           rawAvailability: {descriptor: descriptor.availability, manifest: manifest.availability, captureValidation: validation.availability},
           loadingIssues: rowIssues.loadingIssues, additionalLoadingIssueCount: rowIssues.count()});

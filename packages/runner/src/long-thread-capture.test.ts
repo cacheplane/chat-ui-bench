@@ -8,10 +8,11 @@ import {createLongThreadFixture,mainOptionsSchema,preNavigationOptionsSchema,can
 import {chromium,type Browser,type BrowserContext,type Page,type CDPSession} from 'playwright';
 import {assembleComparisonInstaller} from './comparison-installer.js';
 import {createComparisonTraceCapture} from './comparison-trace.js';
-import {mkdtemp,rm,readFile,open,stat} from 'node:fs/promises';
+import {mkdtemp,rm,readFile,open,stat,rename} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 const actualTimer=setTimeout;
+const actualClearTimer=clearTimeout;
 test('default comparison launch explicitly requests genuine browser command-line identity',async()=>{
  let directory:string|undefined,owner:ComparisonOwnership|undefined,writer:ComparisonArtifactWriter|undefined,restore:(()=>void)|undefined;
  let primaryFailed=false,primaryError:unknown;
@@ -40,13 +41,63 @@ test('default comparison launch explicitly requests genuine browser command-line
  if(cleanupErrors.length)throw new AggregateError(cleanupErrors,'Default-launch regression cleanup failed');
 });
 const actualImmediate=setImmediate;
+async function settleFreshReplay<T>(order:string[],replay:Promise<T>,finished:()=>boolean,afterPump?:()=>void,settlementMs=1000):Promise<T>{
+ for(let index=0;index<1000&&!order.includes('phase:history-reading');index++)await new Promise<void>(resolve=>actualImmediate(resolve));
+ for(let index=0;index<200&&!finished();index++){await vi.advanceTimersByTimeAsync(50);await new Promise<void>(resolve=>actualTimer(resolve,1));}
+ afterPump?.();
+ // The pump advances page-time assertions; real artifact IO still belongs to replay.
+ let timer:ReturnType<typeof actualTimer>|undefined;
+ const timeout=new Promise<never>((_resolve,reject)=>{timer=actualTimer(()=>reject(new Error(`Original fresh replay did not settle within ${settlementMs}ms`)),settlementMs);});
+ try{return await Promise.race([replay,timeout]);}finally{if(timer!==undefined)actualClearTimer(timer);}
+}
+test('fresh replay completion joins held final writer IO before fixture cleanup',async()=>{
+ vi.useFakeTimers({toFake:['Date','setTimeout','clearTimeout']});vi.setSystemTime(0);
+ const entered=deferred<void>(),hold=deferred<void>(),pumped=deferred<void>();let delegated=0;
+ try{await lifecycleFixture(async({driver,owner,context,order,directory})=>{
+   let state:Awaited<ReturnType<typeof driver.setup>>|undefined,finished=false,completionSettled=false;
+   const setup=await owner.run('setup',async ownership=>{state=await driver.setup(context(ownership));});expect(setup.status).toBe('complete');
+   const replay=owner.run('replay',ownership=>driver.replay(context(ownership),state!)).finally(()=>{finished=true;});void replay.catch(()=>{});
+   const completion=settleFreshReplay(order,replay,()=>finished,()=>pumped.resolve());void completion.then(()=>{completionSettled=true;},()=>{completionSettled=true;});
+   try{
+     await entered.promise;await pumped.promise;await Promise.resolve();
+     expect(finished).toBe(false);expect(completionSettled).toBe(false);expect(delegated).toBe(0);
+     hold.resolve();const result=await completion;expect(result.status).toBe('complete');expect(finished).toBe(true);expect(delegated).toBe(1);
+     expect(JSON.parse(await readFile(join(directory,'phases.json'),'utf8')).status).toBe('complete');
+   }finally{hold.resolve();await Promise.allSettled([completion,replay]);}
+ },{history:true,comparisonVersion:'2.1.0',freshPostDelayMs:400,io:{async rename(from,to){if(String(to).endsWith('/phases.json')){entered.resolve();await hold.promise;await rename(from,to);delegated++;return;}await rename(from,to);}}});}
+ finally{hold.resolve();vi.useRealTimers();}
+});
+test('fresh replay real settlement timeout retains primary and joins held writer cleanup',async()=>{
+ vi.useFakeTimers({toFake:['Date','setTimeout','clearTimeout']});vi.setSystemTime(0);
+ const entered=deferred<void>(),hold=deferred<void>(),pumped=deferred<void>();let delegated=0;
+ try{await lifecycleFixture(async({driver,owner,context,order})=>{
+   let state:Awaited<ReturnType<typeof driver.setup>>|undefined,finished=false,failed=false,error:unknown,disposalSettled=false;
+   const setup=await owner.run('setup',async ownership=>{state=await driver.setup(context(ownership));});expect(setup.status).toBe('complete');
+   const replay=owner.run('replay',ownership=>driver.replay(context(ownership),state!)).finally(()=>{finished=true;});void replay.catch(()=>{});
+   const completion=settleFreshReplay(order,replay,()=>finished,()=>pumped.resolve(),20);void completion.catch(()=>{});
+   let disposal:Promise<unknown>|undefined;
+   // Rescue only the deliberately broken helper in the RED: never leave its original IO hanging.
+   let rescue:ReturnType<typeof actualTimer>|undefined;
+   try{
+     await entered.promise;await pumped.promise;
+     rescue=actualTimer(()=>hold.resolve(),1000);
+     try{await completion;}catch(value){failed=true;error=value;}
+     expect(failed).toBe(true);expect(error).toBeInstanceOf(Error);expect((error as Error).message).toBe('Original fresh replay did not settle within 20ms');
+     expect(finished).toBe(false);expect(delegated).toBe(0);
+     disposal=owner.dispose();void disposal.then(()=>{disposalSettled=true;},()=>{disposalSettled=true;});await Promise.resolve();
+     expect(disposalSettled).toBe(false);expect(finished).toBe(false);
+     hold.resolve();await Promise.allSettled([replay,disposal]);expect(finished).toBe(true);expect(disposalSettled).toBe(true);expect(delegated).toBe(1);
+   }finally{if(rescue!==undefined)actualClearTimer(rescue);hold.resolve();await Promise.allSettled([completion,replay,...(disposal?[disposal]:[])]);}
+ },{history:true,comparisonVersion:'2.1.0',freshPostDelayMs:400,io:{async rename(from,to){if(String(to).endsWith('/phases.json')){entered.resolve();await hold.promise;await rename(from,to);delegated++;return;}await rename(from,to);}}});}
+ finally{hold.resolve();vi.useRealTimers();}
+});
 test('fresh family waits on original delayed post page timestamp rather than nominal host1000',async()=>{
  vi.useFakeTimers({toFake:['Date','setTimeout','clearTimeout']});vi.setSystemTime(0);const requests:{notBeforePageMs:number|null}[]=[];
  try{await lifecycleFixture(async({driver,owner,context,order,scrollReads})=>{
    let state:Awaited<ReturnType<typeof driver.setup>>|undefined,capture:Awaited<ReturnType<typeof driver.replay>>|undefined,failed=false,error:unknown,finished=false;
    const setup=await owner.run('setup',async ownership=>{try{state=await driver.setup(context(ownership));}catch(value){failed=true;error=value;throw value;}});if(failed)throw error;expect(setup.status).toBe('complete');
    const replay=owner.run('replay',async ownership=>{try{capture=await driver.replay(context(ownership),state!);}catch(value){failed=true;error=value;throw value;}}).finally(()=>{finished=true;});void replay.catch(()=>{});
-   try{for(let index=0;index<1000&&!order.includes('phase:history-reading');index++)await new Promise<void>(resolve=>actualImmediate(resolve));for(let index=0;index<200&&!finished;index++){await vi.advanceTimersByTimeAsync(50);await new Promise<void>(resolve=>actualTimer(resolve,1));}
+   try{await settleFreshReplay(order,replay,()=>finished);
      expect(finished,order.join(',')).toBe(true);const result=await replay;if(failed)throw error;expect(result.status).toBe('complete');expect(capture?.validation.status,JSON.stringify(capture?.validation.reasons)).toBe('valid');
      expect(requests.length).toBeGreaterThanOrEqual(5);expect(requests.slice(0,3)).toEqual([{notBeforePageMs:null},{notBeforePageMs:null},{notBeforePageMs:scrollReads[1]!.pageMs+800}]);expect(scrollReads[2]!.pageMs-scrollReads[1]!.pageMs).toBeGreaterThanOrEqual(800);
    }finally{if(!finished){const disposal=owner.dispose();void disposal.catch(()=>{});await vi.advanceTimersByTimeAsync(10000);await Promise.allSettled([replay,disposal]);}else await replay;}
@@ -59,7 +110,7 @@ for(const failure of ['missing-post','ignored-target'] as const)test('fresh wind
    let state:Awaited<ReturnType<typeof driver.setup>>|undefined,capture:Awaited<ReturnType<typeof driver.replay>>|undefined,failed=false,error:unknown,finished=false;
    const setup=await owner.run('setup',async ownership=>{try{state=await driver.setup(context(ownership));}catch(value){failed=true;error=value;throw value;}});if(failed)throw error;expect(setup.status).toBe('complete');
    const replay=owner.run('replay',async ownership=>{try{capture=await driver.replay(context(ownership),state!);}catch(value){failed=true;error=value;throw value;}}).finally(()=>{finished=true;});void replay.catch(()=>{});
-   try{for(let index=0;index<1000&&!order.includes('phase:history-reading');index++)await new Promise<void>(resolve=>actualImmediate(resolve));for(let index=0;index<200&&!finished;index++){await vi.advanceTimersByTimeAsync(50);await new Promise<void>(resolve=>actualTimer(resolve,1));}
+   try{await settleFreshReplay(order,replay,()=>finished);
      expect(finished,order.join(',')).toBe(true);const result=await replay;if(failed)throw error;expect(result.status).toBe('complete');expect(capture?.validation.status).toBe('failed');expect(capture?.validation.reasons).toContain('Actual fresh samples do not cover the required 800ms window');
      if(failure==='missing-post')expect(requests.every(request=>request.notBeforePageMs===null)).toBe(true);else{expect(requests[2]).toEqual({notBeforePageMs:scrollReads[1]!.pageMs+800});expect(scrollReads[2]!.pageMs-scrollReads[1]!.pageMs).toBeLessThan(800);}
    }finally{if(!finished){const disposal=owner.dispose();void disposal.catch(()=>{});await vi.advanceTimersByTimeAsync(10000);await Promise.allSettled([replay,disposal]);}else await replay;}
