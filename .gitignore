@@ -6,3 +6,4 @@ artifacts/
 dist-types/
 .build-evidence.json
 packages/runner/.comparison-build-evidence.json
+/ci-logs/
