@@ -2,6 +2,11 @@ import fs from 'node:fs/promises';
 import {constants, type BigIntStats} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {isAbsolute, join, normalize, parse} from 'node:path';
+import {z} from 'zod';
+import {comparisonVersionShape, comparisonInvocationSchema, comparisonCaptureInvocationSchema,
+  comparisonDatasetInventorySchema, comparisonScheduledRunSchema, comparisonManifestSchema,
+  comparisonValidationSchema, comparisonExceptionsSchema, type ComparisonIdentity,
+  type ComparisonScheduledRun, type ComparisonManifest, type ComparisonValidation} from '@chat-ui-bench/contract';
 
 export type ComparisonRawRole =
   | 'root-json' | 'dataset-seal' | 'slot-json' | 'jsonl' | 'trace'
@@ -59,9 +64,10 @@ function preview(error: unknown, prefix = ''): string {
 /** Byte admission only. Collection/version/semantics and presentation eligibility are separate. */
 async function readCheckedMember(
   absoluteDirectory: string,
-  reference: ComparisonMemberReference,
+  reference: ComparisonMemberReference | (Pick<ComparisonMemberReference, 'path' | 'role'> & {expected?: never}),
   consume?: (bytes: Uint8Array) => void,
   finish?: () => void,
+  mode: 'declared' | 'measured-bootstrap' = 'declared',
 ): Promise<LoadedComparisonMember> {
   const issues: ComparisonLoadingIssue[] = [], ioFailures: NonNullable<Extract<LoadedComparisonMember, {status: 'failed'}>['ioFailures']> = [];
   let fact: ComparisonByteFact | null = null;
@@ -91,8 +97,9 @@ async function readCheckedMember(
       fail('membership', 'Member must have a normalized relative path', '.');
     if (reference.role === 'unknown' || !Object.hasOwn(ROLE_BYTE_LIMITS, reference.role))
       fail('membership', 'Member has no admitted byte role');
-    if (!Number.isSafeInteger(reference.expected.byteLength) || reference.expected.byteLength < 0
-      || !/^[a-f0-9]{64}$/.test(reference.expected.sha256)) fail('integrity', 'Invalid declared byte length or digest');
+    const expected = reference.expected;
+    if (expected === undefined ? mode !== 'measured-bootstrap' : !Number.isSafeInteger(expected.byteLength) || expected.byteLength < 0
+      || !/^[a-f0-9]{64}$/.test(expected.sha256)) fail('integrity', 'Invalid declared byte length or digest');
     const path = join(absoluteDirectory, reference.path), parent = path.slice(0, path.lastIndexOf('/'));
     const chain = await ancestors(parent); operation = 'path-stat';
     const before = await fs.lstat(path, {bigint: true});
@@ -107,7 +114,7 @@ async function readCheckedMember(
         observation: before.size <= BigInt(Number.MAX_SAFE_INTEGER) ? 'exact' : 'lower-bound',
         reason: 'Original member exceeds its analyzer byte admission limit'});
     }
-    if (before.size !== BigInt(reference.expected.byteLength)) fail('integrity', 'Original size differs from declared byte length');
+    if (expected && before.size !== BigInt(expected.byteLength)) fail('integrity', 'Original size differs from declared byte length');
     operation = 'open'; handle = await fs.open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     operation = 'descriptor-stat'; const opened = await handle.stat({bigint: true});
     if (!opened.isFile() || !identity(opened, before)) fail('identity', 'Opened descriptor differs from original regular file');
@@ -128,9 +135,10 @@ async function readCheckedMember(
     operation = 'path-stat'; const after = await fs.lstat(path, {bigint: true});
     if (after.isSymbolicLink() || !after.isFile() || !identity(after, before)) fail('identity', 'Original pathname identity changed during reading');
     if (!sameAncestors(chain, await ancestors(parent))) fail('identity', 'Ancestor identity changed during reading');
-    if (length !== reference.expected.byteLength) fail('integrity', 'Read length differs from declared byte length');
+    if (expected ? length !== expected.byteLength : BigInt(length) !== before.size)
+      fail('integrity', expected ? 'Read length differs from declared byte length' : 'Read length differs from original descriptor byte length');
     fact = {byteLength: length, sha256: hash.digest('hex')};
-    if (fact.sha256 !== reference.expected.sha256) fail('integrity', 'Original digest differs from declared digest');
+    if (expected && fact.sha256 !== expected.sha256) fail('integrity', 'Original digest differs from declared digest');
   } catch (error) {
     if (error instanceof MemberFailure) issues.push(error.issue);
     else {
@@ -202,7 +210,7 @@ class JsonAdmission {
   private started = false; private complete = false; private traceSeen = false;
   private offset = 0; private bytes = 0; private work = 0; private tokens = 0; private depth = 0; private events = 0;
   private readonly workLimit: number; private readonly depthLimit: number;
-  constructor(private reference: ComparisonMemberReference, private record = false) {
+  constructor(private reference: Pick<ComparisonMemberReference, 'path' | 'role'>, private record = false) {
     this.workLimit = record ? 65536 : reference.role === 'trace' || reference.role === 'dataset-seal' ? 8388608 : 2097152;
     this.depthLimit = reference.role === 'trace' && !record ? 64 : 32;
   }
@@ -369,4 +377,266 @@ export async function loadComparisonJsonLines(root: string, reference: Compariso
   }, () => {if (lineBytes) malformed('Partial final JSONL record without LF');});
   if (loaded.status === 'failed') return loaded;
   return {status: 'admitted-jsonl', path: reference.path, fact: loaded.fact, records, admission, loadingIssues: []};
+}
+
+export type ComparisonRawAvailability = {status: 'parsed'; path: string}
+  | {status: 'absent' | 'malformed' | 'unreadable'; path: string; reason: string};
+export interface ComparisonLoadedDocument<T> {
+  value: T | null; fact: ComparisonByteFact | null; availability: ComparisonRawAvailability;
+}
+export interface ComparisonLoadedBootstrapRun {
+  identity: ComparisonIdentity; artifactDirectory: string; descriptor: ComparisonScheduledRun | null;
+  manifest: ComparisonManifest | null; captureValidation: ComparisonValidation | null;
+  rawAvailability: {descriptor: ComparisonRawAvailability; manifest: ComparisonRawAvailability; captureValidation: ComparisonRawAvailability};
+  loadingIssues: ComparisonLoadingIssue[]; additionalLoadingIssueCount: number;
+}
+const claimSchema = z.strictObject({...comparisonVersionShape, kind: z.literal('invocation-ownership-claim'),
+  invocationId: z.uuid(), createdAt: z.iso.datetime(), purpose: z.enum(['publication', 'conformance']), configuration: comparisonInvocationSchema});
+type Claim = z.infer<typeof claimSchema>;
+export interface ComparisonLoadedInvocationBootstrap {
+  family: {collectorVersion: '2.0.0'; analyzerVersion: '2.0.0'} | null;
+  root: {claim: ComparisonLoadedDocument<Claim>; ledger: ComparisonLoadedDocument<z.infer<typeof comparisonCaptureInvocationSchema>>;
+    seal: ComparisonLoadedDocument<z.infer<typeof comparisonDatasetInventorySchema>>};
+  scheduled: number | null; runs: ComparisonLoadedBootstrapRun[];
+  collection: {status: 'partial' | 'unavailable'; reasons: string[]; onDiskConsistencyOnly: true};
+  loadingIssues: ComparisonLoadingIssue[]; additionalLoadingIssueCount: number;
+  physicalInventory: {status: 'not-inspected' | 'complete' | 'partial'; files: {path: string; role: ComparisonRawRole; byteLength: number; dev: string; ino: string; mtimeNs: string; ctimeNs: string}[];
+    directories: string[]; candidates: {root: number; slots: {path: string; count: number}[]}; inspectedEntries: number;
+    ioFailures: {operation: 'directory-open' | 'directory-read' | 'directory-close' | 'path-stat'; path: string; error: unknown}[]; additionalIoFailureCount: number;
+    unknownEntries: {path: string; type: 'file' | 'directory' | 'symlink' | 'other' | 'unavailable'; byteLength: number | null; reason?: string}[]; additionalUnknownEntryCount: number};
+}
+function issueList() {
+  const loadingIssues: ComparisonLoadingIssue[] = []; let additionalLoadingIssueCount = 0;
+  return {loadingIssues, add(issue: ComparisonLoadingIssue) {if (loadingIssues.length < 32) loadingIssues.push(issue); else additionalLoadingIssueCount++;},
+    count: () => additionalLoadingIssueCount};
+}
+/** Data-only measured bootstrap: no declared SHA is fabricated, and no absence mode is public. */
+async function measuredJson(root: string, path: string, role: 'root-json' | 'dataset-seal' | 'slot-json'): Promise<LoadedComparisonJson> {
+  const reference = {path, role}, scanner = new JsonAdmission(reference), chunks: Buffer[] = [];
+  let admission: ComparisonJsonAdmission | undefined;
+  const loaded = await readCheckedMember(root, reference, bytes => {scanner.feed(bytes); chunks.push(Buffer.from(bytes));},
+    () => {admission = scanner.finish();}, 'measured-bootstrap');
+  if (loaded.status === 'failed') return loaded;
+  try {return {status: 'admitted-json', path, fact: loaded.fact, value: JSON.parse(Buffer.concat(chunks, loaded.fact.byteLength).toString('utf8')) as unknown,
+    admission: admission!, loadingIssues: []};}
+  catch (error) {return {status: 'failed', path, fact: loaded.fact, loadingIssues: [{kind: 'malformed', path, role, reason: preview(error)}]};}
+}
+/** Bounded physical membership only: file SHA/aggregate/reference closure follows separately. */
+async function physicalInventory(root: string, slots: string[], seal: z.infer<typeof comparisonDatasetInventorySchema> | null,
+  add: (issue: ComparisonLoadingIssue) => void): Promise<ComparisonLoadedInvocationBootstrap['physicalInventory']> {
+  const result: ComparisonLoadedInvocationBootstrap['physicalInventory'] = {status: 'complete', files: [], directories: [], candidates: {root: 0, slots: slots.map(path => ({path, count: 0}))}, inspectedEntries: 0, ioFailures: [], additionalIoFailureCount: 0, unknownEntries: [], additionalUnknownEntryCount: 0};
+  const directories = new Set<string>(['']), declared = new Set([...(seal?.members ?? []), ...(seal?.absentMembers ?? [])].map(member => member.path)), candidates = new Set<string>();
+  const requiredDirectories = new Set<string>(['']), absentPaths = new Set(seal?.absentMembers.map(member => member.path) ?? []);
+  const rootNames = new Set(['invocation-claim.json', 'invocation.json', 'dataset-finalization-failure.json', 'dataset-seal.json']);
+  const slotNames = new Set(['descriptor.json', 'fixture.json', 'validation.json', 'exceptions.json', 'producer.jsonl', 'page.jsonl', 'page-exceptions.jsonl', 'trace.json', 'manifest.json', 'capture-metadata.json', 'phases.json', 'checkpoints.json', 'final-runtime.json', 'visible-validation.json', 'trace-auxiliary.json', 'native-dispatch-results.json', 'capture-status.json', 'finalization-status.json', 'evidence.json', 'raw-inventory.json']);
+  const parentPaths = (path: string) => {const parts = path.split('/'); return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/'));};
+  for (const slot of slots) {directories.add(slot); requiredDirectories.add(slot); parentPaths(slot).forEach(path => {directories.add(path); requiredDirectories.add(path);});}
+  const issue = (path: string, kind: 'identity' | 'membership' | 'unreadable', reason: string) => {result.status = 'partial'; add({path: path || '.', kind, role: 'unknown', reason: preview(reason)});};
+  if (slots.some((path, i) => slots.some((other, j) => i !== j && (path === other || path.startsWith(other + '/'))))) {
+    issue('.', 'membership', 'Declared slot prefixes overlap'); return result;
+  }
+  const owner = (path: string) => slots.findIndex(slot => path.startsWith(slot + '/'));
+  function role(path: string): ComparisonRawRole | null {
+    const original = path.replace(/\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\.tmp$/, ''), index = owner(path), temporary = original !== path;
+    if (index < 0) return rootNames.has(original) ? temporary ? 'temporary' : original === 'dataset-seal.json' ? 'dataset-seal' : 'root-json' : null;
+    const local = original.slice(slots[index]!.length + 1);
+    if (slotNames.has(local)) return temporary ? 'temporary' : local === 'trace.json' ? 'trace' : local.endsWith('.jsonl') ? 'jsonl' : 'slot-json';
+    if (!declared.has(path)) return null;
+    if (['instrumentation/pre-navigation.js', 'instrumentation/main.js'].includes(local)) return temporary ? 'temporary' : 'installer';
+    if (['provenance/acquisition.json', 'provenance/build-evidence.json', 'instrumentation/build-evidence.json'].includes(local)
+      || /^provenance\/packages\/.+\/package\.json$/.test(local)) return temporary ? 'temporary' : 'slot-json';
+    if (/^(?:provenance\/(?:source|assets)|instrumentation\/(?:source|compiled))\/.+/.test(local)) return temporary ? 'temporary' : 'retained-opaque';
+    return null;
+  }
+  for (const member of [...(seal?.members ?? []), ...(seal?.absentMembers ?? [])]) {
+    if (role(member.path) === null) {issue(member.path, 'membership', 'Declared raw member has no admitted exact role'); continue;}
+    parentPaths(member.path).forEach(path => directories.add(path));
+  }
+  for (const member of seal?.members ?? []) parentPaths(member.path).forEach(path => requiredDirectories.add(path));
+  function candidate(path: string) {
+    if (candidates.has(path)) return; candidates.add(path);
+    const index = owner(path), count = index < 0 ? ++result.candidates.root : ++result.candidates.slots[index]!.count, limit = index < 0 ? 16 : 4096;
+    if (count > limit) {result.status = 'partial'; throw new MemberFailure({kind: 'admission-limit', path, role: role(path) ?? 'unknown', limitName: index < 0 ? 'rootCandidates' : 'slotCandidates', limit, observed: count, observation: 'lower-bound', reason: 'Physical candidate capacity exceeded'});}
+  }
+  const identities = new Map<string, string>(), originalFiles = new Map<string, BigIntStats>(), directoryFacts = new Map<string, BigIntStats>();
+  const maxEntries = 2 * (147472 + directories.size + 2 + slots.length), maxReads = maxEntries + 2 * directories.size;
+  let reads = 0;
+  const ioFailure = (operation: (typeof result.ioFailures)[number]['operation'], path: string, error: unknown) => {
+    if (result.ioFailures.length < 32) result.ioFailures.push({operation, path: path || '.', error}); else result.additionalIoFailureCount++;
+  };
+  async function pathStat(path: string): Promise<BigIntStats> {
+    try {return await fs.lstat(join(root, path), {bigint: true});}
+    catch (error) {ioFailure('path-stat', path, error); throw new MemberFailure({kind: 'unreadable', path: path || '.', role: role(path) ?? 'unknown', reason: preview(error)});}
+  }
+  const unknown = (entry: (typeof result.unknownEntries)[number]) => {
+    if (result.unknownEntries.length < 32) result.unknownEntries.push(entry); else result.additionalUnknownEntryCount++;
+  };
+  async function enumerate(path: string, visit: (name: string) => Promise<void>): Promise<string[]> {
+    let handle: Awaited<ReturnType<typeof fs.opendir>> | undefined, primaryPresent = false, primary: unknown; const names: string[] = [], cleanup: unknown[] = [];
+    let operation: (typeof result.ioFailures)[number]['operation'] = 'directory-open';
+    try {
+      handle = await fs.opendir(join(root, path), {bufferSize: 1});
+      for (;;) {
+        if (reads === maxReads) throw new MemberFailure({kind: 'admission-limit', path: path || '.', role: 'unknown', limitName: 'directoryReadWork', limit: maxReads, observed: reads + 1, observation: 'lower-bound', reason: 'Bounded directory read work exhausted before next entry allocation'});
+        reads++; operation = 'directory-read'; const entry = await handle.read(); if (entry === null) break;
+        result.inspectedEntries++; if (result.inspectedEntries > maxEntries) throw new MemberFailure({kind: 'admission-limit', path: path || '.', role: 'unknown', limitName: 'directoryEntries', limit: maxEntries, observed: result.inspectedEntries, observation: 'lower-bound', reason: 'Bounded directory entry work exceeded'});
+        names.push(entry.name); operation = 'path-stat'; await visit(entry.name);
+      }
+    } catch (error) {primaryPresent = true; primary = error; if (!(error instanceof MemberFailure)) ioFailure(operation, path, error);}
+    finally {if (handle) try {await handle.close();} catch (error) {cleanup.push(error); ioFailure('directory-close', path, error);}}
+    if (primaryPresent && !(primary instanceof MemberFailure)) issue(path, 'unreadable', preview(primary));
+    for (const error of cleanup) issue(path, 'unreadable', preview(error, 'Original directory close failed: '));
+    if (primaryPresent && primary instanceof MemberFailure) throw primary;
+    return names.sort();
+  }
+  const memberships = new Map<string, string[]>(), queue = [''];
+  try {
+    for (const absent of seal?.absentMembers ?? []) if (role(absent.path) !== null) candidate(absent.path);
+    for (let index = 0; index < queue.length; index++) {
+      const path = queue[index]!, before = await pathStat(path);
+      if (before.isSymbolicLink() || !before.isDirectory()) {issue(path, 'identity', 'Admitted directory is not an original regular directory'); continue;}
+      directoryFacts.set(path, before); if (path) result.directories.push(path);
+      memberships.set(path, await enumerate(path, async name => {
+        const relative = path ? path + '/' + name : name;
+        if (!normalizedMember(relative)) {issue('.', 'membership', 'Physical entry path is not normalized'); return;}
+        const admittedRole = role(relative), derived = relative === 'comparison-results.json' || relative === 'comparison-summary.md' || slots.some(slot => relative === slot + '/results.json');
+        if (admittedRole === null && !derived && !directories.has(relative)) {
+          issue(relative, 'membership', 'Unknown physical member or directory; payload not read');
+          let stat: BigIntStats; try {stat = await pathStat(relative);} catch (error) {
+            unknown({path: relative, type: 'unavailable', byteLength: null, reason: error instanceof MemberFailure ? error.issue.reason : preview(error)}); throw error;
+          }
+          const type = stat.isSymbolicLink() ? 'symlink' : stat.isFile() ? 'file' : stat.isDirectory() ? 'directory' : 'other';
+          unknown({path: relative, type, byteLength: type === 'file' && stat.size <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(stat.size) : null,
+            ...(type === 'file' && stat.size > BigInt(Number.MAX_SAFE_INTEGER) ? {reason: 'Unknown original file size exceeds safe integer representation'} : {})}); return;
+        }
+        if (admittedRole !== null) candidate(relative);
+        const stat = await pathStat(relative);
+        if (admittedRole !== null || derived) {
+          if (stat.isSymbolicLink() || !stat.isFile()) {issue(relative, 'identity', 'Admitted leaf is not an original regular file'); return;}
+          const key = `${stat.dev}:${stat.ino}`, previous = identities.get(key);
+          if (previous !== undefined && previous !== relative) {issue(relative, 'identity', 'Distinct physical paths have a hardlink alias'); return;} identities.set(key, relative);
+          originalFiles.set(relative, stat);
+          if (!derived) {
+            if (absentPaths.has(relative)) issue(relative, 'membership', 'Explicitly absent raw candidate is physically present');
+            const limit = ROLE_BYTE_LIMITS[admittedRole as Exclude<ComparisonRawRole, 'unknown'>];
+            if (stat.size > BigInt(limit)) {result.status = 'partial'; add({kind: 'admission-limit', path: relative, role: admittedRole!, limitName: 'roleBytes', limit,
+              observed: stat.size <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(stat.size) : limit + 1, observation: stat.size <= BigInt(Number.MAX_SAFE_INTEGER) ? 'exact' : 'lower-bound', reason: 'Observed physical member exceeds its fixed role-byte limit'});}
+            else result.files.push({path: relative, role: admittedRole!, byteLength: Number(stat.size), dev: String(stat.dev), ino: String(stat.ino), mtimeNs: String(stat.mtimeNs), ctimeNs: String(stat.ctimeNs)});
+          }
+        } else if (stat.isSymbolicLink() || !stat.isDirectory()) issue(relative, 'identity', 'Admitted directory is not an original regular directory');
+        else queue.push(relative);
+      }));
+    }
+    for (const path of requiredDirectories) if (!directoryFacts.has(path)) issue(path, 'membership', 'Required admitted directory is physically absent');
+    for (const [path, before] of directoryFacts) {
+      const after = await pathStat(path);
+      if (after.isSymbolicLink() || !after.isDirectory() || before.dev !== after.dev || before.ino !== after.ino) {issue(path, 'identity', 'Owned directory identity changed'); continue;}
+      const names = await enumerate(path, async () => {}), original = memberships.get(path)!;
+      const closed = await pathStat(path);
+      if (closed.isSymbolicLink() || !closed.isDirectory() || before.dev !== closed.dev || before.ino !== closed.ino)
+        issue(path, 'identity', 'Owned directory identity changed during final enumeration');
+      if (names.length !== original.length || names.some((name, index) => name !== original[index])) issue(path, 'identity', 'Owned directory membership changed');
+    }
+    for (const [path, before] of originalFiles) {
+      const after = await pathStat(path);
+      if (after.isSymbolicLink() || !after.isFile() || !identity(before, after)) issue(path, 'identity', 'Original regular file identity changed during physical inspection');
+    }
+  } catch (error) {result.status = 'partial'; if (error instanceof MemberFailure) add(error.issue); else issue('.', 'unreadable', preview(error));}
+  result.files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0); result.directories.sort(); return result;
+}
+/** Strict legacy root/row bootstrap only. This never attests completed physical collection closure. */
+export async function loadComparisonInvocation(root: string): Promise<ComparisonLoadedInvocationBootstrap> {
+  const issues = issueList();
+  const add = (path: string, reason: string, kind: ComparisonLoadingIssue['kind'] = 'malformed', role: ComparisonRawRole = 'root-json') => {
+    if (kind === 'admission-limit') throw new Error('Admission failures require their complete named fields');
+    const issue: ComparisonLoadingIssue = {kind, path, role, reason: preview(reason)}; issues.add(issue); return issue;
+  };
+  const unparsed = <T>(path: string): ComparisonLoadedDocument<T> => ({value: null, fact: null,
+    availability: {status: 'unreadable', path, reason: 'Document not admitted by root bootstrap'}});
+  const ledgerRaw = await measuredJson(root, 'invocation.json', 'root-json');
+  const claimRaw = await measuredJson(root, 'invocation-claim.json', 'root-json');
+  const result: ComparisonLoadedInvocationBootstrap = {family: null, root: {claim: unparsed('invocation-claim.json'), ledger: unparsed('invocation.json'), seal: unparsed('dataset-seal.json')},
+    scheduled: null, runs: [], collection: {status: 'unavailable', reasons: ['Physical inventory and dataset byte closure not yet verified'], onDiskConsistencyOnly: true},
+    loadingIssues: issues.loadingIssues, additionalLoadingIssueCount: 0,
+    physicalInventory: {status: 'not-inspected', files: [], directories: [], candidates: {root: 0, slots: []}, inspectedEntries: 0, ioFailures: [], additionalIoFailureCount: 0, unknownEntries: [], additionalUnknownEntryCount: 0}};
+  result.root.ledger.fact = ledgerRaw.fact; result.root.claim.fact = claimRaw.fact;
+  function document<T>(raw: LoadedComparisonJson, schema: z.ZodType<T>, role: ComparisonRawRole): ComparisonLoadedDocument<T> {
+    if (raw.status === 'failed') {
+      raw.loadingIssues.forEach(issue => issues.add(issue)); const first = raw.loadingIssues[0];
+      return {value: null, fact: raw.fact, availability: {status: first?.kind === 'absent' ? 'absent' : first?.kind === 'malformed' ? 'malformed' : 'unreadable',
+        path: raw.path, reason: first?.reason ?? 'Original document unavailable'}};
+    }
+    const parsed = schema.safeParse(raw.value);
+    if (!parsed.success) {const issue = add(raw.path, 'Strict raw schema rejected: ' + preview(parsed.error.issues[0]?.message ?? 'Invalid raw document'), 'malformed', role);
+      return {value: null, fact: raw.fact, availability: {status: 'malformed', path: raw.path, reason: issue.reason}};}
+    return {value: parsed.data, fact: raw.fact, availability: {status: 'parsed', path: raw.path}};
+  }
+  for (const rootRaw of [ledgerRaw, claimRaw]) {
+    if (rootRaw.status !== 'admitted-json') continue;
+    const value = rootRaw.value;
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) continue;
+    const header = value as Record<string, unknown>;
+    // A missing/malformed header may use the independently admitted claim. An explicit
+    // readable unknown/mixed pair is a contradiction, never permission to fall back.
+    if (typeof header['collectorVersion'] === 'string' && typeof header['analyzerVersion'] === 'string'
+      && (header['collectorVersion'] !== '2.0.0' || header['analyzerVersion'] !== '2.0.0')) {
+      const issue = add(rootRaw.path, 'Unsupported comparison root version pair or suite');
+      const rejected = rootRaw.path === 'invocation.json' ? result.root.ledger : result.root.claim;
+      rejected.availability = {status: 'malformed', path: rootRaw.path, reason: issue.reason};
+      for (const raw of [ledgerRaw, claimRaw]) if (raw.status === 'failed') raw.loadingIssues.forEach(issue => issues.add(issue));
+      result.additionalLoadingIssueCount = issues.count(); return result;
+    }
+    if (z.strictObject(comparisonVersionShape).safeParse(Object.fromEntries(Object.keys(comparisonVersionShape).map(key => [key, header[key]]))).success) {
+      result.family = {collectorVersion: '2.0.0', analyzerVersion: '2.0.0'}; break;
+    }
+  }
+  result.root.ledger = document(ledgerRaw, comparisonCaptureInvocationSchema, 'root-json');
+  result.root.claim = document(claimRaw, claimSchema, 'root-json');
+  if (result.family === null) {result.additionalLoadingIssueCount = issues.count(); return result;}
+  result.root.seal = document(await measuredJson(root, 'dataset-seal.json', 'dataset-seal'), comparisonDatasetInventorySchema, 'dataset-seal');
+  const ledger = result.root.ledger.value, claim = result.root.claim.value;
+  if (ledger && claim && (ledger.createdAt !== claim.createdAt || ledger.purpose !== claim.purpose
+    || JSON.stringify(ledger.configuration) !== JSON.stringify(claim.configuration))) add('invocation-claim.json', 'Actual claim differs from ledger configuration, purpose or creation time', 'identity');
+  if (ledger) {
+    const config = ledger.configuration;
+    if (config.rounds > 3 || config.adapterProfiles.length !== 1 || config.adapterProfiles[0] !== 'threadplane-langgraph-custom-transport'
+      || config.mode === 'headed' && (config.rounds !== 3 || ledger.purpose !== 'publication')
+      || config.mode === 'headless' && ledger.purpose !== 'conformance') add('invocation.json', 'Unsupported bounded invocation configuration');
+    else {
+      result.scheduled = ledger.runs.length; result.collection.status = 'partial';
+      result.physicalInventory = await physicalInventory(root, ledger.runs.map(row => row.artifactDirectory), result.root.seal.value, issue => issues.add(issue));
+      if (ledger.status === 'pending' || ledger.runs.some(row => row.status === 'scheduled' || row.status === 'running')) add('invocation.json', 'Invocation ledger is not terminal');
+      for (const row of ledger.runs) {
+        const rowIssues = issueList(), identity: ComparisonIdentity = {
+          schemaVersion: ledger.schemaVersion, suite: ledger.suite, suiteVersion: ledger.suiteVersion, collectorVersion: ledger.collectorVersion, analyzerVersion: ledger.analyzerVersion,
+          repetition: row.repetition, scenarioId: row.scenarioId, round: row.round, caseIndex: row.caseIndex, adapterProfile: row.adapterProfile};
+        async function slotDocument<T>(name: string, schema: z.ZodType<T>): Promise<ComparisonLoadedDocument<T>> {
+          const path = row.artifactDirectory + '/' + name, raw = await measuredJson(root, path, 'slot-json');
+          const doc = document(raw, schema, 'slot-json');
+          // Row diagnostics are the independently observed errors from this exact member, not a root-list slice.
+          if (raw.status === 'failed') raw.loadingIssues.forEach(issue => rowIssues.add(issue));
+          else if (doc.value === null) rowIssues.add({kind: 'malformed', path, role: 'slot-json', reason: 'Strict raw schema rejected'});
+          if (doc.value !== null) {
+            const original = doc.value as Record<string, unknown>;
+            if (Object.entries(identity).some(([key, value]) => (name === 'manifest.json' && key === 'adapterProfile'
+              ? (doc.value as ComparisonManifest).adapter.profile : original[key]) !== value)
+              || name === 'descriptor.json' && (original['artifactDirectory'] !== row.artifactDirectory || original['seed'] !== config.seed || original['mode'] !== config.mode)) {
+              const issue = add(path, 'Raw member identity differs from actual ledger row', 'identity', 'slot-json'); rowIssues.add(issue);
+              doc.value = null; doc.availability = {status: 'unreadable', path, reason: issue.reason};
+            }
+          }
+          return doc;
+        }
+        const descriptor = await slotDocument('descriptor.json', comparisonScheduledRunSchema), manifest = await slotDocument('manifest.json', comparisonManifestSchema),
+          validation = await slotDocument('validation.json', comparisonValidationSchema);
+        // Exceptions are baseline diagnostic evidence; their absence cannot be hidden by a failed-not-started label.
+        await slotDocument('exceptions.json', comparisonExceptionsSchema);
+        result.runs.push({identity, artifactDirectory: row.artifactDirectory, descriptor: descriptor.value, manifest: manifest.value, captureValidation: validation.value,
+          rawAvailability: {descriptor: descriptor.availability, manifest: manifest.availability, captureValidation: validation.availability},
+          loadingIssues: rowIssues.loadingIssues, additionalLoadingIssueCount: rowIssues.count()});
+      }
+    }
+  }
+  result.additionalLoadingIssueCount = issues.count();
+  return result;
 }
