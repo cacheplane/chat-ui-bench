@@ -1,15 +1,17 @@
 import {createHash} from 'node:crypto';
-import {canonicalSerialize,preNavigationOptionsSchema,mainOptionsSchema,createComparisonBuffer} from '@chat-ui-bench/contract';
+import {canonicalSerialize,comparisonSchemasForVersionPair,createComparisonBuffer,type ComparisonSchemaVersion} from '@chat-ui-bench/contract';
 import {installComparisonPreNavigation,installComparisonObservations} from './comparison-observations.js';
 export interface ComparisonInstallerPair {preNavigation:string;main:string;preNavigationByteLength:number;mainByteLength:number;installerSha256:string;}
 /** Primitive strings are the entire public input boundary: no caller object traversal. */
-export function assembleComparisonInstaller(preNavigationOptionsJSON:string,mainOptionsJSON:string):ComparisonInstallerPair {
+export function assembleComparisonInstaller(preNavigationOptionsJSON:string,mainOptionsJSON:string,version:ComparisonSchemaVersion='2.0.0'):ComparisonInstallerPair {
+  if(typeof version!=='string'||version!=='2.0.0'&&version!=='2.1.0')throw new Error('Unsupported comparison installer schema version');
+  const family=version==='2.0.0'?comparisonSchemasForVersionPair({collectorVersion:version,analyzerVersion:version}):comparisonSchemasForVersionPair({collectorVersion:version,analyzerVersion:version});
   function parse<T>(input:string,schema:{parse(value:unknown):T}):T {
     if(typeof input!=='string'||input.length>65536)throw new Error('Options must be a bounded primitive JSON string');
     if(Buffer.byteLength(input,'utf8')>65536)throw new Error('Options UTF8 limit exceeded');
     const value=schema.parse(JSON.parse(input));if(canonicalSerialize(value)!==input)throw new Error('Options must use exact canonical JSON');return value;
   }
-  const pre=parse(preNavigationOptionsJSON,preNavigationOptionsSchema),main=parse(mainOptionsJSON,mainOptionsSchema);
+  const pre=parse(preNavigationOptionsJSON,family.preNavigationOptionsSchema),main=parse(mainOptionsJSON,family.mainOptionsSchema);
   if(canonicalSerialize(pre.identity)!==canonicalSerialize(main.identity))throw new Error('Installer pair identities differ');
   const factory=Function.prototype.toString.call(createComparisonBuffer);
   function source(kind:'pre-navigation'|'main',installer:Function,input:string):string {

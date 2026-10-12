@@ -6,6 +6,7 @@ import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {comparisonSchemasForVersionPair} from '@chat-ui-bench/contract';
 function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>{resolve=done;});void promise.catch(()=>{});return {promise,resolve};}
 test('pure help returns success without loading capture runtime or acquiring resources',async()=>{
  const messages:string[]=[],errors:string[]=[],loadRuntime=vi.fn(async()=>{throw new Error('Forbidden runtime load');});
@@ -20,16 +21,29 @@ test('valid whole configuration reaches the lazy actual runtime boundary and ret
  const errors:string[]=[],loadRuntime=vi.fn(async()=>{throw false;});
  expect(await runLongThreadCaptureMain(['--out','/private/tmp/unused','--mode','headless','--rounds','1'],{loadRuntime,stderr:value=>errors.push(value),stdout:()=>{}})).toBe(1);expect(loadRuntime).toHaveBeenCalledOnce();expect(errors).toEqual(['false']);
 });
+test('actual CLI scheduling explicitly selects the fresh family at the runtime boundary',async()=>{
+ const calls:unknown[][]=[],errors:string[]=[];
+ const code=await runLongThreadCaptureMain(['--out','/private/tmp/unused','--mode','headless','--rounds','1'],{stdout:()=>{},stderr:message=>errors.push(message),async loadRuntime(){return {
+  createLongThreadCaptureDriver:options=>createLongThreadCaptureDriver(options,{async launch(){throw Error('Forbidden browser');}}),
+  async runLongThreadInvocation(...args){calls.push(args);throw false;},
+ };}});
+ expect(code).toBe(1);expect(errors).toEqual(['false']);expect(calls).toHaveLength(1);expect(calls[0]).toHaveLength(3);expect(calls[0]![2]).toEqual({version:'2.1.0'});
+});
 test('actual main awaits genuine root ownership settlement and finalization and returns nonzero for sealed failed collection',async()=>{
  vi.useFakeTimers({toFake:['Date','setTimeout','clearTimeout']});vi.setSystemTime(0);
  const directory=await mkdtemp(join(tmpdir(),'g-main-root-')),entered=deferred<void>(),hold=deferred<void>(),disposalArmed=deferred<void>(),executionSeen=deferred<ComparisonInvocationExecution>(),messages:string[]=[],errors:string[]=[];let attempts=0,factories=0,loads=0,finished=false;
  const main=runLongThreadCaptureMain(['--out',directory,'--mode','headless','--rounds','1'],{stdout:value=>messages.push(value),stderr:value=>errors.push(value),async loadRuntime(){loads++;return {
-   createLongThreadCaptureDriver(options){factories++;expect(options.originalRoot).toBe(fileURLToPath(new URL('../../../',import.meta.url)));expect(options.configuration.configuration.caseOrder).toHaveLength(12);expect(options.configuration.purpose).toBe('conformance');return createLongThreadCaptureDriver(options,{async acquireInstrumentation(session){attempts++;expect(session.snapshotAcquisition().acquisition.status).toBe('partial');entered.resolve();await hold.promise;throw false;},async launch(){throw new Error('Forbidden browser after acquire rejection');}});},
-   async runLongThreadInvocation(configuration,driver){const execution=await runLongThreadInvocation(configuration,driver,{clock:{now:Date.now,setTimer(callback,delay){if(delay===10000)disposalArmed.resolve();return setTimeout(callback,delay);},clearTimer:clearTimeout}});executionSeen.resolve(execution);return execution;}
+   createLongThreadCaptureDriver(options){factories++;expect(options.originalRoot).toBe(fileURLToPath(new URL('../../../',import.meta.url)));expect(options.configuration.configuration.caseOrder).toHaveLength(12);expect(options.configuration.purpose).toBe('conformance');return createLongThreadCaptureDriver(options,{async acquireInstrumentation(session){attempts++;expect(session.snapshotAcquisition().acquisition.status).toBe('partial');expect(session.snapshotAcquisition().acquisition.collectorVersion).toBe('2.1.0');entered.resolve();await hold.promise;throw false;},async launch(){throw new Error('Forbidden browser after acquire rejection');}});},
+   async runLongThreadInvocation(configuration,driver,selected){const execution=await runLongThreadInvocation(configuration,driver,{...selected,clock:{now:Date.now,setTimer(callback,delay){if(delay===10000)disposalArmed.resolve();return setTimeout(callback,delay);},clearTimer:clearTimeout}});executionSeen.resolve(execution);return execution;}
  };}}).finally(()=>{finished=true;});void main.catch(()=>{});
  try{
    await entered.promise;await vi.advanceTimersByTimeAsync(60000);await disposalArmed.promise;await vi.advanceTimersByTimeAsync(10000);const execution=await executionSeen.promise;
    expect(loads).toBe(1);expect(factories).toBe(1);expect(attempts).toBe(1);expect(execution.unsafeOutstanding).toBe(true);expect(execution.finalized).toBe(false);expect(finished).toBe(false);await expect(readFile(join(directory,'dataset-seal.json'))).rejects.toMatchObject({code:'ENOENT'});
-   hold.resolve();expect(await main).toBe(1);expect(execution.unsafeOutstanding).toBe(false);expect(execution.finalized).toBe(true);expect(execution.invocation.runs.every(row=>row.status==='failed')).toBe(true);expect(JSON.parse(await readFile(join(directory,'dataset-seal.json'),'utf8')).status).toBe('sealed');expect(errors).toEqual([]);expect(messages).toEqual([`Long-thread conformance collection failed: ${directory}`]);expect(attempts).toBe(1);
+   hold.resolve();expect(await main).toBe(1);expect(execution.unsafeOutstanding).toBe(false);expect(execution.finalized).toBe(true);expect(execution.invocation.runs.every(row=>row.status==='failed')).toBe(true);
+   const fresh=comparisonSchemasForVersionPair({collectorVersion:'2.1.0',analyzerVersion:'2.1.0'});
+   const ledger=fresh.comparisonCaptureInvocationSchema.parse(JSON.parse(await readFile(join(directory,'invocation.json'),'utf8')));
+   const seal=fresh.comparisonDatasetInventorySchema.parse(JSON.parse(await readFile(join(directory,'dataset-seal.json'),'utf8')));expect(seal.status).toBe('sealed');expect(seal.invocationLedger).toEqual(ledger);expect(execution.invocation.collectorVersion).toBe('2.1.0');
+   for(const slot of ledger.runs){const local=join(directory,slot.artifactDirectory);fresh.comparisonScheduledRunSchema.parse(JSON.parse(await readFile(join(local,'descriptor.json'),'utf8')));fresh.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(local,'capture-status.json'),'utf8')));fresh.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(local,'raw-inventory.json'),'utf8')));}
+   expect(ledger.runs.slice(1).every(slot=>slot.reasons.some(reason=>reason.includes('failed-not-started')))).toBe(true);expect(errors).toEqual([]);expect(messages).toEqual([`Long-thread conformance collection failed: ${directory}`]);expect(attempts).toBe(1);
  }finally{hold.resolve();await main;vi.useRealTimers();await rm(directory,{recursive:true,force:true});}
 });

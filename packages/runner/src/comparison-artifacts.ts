@@ -1,8 +1,10 @@
+import {comparisonRuntimeFamily, type ComparisonRuntimeIdentity as ComparisonIdentity, type ComparisonRuntimeDataset as ComparisonDatasetInventory} from './comparison-runtime-family.js';
+import type {ComparisonSchemaVersion} from '@chat-ui-bench/contract';
 import {constants, type Stats} from 'node:fs';
 import {lstat, mkdir, open, readdir, realpath, rename, unlink, type FileHandle} from 'node:fs/promises';
 import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
-import {comparisonArtifactPathSchema, comparisonInventoryFileSchema, comparisonDatasetInventorySchema, comparisonCaptureInvocationSchema, comparisonScheduledRunSchema, comparisonValidationSchema, comparisonExceptionsSchema, comparisonEvidenceSchema, comparisonRawInventorySchema, comparisonCaptureStatusSchema, comparisonDatasetFinalizationFailureSchema, canonicalSerialize, type ComparisonInventoryFile, type ComparisonDatasetInventory, type ComparisonIdentity} from '@chat-ui-bench/contract';
+import {comparisonArtifactPathSchema, comparisonInventoryFileSchema, canonicalSerialize, type ComparisonInventoryFile} from '@chat-ui-bench/contract';
 
 export interface ComparisonPayloadFile {path: string; status: 'complete' | 'partial'; reason?: string}
 export interface ComparisonRawStream {write(bytes: Uint8Array): Promise<void>; complete(): Promise<void>}
@@ -325,7 +327,8 @@ export class ComparisonArtifactWriter {
     });
   }
   /** Final root mutation. Normal admission and retries stay frozen even on failure. */
-  publishDatasetSeal(sources:readonly ComparisonDatasetSlotSource[],build:(checked:ComparisonDatasetSealFacts)=>ComparisonDatasetInventory):Promise<void> {
+  publishDatasetSeal(sources:readonly ComparisonDatasetSlotSource[],build:(checked:ComparisonDatasetSealFacts)=>ComparisonDatasetInventory,version:ComparisonSchemaVersion='2.0.0'):Promise<void> {
+    const family=comparisonRuntimeFamily(version);
     if(this.candidateLimit!==16 || this.sealed || this.sealRequested || this.publicationRequested) return Promise.reject(new Error('Dataset publication requires an unfrozen root writer; retry is forbidden'));
     this.publicationRequested=true;
     const sealTemporary=`dataset-seal.json.${randomUUID()}.tmp`;
@@ -363,8 +366,8 @@ export class ComparisonArtifactWriter {
       try {
         if(!selected.length || sourceCount>36 || new Set(selected.map(s=>s.writer)).size!==selected.length || new Set(selected.map(s=>s.artifactDirectory)).size!==selected.length) throw new Error('Dataset requires unique bounded slot sources');
         await this.checkRoot(); if(this.streams.size) throw new Error('Dataset root has active streams');
-        claim=comparisonDatasetInventorySchema.shape.invocationClaim.parse(await this.readJson('invocation-claim.json'));
-        ledger=comparisonCaptureInvocationSchema.parse(await this.readJson('invocation.json'));
+        claim=family.comparisonDatasetInventorySchema.shape.invocationClaim.parse(await this.readJson('invocation-claim.json'));
+        ledger=family.comparisonCaptureInvocationSchema.parse(await this.readJson('invocation.json'));
         if(ledger.runs.length!==selected.length) throw new Error('Dataset sources differ from every scheduled ledger row');
         const collect=async():Promise<ComparisonDatasetInventory>=>{
           const members:ComparisonDatasetInventory['members']=[], absentMembers:ComparisonDatasetInventory['absentMembers']=[];
@@ -399,9 +402,9 @@ export class ComparisonArtifactWriter {
             comparisonArtifactPathSchema.parse(source.artifactDirectory);
             if(!source.ownershipSettled || !source.finalizationSucceeded || !writer.sealed || writer.candidateLimit!==4096 || writer.directory!==join(this.directory,source.artifactDirectory) || source.artifactDirectory!==row.artifactDirectory || source.status!==row.status) throw new Error('Slot source is not settled, sealed or descriptor-bound');
             await writer.drain();
-            const descriptor=comparisonScheduledRunSchema.parse(await writer.readJson('descriptor.json'));
-            const validation=comparisonValidationSchema.parse(await writer.readJson('validation.json'));
-            const exceptions=comparisonExceptionsSchema.parse(await writer.readJson('exceptions.json'));
+            const descriptor=family.comparisonScheduledRunSchema.parse(await writer.readJson('descriptor.json'));
+            const validation=family.comparisonValidationSchema.parse(await writer.readJson('validation.json'));
+            const exceptions=family.comparisonExceptionsSchema.parse(await writer.readJson('exceptions.json'));
             const expected={...source.identity,seed:ledger!.configuration.seed,mode:ledger!.configuration.mode,artifactDirectory:source.artifactDirectory};
             if(canonicalSerialize(descriptor)!==canonicalSerialize(expected) || validation.status!==source.status || canonicalSerialize(validation.reasons)!==canonicalSerialize(row.reasons) || Object.keys(source.identity).some(key=>validation[key as keyof typeof validation]!==source.identity[key as keyof ComparisonIdentity] || exceptions[key as keyof typeof exceptions]!==source.identity[key as keyof ComparisonIdentity])) throw new Error('Checked slot descriptor, verdict or exception identity differs');
             const prefix=source.artifactDirectory+'/';
@@ -410,7 +413,7 @@ export class ComparisonArtifactWriter {
             const manifests=collected.files.filter(f=>f.path==='evidence.json' || f.path==='raw-inventory.json');
             if(manifests.length!==1) throw new Error('Slot requires exactly one inventory manifest');
             const manifestPath=manifests[0]!.path;
-            const manifest=manifestPath==='evidence.json' ? comparisonEvidenceSchema.parse(await writer.readJson(manifestPath)) : comparisonRawInventorySchema.parse(await writer.readJson(manifestPath));
+            const manifest=manifestPath==='evidence.json' ? family.comparisonEvidenceSchema.parse(await writer.readJson(manifestPath)) : family.comparisonRawInventorySchema.parse(await writer.readJson(manifestPath));
             if(Object.keys(source.identity).some(key=>manifest[key as keyof typeof manifest]!==source.identity[key as keyof ComparisonIdentity])) throw new Error('Slot manifest identity differs');
             const raw=collected.files.filter(f=>f.path!==manifestPath);
             // Manifest statuses are driver facts; checked operation failure always takes precedence.
@@ -418,7 +421,7 @@ export class ComparisonArtifactWriter {
             if(canonicalSerialize(checked)!==canonicalSerialize(manifest.files) || raw.length!==manifest.files.length || raw.some(f=>!manifest.files.some(m=>m.path===f.path && m.sha256===f.sha256 && m.byteLength===f.byteLength))) throw new Error('Slot manifest has stale hashes or missing raw members');
             if('unavailableFiles' in manifest && canonicalSerialize([...manifest.unavailableFiles].sort((a,b)=>a.path.localeCompare(b.path)))!==canonicalSerialize([...collected.reconciled.absent].sort((a,b)=>a.path.localeCompare(b.path)))) throw new Error('Slot manifest absent members differ');
             if(!raw.some(f=>f.path==='capture-status.json')) throw new Error('Every slot requires checked owner capture-status.json');
-            const status=comparisonCaptureStatusSchema.parse(await writer.readJson('capture-status.json'));
+            const status=family.comparisonCaptureStatusSchema.parse(await writer.readJson('capture-status.json'));
             if(Object.keys(source.identity).some(key=>status[key as keyof typeof status]!==source.identity[key as keyof ComparisonIdentity])) throw new Error('Capture status identity differs');
             if((status.evidenceMetadata.status==='available')!==(manifestPath==='evidence.json')) throw new Error('Capture status evidence availability differs from actual slot manifest');
             const payloads=manifest.files.filter(f=>f.path!=='capture-status.json').map(f=>({path:f.path,status:f.status,...(f.reason!==undefined?{reason:f.reason}:{})}));
@@ -440,16 +443,16 @@ export class ComparisonArtifactWriter {
               if(entry.isSymbolicLink() || !entry.isFile() && !entry.isDirectory() || entry.isDirectory()!==directoryIdentities.has(path)) throw new Error('Unexpected dataset entry type: '+path);
             }
           }
-          const rootClaim=comparisonDatasetInventorySchema.shape.invocationClaim.parse(await this.readJson('invocation-claim.json'));
-          const rootLedger=comparisonCaptureInvocationSchema.parse(await this.readJson('invocation.json'));
+          const rootClaim=family.comparisonDatasetInventorySchema.shape.invocationClaim.parse(await this.readJson('invocation-claim.json'));
+          const rootLedger=family.comparisonCaptureInvocationSchema.parse(await this.readJson('invocation.json'));
           if(canonicalSerialize(rootClaim)!==canonicalSerialize(claim) || canonicalSerialize(rootLedger)!==canonicalSerialize(ledger)) throw new Error('Claim or ledger changed during publication');
           const ledgerMember=members.find(m=>m.path==='invocation.json'); if(!ledgerMember) throw new Error('Missing checked ledger');
           const {schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion}=claim!;
           durabilityDirectories ??= directoryIdentities;
-          return comparisonDatasetInventorySchema.parse({schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion,invocationId:claim!.invocationId,status:'sealed',configuration:ledger!.configuration,invocationClaim:claim,invocationLedger:ledger,root:'.',ledger:ledgerMember,members,absentMembers,directories,slots:selected.map(s=>({identity:s.identity,artifactDirectory:s.artifactDirectory,status:s.status})),ownershipSettled:true,finalizationSucceeded:true});
+          return family.comparisonDatasetInventorySchema.parse({schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion,invocationId:claim!.invocationId,status:'sealed',configuration:ledger!.configuration,invocationClaim:claim,invocationLedger:ledger,root:'.',ledger:ledgerMember,members,absentMembers,directories,slots:selected.map(s=>({identity:s.identity,artifactDirectory:s.artifactDirectory,status:s.status})),ownershipSettled:true,finalizationSucceeded:true});
         };
         facts=await collect();
-        const supplied=comparisonDatasetInventorySchema.parse(build(structuredClone(facts)));
+        const supplied=family.comparisonDatasetInventorySchema.parse(build(structuredClone(facts)));
         if(canonicalSerialize(supplied)!==canonicalSerialize(facts)) throw new Error('Dataset builder differs from independently checked facts');
         // Persist only the finite checked directory tree, deepest first and root last.
         for(const [directory,expected] of [...durabilityDirectories!].sort(([a],[b])=>b.split('/').filter(Boolean).length-a.split('/').filter(Boolean).length || (a<b?-1:a>b?1:0))) {
@@ -467,17 +470,17 @@ export class ComparisonArtifactWriter {
         const errors:unknown[]=[error]; let sealState:'absent'|'present-unusable'|'unavailable'='unavailable';
         // Every safely obtainable failure outcome poisons the seal. If ALL retention writes
         // fail after rename, offline consistency cannot prove command success/crash durability.
-        if(!claim) {try {claim=comparisonDatasetInventorySchema.shape.invocationClaim.parse(await this.readJson('invocation-claim.json'));} catch(retention) {errors.push(retention);}}
-        if(!ledger) {try {ledger=comparisonCaptureInvocationSchema.parse(await this.readJson('invocation.json'));} catch(retention) {errors.push(retention);}}
+        if(!claim) {try {claim=family.comparisonDatasetInventorySchema.shape.invocationClaim.parse(await this.readJson('invocation-claim.json'));} catch(retention) {errors.push(retention);}}
+        if(!ledger) {try {ledger=family.comparisonCaptureInvocationSchema.parse(await this.readJson('invocation.json'));} catch(retention) {errors.push(retention);}}
         try {sealState=(await this.checked('dataset-seal.json')).leaf?'present-unusable':'absent';} catch(retention) {errors.push(retention);}
         if(claim) {
           const {schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion,invocationId}=claim;
-          try {await writeReserved('dataset-finalization-failure.json',failureTemporary,comparisonDatasetFinalizationFailureSchema.parse({schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion,invocationId,status:'failed',reasons:[error instanceof Error?error.message.slice(0,4096):'Dataset publication failed'],failedAtHostMs:performance.now(),sealPath:'dataset-seal.json',sealState}),false);} catch(retention) {errors.push(retention);}
+          try {await writeReserved('dataset-finalization-failure.json',failureTemporary,family.comparisonDatasetFinalizationFailureSchema.parse({schemaVersion,suite,suiteVersion,collectorVersion,analyzerVersion,invocationId,status:'failed',reasons:[error instanceof Error?error.message.slice(0,4096):'Dataset publication failed'],failedAtHostMs:performance.now(),sealPath:'dataset-seal.json',sealState}),false);} catch(retention) {errors.push(retention);}
         }
         if(ledger) {
           ledger.status='failed';
           const first=ledger.runs[0]; if(first) {first.status='failed'; first.reasons=[...first.reasons,'Dataset finalization failed: '+(error instanceof Error?error.message:'publication error')];}
-          try {await writeReserved('invocation.json',ledgerTemporary,comparisonCaptureInvocationSchema.parse(ledger),false);} catch(retention) {errors.push(retention);}
+          try {await writeReserved('invocation.json',ledgerTemporary,family.comparisonCaptureInvocationSchema.parse(ledger),false);} catch(retention) {errors.push(retention);}
         }
         throw new AggregateError(errors,errors.map(e=>e instanceof Error?e.message:String(e)).join('; '));
       }

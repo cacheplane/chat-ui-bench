@@ -3,9 +3,90 @@ import {createComparisonBuffer,COMPARISON_CAPTURE_LIMITS,comparisonObservationSc
 import * as implementation from './comparison-observations.js';
 import {runInNewContext} from 'node:vm';
 
-import {page,install,preOptions,mainOptions} from './comparison-page.test-helper.mts';
+import {page,install,preOptions,mainOptions,controlledRangeGeometry} from './comparison-page.test-helper.mts';
 afterEach(()=>vi.unstubAllGlobals());
 function observations(state:any){return state.drain(64).filter((v:any)=>v.cohort==='observation').map((v:any)=>JSON.parse(v.serialized));}
+
+test('whole Text envelope prunes long offscreen active prose before glyph budget exhaustion',()=>{
+  const p=page();p.setText('a'.repeat(8192));
+  const offscreen={left:0,top:200,right:100,bottom:220};
+  const layout=controlledRangeGeometry(p,{envelope:()=>offscreen,glyphs:()=>[offscreen]});
+  const state=install(p);p.tick(51);
+  expect(state.readScroll()).toMatchObject({status:'available',value:{activeVisible:false,geometry:{status:'available',value:{contentRects:[]}}}});
+  expect(layout.calls).toEqual([{kind:'envelope',node:p.node,start:0,end:8192}]);
+  expect(layout.detached).toEqual([p.node]);state.stop();
+});
+test('long offscreen historical prose cannot hide the later genuinely visible anchor',()=>{
+  const p=page();p.setText('A');
+  function historical(id:string,data:string){const node:any={nodeType:3,length:data.length,data,isConnected:true,parentElement:null};const content:any={isConnected:true,parentElement:p.scroller,contains:(value:any)=>value===node,nodes:[node]};node.parentElement=content;return {node,candidate:{id,role:'user',hostElement:p.host,contentElement:content}};}
+  const off=historical('offscreen','x'.repeat(8192)),visible=historical('visible','B');
+  p.bridge.readCaptureCandidates=()=>({status:'available',value:{active:p.candidate,historical:[off.candidate,visible.candidate]}});
+  const inside={left:1,top:1,right:10,bottom:10},outside={left:0,top:200,right:100,bottom:220};
+  const layout=controlledRangeGeometry(p,{envelope:node=>node===off.node?outside:inside,glyphs:node=>[node===off.node?outside:inside]});
+  const state=install(p);p.tick(51);
+  expect(state.readScroll()).toMatchObject({status:'available',value:{activeVisible:true,anchorId:'visible',anchorGeometry:{status:'available',value:{messageId:'visible',contentRects:[inside]}}}});
+  expect(layout.calls.filter(call=>call.node===off.node)).toEqual([{kind:'envelope',node:off.node,start:0,end:8192}]);state.stop();
+});
+test('overlapping whole Text envelope supplies no positive visibility across an empty fragment gap',()=>{
+  const p=page();p.setText('AB');const above={left:0,top:-20,right:10,bottom:-10},below={left:0,top:110,right:10,bottom:120};
+  const layout=controlledRangeGeometry(p,{envelope:()=>({left:0,top:-20,right:10,bottom:120}),glyphs:(_node,start)=>[start===0?above:below]});
+  const state=install(p);p.tick(51);
+  expect(state.readScroll()).toMatchObject({status:'available',value:{activeVisible:false,geometry:{status:'available',value:{contentRects:[above,below]}}}});
+  expect(layout.calls.map(call=>[call.kind,call.start,call.end])).toEqual([['envelope',0,2],['glyphs',0,1],['glyphs',1,2]]);state.stop();
+});
+test.each([{left:100,top:0,right:110,bottom:10},{left:0,top:0,right:0,bottom:10}])('touching or zero-area envelope remains a complete negative %j',envelope=>{
+  const p=page();p.setText('x'.repeat(8192));const layout=controlledRangeGeometry(p,{envelope:()=>envelope,glyphs:()=>[envelope]});
+  const state=install(p);p.tick(51);expect(state.readScroll()).toMatchObject({status:'available',value:{activeVisible:false,geometry:{status:'available',value:{contentRects:[]}}}});
+  expect(layout.calls.map(call=>call.kind)).toEqual(['envelope']);state.stop();
+});
+test('positive visibility still requires a nonwhitespace whole-codepoint glyph after envelope admission',()=>{
+  const p=page();p.setText(' 🌍 ');const inside={left:1,top:1,right:10,bottom:10};
+  const layout=controlledRangeGeometry(p,{envelope:()=>inside,glyphs:()=>[inside]});
+  const state=install(p);p.tick(51);expect(state.readScroll()).toMatchObject({status:'available',value:{activeVisible:true,geometry:{status:'available',value:{contentRects:[inside]}}}});
+  expect(layout.calls.map(call=>[call.kind,call.start,call.end])).toEqual([['envelope',0,4],['glyphs',1,3]]);state.stop();
+});
+test.each([2043,2044])('glyph list respects exact sample2048 and plus-one after charged envelope (%i fragments)',count=>{
+  const p=page();p.setText('A');const inside={left:1,top:1,right:2,bottom:2};let reads=0;
+  controlledRangeGeometry(p,{envelope:()=>inside,glyphs:()=>new Proxy(Array(count).fill(inside),{get:(target,key,receiver)=>{if(typeof key==='string'&&/^\d+$/.test(key))reads++;return Reflect.get(target,key,receiver);}})});
+  const state=install(p);p.tick(51);expect(state.readScroll().status).toBe(count===2043?'available':'unavailable');expect(reads).toBe(count===2043?count:0);state.stop();
+});
+test.each([2042,2043])('active and history share exact callback4096 including DOM host query (%i historical fragments)',count=>{
+  const p=page();p.setText('A');const node:any={nodeType:3,length:1,data:'B',isConnected:true,parentElement:null},content:any={isConnected:true,parentElement:p.scroller,contains:(v:any)=>v===node,nodes:[node]};node.parentElement=content;
+  const historical={id:'history',role:'user',hostElement:p.host,contentElement:content};p.bridge.readCaptureCandidates=()=>({status:'available',value:{active:p.candidate,historical:[historical]}});
+  const inside={left:1,top:1,right:2,bottom:2};let historyReads=0;
+  controlledRangeGeometry(p,{envelope:()=>inside,glyphs:n=>n===p.node?Array(2043).fill(inside):new Proxy(Array(count).fill(inside),{get:(target,key,receiver)=>{if(typeof key==='string'&&/^\d+$/.test(key))historyReads++;return Reflect.get(target,key,receiver);}})});
+  const state=install(p);p.tick(51);expect(state.readScroll()).toMatchObject({status:'available',value:{activeVisible:true,anchorGeometry:{status:count===2042?'available':'unavailable'}}});expect(historyReads).toBe(count===2042?count:0);state.stop();
+});
+test.each([undefined,null,false,0,'',{}])('range setup preserves exact primary %j before ordered detach failure',primary=>{
+  const p=page();p.setText('A');const cleanup={},pairs:unknown[][]=[];
+  p.context.AggregateError=class extends AggregateError{constructor(errors:unknown[],message:string){pairs.push(errors);super(errors,message);}};
+  let detached=0;p.context.document.createRange=()=>({setStart:()=>{throw primary;},setEnd:()=>{},getBoundingClientRect:()=>({left:0,top:0,right:1,bottom:1}),getClientRects:()=>[],detach:()=>{detached++;throw cleanup;}});
+  const state=install(p);p.tick(51);expect(state.readScroll().status).toBe('unavailable');expect(detached).toBe(1);expect(pairs).toHaveLength(1);expect(pairs[0]![0]).toBe(primary);expect(pairs[0]![1]).toBe(cleanup);state.stop();
+});
+test.each(['setEnd','envelope','glyphs','detach'])('every acquired range is detached and %s failure cannot become positive',failure=>{
+  const p=page();p.setText('A');let detached=0;
+  p.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{if(failure==='setEnd')throw false;},getBoundingClientRect:()=>{if(failure==='envelope')throw null;return {left:0,top:0,right:10,bottom:10};},getClientRects:()=>{if(failure==='glyphs')throw 0;return [{left:0,top:0,right:10,bottom:10}];},detach:()=>{detached++;if(failure==='detach')throw undefined;}});
+  const state=install(p);p.tick(51);expect(state.readScroll().status).toBe('unavailable');expect(detached).toBe(failure==='glyphs'?2:1);state.stop();
+});
+test.each(['host','content','id','role','text','mutation'])('envelope return rechecks original %s facts before pruning',change=>{
+  const p=page();p.setText('A');let dirty=false;p.context.MutationObserver=class{observe(){}takeRecords(){return dirty?[{}]:[];}disconnect(){}};
+  const outside={left:0,top:200,right:10,bottom:210};controlledRangeGeometry(p,{envelope:()=>{if(change==='host')p.candidate.hostElement={...p.host};else if(change==='content')p.candidate.contentElement={...p.content};else if(change==='id')p.candidate.id='replacement';else if(change==='role')(p.candidate as any).role='user';else if(change==='text')p.setText('B');else dirty=true;return outside;},glyphs:()=>[outside]});
+  const state=install(p);p.tick(51);expect(state.readScroll().status).toBe('unavailable');state.stop();
+});
+test.each([undefined,null,false,0,''])('mutation cleanup failure %j revokes the successful cache and continues owned polling',failure=>{
+  const p=page();p.setText('A');let stopped=0;p.context.MutationObserver=class{observe(){}takeRecords(){return [];}disconnect(){stopped++;throw failure;}};
+  const state=install(p);expect(()=>p.tick(51)).not.toThrow();expect(stopped).toBe(1);expect(state.readScroll().status).toBe('unavailable');expect(observations(state).some((row:any)=>row.kind==='scroll-checkpoint')).toBe(false);expect(p.timers.size).toBe(1);state.stop();
+});
+test('envelope reserves both units before querying when only one sample unit remains',()=>{
+  const p=page();p.setText('A');const other:any={nodeType:3,length:1,data:'B',isConnected:true,parentElement:p.content};p.content.nodes.push(other);p.content.contains=()=>true;
+  const outside={left:0,top:200,right:1,bottom:201};const layout=controlledRangeGeometry(p,{envelope:()=>({left:0,top:0,right:1,bottom:201}),glyphs:()=>Array(2042).fill(outside)});
+  const state=install(p);p.tick(51);expect(state.readScroll()).toMatchObject({status:'unavailable',reason:expect.stringContaining('before envelope query')});expect(layout.calls.filter(row=>row.kind==='envelope')).toHaveLength(1);expect(layout.calls.some(row=>row.node===other)).toBe(false);state.stop();
+});
+test('active range owner moved into historical candidates is not the same current active owner',()=>{
+  const p=page();p.setText('A');const outside={left:0,top:200,right:1,bottom:201};
+  controlledRangeGeometry(p,{envelope:()=>{p.bridge.readCaptureCandidates=()=>({status:'available',value:{active:null,historical:[p.candidate]}});return outside;},glyphs:()=>[outside]});
+  const state=install(p);p.tick(51);expect(state.readScroll()).toMatchObject({status:'unavailable',reason:expect.stringContaining('Geometry owner changed')});state.stop();
+});
 test('installers are self contained and expose one bounded cohort drain with real probes',()=>{
   expect(typeof implementation.installComparisonObservations).toBe('function');
   const p=page(),state=install(p);p.tick(51);
@@ -83,7 +164,7 @@ test('200 growing runtime plus independent DOM snapshots overflow real pending b
   expect(bytes).toBeGreaterThan(16777216);expect(drained.readInstrumentation().buffers.find((b:any)=>b.name==='page-observations').rejectedRecordCount).toBe(0);
 });
 test('incomplete prose negatives make the combined scroll checkpoint unavailable, complete negatives remain factual',()=>{
-  const p=page();p.setText('a'.repeat(2048));const queries=vi.fn(()=>[{left:0,top:200,right:10,bottom:210}]);p.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getClientRects:queries,detach:()=>{}});
+  const p=page();p.setText('a'.repeat(2048));const queries=vi.fn(()=>[{left:0,top:200,right:10,bottom:210}]);p.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getBoundingClientRect:()=>({left:0,top:0,right:100,bottom:100}),getClientRects:queries,detach:()=>{}});
   const state=install(p);p.tick(51);expect(state.readScroll().status).toBe('unavailable');expect(observations(state).some((r:any)=>r.kind==='scroll-checkpoint')).toBe(false);expect(queries.mock.calls.length).toBeLessThan(2048);
   const q=page();q.setText('ab');q.context.document.createRange=p.context.document.createRange;const complete=install(q);q.tick(51);expect(complete.readScroll()).toMatchObject({status:'available',value:{activeVisible:false,geometry:{status:'available'}}});
 });
@@ -91,8 +172,8 @@ test('positive prose, Unicode codepoint ranges, per-axis clipping and bordered c
   const p=page();p.setText('🌍A🌍');p.scroller.clientLeft=5;p.scroller.clientTop=7;p.scroller.clientWidth=80;p.scroller.clientHeight=70;
   const clip={isConnected:true,parentElement:p.scroller,clientLeft:3,clientTop:4,clientWidth:50,clientHeight:30,getBoundingClientRect:()=>({left:10,top:10,right:70,bottom:50})};p.content.parentElement=clip as any;
   p.context.getComputedStyle=(element:any)=>({transform:'none',clipPath:'none',overflowClipMargin:'0px',overflowX:element===clip?'hidden':'visible',overflowY:'visible'});
-  const positions:number[][]=[];p.context.document.createRange=()=>{let start=0;return {setStart:(_n:any,v:number)=>{start=v;},setEnd:(_n:any,v:number)=>{positions.push([start,v]);},getClientRects:()=>[{left:20,top:50,right:25,bottom:55}],detach:()=>{}};};
-  const state=install(p);p.tick(51);const value=state.readScroll().value;expect(value.activeVisible).toBe(true);expect(value.geometry.value.scrollerRect).toEqual({left:5,top:7,right:85,bottom:77});expect(value.geometry.value.clippingAncestorRects[0]).toEqual({left:13,top:14,right:63,bottom:44});expect(value.geometry.value.clippingAncestorAxes).toEqual([{clipX:true,clipY:false}]);expect(positions[0]).toEqual([0,2]);
+  const positions:number[][]=[];p.context.document.createRange=()=>{let start=0;return {setStart:(_n:any,v:number)=>{start=v;},setEnd:(_n:any,v:number)=>{positions.push([start,v]);},getBoundingClientRect:()=>({left:0,top:0,right:100,bottom:100}),getClientRects:()=>[{left:20,top:50,right:25,bottom:55}],detach:()=>{}};};
+  const state=install(p);p.tick(51);const value=state.readScroll().value;expect(value.activeVisible).toBe(true);expect(value.geometry.value.scrollerRect).toEqual({left:5,top:7,right:85,bottom:77});expect(value.geometry.value.clippingAncestorRects[0]).toEqual({left:13,top:14,right:63,bottom:44});expect(value.geometry.value.clippingAncestorAxes).toEqual([{clipX:true,clipY:false}]);expect(positions).toEqual([[0,5],[0,2]]);
 });
 test('unsupported styles and disconnected prose never become successful visibility evidence',()=>{
   for(const style of [{transform:'matrix(1,0,0,1,0,0)'},{clipPath:'circle(50%)'},{overflowClipMargin:'1px'}]){const p=page();p.setText('text');p.context.getComputedStyle=()=>({transform:'none',clipPath:'none',overflowClipMargin:'0px',overflowX:'visible',overflowY:'visible',...style});const state=install(p);p.tick(51);expect(state.readScroll().status).toBe('unavailable');}
@@ -161,8 +242,8 @@ test('empty connected host with no content is guarded without inferring text fro
   const p=page();p.candidate.contentElement=null as any;const state=install(p);state.armHostGuard();p.frame(10);p.frame(20);p.frame(30);expect(state.readHostGuard()).toMatchObject({status:'ready',value:{hostObservation:{contentMounted:false}}});expect(observations(state).find((r:any)=>r.kind==='runtime-checkpoint').data.activeMessage.text).toBe('');
 });
 test('y clipping and nested disjoint/zero area clipping only use prose positive area',()=>{
-  for(const [x,y,visible] of [['visible','hidden',false],['hidden','visible',true]]){const p=page();p.setText('A');const clip={isConnected:true,parentElement:p.scroller,clientLeft:0,clientTop:0,clientWidth:50,clientHeight:30,getBoundingClientRect:()=>({left:10,top:10,right:60,bottom:40})};p.content.parentElement=clip as any;p.context.getComputedStyle=(e:any)=>({transform:'none',clipPath:'none',overflowClipMargin:'0px',overflowX:e===clip?x:'visible',overflowY:e===clip?y:'visible'});p.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getClientRects:()=>[{left:20,top:50,right:30,bottom:60}],detach:()=>{}});const state=install(p);p.tick(51);expect(state.readScroll().value.activeVisible).toBe(visible);}
-  const p=page();p.setText('A');p.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getClientRects:()=>[{left:20,top:20,right:20,bottom:30}],detach:()=>{}});const state=install(p);p.tick(51);expect(state.readScroll().value.activeVisible).toBe(false);
+  for(const [x,y,visible] of [['visible','hidden',false],['hidden','visible',true]]){const p=page();p.setText('A');const clip={isConnected:true,parentElement:p.scroller,clientLeft:0,clientTop:0,clientWidth:50,clientHeight:30,getBoundingClientRect:()=>({left:10,top:10,right:60,bottom:40})};p.content.parentElement=clip as any;p.context.getComputedStyle=(e:any)=>({transform:'none',clipPath:'none',overflowClipMargin:'0px',overflowX:e===clip?x:'visible',overflowY:e===clip?y:'visible'});p.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getBoundingClientRect:()=>({left:0,top:0,right:100,bottom:100}),getClientRects:()=>[{left:20,top:50,right:30,bottom:60}],detach:()=>{}});const state=install(p);p.tick(51);expect(state.readScroll().value.activeVisible).toBe(visible);}
+  const p=page();p.setText('A');p.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getBoundingClientRect:()=>({left:0,top:0,right:100,bottom:100}),getClientRects:()=>[{left:20,top:20,right:20,bottom:30}],detach:()=>{}});const state=install(p);p.tick(51);expect(state.readScroll().value.activeVisible).toBe(false);
 });
 test('phase instance IDs must match actual strict decimal ordinal schema',()=>{
   const p=page();p.bridge.markPhase=(phase:string,boundary:string)=>({phase,boundary,instanceId:'not-an-ordinal',timestampMs:10});const state=install(p);expect(()=>state.setPhase('setup')).toThrow();expect(state.readPhases().openPhase).toBe(null);
@@ -177,13 +258,13 @@ test('callback-local mutation assurance rejects inserted siblings and layout-tim
   const p=page();let dirty=false,stopped=0;const read=vi.fn(()=>{throw Error('MutationRecord contents must not be inspected');});
   p.context.MutationObserver=class{observe(){}takeRecords(){if(!dirty)return [];dirty=false;return new Proxy({length:1},{get:(target,key)=>key==='length'?target.length:read()});}disconnect(){stopped++;}};
   const original=p.context.document.createTreeWalker;p.context.document.createTreeWalker=(root:any)=>{const walker=original(root);return {nextNode:()=>{const next=walker.nextNode();if(next===null)dirty=true;return next;}};};const state=install(p);p.tick(51);expect(observations(state).some((r:any)=>r.kind==='dom-checkpoint')).toBe(false);expect(state.readScroll().status).toBe('unavailable');expect(read).not.toHaveBeenCalled();expect(stopped).toBe(1);
-  const q=page();let changed=false;q.context.MutationObserver=class{observe(){}takeRecords(){return changed?[{}]:[];}disconnect(){}};q.setText('A');q.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getClientRects:()=>{changed=true;return [{left:0,top:0,right:10,bottom:10}];},detach:()=>{}});const geometry=install(q);q.tick(51);expect(geometry.readScroll().status).toBe('unavailable');
+  const q=page();let changed=false;q.context.MutationObserver=class{observe(){}takeRecords(){return changed?[{}]:[];}disconnect(){}};q.setText('A');q.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getBoundingClientRect:()=>({left:0,top:0,right:100,bottom:100}),getClientRects:()=>{changed=true;return [{left:0,top:0,right:10,bottom:10}];},detach:()=>{}});const geometry=install(q);q.tick(51);expect(geometry.readScroll().status).toBe('unavailable');
 });
 test('mutation observer registration failure gives unavailable assurance while runtime continues',()=>{
   const p=page();p.context.MutationObserver=class{observe(){throw Error('cannot observe');}takeRecords(){return [];}disconnect(){}};const state=install(p);p.tick(51);const records=observations(state);expect(records.some((r:any)=>r.kind==='runtime-checkpoint')).toBe(true);expect(records.some((r:any)=>r.kind==='dom-checkpoint')).toBe(false);expect(state.readScroll().status).toBe('unavailable');
 });
 test('layout rect lists reject oversized lengths before accessing any individual rect',()=>{
-  const p=page();p.setText('A');const touch=vi.fn(()=>{throw Error('Rect read');});p.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getClientRects:()=>new Proxy({length:4097},{get:(target,key)=>key==='length'?target.length:touch()}),detach:()=>{}});const state=install(p);p.tick(51);expect(touch).not.toHaveBeenCalled();expect(state.readScroll().status).toBe('unavailable');
+  const p=page();p.setText('A');const touch=vi.fn(()=>{throw Error('Rect read');});p.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getBoundingClientRect:()=>({left:0,top:0,right:100,bottom:100}),getClientRects:()=>new Proxy({length:4097},{get:(target,key)=>key==='length'?target.length:touch()}),detach:()=>{}});const state=install(p);p.tick(51);expect(touch).not.toHaveBeenCalled();expect(state.readScroll().status).toBe('unavailable');
 });
 test('candidate overflow fails before any candidate getter and other probes retain actual work',()=>{
   const p=page(),touch=vi.fn(()=>{throw Error('Candidate touched');});const candidate=new Proxy({},{get:touch});p.bridge.readCaptureCandidates=()=>({status:'available',value:{historical:Array(65).fill(candidate),active:null}});const state=install(p);p.tick(51);expect(touch).not.toHaveBeenCalled();expect(observations(state).some((r:any)=>r.kind==='probe-unavailable'&&r.data.probe==='candidates')).toBe(true);expect(state.readInstrumentation().runtimeProbe.callbacks).toBe(1);
@@ -197,7 +278,7 @@ test('complete no-active state reports factual false and raw signed gap remains 
 test('all geometry samples share the ancestor cap before the next style inspection',()=>{
   const p=page();p.setText('A');const styles=vi.fn(()=>({transform:'none',clipPath:'none',overflowClipMargin:'0px',overflowX:'visible',overflowY:'visible'}));p.context.getComputedStyle=styles;
   function candidate(i:number){let parent:any=p.scroller;for(let j=0;j<40;j++)parent={parentElement:parent,isConnected:true};const content:any={parentElement:parent,isConnected:true,contains:()=>true,nodes:[]};content.nodes=[{nodeType:3,length:1,data:'A',isConnected:true,parentElement:content}];return {id:'h'+i,role:'assistant',contentElement:content,hostElement:p.host};}
-  p.bridge.readCaptureCandidates=()=>({status:'available',value:{historical:Array.from({length:8},(_,i)=>candidate(i)),active:p.candidate}});p.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getClientRects:()=>[{left:0,top:200,right:10,bottom:210}],detach:()=>{}});const state=install(p);p.tick(51);expect(styles.mock.calls.length).toBe(256);expect(state.readScroll().value.anchorGeometry.status).toBe('unavailable');
+  const history=Array.from({length:8},(_,i)=>candidate(i));p.bridge.readCaptureCandidates=()=>({status:'available',value:{historical:history,active:p.candidate}});p.context.document.createRange=()=>({setStart:()=>{},setEnd:()=>{},getBoundingClientRect:()=>({left:0,top:0,right:100,bottom:100}),getClientRects:()=>[{left:0,top:200,right:10,bottom:210}],detach:()=>{}});const state=install(p);p.tick(51);expect(styles.mock.calls.length).toBe(256);expect(state.readScroll().value.anchorGeometry.status).toBe('unavailable');
 });
 test('invalid owned transfer shape is an integrity rejection, not fake factory overflow, and complete only means exhaustion',()=>{
   const p=page(),source=createComparisonBuffer('pre-navigation-errors');source.enqueue('null');p.context.comparisonPreNavigation={state:source.state,stop:()=>{},drain:(size:number)=>source.drain(size as 4096)};const state=install(p,false);expect(state.readPreNavigationTransfer()).toMatchObject({attempted:1,accepted:0,rejected:1,complete:true,failureReason:'Owned pre-navigation source integrity failure'});expect(state.readInstrumentation().buffers.find((b:any)=>b.name==='page-observations').rejectedRecordCount).toBe(0);

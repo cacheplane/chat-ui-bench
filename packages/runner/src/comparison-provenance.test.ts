@@ -82,7 +82,7 @@ const exactIdentityBoundaries = ['FD during copy','leaf between passes','ancesto
 const provenanceIntegrationControlMarginMs = 5000;
 const provenanceIntegrationBodyMs = COMPARISON_STAGE_BUDGETS.setup + COMPARISON_STAGE_BUDGETS.disposal + provenanceIntegrationControlMarginMs;
 const provenanceIntegrationCaseNames = new Set<string>([
-  'genuine current146 plan admits exact roles before the first destination failure',
+  'genuine current150 plan admits exact roles before the first destination failure',
   'registered session preserves actual member candidate on destination failure and new finalization writer persists pure partial snapshot',
   'actual source close rejection cannot publish a copied digest and independently completes the destination',
   'actual same-size source rejects pinned copy facts',
@@ -99,7 +99,7 @@ const provenanceIntegrationCaseNames = new Set<string>([
   'actual late source open is adopted first and closes after generation revocation',
   'actual immutable instrumentation/pre-navigation.js destination cannot heal its first rejected command',
   'actual immutable provenance/acquisition.json destination cannot heal its first rejected command',
-  'genuine complete97 acquisition payload persistence and actual disposal complete under production ownership',
+  'genuine complete101 acquisition payload persistence and actual disposal complete under production ownership',
 ]);
 const exactIdentityCaseNames = new Set<string>(exactIdentityBoundaries.map(boundary => `exact provenance rejects rounded identity contradiction at ${boundary}`));
 const exactPoints = ['body-entered','output-initializing','output-initialized','writer-initializing','writer-initialized','assertions-entered','finally-entered','teardown-before-FIRST-start','whole-body-settled'] as const;
@@ -1436,7 +1436,7 @@ beforeEach(async ({task}) => {
   current.preparation = (async () => {
     mark('originalFixture entered');
     let fixtureRoot:string;
-    try {fixtureRoot = await originalFixture(!current.name.includes('current146'), path => {current.root = path; (fileCase.localPaths ??= new Set()).add(path); mark('physical root registered');}, mark, active);}
+    try {fixtureRoot = await originalFixture(!current.name.includes('current150'), path => {current.root = path; (fileCase.localPaths ??= new Set()).add(path); mark('physical root registered');}, mark, active);}
     finally {mark('originalFixture settled');}
     active(); root = fixtureRoot;
   if (current.name.startsWith('new genuine records cannot authorize unknown complete configuration ')) {
@@ -1615,7 +1615,7 @@ afterEach(async ({task}) => {
   if (current.diagnostic) fileCase.retainPaths = true;
   })(); void fileCase.innerCleanup.catch(() => {}); await fileCase.innerCleanup;
 });
-test('genuine current146 plan admits exact roles before the first destination failure', {timeout:provenanceIntegrationBodyMs}, async () => {
+test('genuine current150 plan admits exact roles before the first destination failure', {timeout:provenanceIntegrationBodyMs}, async () => {
   const output = await localOutput('comparison-full-plan-');
   const writer = await ComparisonArtifactWriter.create(output), owner = caseOwner();
   const build = adapterBuildSchema.parse(JSON.parse(await fs.readFile(join(root, 'apps/threadplane/.build-evidence.json'), 'utf8')));
@@ -1629,8 +1629,8 @@ test('genuine current146 plan admits exact roles before the first destination fa
   for (const [key, hash] of Object.entries(probe.compiledHashes).sort()) add('instrumentation-compiled-input', key, `instrumentation/compiled/${key}`, hash);
   for (const [key, hash] of Object.entries(build.assetHashes).sort()) add('served-asset', key, `provenance/assets/${key}`, hash);
   for (const key of [...new Set([...build.packages.map(row => row.resolutionPath!), probe.compiler.resolutionPath, probe.nativeCompiler.resolutionPath])].sort()) add('installed-package-metadata', key, `provenance/packages/${key}/package.json`);
-  expect(expected).toHaveLength(146);
-  expect(['build-record', 'instrumentation-build-record', 'build-source', 'instrumentation-source', 'instrumentation-compiled-input', 'served-asset', 'installed-package-metadata'].map(role => expected.filter(row => row.role === role).length)).toEqual([1, 1, 45, 30, 15, 11, 43]);
+  expect(expected).toHaveLength(150);
+  expect(['build-record', 'instrumentation-build-record', 'build-source', 'instrumentation-source', 'instrumentation-compiled-input', 'served-asset', 'installed-package-metadata'].map(role => expected.filter(row => row.role === role).length)).toEqual([1, 1, 47, 31, 16, 11, 43]);
   let session: import('./comparison-provenance.js').ComparisonProvenanceSession | undefined, disposed = false, streams = 0;
   try {
     const result = await owner.run('setup', async ownership => {
@@ -1646,7 +1646,7 @@ test('genuine current146 plan admits exact roles before the first destination fa
     const snapshot = session!.snapshotAcquisition(); expect(snapshot.acquisition.status).toBe('partial');
     expect(snapshot.acquisition.members.map(({role, key, path, originalSha256}) => ({role, key, path, ...(originalSha256 === undefined ? {} : {originalSha256})}))).toEqual(expected);
     expect(snapshot.acquisition.members.every(row => row.copied.status === 'unavailable')).toBe(true);
-    snapshot.acquisition.members.length = 0; expect(session!.snapshotAcquisition().acquisition.members).toHaveLength(146);
+    snapshot.acquisition.members.length = 0; expect(session!.snapshotAcquisition().acquisition.members).toHaveLength(150);
   } finally {if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
 });
 test('registered session preserves actual member candidate on destination failure and new finalization writer persists pure partial snapshot', {timeout:provenanceIntegrationBodyMs}, async () => {
@@ -1728,13 +1728,13 @@ test.each(['same-size source', 'ancestor substitution', 'source after destinatio
       session = api.createComparisonProvenanceSession({...context(), ownership, writer: {...scoped, async stream(path: string) {
         const stream = await scoped.stream(path); await ownership.adopt({name: path, close: () => stream.complete()});
         if (!mutation.startsWith('source after')) {await mutate(); return stream;}
-        return {write: stream.write, async complete() {await stream.complete(); if (mutation === 'source after destination completion' || ++copies === 97) await mutate();}};
+        return {write: stream.write, async complete() {await stream.complete(); if (mutation === 'source after destination completion' || ++copies === 101) {if (mutation === 'source after all copies') expect(path).toBe('provenance/packages/node_modules/typescript/package.json'); await mutate();}}};
       }}}, root);
       await session.acquire(canonicalSerialize(preOptions), canonicalSerialize(mainOptions));
     });
     expect(result.status).toBe('failed'); disposed = true; await firstLocalDisposal(owner); await owner.ownershipSettled;
     const snapshot = session!.snapshotAcquisition(); expect(snapshot.acquisition.status).toBe('partial');
-    if (mutation === 'source after all copies') expect(snapshot.acquisition.members.every(row => row.status === 'complete')).toBe(true);
+    if (mutation === 'source after all copies') {expect(copies).toBe(101); expect(snapshot.acquisition.members.every(row => row.status === 'complete')).toBe(true);}
     else expect(snapshot.acquisition.members[0]).toMatchObject({beforeCopy: {status: 'available'}, copied: {status: 'unavailable'}, status: 'partial'});
     expect(workers).toBe(0);
     expect(snapshot.payloads.every(row => row.status === 'not-attempted')).toBe(true);
@@ -1806,7 +1806,7 @@ test.each(exactIdentityBoundaries)('exact provenance rejects rounded identity co
     expect(reached).toBe(true);
     expect(result.status).toBe(boundary === 'explicit pre-serving' ? 'complete' : 'failed');
     if (boundary === 'explicit pre-serving' || boundary === 'fresh after assembly') {
-      expect(streams).toBe(97); expect(workers).toBe(1);
+      expect(streams).toBe(101); expect(workers).toBe(1);
       expect(writes).toBe(boundary === 'explicit pre-serving' ? 3 : 0);
       expect(session!.snapshotAcquisition().acquisition.members.every(row => row.status === 'complete')).toBe(true);
     } else {
@@ -1904,7 +1904,10 @@ async function acquireAndAssert(ownership: import('./comparison-ownership.js').C
   try {pair = await session.acquire(canonicalSerialize(preOptions), canonicalSerialize(mainOptions));} finally {onPhase?.('actual session.acquire settled');}
   const snapshot = session.snapshotAcquisition();
   expect(snapshot.acquisition.status).toBe('complete'); expect(snapshot.persistence.status).toBe('complete');
-  expect(snapshot.acquisition.members).toHaveLength(97 - Number(!snapshot.acquisition.members.some(row => row.key === 'apps/threadplane/src/styles.css')));
+  // Closed smaller fixture: records2 + product sources44 + probe sources31 +
+  // compiled inputs16 + served asset1 + installed metadata7. A controlled
+  // missing stylesheet removes only its one product-source member.
+  expect(snapshot.acquisition.members).toHaveLength(101 - Number(!snapshot.acquisition.members.some(row => row.key === 'apps/threadplane/src/styles.css')));
   expect(snapshot.payloads.map(row => ({path: row.path, status: row.status}))).toEqual([{path: 'instrumentation/pre-navigation.js', status: 'complete'}, {path: 'instrumentation/main.js', status: 'complete'}]);
   onPhase?.('actual post-acquire payload/persistence reads entered');
   try {
@@ -1935,7 +1938,7 @@ async function acquired(operation: (session: Session) => Promise<void>, cleanupS
     expect(completedSession!.snapshotAcquisition().acquisition.status).toBe('complete');
   } finally {if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
 }
-test('genuine complete97 acquisition payload persistence and actual disposal complete under production ownership', {timeout:provenanceIntegrationBodyMs}, async () => {await acquired(async () => {});});
+test('genuine complete101 acquisition payload persistence and actual disposal complete under production ownership', {timeout:provenanceIntegrationBodyMs}, async () => {await acquired(async () => {});});
 test.each(['close rejection', 'injected path identity contradiction', 'rounded adjacent64-bit inode contradiction', 'rounded native FD inode contradiction'] as const)('native Git owned header rejects actual FD %s without mutating system files', async failure => {
   let nativeFd: FileHandle | undefined, closed = false, closes = 0, observedFD = false, reads = 0;
   const canonical = await fs.realpath('/usr/bin/git');
@@ -2341,14 +2344,15 @@ describe('isolated genuine filesystem capacity admission', () => {
         phase('pure preparation entered');
         const root = await originalFixture(true, created => {current.root = created; (fileCase.localPaths ??= new Set()).add(created);},undefined,active); active();
         phase('genuine smaller fixture prepared');
-        for (let i = 0; i < 4000; i++) {active(); await fs.writeFile(join(root, 'apps/threadplane/dist', `capacity-${String(i).padStart(4, '0')}.bin`), ''); active();}
-        phase('4000 physical assets created');
+        // Closed smaller graph101 +3996 actual extra files reaches4097 exactly.
+        for (let i = 0; i < 3996; i++) {active(); await fs.writeFile(join(root, 'apps/threadplane/dist', `capacity-${String(i).padStart(4, '0')}.bin`), ''); active();}
+        phase('3996 physical assets created');
         await publishFixtureRecords(root,undefined,active); active(); phase('genuine private records published');
         const build = adapterBuildSchema.parse(JSON.parse(await fs.readFile(join(root, 'apps/threadplane/.build-evidence.json'), 'utf8'))); active();
         const probe = comparisonInstrumentationBuildSchema.parse(JSON.parse(await fs.readFile(join(root, 'packages/runner/.comparison-build-evidence.json'), 'utf8'))); active();
         current.assets = Object.keys(build.assetHashes).length;
         current.expectedCount = 2 + Object.keys(build.sourceHashes).length + Object.keys(probe.sourceHashes).length + Object.keys(probe.compiledHashes).length + current.assets + new Set([...build.packages.map(row => row.resolutionPath), probe.compiler.resolutionPath, probe.nativeCompiler.resolutionPath]).size;
-        expect(current.assets).toBe(4001); expect(current.expectedCount).toBe(4097);
+        expect(current.assets).toBe(3997); expect(current.expectedCount).toBe(4097);
       })().finally(() => {current.preparationSettled = true; phase('actual pure preparation settled');});
       void current.preparation.catch(() => {});
       await current.preparation; active();
@@ -2356,7 +2360,7 @@ describe('isolated genuine filesystem capacity admission', () => {
       current.output = await localOutput('comparison-capacity-output-'); active();
       const writer = await ComparisonArtifactWriter.create(current.output); active();
       current.baseline = await fs.readdir(current.output, {recursive:true}); active();
-      fileOperations.statted = (path, stat) => {if (path === join(current.root!, 'apps/threadplane/dist/capacity-3999.bin') && typeof stat.ino === 'bigint') current.finalAnchor = true; return stat;};
+      fileOperations.statted = (path, stat) => {if (path === join(current.root!, 'apps/threadplane/dist/capacity-3995.bin') && typeof stat.ino === 'bigint') current.finalAnchor = true; return stat;};
       processOperations.created = () => {current.children++;}; // Non-throwing; unchanged tracker observes/adopts unexpected child.
       active();
       current.stage = current.owner.run('setup', ownership => {
@@ -2380,7 +2384,7 @@ describe('isolated genuine filesystem capacity admission', () => {
       expect(current.result.status, JSON.stringify(current.owner.failures)).toBe('failed');
       expect(current.owner.failures).toEqual([expect.objectContaining({stage:'setup', message:'Comparison member capacity exceeded', resource:null})]);
       expect(current.underlyingSettled).toBe(true);
-      expect(current.expectedCount).toBe(4097); expect(current.assets).toBe(4001); expect(current.finalAnchor).toBe(true);
+      expect(current.expectedCount).toBe(4097); expect(current.assets).toBe(3997); expect(current.finalAnchor).toBe(true);
       expect(current.destinations).toBe(0); expect(current.children).toBe(0);
       const inventory = await fs.readdir(current.output, {recursive:true}); active(); expect(inventory).toEqual(current.baseline);
       const snapshot = current.session!.snapshotAcquisition();

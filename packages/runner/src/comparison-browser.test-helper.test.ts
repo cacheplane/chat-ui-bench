@@ -26,7 +26,7 @@ const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest(
 const versions = {schemaVersion: 2, suite: 'long-thread-prose-v1', suiteVersion: '1.0.0', collectorVersion: '2.0.0', analyzerVersion: '2.0.0'} as const;
 const reason = 'Synthetic filesystem fixture; no browser collection was attempted';
 // Explicit maintained audit scope. Product/probe/output/package inventories below come from current inputs.
-const source36 = [
+const source41 = [
   '.github/workflows/ci.yml', 'apps/threadplane/probe-provenance.mjs', 'apps/threadplane/probe-provenance.test.ts', 'package.json',
   'packages/runner/src/comparison-assembly-worker.test.ts', 'packages/runner/src/comparison-assembly-worker.ts',
   'packages/runner/src/comparison-browser.test-helper.test.ts', 'packages/runner/src/comparison-browser.test-helper.ts', 'packages/runner/src/comparison-browser.test.ts',
@@ -42,6 +42,9 @@ const source36 = [
   'packages/runner/src/long-thread-capture.test.ts', 'packages/runner/src/long-thread-capture.ts',
   'packages/runner/src/long-thread-main.test.ts', 'packages/runner/src/long-thread-main.ts',
   'packages/runner/src/long-thread-run.test.ts', 'packages/runner/src/long-thread-run.ts',
+  'packages/runner/src/comparison-runtime-family.ts', 'packages/runner/src/comparison-runtime-family.test.ts',
+  'packages/runner/src/comparison-scroll-fresh.test.ts',
+  'packages/contract/tsconfig.types.json', 'packages/contract/type-tests/comparison-families.ts',
   'vitest.comparison.browser.config.ts', 'vitest.config.ts',
 ].sort();
 async function physicalFiles(root: string, relative: string): Promise<string[]> {
@@ -73,13 +76,13 @@ async function fixture() {
   expect(nativeLock).toBeDefined();
   // This is controlled Linux metadata emulation, not a claim about this decoder's OS or an actual Linux capture.
   probe.nativeCompiler = {...probe.nativeCompiler, name: '@typescript/typescript-linux-x64', resolutionPath: nativePath, executablePath: nativePath + '/lib/tsc', platform: 'linux', architecture: 'x64', integrity: nativeLock.integrity, version: nativeLock.version};
-  const output114 = [...await physicalFiles(repository, 'packages/contract/dist'), ...await physicalFiles(repository, 'packages/runner/dist')].sort();
-  expect(output114).toHaveLength(114);
+  const output120 = [...await physicalFiles(repository, 'packages/contract/dist'), ...await physicalFiles(repository, 'packages/runner/dist')].sort();
+  expect(output120).toHaveLength(120);
   const metadata43 = [...new Set([...build.packages, probe.compiler, probe.nativeCompiler].map(pkg => pkg.resolutionPath + '/package.json'))].sort();
   expect(metadata43).toHaveLength(43);
   const assets = Object.keys(build.assetHashes).map(key => 'apps/threadplane/dist/' + key);
   const raw2 = ['apps/threadplane/.build-evidence.json', 'packages/runner/.comparison-build-evidence.json'];
-  const union = [...new Set([...source36, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output114, ...metadata43, ...assets, ...raw2])].sort();
+  const union = [...new Set([...source41, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output120, ...metadata43, ...assets, ...raw2])].sort();
   for (const key of union) {
     if (raw2.includes(key) || key === nativePath + '/package.json') continue;
     await mkdir(dirname(join(workspace, key)), {recursive: true});
@@ -127,7 +130,7 @@ async function fixture() {
   const seal = comparisonDatasetInventorySchema.parse({...versions, invocationId, status: 'sealed', configuration: config.configuration, invocationClaim: claim, invocationLedger: terminalLedger, root: '.', ledger: ledgerMember, members: members.sort((a, b) => a.path.localeCompare(b.path)), absentMembers: [], directories: [...datasetDirectories].sort(), slots, ownershipSettled: true, finalizationSucceeded: true});
   await writeFile(join(root, 'dataset-seal.json'), canonicalSerialize(seal) + '\n');
   const hashed = new Set([...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...Object.keys(probe.compiledHashes), ...assets]);
-  const paddingKeys = source36.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
+  const paddingKeys = source41.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
   return {root, workspace, evidenceRoot, context, union, paddingKeys};
 }
 const writer = () => helper.writeComparisonCiSnapshot;
@@ -181,7 +184,8 @@ test('closed original snapshot retains actual copy bytes and controlled Linux me
   const f = await fixture(), receipt = await writer()(f.root, f); expect(receipt).not.toBeNull();
   const bytes = await readFile(receipt!.path), manifest = JSON.parse(bytes.toString());
   expect(bytes.length).toBe(receipt!.byteLength); expect(sha256(bytes)).toBe(receipt!.sha256);
-  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source36).toEqual(source36); expect(manifest.inventories.output114).toHaveLength(114); expect(manifest.inventories.contract39).toHaveLength(39); expect(manifest.inventories.metadata43).toHaveLength(43);
+  expect(manifest.format).toBe('comparison-ci-original-snapshot-v2');
+  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source41).toEqual(source41); expect(manifest.inventories.output120).toHaveLength(120); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata43).toHaveLength(43);
   for (const row of manifest.records) {expect((await readFile(join(receipt!.directory, row.copied.path))).equals(await readFile(row.originalPath))).toBe(true); expect(row.before).toEqual(row.after); expect(row.copied.fact).toEqual(row.before.fact);}
   expect(receipt!.lifetime.manifest.fact).toEqual({byteLength: receipt!.byteLength, sha256: receipt!.sha256});
   expect(receipt!.lifetime.directories.length).toBeGreaterThan(0);
@@ -314,7 +318,7 @@ test.each([0, 1])('end-to-end union cap exact plus %i preserves every hashed rec
   if (excess) await expect(writer()(f.root, f)).rejects.toThrow('pre-read aggregate cap');
   else {const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8')); expect(manifest.originalBytes).toBe(8 * 1024 * 1024);}
 });
-test.each([['manifest', 21099328], ['read work', 155444864], ['write work', 29487936]])('budget predicate %s exact and plus one; not a full-writer ceiling-reach claim', (_label, maximum) => {
+test.each([['manifest', 22150528], ['read work', 157547264], ['write work', 30539136]])('budget predicate %s exact and plus one; not a full-writer ceiling-reach claim', (_label, maximum) => {
   const cap = Number(maximum), budget = helper.comparisonCiSnapshotBudget;
   expect(budget(cap - 1, 1, cap, 'controlled cap')).toBe(cap); expect(() => budget(cap - 1, 2, cap, 'controlled cap')).toThrow('controlled cap');
 });

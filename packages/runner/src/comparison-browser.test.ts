@@ -2,14 +2,16 @@ import {beforeAll, expect, test} from 'vitest';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {readFile,writeFile} from 'node:fs/promises';
-import type {Route, BrowserContext, CDPSession,Page,Locator} from 'playwright';
+import {chromium,type Route,type BrowserContext,type CDPSession,type Page,type Locator} from 'playwright';
+import {pathToFileURL} from 'node:url';
+import type {ComparisonPageState} from './comparison-observations.js';
 import {createComparisonTraceCapture} from './comparison-trace.js';
 import {createLongThreadReplayServer,type LongThreadReplayServer} from '@chat-ui-bench/producer';
 import {
   comparisonTraceAuxiliarySchema, comparisonCheckpointsSchema,comparisonScheduledRunSchema,adapterBuildSchema,comparisonInstrumentationBuildSchema,
   comparisonEvidenceSchema,comparisonExceptionsSchema,canonicalSerialize,longThreadFixtureSchema,createLongThreadFixture,
   comparisonFinalRuntimeSchema,comparisonVisibleValidationSchema,comparisonValidationSchema,type ComparisonCheckpoints,
-  validateRuntimeTranscript, type LongThreadCaptureHost,
+  validateRuntimeTranscript,comparisonSchemasForVersionPair,COMPARISON_CAPTURE_LIMITS,type LongThreadCaptureHost,
 } from '@chat-ui-bench/contract';
 import {
   directCase, forwardingFactory, healthyRaw, readiness, json, digest, deferred, intercept, slotRaw, rootCase, checkedDataset,
@@ -545,3 +547,57 @@ test('H07 executes canonical twelve-slot native components with truthful scored 
     if(process.env.CI==='true'){const snapshot=await writeComparisonCiSnapshot(result.directory);expect(snapshot).not.toBeNull();console.info('H07 CI original snapshot JSON '+JSON.stringify(snapshot));}
   },owned=>{retained=retainOriginalCapture(control,owned);});
 }, 1260000);
+
+type NativeRangeEvidence={envelopes:number;glyphQueries:number;fragments:number;queries:{kind:'envelope'|'glyph';start:number;end:number;textPrefix:string;at:number}[]};
+type NativePageWindow=Window&{comparisonCapture?:ComparisonPageState;benchHost?:Pick<LongThreadCaptureHost,'locators'|'drainCaptureEvents'|'markPhase'|'readCaptureCandidates'|'readCaptureProgress'|'readCaptureMountedMessageCount'|'readCaptureBufferState'|'readActiveHost'>;rangeEvidence:NativeRangeEvidence;countOwnedRanges:boolean};
+/** Declared bridge fixture, real DOM/layout/clock/timers, trusted compiled installer. */
+async function nativeSamplingPage(text:string,top:number,preformatted:boolean,body:(page:Page)=>Promise<void>){
+  let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined,context:BrowserContext|undefined,page:Page|undefined,primaryPresent=false,primary:unknown;const cleanup:unknown[]=[];
+  try{
+    const compiled=await import(pathToFileURL(join(originalRoot,'packages/runner/dist/comparison-installer.js')).href) as typeof import('./comparison-installer.js');
+    const family=comparisonSchemasForVersionPair({collectorVersion:'2.1.0',analyzerVersion:'2.1.0'}),identity={repetition:'native-page-fixture',round:1,artifactDirectory:'runs/native-page-fixture',scenarioId:'native-page-fixture',caseIndex:0,adapterProfile:'threadplane',seed:1,mode:'headless'};
+    const pre=canonicalSerialize(family.preNavigationOptionsSchema.parse({optionsVersion:1,identity,limits:COMPARISON_CAPTURE_LIMITS,stateGlobal:'comparisonPreNavigation'}));
+    const main=canonicalSerialize(family.mainOptionsSchema.parse({optionsVersion:1,identity,limits:COMPARISON_CAPTURE_LIMITS,probeIntervalMs:50,bridgeGlobal:'benchHost',stateGlobal:'comparisonCapture',preNavigationGlobal:'comparisonPreNavigation',observers:{eventTiming:{buffered:true,durationThresholdMs:16},loaf:{buffered:true}},nativeRecipeIds:{wheel:'comparison-wheel-up-v1',composer:'comparison-composer-calibrate-v1'},scoredScrollSampling:{mode:'fresh-page-acquisition',minimumPostToLaterPageMs:800,maxWaitCallbacks:64}}));
+    const pair=compiled.assembleComparisonInstaller(pre,main,'2.1.0');
+    browser=await chromium.launch({headless:true,args:['--enable-automation']});context=await browser.newContext({viewport:{width:320,height:240}});page=await context.newPage();
+    const session=await browser.newBrowserCDPSession();try{const facts=await session.send('Browser.getVersion'),command=await session.send('Browser.getBrowserCommandLine');expect(facts.product).toContain('Chrome/');expect(facts.revision).toBe('@f842f52ef39fd97b449eb27cff414bf05a98ddce');console.info('Fresh native pinned browser',JSON.stringify({executable:command.arguments[0],...facts,installerSha256:pair.installerSha256}));}finally{await session.detach();}
+    await page.setContent('<!doctype html><style>body{margin:0}#scroll{position:relative;width:100px;height:100px;overflow:auto}#host{position:absolute;width:96px}#content{font:16px/40px monospace;overflow-wrap:anywhere}</style><div id="scroll"><div id="host"><div id="content"></div></div></div>');
+    await page.evaluate(args=>{
+      const w=window as NativePageWindow,host=document.querySelector<HTMLElement>('#host')!,content=document.querySelector<HTMLElement>('#content')!;host.style.top=args.top+'px';content.style.whiteSpace=args.preformatted?'pre':'normal';content.textContent=args.text;
+      w.rangeEvidence={envelopes:0,glyphQueries:0,fragments:0,queries:[]};w.countOwnedRanges=false;
+      const bounds=Range.prototype.getBoundingClientRect,fragments=Range.prototype.getClientRects;
+      Range.prototype.getBoundingClientRect=function(){const result=Reflect.apply(bounds,this,[]);if(w.countOwnedRanges){w.rangeEvidence.envelopes++;w.rangeEvidence.queries.push({kind:'envelope',start:this.startOffset,end:this.endOffset,textPrefix:this.startContainer.textContent?.slice(0,16)??'',at:performance.now()});}return result;};
+      Range.prototype.getClientRects=function(){const result=Reflect.apply(fragments,this,[]);if(w.countOwnedRanges){w.rangeEvidence.glyphQueries++;w.rangeEvidence.fragments+=result.length;w.rangeEvidence.queries.push({kind:'glyph',start:this.startOffset,end:this.endOffset,textPrefix:this.startContainer.textContent?.slice(0,16)??'',at:performance.now()});}return result;};
+      let ordinal=0;w.benchHost={locators:{scroller:'#scroll',composer:'#absent-composer',returnToResponse:null},drainCaptureEvents:()=>[],markPhase:(phase,boundary)=>({phase,boundary,instanceId:String(++ordinal),timestampMs:performance.now()}),readActiveHost:()=>({activeMessageId:'native-page-fixture',hostMounted:host.isConnected}),readCaptureCandidates:()=>({status:'available',value:{historical:[],active:{id:'native-page-fixture',role:'assistant',hostElement:host,contentElement:content}}}),readCaptureProgress:()=>({status:'available',value:{activeMessage:{id:'native-page-fixture',role:'assistant',text:content.textContent??'',status:'streaming'},delivery:'streaming',outcome:null,loading:true,error:null}}),readCaptureMountedMessageCount:()=>({status:'available',value:document.querySelectorAll('#host').length}),readCaptureBufferState:()=>({name:'transport',maxEntries:4096,maxSerializedBytes:16777216,highWaterEntries:0,highWaterSerializedBytes:0,overflowCount:0,rejectedRecordCount:0,status:'complete'})};
+    },{text,top,preformatted});
+    await page.evaluate(pair.preNavigation);await page.evaluate(pair.main);await body(page);
+  }catch(error){primaryPresent=true;primary=error;}
+  finally{
+    if(page)try{await page.evaluate(()=>{(window as NativePageWindow).comparisonCapture?.stop();});}catch(error){cleanup.push(error);}
+    // Dependent native scopes close inside out; every subsequent close is attempted.
+    for(const close of [()=>page?.close(),()=>context?.close(),()=>browser?.close()])try{await close();}catch(error){cleanup.push(error);}
+  }
+  if(primaryPresent){if(cleanup.length)throw new AggregateError([primary,...cleanup],'Native page assertion and cleanup failed');throw primary;}if(cleanup.length)throw new AggregateError(cleanup,'Native page cleanup failed');
+}
+test('G01 real whole Text envelope prunes huge offscreen prose without glyph queries',async()=>{
+  await nativeSamplingPage('huge offscreen prose '.repeat(10000),300,false,async page=>{
+    const facts=await page.evaluate(async()=>{const w=window as NativePageWindow;w.rangeEvidence={envelopes:0,glyphQueries:0,fragments:0,queries:[]};w.countOwnedRanges=true;try{return {sample:await w.comparisonCapture!.readScrollFresh({notBeforePageMs:null}),ranges:w.rangeEvidence,instrumentation:w.comparisonCapture!.readInstrumentation()};}finally{w.countOwnedRanges=false;}});
+    expect(facts.sample).toMatchObject({status:'available',value:{activeVisible:false,geometry:{status:'available',value:{contentRects:[]}}}});expect(facts.ranges).toMatchObject({envelopes:1,glyphQueries:0,fragments:0});expect(facts.ranges.queries[0]).toMatchObject({start:0,end:210000});console.info('G01 actual Range work',JSON.stringify({ranges:facts.ranges,instrumentation:facts.instrumentation}));
+  });
+},30000);
+test('G02 real overlapping whole Text envelope over blank lines never supplies positive glyph evidence',async()=>{
+  await nativeSamplingPage('A\n\n\n\n\nB',-60,true,async page=>{
+    const oracle=await page.evaluate(()=>{const text=document.querySelector('#content')!.firstChild!,clip=document.querySelector('#scroll')!.getBoundingClientRect(),range=document.createRange();try{range.selectNodeContents(text);const envelope=range.getBoundingClientRect();const overlap=envelope.right>clip.left&&envelope.left<clip.right&&envelope.bottom>clip.top&&envelope.top<clip.bottom;const glyphs=[0,6].map(start=>{range.setStart(text,start);range.setEnd(text,start+1);return Array.from(range.getClientRects()).map(rect=>({positive:rect.width>0&&rect.height>0,intersects:rect.right>clip.left&&rect.left<clip.right&&rect.bottom>clip.top&&rect.top<clip.bottom}));});return {overlap,glyphs};}finally{range.detach();}});
+    expect(oracle.overlap).toBe(true);expect(oracle.glyphs.every(rects=>rects.length>0)).toBe(true);expect(oracle.glyphs.flat().every(rect=>rect.positive&&!rect.intersects)).toBe(true);
+    const facts=await page.evaluate(async()=>{const w=window as NativePageWindow;w.rangeEvidence={envelopes:0,glyphQueries:0,fragments:0,queries:[]};w.countOwnedRanges=true;try{return {sample:await w.comparisonCapture!.readScrollFresh({notBeforePageMs:null}),ranges:w.rangeEvidence};}finally{w.countOwnedRanges=false;}});
+    expect(facts.sample).toMatchObject({status:'available',value:{activeVisible:false}});expect(facts.ranges.envelopes).toBe(1);expect(facts.ranges.glyphQueries).toBe(2);expect(facts.ranges.fragments).toBeGreaterThanOrEqual(2);console.info('G02 actual Range work',JSON.stringify(facts.ranges));
+  });
+},30000);
+test('G03 real fresh page wait preserves actual800ms and current DOM separately from the polling cache',async()=>{
+  await nativeSamplingPage('A',20,false,async page=>{
+    await page.waitForFunction(()=>((window as NativePageWindow).comparisonCapture!.readInstrumentation().scrollProbe.callbacks>=1));
+    const facts=await page.evaluate(async()=>{const w=window as NativePageWindow,capture=w.comparisonCapture!,content=document.querySelector('#content')!,cached=capture.readScroll(),poll=capture.readInstrumentation().scrollProbe;capture.drain(64);content.firstChild!.textContent='B';const post=await capture.readScrollFresh({notBeforePageMs:null}),sameCache=JSON.stringify(capture.readScroll())===JSON.stringify(cached),samePoll=JSON.stringify(capture.readInstrumentation().scrollProbe)===JSON.stringify(poll);if(post.status!=='available')throw new Error(post.reason);const mutation=setTimeout(()=>{content.firstChild!.textContent='C';document.querySelector<HTMLElement>('#host')!.style.top='300px';},100);w.countOwnedRanges=true;try{const later=await capture.readScrollFresh({notBeforePageMs:post.value.timestampMs+800});const laterQueries=later.status==='available'?w.rangeEvidence.queries.filter(query=>query.at>=later.value.timestampMs):[];return {post,later,sameCache,samePoll,text:content.textContent,laterQueries,instrumentation:capture.readInstrumentation()};}finally{w.countOwnedRanges=false;clearTimeout(mutation);}});
+    expect(facts.sameCache).toBe(true);expect(facts.samePoll).toBe(true);expect(facts.text).toBe('C');expect(facts.post.status).toBe('available');expect(facts.later).toMatchObject({status:'available',value:{activeVisible:false,geometry:{status:'available',value:{contentRects:[]}}}});expect(facts.post).toMatchObject({status:'available',value:{activeVisible:true}});expect(facts.laterQueries).toHaveLength(1);expect(facts.laterQueries[0]).toMatchObject({kind:'envelope',textPrefix:'C'});if(facts.post.status==='available'&&facts.later.status==='available')expect(facts.later.value.timestampMs-facts.post.value.timestampMs).toBeGreaterThanOrEqual(800);
+    const parsed=comparisonSchemasForVersionPair({collectorVersion:'2.1.0',analyzerVersion:'2.1.0'}).comparisonInstrumentationSchema.parse(facts.instrumentation);expect(parsed.freshScrollProbe.callbacks).toBe(2);expect(parsed.freshScrollProbe.maximumObservedGapMs).toMatchObject({status:'available',value:expect.any(Number)});console.info('G03 actual fresh page samples',JSON.stringify(facts));
+  });
+},30000);
