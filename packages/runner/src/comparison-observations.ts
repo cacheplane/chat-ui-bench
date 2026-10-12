@@ -267,7 +267,7 @@ export function installComparisonObservations(createComparisonBuffer:BufferFacto
   let anchorId:string|null=null,scroll:CaptureAvailability<ScrollSnapshot>={status:'unavailable',reason:'Scroll probe has not run'};
   type AnchorOwner=Pick<CaptureCandidate,'id'|'role'|'hostElement'|'contentElement'>;
   let pollAnchorOwner:AnchorOwner|null=null;
-  function calculateScroll(time:number,samples:{active:TextSample|null;history:TextSample[]},work:Budget,cs:CaptureCandidates|null,originalAnchorId:string|null,originalAnchorOwner:AnchorOwner|null):{availability:CaptureAvailability<ScrollSnapshot>;nextAnchorId:string|null;nextAnchorOwner:AnchorOwner|null;primaryPresent:boolean;primary:unknown} {
+  function calculateScroll(time:number,samples:{active:TextSample|null;history:TextSample[]},work:Budget,cs:CaptureCandidates|null,originalAnchorId:string|null,originalAnchorOwner:AnchorOwner|null,allowAnchorSelection=true):{availability:CaptureAvailability<ScrollSnapshot>;nextAnchorId:string|null;nextAnchorOwner:AnchorOwner|null;primaryPresent:boolean;primary:unknown} {
     let anchorId=originalAnchorId;
     let anchorOwner=originalAnchorOwner;
     let geometryPrimaryPresent=false,geometryPrimary:unknown;
@@ -280,9 +280,9 @@ export function installComparisonObservations(createComparisonBuffer:BufferFacto
       if(samples.active)try{const r=geometry(samples.active,scroller,work);activeGeometry=r.geometry;activeVisible=r.visible;}catch(error){geometryPrimaryPresent=true;geometryPrimary=error;const reason=failureMessage(error);activeGeometry=missing(reason);}
       if(cs.active!==null&&activeGeometry.status==='unavailable')throw new Error('Active visibility not established: '+activeGeometry.reason);
       let anchorGeometry:ComparisonGeometry=missing('Historical anchor unavailable'),anchorTopCssPx:number|null=null;const existing=anchorId===null?null:samples.history.find(v=>v.candidate.id===anchorId);
-      if(existing)try{const owner=existing.candidate;if(!anchorOwner||owner.role!==anchorOwner.role||owner.hostElement!==anchorOwner.hostElement||owner.contentElement!==anchorOwner.contentElement)throw new Error('Historical anchor owner changed');const r=geometry(existing,scroller,work);anchorGeometry=r.geometry;if(r.geometry.status==='available')anchorTopCssPx=r.geometry.value.hostRect.top-r.geometry.value.scrollerRect.top;}catch(error){anchorGeometry=missing(failureMessage(error));}
-      else if(anchorId===null)for(const historical of samples.history)try{const r=geometry(historical,scroller,work);if(r.visible&&r.geometry.status==='available'){anchorId=historical.candidate.id;anchorOwner={id:anchorId,role:historical.candidate.role,hostElement:historical.candidate.hostElement,contentElement:historical.candidate.contentElement};anchorGeometry=r.geometry;anchorTopCssPx=r.geometry.value.hostRect.top-r.geometry.value.scrollerRect.top;break;}}catch(error){anchorGeometry=missing(failureMessage(error));break;}
-      const value:ScrollSnapshot={timestampMs:time,clockDomain:'page-performance-ms',scrollTop,scrollHeight,clientHeight,anchorId,anchorTopCssPx,activeVisible,followArmed:null,pinThresholdCssPx:null,geometry:activeGeometry,anchorGeometry};return {availability:{status:'available',value},nextAnchorId:anchorId,nextAnchorOwner:anchorOwner,primaryPresent:false,primary:undefined};
+      if(existing)try{const owner=existing.candidate;if(!anchorOwner||owner.role!==anchorOwner.role||owner.hostElement!==anchorOwner.hostElement||owner.contentElement!==anchorOwner.contentElement)throw new Error('Historical anchor owner changed');const r=geometry(existing,scroller,work);anchorGeometry=r.geometry;if(r.geometry.status==='available')anchorTopCssPx=r.geometry.value.hostRect.top-r.geometry.value.scrollerRect.top;}catch(error){geometryPrimaryPresent=true;geometryPrimary=error;anchorGeometry=missing(failureMessage(error));}
+      else if(anchorId===null&&allowAnchorSelection)for(const historical of samples.history)try{const r=geometry(historical,scroller,work);if(r.visible&&r.geometry.status==='available'){anchorId=historical.candidate.id;anchorOwner={id:anchorId,role:historical.candidate.role,hostElement:historical.candidate.hostElement,contentElement:historical.candidate.contentElement};anchorGeometry=r.geometry;anchorTopCssPx=r.geometry.value.hostRect.top-r.geometry.value.scrollerRect.top;break;}}catch(error){geometryPrimaryPresent=true;geometryPrimary=error;anchorGeometry=missing(failureMessage(error));break;}
+      const value:ScrollSnapshot={timestampMs:time,clockDomain:'page-performance-ms',scrollTop,scrollHeight,clientHeight,anchorId,anchorTopCssPx,activeVisible,followArmed:null,pinThresholdCssPx:null,geometry:activeGeometry,anchorGeometry};return {availability:{status:'available',value},nextAnchorId:anchorId,nextAnchorOwner:anchorOwner,primaryPresent:geometryPrimaryPresent,primary:geometryPrimary};
     }catch(error){return {availability:{status:'unavailable',reason:failureMessage(error)},nextAnchorId:anchorId,nextAnchorOwner:anchorOwner,primaryPresent:true,primary:geometryPrimaryPresent?geometryPrimary:error};}
   }
   function captureScroll(time:number,samples:{active:TextSample|null;history:TextSample[]},work:Budget,cs:CaptureCandidates|null):void{const result=calculateScroll(time,samples,work,cs,anchorId,pollAnchorOwner);anchorId=result.nextAnchorId;pollAnchorOwner=result.nextAnchorOwner;scroll=result.availability;if(scroll.status==='unavailable')unavailable('geometry',scroll.reason,time);}
@@ -290,50 +290,68 @@ export function installComparisonObservations(createComparisonBuffer:BufferFacto
   function emitScroll(value:ScrollSnapshot):void{observation('scroll-checkpoint',object(['scrollTop',n(value.scrollTop)],['scrollHeight',n(value.scrollHeight)],['clientHeight',n(value.clientHeight)],['anchorId',nullable(value.anchorId)],['anchorTopCssPx',nullable(value.anchorTopCssPx)],['activeVisible',b(value.activeVisible)],['followArmed',['null']]),value.timestampMs);}
   let scoredAnchorId:string|null=null,scoredScroll:CaptureAvailability<ScrollSnapshot>={status:'unavailable',reason:'Scroll probe has not run'},freshGeneration=0,freshAdmissionClosed=false;
   let scoredAnchorOwner:AnchorOwner|null=null;
+  let historyAnchorWindow:{phaseInstanceId:string}|null=null;
   const freshStats={callbacks:0,total:0,last:null as number|null,gap:null as number|null,invalidClock:false,incompleteReason:null as string|null};
-  type FreshRequest={generation:number;settled:boolean;timer:ReturnType<typeof setTimeout>|null;callbacks:number;last:number|null;resolve:(value:CaptureAvailability<ScrollSnapshot>)=>void};
+  type FreshRequest={generation:number;settled:boolean;timer:ReturnType<typeof setTimeout>|null;callbacks:number;last:number|null;phaseInstanceId:string|null;resolve:(value:CaptureAvailability<ScrollSnapshot>)=>void};
   let freshPending:FreshRequest|null=null;
   function finishFresh(record:FreshRequest,value:CaptureAvailability<ScrollSnapshot>):void {
     if(record.settled)return;record.settled=true;if(freshPending===record)freshPending=null;const owned=record.timer;record.timer=null;
     let failed=false,failure:unknown;try{if(owned!==null)clearTimeout(owned);}catch(error){failed=true;failure=error;}
-    if(failed){observation('failure',object(['stage',s(stage)],['reason',s('Capture cleanup failed: '+failureMessage(failure))]),record.last??0);if(value.status==='available')value={status:'unavailable',reason:failureMessage(failure)};}
+    if(failed){const samePhase=record.phaseInstanceId===null||phaseFailure===null&&open?.phase==='history-reading'&&open.instanceId===record.phaseInstanceId;if(record.last!==null&&samePhase)observation('failure',object(['stage',s(stage)],['reason',s('Capture cleanup failed: '+failureMessage(failure))]),record.last);if(value.status==='available')value={status:'unavailable',reason:failureMessage(failure)};else if(!samePhase)value={status:'unavailable',reason:cap(value.reason+'; Capture cleanup failed: '+failureMessage(failure))};}
     scoredScroll=value;record.resolve(value);
   }
-  function readScrollFresh(request:{notBeforePageMs:number|null}):Promise<CaptureAvailability<ScrollSnapshot>> {
+  function readScrollFresh(request:{notBeforePageMs:number|null;anchorWindow?:'begin-history-window'|'preserve-history-window'}):Promise<CaptureAvailability<ScrollSnapshot>> {
     if(stopped||freshAdmissionClosed)return Promise.resolve({status:'unavailable',reason:'Fresh scroll acquisition stopped'});
     if(freshPending!==null)return Promise.resolve({status:'unavailable',reason:'Fresh scroll acquisition already pending'});
     return new Promise(resolve=>{
-      const record:FreshRequest={generation:freshGeneration,settled:false,timer:null,callbacks:0,last:null,resolve};freshPending=record;
-      function assertRequestActive():void{if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed)throw new Error('Fresh scroll acquisition stopped');}
-      function fail(reason:string):void{if(record.settled)return;if(record.last!==null)unavailable('geometry',reason,record.last);finishFresh(record,{status:'unavailable',reason});}
+      const record:FreshRequest={generation:freshGeneration,settled:false,timer:null,callbacks:0,last:null,phaseInstanceId:null,resolve};freshPending=record;
+      const admittedPhase=open===null?null:{phase:open.phase,instanceId:open.instanceId};let requiredPhaseInstanceId:string|null=null,anchorMode:'begin-history-window'|'preserve-history-window'|undefined;
+      function phaseActive():boolean{return requiredPhaseInstanceId===null||phaseFailure===null&&open?.phase==='history-reading'&&open.instanceId===requiredPhaseInstanceId;}
+      function assertRequestActive():void{if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed)throw new Error('Fresh scroll acquisition stopped');if(!phaseActive())throw new Error('History anchor window phase instance changed');}
+      function fail(reason:string):void{if(record.settled)return;if(record.last!==null&&phaseActive())unavailable('geometry',reason,record.last);finishFresh(record,{status:'unavailable',reason});}
       let target:number|null;
       try{
         if(request===null||typeof request!=='object')throw new Error('Fresh scroll minimum timestamp invalid');
-        const keys=Object.keys(request);assertRequestActive();if(keys.join(',')!=='notBeforePageMs')throw new Error('Fresh scroll minimum timestamp invalid');
+        const keys=Object.keys(request);assertRequestActive();if(keys.length<1||keys.length>2||!keys.includes('notBeforePageMs')||keys.some(key=>key!=='notBeforePageMs'&&key!=='anchorWindow'))throw new Error('Fresh scroll minimum timestamp invalid');
         target=request.notBeforePageMs;assertRequestActive();if(target!==null&&(typeof target!=='number'||!Number.isFinite(target)||target<0))throw new Error('Fresh scroll minimum timestamp invalid');
+        if(keys.includes('anchorWindow')){
+          anchorMode=request.anchorWindow;assertRequestActive();if(anchorMode!=='begin-history-window'&&anchorMode!=='preserve-history-window')throw new Error('History anchor window mode invalid');
+          if(!('scoredScrollSampling' in options)||admittedPhase?.phase!=='history-reading')throw new Error('History anchor window requires fresh history-reading admission');
+          requiredPhaseInstanceId=anchorMode==='preserve-history-window'?historyAnchorWindow?.phaseInstanceId??null:admittedPhase.instanceId;
+          if(requiredPhaseInstanceId===null)throw new Error('History anchor window absent');assertRequestActive();
+          record.phaseInstanceId=requiredPhaseInstanceId;
+          if(anchorMode==='begin-history-window'){if(historyAnchorWindow!==null)throw new Error('History anchor window already begun');historyAnchorWindow={phaseInstanceId:requiredPhaseInstanceId};scoredAnchorId=null;scoredAnchorOwner=null;}
+        }
       }catch(error){fail(failureMessage(error));return;}
       function admit():void {
         if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed)return;
+        try{assertRequestActive();}catch(error){fail(failureMessage(error));return;}
         let time:number;
         try{time=performance.now();}catch{fail('Fresh scroll page clock unavailable');return;}
         if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed)return;
+        try{assertRequestActive();}catch(error){fail(failureMessage(error));return;}
         if(!Number.isFinite(time)||time<0||(record.last!==null&&time<=record.last)){fail('Fresh scroll page clock unavailable');return;}record.last=time;
         if(target!==null&&time<target){
           if(record.callbacks>=64){fail('Fresh scroll wait callback limit exceeded');return;}
           try{record.timer=setTimeout(()=>{if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed)return;record.timer=null;record.callbacks++;admit();},Math.max(1,Math.ceil(target-time)));
             if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed){const acquired=record.timer;record.timer=null;try{clearTimeout(acquired);}catch(error){observation('failure',object(['stage',s(stage)],['reason',s('Capture cleanup failed: '+failureMessage(error))]),record.last??0);}}
+            else try{assertRequestActive();}catch(error){fail(failureMessage(error));}
           }
           catch(error){observation('failure',object(['stage',s(stage)],['reason',s('Fresh scroll timer setup failed; cancellation unverified: '+failureMessage(error))]),time);fail(failureMessage(error));}return;
         }
-        freshStats.callbacks++;let primaryPresent=false,primary:unknown;const cleanup:unknown[]=[];let work:Budget|null=null,result:ReturnType<typeof calculateScroll>|null=null;
+        freshStats.callbacks++;let primaryPresent=false,primary:unknown,diagnosticPresent=false,diagnostic:unknown;const cleanup:unknown[]=[];let work:Budget|null=null,result:ReturnType<typeof calculateScroll>|null=null;
+        function rejectChangedPhase():boolean{if(phaseActive())return false;const reason='History anchor window phase instance changed';if(!primaryPresent){primaryPresent=true;primary=diagnosticPresent?diagnostic:new Error(reason);}freshStats.incompleteReason=reason;fail(failureMessage(cleanup.length?new AggregateError([primary,...cleanup],'Fresh scroll acquisition and cleanup failed'):primary));return true;}
         try{
           if(freshStats.last!==null){const gap=time-freshStats.last;if(!Number.isFinite(gap)||gap<0)throw new Error('Fresh scroll page clock unavailable');freshStats.gap=Math.max(freshStats.gap??0,gap);}freshStats.last=time;
-          work=budget(assertRequestActive);assertRequestActive();const cs=candidates();assertRequestActive();const active=cs.active?.contentElement?sample(cs.active,false,work):null,history=cs.historical.map(value=>sample(value,true,work!));assertRequestActive();result=calculateScroll(time,{active,history},work,cs,scoredAnchorId,scoredAnchorOwner);assertRequestActive();
-          if(result.primaryPresent){primaryPresent=true;primary=result.primary;}
+          work=budget(assertRequestActive);assertRequestActive();const cs=candidates();assertRequestActive();const active=cs.active?.contentElement?sample(cs.active,false,work):null,history=cs.historical.map(value=>sample(value,true,work!));assertRequestActive();result=calculateScroll(time,{active,history},work,cs,scoredAnchorId,scoredAnchorOwner,anchorMode==='begin-history-window'||historyAnchorWindow===null);
+          if(result.primaryPresent){diagnosticPresent=true;diagnostic=result.primary;if(result.availability.status==='unavailable'||!phaseActive()){primaryPresent=true;primary=result.primary;}}
+          else assertRequestActive();
         }catch(error){primaryPresent=true;primary=error;}
         finally{try{work?.mutations.stop();}catch(error){cleanup.push(error);}}
-        if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed){freshStats.incompleteReason='Fresh scroll acquisition stopped';if(cleanup.length)observation('failure',object(['stage',s(stage)],['reason',s('Capture cleanup failed: '+failureMessage(primaryPresent?new AggregateError([primary,...cleanup],'Fresh scroll acquisition and cleanup failed'):cleanup[0]))]),record.last??0);return;}
-        try{const end=performance.now();if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed){freshStats.incompleteReason='Fresh scroll acquisition stopped';return;}const duration=end-time,total=freshStats.total+duration;if(!Number.isFinite(end)||duration<0||!Number.isFinite(total))throw new Error('Fresh scroll page clock unavailable');freshStats.total=total;}catch(error){if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed){freshStats.incompleteReason='Fresh scroll acquisition stopped';observation('failure',object(['stage',s(stage)],['reason',s('Capture cleanup failed: '+failureMessage(error))]),record.last??0);return;}freshStats.invalidClock=true;if(primaryPresent)cleanup.push(error);else{primaryPresent=true;primary=error;}}
+        if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed){freshStats.incompleteReason='Fresh scroll acquisition stopped';if(!primaryPresent&&diagnosticPresent){primaryPresent=true;primary=diagnostic;}if(cleanup.length)observation('failure',object(['stage',s(stage)],['reason',s('Capture cleanup failed: '+failureMessage(primaryPresent?new AggregateError([primary,...cleanup],'Fresh scroll acquisition and cleanup failed'):cleanup[0]))]),record.last??0);return;}
+        if(rejectChangedPhase())return;
+        try{const end=performance.now();if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed){freshStats.incompleteReason='Fresh scroll acquisition stopped';return;}if(rejectChangedPhase())return;const duration=end-time,total=freshStats.total+duration;if(!Number.isFinite(end)||duration<0||!Number.isFinite(total))throw new Error('Fresh scroll page clock unavailable');freshStats.total=total;}catch(error){if(record.settled||record.generation!==freshGeneration||stopped||freshAdmissionClosed){freshStats.incompleteReason='Fresh scroll acquisition stopped';observation('failure',object(['stage',s(stage)],['reason',s('Capture cleanup failed: '+failureMessage(error))]),record.last??0);return;}freshStats.invalidClock=true;if(primaryPresent)cleanup.push(error);else if(diagnosticPresent){primaryPresent=true;primary=diagnostic;cleanup.push(error);}else{primaryPresent=true;primary=error;}}
+        if(!primaryPresent&&diagnosticPresent&&cleanup.length){primaryPresent=true;primary=diagnostic;}
         if(primaryPresent||cleanup.length){const error=primaryPresent?(cleanup.length?new AggregateError([primary,...cleanup],'Fresh scroll acquisition and cleanup failed'):primary):cleanup[0];fail(failureMessage(error));return;}
         scoredAnchorId=result!.nextAnchorId;scoredAnchorOwner=result!.nextAnchorOwner;const value=result!.availability;if(value.status==='available')emitScroll(value.value);else unavailable('geometry',value.reason,time);finishFresh(record,value);
       }

@@ -135,7 +135,7 @@ export function createLongThreadCaptureDriver(_options:LongThreadCaptureOptions,
    void promise.then(()=>context.ownership.signal.removeEventListener('abort',abort),()=>context.ownership.signal.removeEventListener('abort',abort));return track(state,promise);
  }
  async function phase(context:ComparisonSlotContext,state:SlotEntry,value:ComparisonPhase){await operation(context,state,()=>state.page!.evaluate(value=>{const capture=(window as CaptureWindow).comparisonCapture;if(!capture)throw new Error('Page capture absent');capture.setPhase(value);},value));}
- async function scroll(context:ComparisonSlotContext,state:SlotEntry,notBeforePageMs:number|null=null){const result=await operation(context,state,()=>state.page!.evaluate(request=>{const capture=(window as CaptureWindow).comparisonCapture;if(!capture)throw new Error('Page capture absent');return request.fresh?capture.readScrollFresh({notBeforePageMs:request.notBeforePageMs}):capture.readScroll();},{fresh:context.comparisonVersion==='2.1.0',notBeforePageMs}));
+ async function scroll(context:ComparisonSlotContext,state:SlotEntry,notBeforePageMs:number|null=null,anchorWindow?:Parameters<ComparisonPageState['readScrollFresh']>[0]['anchorWindow']){const result=await operation(context,state,()=>state.page!.evaluate(request=>{const capture=(window as CaptureWindow).comparisonCapture;if(!capture)throw new Error('Page capture absent');return request.fresh?capture.readScrollFresh({notBeforePageMs:request.notBeforePageMs,...(request.anchorWindow===undefined?{}:{anchorWindow:request.anchorWindow})}):capture.readScroll();},{fresh:context.comparisonVersion==='2.1.0',notBeforePageMs,...(anchorWindow===undefined?{}:{anchorWindow})}));
    if(result.status==='unavailable'){reason(state,result.reason);return undefined;}
    const parsed=comparisonContextFamily(context).comparisonCheckpointsSchema.shape.scroll.element.parse({...result.value,pinThresholdCssPx:state.profile!.configuration.pinThresholdCssPx,followArmed:null});
    if(state.scroll.length>=12)throw new Error('Fixed checkpoint capacity exceeded');state.scroll.push(parsed);if(parsed.geometry.status==='unavailable'||parsed.anchorGeometry.status==='unavailable'&&context.fixture.workload.journey==='history-reading')reason(state,'Scored scroll geometry unavailable');return parsed;
@@ -240,11 +240,12 @@ export function createLongThreadCaptureDriver(_options:LongThreadCaptureOptions,
      await phase(context,current,'history-reading');const before=await scroll(context,current),beforeReceipt=clock.now();
      const wheel=current.native.wheel();void wheel.catch(()=>{});let origin:number|undefined;
      while(origin===undefined){context.ownership.assertActive();const dispatch=current.native.snapshot().hostDispatches.find(value=>value.kind==='wheel'&&value.index===0);if(dispatch){origin=dispatch.hostMonotonicMs-dispatch.actualOffsetMs;if(before&&beforeReceipt>dispatch.hostMonotonicMs)reason(current,'Recipe-start sample did not precede actual dispatch');break;}await waitUntil(context,current,clock.now()+50);}
-     await waitUntil(context,current,origin+200);const post=await scroll(context,current);await waitUntil(context,current,origin+1000);
-     const fresh=context.comparisonVersion==='2.1.0',minimum=post?post.timestampMs+800:null,validMinimum=minimum!==null&&Number.isFinite(minimum)&&minimum>post!.timestampMs;
-     const later=fresh?(validMinimum?await scroll(context,current,minimum):undefined):await scroll(context,current);
+     const fresh=context.comparisonVersion==='2.1.0';if(fresh)await wheel;
+     await waitUntil(context,current,origin+200);const post=await scroll(context,current,null,fresh?'begin-history-window':undefined);await waitUntil(context,current,origin+1000);
+     const minimum=post?post.timestampMs+800:null,validMinimum=minimum!==null&&Number.isFinite(minimum)&&minimum>post!.timestampMs;
+     const later=fresh?(validMinimum?await scroll(context,current,minimum,'preserve-history-window'):undefined):await scroll(context,current);
      if(!before||!post||!later||before.clockDomain!=='page-performance-ms'||post.clockDomain!=='page-performance-ms'||later.clockDomain!=='page-performance-ms'||post.timestampMs<=before.timestampMs||later.timestampMs-post.timestampMs<800)reason(current,fresh?'Actual fresh samples do not cover the required 800ms window':'Actual cached samples do not cover the required 800ms window');
-     await wheel;await phase(context,current,'return-to-response');await scroll(context,current);await current.native.returnControl();await scroll(context,current);
+     if(!fresh)await wheel;await phase(context,current,'return-to-response');await scroll(context,current);await current.native.returnControl();await scroll(context,current);
      if(!current.native.snapshot().hostDispatches.some(value=>value.kind==='return-control'))reason(current,'Declared return control did not dispatch');await phase(context,current,'streaming-follow');
    }
    await phase(context,current,'composer-input');await current.native.composer();await phase(context,current,'streaming-follow');
