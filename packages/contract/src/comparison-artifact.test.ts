@@ -359,3 +359,131 @@ describe('instrumentation build lineage contracts',()=>{
     expect(contract.comparisonRawInventorySchema.safeParse({...identity,status:'partial',reason:'actual incomplete',files:[{path:record.path,status:'complete',...digestFact},{path:compiled.path,status:'complete',...digestFact}]}).success).toBe(true);
   });
 });
+
+
+// Prospective closed family API: existing index module, no missing-module import.
+type MigrationPair = {collectorVersion:string;analyzerVersion:string};
+type MigrationSchema = {parse(value:unknown):unknown;safeParse(value:unknown):{success:boolean}};
+type MigrationFamily = {
+  comparisonIdentitySchema:MigrationSchema;comparisonDatasetInventorySchema:MigrationSchema;
+  comparisonCaptureInvocationSchema:MigrationSchema;comparisonScheduledRunSchema:MigrationSchema;
+  comparisonValidationSchema:MigrationSchema;comparisonExceptionsSchema:MigrationSchema;
+  comparisonRawInventorySchema:MigrationSchema;comparisonCaptureStatusSchema:MigrationSchema;
+  comparisonInstrumentationSchema:MigrationSchema;comparisonEvidenceSchema:MigrationSchema;
+};
+function migrationFamily(version='2.0.0'):MigrationFamily {
+  const lookup=Reflect.get(contract,'comparisonSchemasForVersionPair');
+  expect(typeof lookup,'closed version-family API is accessible through existing index').toBe('function');
+  return (lookup as (pair:MigrationPair)=>MigrationFamily)({collectorVersion:version,analyzerVersion:version});
+}
+// Transcribed from the existing first sealed-dataset fixture; no capture/writer calls.
+function migrationGraph(version='2.0.0') {
+  const configuration={schemaVersion:2,suite:'long-thread-prose-v1',seed:1,rounds:1,adapterProfiles:['threadplane-langgraph-custom-transport'],caseOrder:contract.longThreadCaseOrder(1),mode:'headless',deadlinesMs:{historySetup:60000,replay:30000,disposal:10000}};
+  const versions={schemaVersion:2,suite:'long-thread-prose-v1',suiteVersion:'1.0.0',collectorVersion:version,analyzerVersion:version};
+  const invocationId='46dcd970-87f8-4d58-b9c1-490a5d9b9c05',createdAt='2026-10-10T00:00:00.000Z';
+  const runs=configuration.caseOrder.map((scenarioId,caseIndex)=>({round:1,caseIndex,scenarioId,adapterProfile:configuration.adapterProfiles[0],repetition:`1-${caseIndex}-0`,artifactDirectory:`runs/round-1/case-${caseIndex}/profile-0`,status:'failed',reasons:['not started']}));
+  const invocationClaim={...versions,kind:'invocation-ownership-claim',invocationId,createdAt,purpose:'conformance',configuration};
+  const invocationLedger={...versions,createdAt,purpose:'conformance',status:'failed',configuration,runs};
+  const slots=runs.map(r=>({identity:{...versions,repetition:r.repetition,scenarioId:r.scenarioId,round:r.round,caseIndex:r.caseIndex,adapterProfile:r.adapterProfile},artifactDirectory:r.artifactDirectory,status:r.status}));
+  const directories=[...new Set(runs.flatMap(r=>['runs','runs/round-1',`runs/round-1/case-${r.caseIndex}`,r.artifactDirectory]))].sort();
+  const baselineMembers=runs.flatMap(run=>['descriptor.json','validation.json','exceptions.json','raw-inventory.json'].map(name=>({path:run.artifactDirectory+'/'+name,...digestFact})));
+  const members=[{path:'invocation-claim.json',...digestFact},{path:'invocation.json',...digestFact},...baselineMembers].sort((a,b)=>a.path<b.path?-1:1);
+  const seal={...versions,invocationId,status:'sealed',configuration,invocationClaim,invocationLedger,root:'.',ledger:{path:'invocation.json',...digestFact},members,absentMembers:[],directories,slots,ownershipSettled:true,finalizationSucceeded:true};
+  const artifacts=slots.map((slot,index)=>({
+    descriptor:{...slot.identity,seed:1,mode:'headless',artifactDirectory:slot.artifactDirectory},
+    validation:{...slot.identity,status:'failed',checks:[{name:'actual-capture',passed:false,reason:'not started',evidencePaths:['descriptor.json']}],reasons:['not started']},
+    exceptions:{...slot.identity,exceptions:[]},
+    inventory:{...slot.identity,status:'partial',reason:'not started',files:[]},
+    status:{...partialCaptureStatus(),...slot.identity},
+    index,
+  }));
+  return {seal,invocationLedger,artifacts};
+}
+function checkMigrationGraph(family:MigrationFamily,graph:ReturnType<typeof migrationGraph>):void {
+  expect(family.comparisonCaptureInvocationSchema.parse(graph.invocationLedger)).toEqual(graph.invocationLedger);
+  expect(family.comparisonDatasetInventorySchema.parse(graph.seal)).toEqual(graph.seal);
+  expect(graph.artifacts).toHaveLength(12);
+  for(const row of graph.artifacts){
+    expect(family.comparisonScheduledRunSchema.parse(row.descriptor)).toEqual(row.descriptor);
+    expect(family.comparisonValidationSchema.parse(row.validation)).toEqual(row.validation);
+    expect(family.comparisonExceptionsSchema.parse(row.exceptions)).toEqual(row.exceptions);
+    expect(family.comparisonRawInventorySchema.parse(row.inventory)).toEqual(row.inventory);
+    expect(family.comparisonCaptureStatusSchema.parse(row.status)).toEqual(row.status);
+  }
+}
+const freshMigrationStat=()=>({samplingMode:'on-demand',callbacks:2,callbackDurationTotalMs:3,maximumObservedGapMs:{status:'available',value:800}});
+const freshMigrationInstrumentation=()=>({...instrumentation,freshScrollProbe:freshMigrationStat()});
+const newMigrationIdentity=()=>({...identity,collectorVersion:'2.1.0',analyzerVersion:'2.1.0'});
+describe('closed 2.0/2.1 comparison migration',()=>{
+  it('preserves original public 2.0 exports and the complete declared twelve-slot fixture graph',()=>{
+    const graph=migrationGraph(),before=JSON.stringify(graph);
+    checkMigrationGraph(contract,graph);
+    expect(contract.comparisonInstrumentationSchema.parse(instrumentation)).toEqual(instrumentation);
+    expect(contract.comparisonEvidenceSchema.parse(evidence())).toEqual(evidence());
+    expect(JSON.stringify(graph)).toBe(before);
+    expect(contract.comparisonIdentitySchema.safeParse(newMigrationIdentity()).success).toBe(false);
+  });
+  it('exposes exactly the planned closed family entry point without import-error substitution',()=>{
+    for(const version of ['2.0.0','2.1.0']){
+      const family=migrationFamily(version);
+      expect(family.comparisonIdentitySchema.parse({...identity,collectorVersion:version,analyzerVersion:version})).toEqual({...identity,collectorVersion:version,analyzerVersion:version});
+    }
+    const lookup=Reflect.get(contract,'comparisonSchemasForVersionPair') as (pair:MigrationPair)=>MigrationFamily;
+    for(const pair of [{collectorVersion:'2.0.0',analyzerVersion:'2.1.0'},{collectorVersion:'2.1.0',analyzerVersion:'2.0.0'},{collectorVersion:'2.2.0',analyzerVersion:'2.2.0'}])expect(()=>lookup(pair)).toThrow();
+  });
+  it('selected legacy family preserves the original graph and excludes fresh-only fields',()=>{
+    checkMigrationGraph(migrationFamily(),migrationGraph());
+    expect(migrationFamily().comparisonInstrumentationSchema.safeParse(freshMigrationInstrumentation()).success).toBe(false);
+    expect(migrationFamily().comparisonEvidenceSchema.safeParse({...evidence(),instrumentation:freshMigrationInstrumentation()}).success).toBe(false);
+  });
+  it('new family accepts coherent failed-not-acquired rows without fabricated instrumentation',()=>{
+    checkMigrationGraph(migrationFamily('2.1.0'),migrationGraph('2.1.0'));
+  });
+  it('new acquired evidence requires actual strict on-demand instrumentation',()=>{
+    const family=migrationFamily('2.1.0'),base={...evidence(),...newMigrationIdentity(),instrumentation:freshMigrationInstrumentation()};
+    expect(family.comparisonEvidenceSchema.parse(base)).toEqual(base);
+    expect(family.comparisonInstrumentationSchema.parse(base.instrumentation)).toEqual(base.instrumentation);
+    expect(family.comparisonEvidenceSchema.safeParse({...base,instrumentation}).success).toBe(false);
+    expect(family.comparisonInstrumentationSchema.safeParse(instrumentation).success).toBe(false);
+    const status={...partialCaptureStatus(),...newMigrationIdentity(),finalPageInstrumentation:{status:'available',value:base.instrumentation}};
+    expect(family.comparisonCaptureStatusSchema.parse(status)).toEqual(status);
+    expect(family.comparisonCaptureStatusSchema.safeParse({...status,finalPageInstrumentation:{status:'available',value:instrumentation}}).success).toBe(false);
+  });
+  it('rejects periodic interval or extra keys in otherwise valid fresh instrumentation',()=>{
+    const family=migrationFamily('2.1.0');
+    expect(family.comparisonInstrumentationSchema.safeParse(freshMigrationInstrumentation()).success).toBe(true);
+    for(const patch of [{intervalMs:50},{samplingMode:'periodic'},{extra:true},{callbacks:-1},{callbacks:0,maximumObservedGapMs:{status:'available',value:800}},{callbacks:1,maximumObservedGapMs:{status:'available',value:800}}]){
+      expect(family.comparisonInstrumentationSchema.safeParse({...freshMigrationInstrumentation(),freshScrollProbe:{...freshMigrationStat(),...patch}}).success).toBe(false);
+    }
+    for(const callbacks of [0,1])expect(family.comparisonInstrumentationSchema.safeParse({...freshMigrationInstrumentation(),freshScrollProbe:{...freshMigrationStat(),callbacks,callbackDurationTotalMs:callbacks===0?0:3,maximumObservedGapMs:{status:'unavailable',reason:'At least two actual callbacks are needed'}}}).success).toBe(true);
+  });
+  it('rejects mixed root, claim, ledger and slot pairs without reparsing via a fallback family',()=>{
+    const family=migrationFamily('2.1.0'),base=migrationGraph('2.1.0').seal;
+    expect(family.comparisonDatasetInventorySchema.safeParse(base).success).toBe(true);
+    for(const mutate of [
+      (copy:typeof base)=>{copy.analyzerVersion='2.0.0';},
+      (copy:typeof base)=>{copy.invocationClaim.collectorVersion='2.0.0';},
+      (copy:typeof base)=>{copy.invocationLedger.analyzerVersion='2.0.0';},
+      (copy:typeof base)=>{copy.slots[0]!.identity.collectorVersion='2.0.0';copy.slots[0]!.identity.analyzerVersion='2.0.0';},
+    ]){const copy=structuredClone(base);mutate(copy);expect(family.comparisonDatasetInventorySchema.safeParse(copy).success).toBe(false);}
+    expect(family.comparisonScheduledRunSchema.safeParse(migrationGraph().artifacts[0]!.descriptor).success).toBe(false);
+    expect(migrationFamily().comparisonScheduledRunSchema.safeParse(migrationGraph('2.1.0').artifacts[0]!.descriptor).success).toBe(false);
+  });
+});
+
+it('memoizes closed families and preserves every original legacy schema object',()=>{
+ const legacy=migrationFamily(),fresh=migrationFamily('2.1.0');
+ expect(migrationFamily()).toBe(legacy);expect(migrationFamily('2.1.0')).toBe(fresh);expect(fresh).not.toBe(legacy);
+ const names=["comparisonArtifactPathSchema", "comparisonVersionShape", "comparisonIdentityShape", "comparisonIdentitySchema", "comparisonPhaseSchema", "adapterCapabilitiesSchema", "adapterBuildSchema", "comparisonAdapterSchema", "comparisonManifestSchema", "comparisonInvocationSchema", "runtimeMessageSchema", "runtimeProgressSchema", "visibleMessageSchema", "comparisonUnavailableSchema", "comparisonAvailabilitySchema", "comparisonBoundedBufferSchema", "comparisonObserverSchema", "rendererCountersSchema", "comparisonObservationSchema", "comparisonPhaseInstanceSchema", "comparisonOpenPhaseSchema", "comparisonPhaseBoundarySchema", "comparisonPhasesSchema", "comparisonInventoryFileSchema", "comparisonInstrumentationSchema", "comparisonTraceSchema", "comparisonEvidenceSchema", "comparisonFinalRuntimeSchema", "comparisonVisibleValidationSchema", "comparisonExceptionEntrySchema", "comparisonExceptionsSchema", "comparisonValidationSchema", "comparisonMeasurementSchema", "comparisonRunResultsSchema", "comparisonRectSchema", "comparisonGeometrySchema", "comparisonCaptureLimitsSchema", "comparisonCaptureMetadataSchema", "comparisonInputRecipeSchema", "comparisonHostDispatchSchema", "comparisonDeadlineSchema", "comparisonHostFrameGuardSchema", "comparisonCounterCheckpointSchema", "comparisonCheckpointsSchema", "comparisonScheduledRunSchema", "comparisonCaptureInvocationSchema", "comparisonCaptureStatusSchema", "comparisonRawInventorySchema", "comparisonFinalizationStatusSchema", "comparisonDatasetFinalizationFailureSchema", "comparisonTraceAuxiliarySchema", "comparisonNativeDispatchResultsSchema", "comparisonInstrumentationBuildSchema", "comparisonProvenanceAcquisitionSchema", "comparisonDatasetInventorySchema", "installerRunIdentitySchema", "preNavigationOptionsSchema", "mainOptionsSchema"];
+ for(const name of names){expect(Reflect.get(legacy,name),name).toBe(Reflect.get(contract,name));expect(Reflect.get(fresh,name),name).toBeDefined();}
+});
+
+it('public artifact construction rejects crossed base and instrumentation families',()=>{
+ const build=Reflect.get(contract,'createComparisonArtifactSchemas') as (...args:unknown[])=>unknown;
+ const legacy=contract.createComparisonBaseSchemas('2.0.0'),fresh=contract.createComparisonBaseSchemas('2.1.0');
+ expect(()=>build(legacy,contract.comparisonInstrumentationSchema)).not.toThrow();
+ expect(()=>build(fresh,contract.comparisonFreshInstrumentationSchema)).not.toThrow();
+ expect(()=>build(legacy,contract.comparisonFreshInstrumentationSchema)).toThrow();
+ expect(()=>build(fresh,contract.comparisonInstrumentationSchema)).toThrow();
+ expect(()=>build({...legacy,versions:{...legacy.versions,analyzerVersion:'2.1.0'}},contract.comparisonInstrumentationSchema)).toThrow();
+});

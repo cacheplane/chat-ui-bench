@@ -18,9 +18,6 @@ export const COMPARISON_ANALYZER_VERSION = '2.0.0' as const;
 export const ACCEPTED_COMPARISON_VERSION_PAIRS = [{collectorVersion: COMPARISON_COLLECTOR_VERSION, analyzerVersion: COMPARISON_ANALYZER_VERSION}] as const;
 /** Syntax only; realpath/symlink containment is a separate filesystem gate. */
 export const comparisonArtifactPathSchema = z.string().regex(/^[A-Za-z0-9._@-]+(?:\/[A-Za-z0-9._@-]+)*$/).refine(path => !path.split('/').some(segment => segment === '.' || segment === '..'), 'Artifact path must be normalized relative POSIX');
-export const comparisonVersionShape = {schemaVersion: z.literal(2), suite: z.literal(LONG_THREAD_SUITE), suiteVersion: z.literal(COMPARISON_SUITE_VERSION), collectorVersion: z.literal(COMPARISON_COLLECTOR_VERSION), analyzerVersion: z.literal(COMPARISON_ANALYZER_VERSION)};
-export const comparisonIdentityShape = {...comparisonVersionShape, repetition: text, scenarioId: text, round: sequence.refine(n => n > 0), caseIndex: sequence, adapterProfile: text};
-export const comparisonIdentitySchema = z.strictObject(comparisonIdentityShape);
 export type ComparisonIdentity = z.infer<typeof comparisonIdentitySchema>;
 export const comparisonPhaseSchema = z.enum([
   'setup', 'history-ready', 'streaming-follow', 'composer-input', 'history-reading', 'return-to-response',
@@ -50,21 +47,6 @@ export const comparisonAdapterSchema = z.strictObject({
 });
 export type ComparisonAdapter = z.infer<typeof comparisonAdapterSchema>;
 const commonEnvironment = manifestSchema.pick({git: true, fixture: true, browser: true, environment: true, mode: true, viewport: true, cachePolicy: true});
-export const comparisonManifestSchema = commonEnvironment.extend({
-  ...comparisonVersionShape,
-  fixture: z.strictObject({sha256: hash, file: comparisonArtifactPathSchema}),
-  repetition: text, scenarioId: text, round: z.number().int().positive(), caseIndex: sequence,
-  caseOrder: z.array(text).min(1), workload: longThreadWorkloadSchema, adapter: comparisonAdapterSchema,
-  fonts: z.literal('local-system'),
-}).superRefine((m, ctx) => {
-  if (m.caseOrder[m.caseIndex] !== m.scenarioId) ctx.addIssue({code: 'custom', message: 'Case index/order mismatch'});
-  if (m.scenarioId !== longThreadScenarioId(m.workload)) ctx.addIssue({code: 'custom', message: 'Scenario/workload mismatch'});
-  if (new Set(m.caseOrder).size !== m.caseOrder.length) ctx.addIssue({code: 'custom', message: 'Duplicate scenario in case order'});
-  if (!Number.isSafeInteger(m.workload.seed) || m.workload.seed < 0) return;
-  const expectedOrder = longThreadCaseOrder(m.workload.seed);
-  if (m.caseOrder.length !== expectedOrder.length || m.caseOrder.some((id, i) => id !== expectedOrder[i])) ctx.addIssue({code: 'custom', message: 'Noncanonical long thread case order'});
-  if (m.viewport.width !== 1280 || m.viewport.height !== 800 || m.viewport.deviceScaleFactor !== 1) ctx.addIssue({code: 'custom', message: 'Long thread viewport must be 1280 by 800 at scale 1'});
-});
 export type ComparisonManifest = z.infer<typeof comparisonManifestSchema>;
 export const comparisonInvocationSchema = z.strictObject({
   schemaVersion: z.literal(2), suite: z.literal(LONG_THREAD_SUITE), seed: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
@@ -231,3 +213,33 @@ export function validateRuntimeTranscript(fixture: {history: readonly Message[];
   if (state.activeMessageId !== null || state.delivery !== 'complete' || state.outcome !== 'success' || state.loading || state.error !== null) reasons.push('Runtime has not settled successfully');
   return reasons;
 }
+
+export type ComparisonSchemaVersion='2.0.0'|'2.1.0';
+export function createComparisonBaseSchemas<const V extends ComparisonSchemaVersion>(version:V){
+ if(version!=='2.0.0'&&version!=='2.1.0')throw new Error('Unsupported comparison schema version');
+const comparisonVersionShape = {schemaVersion: z.literal(2), suite: z.literal(LONG_THREAD_SUITE), suiteVersion: z.literal(COMPARISON_SUITE_VERSION), collectorVersion: z.literal(version), analyzerVersion: z.literal(version)};
+const comparisonIdentityShape = {...comparisonVersionShape, repetition: text, scenarioId: text, round: sequence.refine(n => n > 0), caseIndex: sequence, adapterProfile: text};
+const comparisonIdentitySchema = z.strictObject(comparisonIdentityShape);
+const comparisonManifestSchema = commonEnvironment.extend({
+  ...comparisonVersionShape,
+  fixture: z.strictObject({sha256: hash, file: comparisonArtifactPathSchema}),
+  repetition: text, scenarioId: text, round: z.number().int().positive(), caseIndex: sequence,
+  caseOrder: z.array(text).min(1), workload: longThreadWorkloadSchema, adapter: comparisonAdapterSchema,
+  fonts: z.literal('local-system'),
+}).superRefine((m, ctx) => {
+  if (m.caseOrder[m.caseIndex] !== m.scenarioId) ctx.addIssue({code: 'custom', message: 'Case index/order mismatch'});
+  if (m.scenarioId !== longThreadScenarioId(m.workload)) ctx.addIssue({code: 'custom', message: 'Scenario/workload mismatch'});
+  if (new Set(m.caseOrder).size !== m.caseOrder.length) ctx.addIssue({code: 'custom', message: 'Duplicate scenario in case order'});
+  if (!Number.isSafeInteger(m.workload.seed) || m.workload.seed < 0) return;
+  const expectedOrder = longThreadCaseOrder(m.workload.seed);
+  if (m.caseOrder.length !== expectedOrder.length || m.caseOrder.some((id, i) => id !== expectedOrder[i])) ctx.addIssue({code: 'custom', message: 'Noncanonical long thread case order'});
+  if (m.viewport.width !== 1280 || m.viewport.height !== 800 || m.viewport.deviceScaleFactor !== 1) ctx.addIssue({code: 'custom', message: 'Long thread viewport must be 1280 by 800 at scale 1'});
+});
+ return {version,versions:Object.freeze({schemaVersion:2,suite:LONG_THREAD_SUITE,suiteVersion:COMPARISON_SUITE_VERSION,collectorVersion:version,analyzerVersion:version} as const),comparisonVersionShape,comparisonIdentityShape,comparisonIdentitySchema,comparisonManifestSchema};
+}
+export type ComparisonBaseSchemas<V extends ComparisonSchemaVersion>=ReturnType<typeof createComparisonBaseSchemas<V>>;
+export const legacyComparisonBase=createComparisonBaseSchemas('2.0.0');
+export const comparisonVersionShape=legacyComparisonBase.comparisonVersionShape;
+export const comparisonIdentityShape=legacyComparisonBase.comparisonIdentityShape;
+export const comparisonIdentitySchema=legacyComparisonBase.comparisonIdentitySchema;
+export const comparisonManifestSchema=legacyComparisonBase.comparisonManifestSchema;

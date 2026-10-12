@@ -1,3 +1,4 @@
+import {comparisonContextFamily,type ComparisonRuntimeSchemas} from './comparison-runtime-family.js';
 import {performance} from 'node:perf_hooks';
 import type {CDPSession} from 'playwright';
 import {COMPARISON_CAPTURE_LIMITS,PRESENTATION_CAPABILITY,PRESENTATION_CONTRACT_VERSION,PRESENTATION_TRACE_CATEGORIES,presentationEvidenceSchema,comparisonTraceSchema,comparisonTraceAuxiliarySchema,type ComparisonTrace,type ComparisonTraceAuxiliary,type ComparisonCaptureStatus} from '@chat-ui-bench/contract';
@@ -5,7 +6,7 @@ import type {ComparisonSlotContext} from './long-thread-run.js';
 import type {ComparisonPayloadFile,ComparisonRawStream} from './comparison-artifacts.js';
 
 export interface ComparisonTraceCaptureOptions {context:ComparisonSlotContext;session:CDPSession;isolatedBrowserProcess:boolean;singleWorkloadPage:boolean;now?:()=>number}
-export interface ComparisonTraceSnapshot {trace:ComparisonTrace;auxiliary:ComparisonTraceAuxiliary;traceEof:ComparisonCaptureStatus['traceEof'];payload:ComparisonPayloadFile}
+export interface ComparisonTraceSnapshot {trace:ComparisonTrace;auxiliary:ReturnType<ComparisonRuntimeSchemas['comparisonTraceAuxiliarySchema']['parse']>;traceEof:ComparisonCaptureStatus['traceEof'];payload:ComparisonPayloadFile}
 export interface ComparisonTraceCapture {start():Promise<void>;finish():Promise<void>;snapshot():ComparisonTraceSnapshot;close():Promise<void>}
 export interface ComparisonTraceProtocolBoundary {
  send(method:'Page.getFrameTree'|'Target.getTargetInfo'|'Tracing.end'):Promise<unknown>;
@@ -110,6 +111,8 @@ function chunkBytes(value:unknown):{bytes:Uint8Array;eof:boolean} {
  return {bytes:Buffer.from(data,'utf8'),eof};
 }
 function createCapture(o:Omit<ComparisonTraceProtocolFixtureOptions,'protocol'>,commands:ReturnType<typeof makeTraceCommands>):ComparisonTraceCapture {
+ const family=comparisonContextFamily(o.context);
+ family.comparisonIdentitySchema.parse(o.context.identity);
  const ctx=o.context.ownership,now=o.now??(()=>performance.now());
  if(ctx.stage!=='replay')throw new Error('Trace capture requires replay ownership');ctx.assertActive();
  let closed=false,started=false,finished=false,finishSettled=false,complete=false,sessionClosed=false;
@@ -214,7 +217,7 @@ function createCapture(o:Omit<ComparisonTraceProtocolFixtureOptions,'protocol'>,
   });},
   snapshot(){const isComplete=complete&&!failed;const partialReason=reason;
    const trace=comparisonTraceSchema.parse({status:'available',format:'cdp-json',file:'trace.json',categories:[...PRESENTATION_TRACE_CATEGORIES],complete:isComplete,...(isComplete?{}:{reason:partialReason}),tracingComplete,bufferUsage:usage,presentation});
-   const auxiliary=comparisonTraceAuxiliarySchema.parse({...o.context.identity,cap:256,observedCallbacks:observed,retainedCallbacks:usage.length,droppedCallbacks:dropped,invalidCallbacks:invalid,status:isComplete?'complete':'partial',...(isComplete?{}:{reason:partialReason}),completion});
+   const auxiliary=family.comparisonTraceAuxiliarySchema.parse({...o.context.identity,cap:256,observedCallbacks:observed,retainedCallbacks:usage.length,droppedCallbacks:dropped,invalidCallbacks:invalid,status:isComplete?'complete':'partial',...(isComplete?{}:{reason:partialReason}),completion});
    return {trace,auxiliary,traceEof:structuredClone(traceEof),payload:{path:'trace.json',status:isComplete?'complete':'partial',...(isComplete?{}:{reason:partialReason})}};
   },close,
  };

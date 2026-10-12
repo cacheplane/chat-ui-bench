@@ -1,3 +1,4 @@
+import {comparisonContextFamily, type ComparisonRuntimeSchemas} from './comparison-runtime-family.js';
 import {spawn, type SpawnOptionsWithoutStdio} from 'node:child_process';
 import type {Readable, Writable} from 'node:stream';
 import type {ComparisonOwnedResource} from './comparison-ownership.js';
@@ -6,14 +7,15 @@ import {constants, type BigIntStats} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {join, resolve, dirname} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {adapterBuildSchema, comparisonInstrumentationBuildSchema, comparisonIdentitySchema, comparisonScheduledRunSchema, comparisonProvenanceAcquisitionSchema, preNavigationOptionsSchema, mainOptionsSchema, canonicalSerialize, type AdapterBuild, type ComparisonInstrumentationBuild, type ComparisonProvenanceAcquisition, type ComparisonScheduledRun} from '@chat-ui-bench/contract';
+import {adapterBuildSchema, comparisonInstrumentationBuildSchema, canonicalSerialize, type AdapterBuild, type ComparisonInstrumentationBuild} from '@chat-ui-bench/contract';
 import type {ComparisonSlotContext} from './long-thread-run.js';
 import type {ComparisonRawStream, ComparisonScopedWriter} from './comparison-artifacts.js';
 import type {ComparisonInstallerPair} from './comparison-installer.js';
 
 type Measurement = {byteLength: number; sha256: string};
 type Availability<T> = {status: 'available'; value: T} | {status: 'unavailable'; reason: string};
-type Member = ComparisonProvenanceAcquisition['members'][number];
+type RuntimeAcquisition=ReturnType<ComparisonRuntimeSchemas['comparisonProvenanceAcquisitionSchema']['parse']>;
+type Member = RuntimeAcquisition['members'][number];
 type FileIdentity = {dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number};
 type PathCheck = {root: string; path: string; key: string; identity: FileIdentity; ancestors: [string, FileIdentity][]};
 type ReadCheck = PathCheck & Measurement & {bytes: Buffer};
@@ -41,7 +43,7 @@ interface OriginalProbeHelpers {
 export interface ComparisonAcquiredInstrumentation extends ComparisonInstallerPair {}
 export interface ComparisonServingFacts {originalRoot: string; build: AdapterBuild; probe: ComparisonInstrumentationBuild; assets: Record<string, string>}
 export interface ComparisonAcquisitionSnapshot {
-  acquisition: ComparisonProvenanceAcquisition;
+  acquisition: RuntimeAcquisition;
   payloads: readonly {path: 'instrumentation/pre-navigation.js' | 'instrumentation/main.js'; measurement: Availability<Measurement>; status: 'not-attempted' | 'pending' | 'complete' | 'failed'}[];
   persistence: {path: 'provenance/acquisition.json'; status: 'not-attempted' | 'pending' | 'complete' | 'failed'; reason?: string};
 }
@@ -55,7 +57,7 @@ interface OriginalFacts {
   compiled: Record<string, FileFact>; records: readonly [ReadCheck, ReadCheck]; files: Record<string, FileFact>; exact: Readonly<Record<string, ExactPathIdentity>>;
 }
 interface SessionState {
-  descriptor: ComparisonScheduledRun; root: string; writer: ComparisonScopedWriter; lifecycle: Lifecycle; signal: AbortSignal;
+  descriptor: ReturnType<ComparisonRuntimeSchemas['comparisonScheduledRunSchema']['parse']>; family:ComparisonRuntimeSchemas; version:'2.0.0'|'2.1.0'; root: string; writer: ComparisonScopedWriter; lifecycle: Lifecycle; signal: AbortSignal;
   attempted: boolean; complete: boolean; snapshot: ComparisonAcquisitionSnapshot; low?: OriginalLowHelpers;
   product?: OriginalProductHelpers; probe?: OriginalProbeHelpers; original?: OriginalFacts;
 }
@@ -67,14 +69,15 @@ async function guarded<T>(state: SessionState, operation: () => Promise<T>): Pro
 
 /** No IO: register this opaque handle before awaiting the one-shot acquire. */
 export function createComparisonProvenanceSession(context: ComparisonSlotContext, originalRoot: string): ComparisonProvenanceSession {
-  const descriptor = comparisonScheduledRunSchema.parse(context.descriptor), identity = comparisonIdentitySchema.parse(context.identity);
+  const family=comparisonContextFamily(context),version=context.comparisonVersion??'2.0.0';
+  const descriptor = family.comparisonScheduledRunSchema.parse(context.descriptor), identity = family.comparisonIdentitySchema.parse(context.identity);
   for (const key of Object.keys(identity) as (keyof typeof identity)[]) if (identity[key] !== descriptor[key]) throw new Error('Comparison descriptor identity differs');
   if (descriptor.adapterProfile !== 'threadplane-langgraph-custom-transport') throw new Error('Unsupported comparison profile');
   if (typeof originalRoot !== 'string' || !originalRoot || originalRoot.includes('\0')) throw new Error('Original root must be a primitive path');
   const ownership = context.ownership, generation = ownership.generation, writer = context.writer;
   const assertActive = ownership.assertActive.bind(ownership), adopt = ownership.adopt.bind(ownership);
   const lifecycle: Lifecycle = {assertActive() {if (ownership.generation !== generation) throw new Error('Original generation changed'); assertActive();}, adopt};
-  const state: SessionState = {descriptor: structuredClone(descriptor), root: originalRoot, signal: ownership.signal, lifecycle,
+  const state: SessionState = {descriptor: structuredClone(descriptor), family,version, root: originalRoot, signal: ownership.signal, lifecycle,
     writer: {text: writer.text.bind(writer), json: writer.json.bind(writer), append: writer.append.bind(writer), appendSerialized: writer.appendSerialized.bind(writer), stream: writer.stream.bind(writer)}, attempted: false, complete: false,
     snapshot: {acquisition: {...identity, status: 'partial', reason: 'comparison-not-yet-acquired', members: []}, payloads: ['instrumentation/pre-navigation.js', 'instrumentation/main.js'].map(path => ({path: path as 'instrumentation/pre-navigation.js' | 'instrumentation/main.js', status: 'not-attempted', measurement: unavailable('comparison-payload-not-acquired')})), persistence: {path: 'provenance/acquisition.json', status: 'not-attempted'}}};
   const session: ComparisonProvenanceSession = Object.freeze({
@@ -85,7 +88,7 @@ export function createComparisonProvenanceSession(context: ComparisonSlotContext
   sessions.set(session, state); return session;
 }
 function snapshot(state: SessionState): ComparisonAcquisitionSnapshot {
-  const copy = structuredClone(state.snapshot); copy.acquisition = comparisonProvenanceAcquisitionSchema.parse(copy.acquisition); return copy;
+  const copy = structuredClone(state.snapshot); copy.acquisition = state.family.comparisonProvenanceAcquisitionSchema.parse(copy.acquisition); return copy;
 }
 function brandedState(session: ComparisonProvenanceSession): SessionState {
   const state = sessions.get(session); if (!state) throw new Error('A genuine comparison session is required');
@@ -106,7 +109,7 @@ export function requireComparisonProvenanceSession(session: ComparisonProvenance
 }
 function validateOptions(state: SessionState, input: string, kind: 'pre' | 'main'): void {
   if (typeof input !== 'string' || input.length > 65536 || Buffer.byteLength(input, 'utf8') > 65536) throw new Error('Comparison options are overbudget');
-  const options = (kind === 'pre' ? preNavigationOptionsSchema : mainOptionsSchema).parse(JSON.parse(input));
+  const options = (kind === 'pre' ? state.family.preNavigationOptionsSchema : state.family.mainOptionsSchema).parse(JSON.parse(input));
   if (canonicalSerialize(options) !== input) throw new Error('Comparison options must be canonical');
   for (const key of ['repetition', 'round', 'artifactDirectory', 'scenarioId', 'caseIndex', 'adapterProfile', 'seed', 'mode'] as const) if (options.identity[key] !== state.descriptor[key]) throw new Error('Comparison options differ from actual descriptor');
 }
@@ -274,7 +277,7 @@ async function acquireSession(state: SessionState, pre: string, main: string): P
     state.lifecycle.assertActive(); const tracker = createObservedComparisonProcess(process.execPath, [worker.path], {cwd: state.root, env: workerEnvironment()}, state.signal, {cap: 12583086});
     await state.lifecycle.adopt(tracker.resource); // First creator follow-up.
     state.lifecycle.assertActive();
-    await guarded(state, () => tracker.write(Buffer.from(JSON.stringify([pre, main]), 'utf8')));
+    await guarded(state, () => tracker.write(Buffer.from(JSON.stringify(state.version==='2.0.0'?[pre,main]:[pre,main,state.version]), 'utf8')));
     const result = await guarded(state, () => tracker.result); const pair = parseComparisonAssemblyOutput(result.stdout);
     assertOriginals(await originalFacts(state), original);
     for (const [index, payload] of [pair.preNavigation, pair.main].entries()) {

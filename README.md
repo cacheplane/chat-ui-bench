@@ -2,9 +2,9 @@
 
 Reproducible browser instrumentation for long, streaming agent conversations.
 Maintained by Cacheplane for future Threadplane regression checks and chat-stack
-comparisons. This foundation measures a minimal reference chat with controlled
-faults. Competitor adapters, a dashboard, and comparative rankings are not
-implemented.
+comparisons. It measures a reference chat with controlled faults and captures
+Threadplane long-thread evidence. Competitor adapters, a dashboard, and
+comparative rankings are not implemented.
 
 The npm workspace contains a deterministic replay contract, independent Node SSE
 producer, local browser reference, Playwright/CDP capture runner, and offline
@@ -123,12 +123,40 @@ deadlines and recording actual emission timing, backpressure, and terminal
 failures. Runtime and visible-DOM evidence have separate contracts so future
 virtualized adapters can report their actual coverage.
 
-Supported runtime adapters and a long-thread capture command remain forthcoming.
-The current runnable benchmark is the reference calibration described above.
+The Threadplane Angular custom-transport profile is implemented with pinned
+`@threadplane/*` 0.3.2 and Angular 21.2.25. It uses the published packages and a
+local deterministic SSE replay transport. This profile is distinct from a
+default deployment connected to a model backend.
+
+After building, collect long-thread evidence in a fresh output directory:
+
+```sh
+npm run bench:long-thread -- --mode headless --rounds 1 --seed 1 --out /absolute/path/to/new-conformance-directory
+npm run bench:long-thread -- --mode headed --rounds 3 --seed 1 --out /absolute/path/to/new-publication-directory
+npm run test:browser:threadplane
+npm run test:browser:comparison
+```
+
+The capture command preserves every scheduled slot, raw evidence, correctness
+result, and finalization status. Headed collection requires all three rounds
+(36 slots); headless collection is for conformance. Collection returns a failure
+when a slot fails its checks. The reference `bench:analyze` command does not
+analyze these version 2 artifacts. Long-thread offline analysis, presentation
+eligibility, competitor adapters, and comparative reports remain in development;
+these capture commands do not establish published FPS results or rankings.
+
+New CLI captures use collector/analyzer family 2.1.0. Scored scroll checkpoints
+acquire current page geometry on demand; the later history checkpoint waits
+until at least 800 ms after the original post-wheel sample on the same page
+clock. Polling observations remain separate. Instrumentation records fresh
+callback counts, duration, and observed gaps. A whole-text range can reject
+offscreen content, but an overlapping bounding box never proves visible glyphs.
+Native range queries can force layout and enumerate text fragments, so fewer
+JavaScript queries alone do not establish lower rendering overhead.
 
 | Stack | Planned configurations |
 | --- | --- |
-| Threadplane Angular | Current documented default |
+| Threadplane Angular | Implemented custom transport; documented default planned separately |
 | assistant-ui React | Default kit and documented virtualized composition |
 | AI SDK + AI Elements + Streamdown | Documented chat composition |
 | CopilotKit Angular | Compatible released Angular configuration |

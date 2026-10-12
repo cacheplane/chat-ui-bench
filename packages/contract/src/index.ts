@@ -9,3 +9,4 @@ export * from './comparison-artifact.js';
 export * from './comparison-presentation.js';
 export * from './comparison-buffer.js';
 export * from './comparison-installer-options.js';
+export * from './comparison-version-families.js';

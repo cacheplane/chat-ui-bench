@@ -1,5 +1,5 @@
 import {test,expect,vi} from 'vitest';
-import {canonicalSerialize,createComparisonBuffer} from '@chat-ui-bench/contract';
+import {canonicalSerialize,createComparisonBuffer,comparisonSchemasForVersionPair} from '@chat-ui-bench/contract';
 import {assembleComparisonInstaller} from './comparison-installer.js';
 import {mainOptions,preOptions,page} from './comparison-page.test-helper.mts';
 import {createHash} from 'node:crypto';
@@ -12,7 +12,7 @@ import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 
 // Test-only independent verifier: parses retained bytes as data, never executes them.
-function verify(bytes:Uint8Array,kind:'pre-navigation'|'main',expectedFactory:string) {
+function verify(bytes:Uint8Array,kind:'pre-navigation'|'main',expectedFactory:string,version:'2.0.0'|'2.1.0'='2.0.0') {
   if(bytes.byteLength>1048576)throw Error('payload cap');
   const source=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
   if(!Buffer.from(source).equals(Buffer.from(bytes)))throw Error('UTF8 mismatch');
@@ -41,7 +41,8 @@ function verify(bytes:Uint8Array,kind:'pre-navigation'|'main',expectedFactory:st
     if(node.kind===ts.SyntaxKind.TrueKeyword||node.kind===ts.SyntaxKind.FalseKeyword||node.kind===ts.SyntaxKind.NullKeyword)return;
     throw Error('code as JSON');
   }
-  json(optionNode);const parsed=JSON.parse(options),strict=(kind==='main'?mainOptionsSchema:preNavigationOptionsSchema).parse(parsed);if(canonicalSerialize(strict)!==options)throw Error('canonical options');
+  const family=version==='2.0.0'?comparisonSchemasForVersionPair({collectorVersion:version,analyzerVersion:version}):comparisonSchemasForVersionPair({collectorVersion:version,analyzerVersion:version});
+  json(optionNode);const parsed=JSON.parse(options),strict=(kind==='main'?family.mainOptionsSchema:family.preNavigationOptionsSchema).parse(parsed);if(canonicalSerialize(strict)!==options)throw Error('canonical options');
   const invocation=statements[6]!;if(!ts.isExpressionStatement(invocation)||!ts.isCallExpression(invocation.expression)||!ts.isIdentifier(invocation.expression.expression)||invocation.expression.expression.text!=='installer'||invocation.expression.arguments.length!==2||invocation.expression.arguments.some((a,i)=>!ts.isIdentifier(a)||a.text!==['createComparisonBuffer','options'][i]))throw Error('invocation');
   const a=`(() => {\n"use strict";\nconst format = "chat-ui-bench:comparison-installer:v1";\nconst kind = "${kind}";\nconst createComparisonBuffer = `,b=';\nconst installer = ',c=';\nconst options = ',d=';\ninstaller(createComparisonBuffer, options);\n})();\n';
   if(a+factory+b+installer+c+options+d!==source)throw Error('whole envelope');return {factory,installer,options:strict,envelope:a+b+c+d};
@@ -116,4 +117,32 @@ test('compiled trusted bytes are required, a missing outer helper actually fails
   let injectedFactory:any;runInNewContext(pair.preNavigation.replace('installer(createComparisonBuffer, options);','window.injectedFactory = createComparisonBuffer; installer(createComparisonBuffer, options);'),p.context);injectedFactory=p.context.injectedFactory;
   const app=createComparisonBuffer('page-observations'),injected=injectedFactory('page-observations'),tokens=['object',2,'unicode','string','🌍漢\ud800\\\n','numbers','array',2,'number',1,'boolean',false] as any;
   expect(injected.enqueue(...tokens)).toBe(app.enqueue(...tokens));expect(injected.state()).toEqual(app.state());expect(injected.drain(1)).toEqual(app.drain(1));for(let i=0;i<4097;i++){app.enqueue('null');injected.enqueue('null');}expect(injected.state()).toEqual(app.state());expect(injected.drain(64)).toEqual(app.drain(64));expect(injected.state()).toEqual(app.state());
+});
+
+function selectedInstaller(pre:string,main:string,version:unknown):ReturnType<typeof assembleComparisonInstaller>{return Reflect.apply(assembleComparisonInstaller,undefined,[pre,main,version]);}
+const freshInstallerOptions=()=>({...mainOptions,scoredScrollSampling:{mode:'fresh-page-acquisition',minimumPostToLaterPageMs:800,maxWaitCallbacks:64}});
+test('explicit legacy installer selection preserves exact default bytes and excludes the fresh policy',()=>{
+  const pre=canonicalSerialize(preOptions),main=canonicalSerialize(mainOptions),original=assembleComparisonInstaller(pre,main);
+  expect(selectedInstaller(pre,main,'2.0.0')).toEqual(original);
+  const fresh=canonicalSerialize(freshInstallerOptions());
+  expect(()=>assembleComparisonInstaller(pre,fresh)).toThrow();expect(()=>selectedInstaller(pre,fresh,'2.0.0')).toThrow();
+});
+test('explicit fresh installer selection preserves canonical identities, original code and independently framed bytes without installation',()=>{
+  const pre=canonicalSerialize(preOptions),options=freshInstallerOptions(),main=canonicalSerialize(options),pair=selectedInstaller(pre,main,'2.1.0'),factory=createComparisonBuffer.toString();
+  const p=verify(Buffer.from(pair.preNavigation),'pre-navigation',factory,'2.1.0'),m=verify(Buffer.from(pair.main),'main',factory,'2.1.0');
+  expect(p.options).toEqual(preOptions);expect(m.options).toEqual(options);expect(p.options.identity).toEqual(m.options.identity);
+  expect(pair.installerSha256).toBe(framed('chat-ui-bench:comparison-installer-pair:v1',[Buffer.from(pair.preNavigation),Buffer.from(pair.main)]));
+  expect(pair.preNavigationByteLength).toBe(Buffer.byteLength(pair.preNavigation));expect(pair.mainByteLength).toBe(Buffer.byteLength(pair.main));
+});
+test('fresh installer requires exact policy and retains strict primitive canonical option admission',()=>{
+  const pre=canonicalSerialize(preOptions);expect(()=>selectedInstaller(pre,canonicalSerialize(mainOptions),'2.1.0')).toThrow();
+  const value=freshInstallerOptions();
+  for(const patch of [{mode:'cached'},{minimumPostToLaterPageMs:799},{maxWaitCallbacks:65},{intervalMs:50},{extra:true}])expect(()=>selectedInstaller(pre,canonicalSerialize({...value,scoredScrollSampling:{...value.scoredScrollSampling,...patch}}),'2.1.0')).toThrow();
+  expect(()=>selectedInstaller(pre,canonicalSerialize({...value,identity:{...value.identity,repetition:'other'}}),'2.1.0')).toThrow('Installer pair identities differ');
+  expect(()=>selectedInstaller(pre,canonicalSerialize(value)+' ','2.1.0')).toThrow('canonical');
+  const touched=vi.fn(()=>{throw Error('object input traversed');}),proxy=new Proxy({},{get:touched,ownKeys:touched});expect(()=>selectedInstaller(proxy as never,canonicalSerialize(value),'2.1.0')).toThrow();expect(touched).not.toHaveBeenCalled();
+});
+test('installer family selection rejects mixed or unknown primitive atoms and object traversal before JSON parsing',()=>{
+  const pre=canonicalSerialize(preOptions),main=canonicalSerialize(mainOptions),parse=vi.spyOn(JSON,'parse'),touched=vi.fn(()=>{throw Error('version traversed');}),proxy=new Proxy({},{get:touched,ownKeys:touched});
+  try{for(const version of ['2.0.0/2.1.0','2.2.0',null,1,Symbol('version'),proxy])expect(()=>selectedInstaller(pre,main,version)).toThrow('Unsupported comparison installer schema version');expect(touched).not.toHaveBeenCalled();expect(parse).not.toHaveBeenCalled();}finally{parse.mockRestore();}
 });
