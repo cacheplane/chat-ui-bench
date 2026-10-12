@@ -1,7 +1,9 @@
+import {comparisonContextFamily,type ComparisonRuntimeFamilyContext,type ComparisonRuntimeIdentity,type ComparisonRuntimeSchemas} from './comparison-runtime-family.js';
 import {performance} from 'node:perf_hooks';
 import type {Keyboard, Locator, Mouse} from 'playwright';
-import {comparisonIdentitySchema, comparisonInputRecipeSchema, comparisonNativeDispatchResultsSchema, mainOptionsSchema, type ComparisonIdentity, type ComparisonInputRecipe, type ComparisonNativeDispatchResults} from '@chat-ui-bench/contract';
+import {comparisonInputRecipeSchema, mainOptionsSchema, type ComparisonInputRecipe, type ComparisonNativeDispatchResults} from '@chat-ui-bench/contract';
 import type {ComparisonOwnershipClock, ComparisonOwnershipContext} from './comparison-ownership.js';
+type RuntimeNativeResults=ReturnType<ComparisonRuntimeSchemas['comparisonNativeDispatchResultsSchema']['parse']>;
 
 export interface ComparisonNativeControls {
   mouse: Pick<Mouse,'move'|'wheel'>;
@@ -10,13 +12,13 @@ export interface ComparisonNativeControls {
   composer: Pick<Locator,'click'>;
   returnControl: Pick<Locator,'isVisible'|'click'> | null;
 }
-export interface ComparisonNativeInputOptions {
-  identity: ComparisonIdentity; recipe: ComparisonInputRecipe;
+export interface ComparisonNativeInputOptions extends ComparisonRuntimeFamilyContext {
+  identity: ComparisonRuntimeIdentity; recipe: ComparisonInputRecipe;
   ownership: ComparisonOwnershipContext; controls: ComparisonNativeControls; clock?: ComparisonOwnershipClock;
 }
 export interface ComparisonNativeInput {
   wheel(): Promise<void>; composer(): Promise<void>; returnControl(): Promise<void>;
-  snapshot(): ComparisonNativeDispatchResults; close(): Promise<void>;
+  snapshot(): RuntimeNativeResults; close(): Promise<void>;
 }
 function diagnostic(error:unknown):string {
   const message=error instanceof Error ? error.message || error.name : String(error);
@@ -26,7 +28,8 @@ export function createComparisonNativeInput(o:ComparisonNativeInputOptions):Comp
   const ctx=o.ownership;
   if(ctx.stage!=='replay') throw new Error('Native input requires replay ownership');
   ctx.assertActive();
-  const identity=comparisonIdentitySchema.parse(o.identity), recipe=comparisonInputRecipeSchema.parse(o.recipe);
+  const family=comparisonContextFamily(o);
+  const identity=family.comparisonIdentitySchema.parse(o.identity), recipe=comparisonInputRecipeSchema.parse(o.recipe);
   mainOptionsSchema.shape.nativeRecipeIds.parse({wheel:recipe.wheel.recipeId,composer:recipe.composer.recipeId});
   const now=o.clock?.now ?? (()=>performance.now()), setTimer=o.clock?.setTimer ?? setTimeout, clearTimer=o.clock?.clearTimer ?? clearTimeout;
   const dispatches:ComparisonNativeDispatchResults['hostDispatches']=[], results:ComparisonNativeDispatchResults['results']=[];
@@ -100,7 +103,7 @@ export function createComparisonNativeInput(o:ComparisonNativeInputOptions):Comp
       const control=o.controls.returnControl; if(!control) return;
       const visible=await track(()=>control.isVisible());active();if(!visible) return;
       await dispatch('return-control','comparison-return-control-v1',0,0,now(),()=>control.click({timeout:ctx.remainingMs()}));},
-    snapshot(){const complete=results.every(r=>r.completion.status!=='unavailable');return comparisonNativeDispatchResultsSchema.parse({...identity,status:complete?'complete':'partial',...(complete?{}:{reason:'Native commands have not all settled'}),hostDispatches:dispatches,results});},
+    snapshot(){const complete=results.every(r=>r.completion.status!=='unavailable');return family.comparisonNativeDispatchResultsSchema.parse({...identity,status:complete?'complete':'partial',...(complete?{}:{reason:'Native commands have not all settled'}),hostDispatches:dispatches,results});},
     close,
   };
 }

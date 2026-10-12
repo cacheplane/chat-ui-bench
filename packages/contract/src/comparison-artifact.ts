@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { comparisonIdentityShape, comparisonIdentitySchema, comparisonVersionShape, comparisonPhaseSchema, comparisonArtifactPathSchema, comparisonInvocationSchema, comparisonUnavailableSchema, comparisonAvailabilitySchema, comparisonBoundedBufferSchema, comparisonObserverSchema, runtimeMessageSchema, rendererCountersSchema, type ComparisonObservation } from './comparison.js';
+import {legacyComparisonBase,type ComparisonBaseSchemas,type ComparisonSchemaVersion} from './comparison.js';
+import { comparisonIdentityShape, comparisonPhaseSchema, comparisonArtifactPathSchema, comparisonInvocationSchema, comparisonUnavailableSchema, comparisonAvailabilitySchema, comparisonBoundedBufferSchema, comparisonObserverSchema, runtimeMessageSchema, rendererCountersSchema, type ComparisonObservation } from './comparison.js';
 import { phaseInstanceIdSchema, presentationEvidenceSchema } from './presentation.js';
 import { comparisonPhaseMarks, comparisonScoredPresentationPhaseSchema, comparisonRendererPresentationSchema } from './comparison-presentation.js';
 import { longThreadCaseOrder } from './long-thread.js';
@@ -26,13 +27,6 @@ export const comparisonPhaseInstanceSchema = z.strictObject({...openShape, endMs
 });
 export const comparisonOpenPhaseSchema = z.strictObject(openShape).refine(marksMatch, 'Open phase mark does not match identity');
 export const comparisonPhaseBoundarySchema = z.strictObject({phase: comparisonPhaseSchema, instanceId: phaseInstanceIdSchema, boundary: z.enum(['start', 'end']), timestampMs: timestamp, clockDomain: z.literal('page-performance-ms'), markName: text}).refine(v => v.markName === `bench:comparison:${v.phase}:${v.instanceId}:${v.boundary}`, 'Boundary mark does not match identity');
-export const comparisonPhasesSchema = z.strictObject({...comparisonIdentityShape, status: z.enum(['complete', 'partial']), reason: text.optional(), instances: z.array(comparisonPhaseInstanceSchema), openPhase: comparisonOpenPhaseSchema.nullable()}).superRefine((v, ctx) => {
-  if (v.status === 'complete' ? v.reason !== undefined || v.openPhase !== null : v.reason === undefined) issue(ctx, 'Phase status requires complete closure or explicit partial reason');
-  unique([...v.instances.map(p => p.instanceId), ...(v.openPhase ? [v.openPhase.instanceId] : [])], ctx, 'phase instance identity');
-  unique([...v.instances.flatMap(p => [p.startMark, p.endMark]), ...(v.openPhase ? [v.openPhase.startMark] : [])], ctx, 'phase mark');
-  if (v.instances.some((p, i) => i > 0 && p.startMs < v.instances[i - 1]!.endMs)) issue(ctx, 'Phase intervals must be chronological and nonoverlapping');
-  if (v.openPhase && v.instances.length && v.openPhase.startMs < v.instances.at(-1)!.endMs) issue(ctx, 'Open phase overlaps a closed interval');
-});
 export type ComparisonPhases = z.infer<typeof comparisonPhasesSchema>;
 /** This checks only supplied page identity/time facts, never capture or scoring eligibility. */
 export function validateComparisonPageAttribution(observation: ComparisonObservation, phases: ComparisonPhases): string[] {
@@ -57,13 +51,6 @@ export function validateComparisonPageAttribution(observation: ComparisonObserva
 
 export const comparisonInventoryFileSchema = z.strictObject({path: comparisonArtifactPathSchema, status: z.enum(['complete', 'partial']), byteLength: count, sha256: hash, reason: text.optional()}).refine(v => v.status === 'partial' ? v.reason !== undefined : v.reason === undefined, 'File status must match partial reason');
 const probeShape = {intervalMs: timestamp.refine(n => n > 0), callbacks: count, callbackDurationTotalMs: timestamp, maximumObservedGapMs: comparisonAvailabilitySchema(timestamp)};
-export const comparisonInstrumentationSchema = z.strictObject({
-  runtimeProbe: z.strictObject(probeShape), domProbe: z.strictObject({...probeShape, selectionStrategy: z.literal('bounded-visible-candidates')}), scrollProbe: z.strictObject(probeShape), transportDrain: z.strictObject(probeShape),
-  eventTiming: comparisonObserverSchema, loaf: comparisonObserverSchema, buffers: z.array(comparisonBoundedBufferSchema),
-}).superRefine((v, ctx) => {
-  unique(v.buffers.map(b => b.name), ctx, 'buffer name');
-  for (const [expected, observer] of [['event', v.eventTiming], ['long-animation-frame', v.loaf]] as const) if (observer.status === 'available' && observer.value.entryType !== expected) issue(ctx, 'Observer entry type differs from instrumentation slot');
-});
 export const comparisonTraceSchema = z.discriminatedUnion('status', [comparisonUnavailableSchema, z.strictObject({
   status: z.literal('available'), format: z.literal('cdp-json'), file: comparisonArtifactPathSchema, categories: z.array(text).min(1), complete: z.boolean(), reason: text.optional(),
   tracingComplete: comparisonAvailabilitySchema(z.strictObject({dataLossOccurred: z.boolean(), stream: text.optional(), traceFormat: z.enum(['json', 'proto']).optional(), streamCompression: z.enum(['none', 'gzip']).optional()})),
@@ -73,20 +60,9 @@ export const comparisonTraceSchema = z.discriminatedUnion('status', [comparisonU
   unique(v.categories, ctx, 'trace category');
   if (v.complete ? v.reason !== undefined : v.reason === undefined) issue(ctx, 'Incomplete trace requires a reason');
 })]);
-export const comparisonEvidenceSchema = z.strictObject({
-  ...comparisonIdentityShape, status: z.enum(['pending', 'complete', 'partial']), reason: text.optional(), files: z.array(comparisonInventoryFileSchema), unavailableFiles: z.array(z.strictObject({path: comparisonArtifactPathSchema, reason: text})),
-  trace: comparisonTraceSchema, instrumentation: comparisonInstrumentationSchema,
-}).superRefine((v, ctx) => {
-  if (v.status === 'partial' ? v.reason === undefined : v.reason !== undefined) issue(ctx, 'Evidence status requires explicit partial reason');
-  unique([...v.files.map(f => f.path), ...v.unavailableFiles.map(f => f.path)], ctx, 'inventory path');
-  const derived = new Set(['evidence.json', 'results.json', 'metrics.json', 'summary.md', 'report.json', 'report.html', 'report.md']);
-  if (v.files.some(f => derived.has(f.path.split('/').at(-1)!))) issue(ctx, 'Payload inventory excludes itself and derived analysis files');
-  if (v.status === 'complete' && (v.files.some(f => f.status === 'partial') || v.instrumentation.buffers.some(b => b.status === 'partial') || v.trace.status === 'available' && (!v.trace.complete || v.trace.tracingComplete.status === 'available' && v.trace.tracingComplete.value.dataLossOccurred))) issue(ctx, 'Complete evidence cannot claim partial or lost capture');
-});
 export type ComparisonEvidence = z.infer<typeof comparisonEvidenceSchema>;
 
 const runtimeSnapshot = z.strictObject({transcript: z.array(runtimeMessageSchema), activeMessageId: text.nullable(), delivery: z.enum(['idle', 'streaming', 'complete', 'aborted', 'error']), outcome: z.enum(['success', 'error', 'aborted']).nullable(), loading: z.boolean(), error: z.string().nullable()});
-export const comparisonFinalRuntimeSchema = z.strictObject({...comparisonIdentityShape, timestampMs: timestamp, clockDomain: z.literal('page-performance-ms'), snapshot: runtimeSnapshot});
 export type ComparisonFinalRuntime = z.infer<typeof comparisonFinalRuntimeSchema>;
 const capturedMessage = z.strictObject({id: text, text: z.string()});
 const activeResponse = z.union([capturedMessage, comparisonUnavailableSchema]);
@@ -98,7 +74,6 @@ const coverage = z.discriminatedUnion('mode', [
     if (v.historySamples.length !== v.samplingRecipe.count || v.historySamples.some(s => s.sampleIndex >= v.samplingRecipe.count)) issue(ctx, 'Sample cohort must match declared recipe count');
   }),
 ]);
-export const comparisonVisibleValidationSchema = z.strictObject({...comparisonIdentityShape, timestampMs: timestamp, clockDomain: z.literal('page-performance-ms'), coverage});
 export type ComparisonVisibleValidation = z.infer<typeof comparisonVisibleValidationSchema>;
 const stage = z.enum(['setup', 'replay', 'validation', 'disposal']);
 export const comparisonExceptionEntrySchema = z.strictObject({source: z.enum(['runner', 'page', 'console', 'producer']), stage, clockDomain: z.enum(['host-monotonic-ms', 'page-performance-ms', 'producer-monotonic-ms']), timestampMs: timestamp, message: text, stack: z.string().nullable(), severity: z.enum(['error', 'warning'])}).superRefine((v, ctx) => {
@@ -106,34 +81,15 @@ export const comparisonExceptionEntrySchema = z.strictObject({source: z.enum(['r
   if (v.clockDomain !== clock) issue(ctx, 'Exception source and clock differ');
 });
 export type ComparisonExceptionEntry = z.infer<typeof comparisonExceptionEntrySchema>;
-export const comparisonExceptionsSchema = z.strictObject({...comparisonIdentityShape, exceptions:z.array(comparisonExceptionEntrySchema)});
 export type ComparisonExceptions = z.infer<typeof comparisonExceptionsSchema>;
 const status = z.enum(['valid', 'invalid', 'failed']);
 function validateVerdict(v: {status: 'valid'|'invalid'|'failed'; reasons: string[]}, ctx: z.RefinementCtx) {
   if (v.status === 'valid' ? v.reasons.length !== 0 : v.reasons.length === 0) issue(ctx, 'Verdict must preserve explicit unsuccessful reasons');
 }
-export const comparisonValidationSchema = z.strictObject({...comparisonIdentityShape, status, checks: z.array(z.strictObject({name: text, passed: z.boolean(), reason: text.nullable(), evidencePaths: paths}).refine(v => v.passed ? v.reason === null : v.reason !== null, 'Unsuccessful check requires a reason')).min(1), reasons: z.array(text)}).superRefine((v, ctx) => {
-  validateVerdict(v, ctx);
-  unique(v.checks.map(c => c.name), ctx, 'validation check name');
-  if (v.status === 'valid' && v.checks.some(c => !c.passed)) issue(ctx, 'Valid verdict cannot contain unsuccessful checks');
-});
 export type ComparisonValidation = z.infer<typeof comparisonValidationSchema>;
 export const comparisonMeasurementSchema = z.discriminatedUnion('status', [comparisonUnavailableSchema, z.strictObject({status: z.literal('available'), value: z.number().finite(), unit: text, evidencePaths: paths.min(1)})]);
 const metric = z.strictObject({name: text, measurement: comparisonMeasurementSchema});
 const metricList = z.array(metric).superRefine((v, ctx) => unique(v.map(m => m.name), ctx, 'metric name'));
-export const comparisonRunResultsSchema = z.strictObject({
-  ...comparisonIdentityShape, generatedAt: isoTime, status, reasons: z.array(text), metrics: metricList,
-  phases: z.array(z.strictObject({phase: comparisonScoredPresentationPhaseSchema, instanceId: phaseInstanceIdSchema, metrics: metricList})), presentation: comparisonRendererPresentationSchema,
-  diagnostics: z.array(z.strictObject({name: text, value: z.number().finite(), unit: text, scored: z.literal(false), evidencePaths: paths.min(1)})),
-}).superRefine((v, ctx) => {
-  validateVerdict(v, ctx);
-  unique(v.phases.map(p => p.instanceId), ctx, 'result phase identity');
-  unique(v.diagnostics.map(d => d.name), ctx, 'diagnostic name');
-  if (v.status !== 'valid') {
-    if ([...v.metrics, ...v.phases.flatMap(p => p.metrics)].some(m => m.measurement.status === 'available')) issue(ctx, 'Unsuccessful run cannot have available scored metrics');
-    if (v.presentation.status === 'available' && v.presentation.value.phases.some(p => p.rendererVisualUpdateFps.status === 'available' || p.presentationIntervals.status === 'available')) issue(ctx, 'Unsuccessful run cannot have scored presentation');
-  }
-});
 export type ComparisonRunResults = z.infer<typeof comparisonRunResultsSchema>;
 
 export const comparisonRectSchema = z.strictObject({left: z.number().finite(), top: z.number().finite(), right: z.number().finite(), bottom: z.number().finite()}).refine(v => v.right >= v.left && v.bottom >= v.top, 'Rectangle bounds must be ordered');
@@ -149,10 +105,6 @@ export const comparisonCaptureLimitsSchema = z.strictObject({
   maxAncestorsPerGeometry:z.literal(COMPARISON_CAPTURE_LIMITS.maxAncestorsPerGeometry),maxAncestorsPerCallback:z.literal(COMPARISON_CAPTURE_LIMITS.maxAncestorsPerCallback),
   maxRectsPerSample:z.literal(COMPARISON_CAPTURE_LIMITS.maxRectsPerSample),maxRectsPerCallback:z.literal(COMPARISON_CAPTURE_LIMITS.maxRectsPerCallback),
   maxConsoleArguments:z.literal(COMPARISON_CAPTURE_LIMITS.maxConsoleArguments),maxDiagnosticFieldCodeUnits:z.literal(COMPARISON_CAPTURE_LIMITS.maxDiagnosticFieldCodeUnits),maxDiagnosticMessageCodeUnits:z.literal(COMPARISON_CAPTURE_LIMITS.maxDiagnosticMessageCodeUnits),maxDiagnosticStackCodeUnits:z.literal(COMPARISON_CAPTURE_LIMITS.maxDiagnosticStackCodeUnits),
-});
-export const comparisonCaptureMetadataSchema = z.strictObject({...comparisonIdentityShape,
-  browserProtocol:z.strictObject({protocolVersion:text,product:text,revision:text,userAgent:text,jsVersion:text}),chromiumDownloadRevision:text,playwrightVersion:text,
-  instrumentation:z.strictObject({sourceHashes:z.record(comparisonArtifactPathSchema,hash).refine(v=>Object.keys(v).length>0,'Actual source inventory must not be empty'),installerSha256:hash,probeIntervalMs:z.literal(50),limits:comparisonCaptureLimitsSchema}),
 });
 export type ComparisonCaptureMetadata = z.infer<typeof comparisonCaptureMetadataSchema>;
 export const comparisonInputRecipeSchema = z.strictObject({
@@ -181,37 +133,11 @@ const scrollCheckpoint = z.strictObject({timestampMs: timestamp, clockDomain: z.
 const hostReceipt = comparisonAvailabilitySchema(z.strictObject({timestampMs:timestamp,clockDomain:z.literal('host-monotonic-ms')}));
 export const comparisonCounterCheckpointSchema = z.strictObject({lifecycle:z.enum(['baseline','history-ready','replay-end']),pageRequestBracket:comparisonAvailabilitySchema(z.strictObject({clockDomain:z.literal('page-performance-ms'),beforeMs:timestamp,afterMs:timestamp}).refine(v=>v.beforeMs<=v.afterMs,'Page request bracket must be ordered')),hostReceipt:z.strictObject({heap:hostReceipt,dom:hostReceipt}),data:rendererCountersSchema});
 export type ComparisonCounterCheckpoint = z.infer<typeof comparisonCounterCheckpointSchema>;
-export const comparisonCheckpointsSchema = z.strictObject({...comparisonIdentityShape, inputRecipe: comparisonInputRecipeSchema, hostDispatches: z.array(comparisonHostDispatchSchema), hostFrameGuards: z.array(comparisonHostFrameGuardSchema), scroll: z.array(scrollCheckpoint), counters: z.array(comparisonCounterCheckpointSchema), deadlines: z.array(comparisonDeadlineSchema)}).superRefine((v, ctx) => {
-  const order=['baseline','history-ready','replay-end'];
-  if(v.counters.some((counter,i)=>i>0&&order.indexOf(counter.lifecycle)<=order.indexOf(v.counters[i-1]!.lifecycle))) issue(ctx,'Counter lifecycle must be unique and ordered');
-  unique(v.deadlines.map(d => d.stage), ctx, 'deadline stage');
-  unique(v.hostDispatches.map(d => `${d.recipeId}:${d.index}`), ctx, 'dispatch identity');
-  for (const d of v.hostDispatches) {
-    if (d.kind === 'wheel' && d.recipeId !== v.inputRecipe.wheel.recipeId || d.kind === 'composer' && d.recipeId !== v.inputRecipe.composer.recipeId) issue(ctx, 'Dispatch recipe identity mismatch');
-  }
-});
 export type ComparisonCheckpoints = z.infer<typeof comparisonCheckpointsSchema>;
 
-export const comparisonScheduledRunSchema = z.strictObject({...comparisonIdentityShape, seed: count, mode: z.enum(['headed', 'headless']), artifactDirectory: comparisonArtifactPathSchema});
 export type ComparisonScheduledRun = z.infer<typeof comparisonScheduledRunSchema>;
 const runSlot = z.strictObject({round: count.refine(n => n > 0), caseIndex: count, scenarioId: text, adapterProfile: text, repetition: text, artifactDirectory: comparisonArtifactPathSchema, status: z.enum(['scheduled', 'running', 'valid', 'invalid', 'failed']), reasons: z.array(text)}).superRefine((v, ctx) => {
   if (v.status === 'invalid' || v.status === 'failed' ? v.reasons.length === 0 : v.reasons.length !== 0) issue(ctx, 'Slot status needs explicit unsuccessful reasons');
-});
-export const comparisonCaptureInvocationSchema = z.strictObject({...comparisonVersionShape, createdAt: isoTime, purpose: z.enum(['publication', 'conformance']), status: z.enum(['pending', 'complete', 'failed']), configuration: comparisonInvocationSchema, runs: z.array(runSlot)}).superRefine((v, ctx) => {
-  const config = v.configuration, order = longThreadCaseOrder(config.seed);
-  if (v.purpose === 'publication' && (config.rounds !== 3 || config.adapterProfiles.length !== 1)) issue(ctx, 'Publication requires three rounds and one adapter profile');
-  const slots = config.rounds * order.length * config.adapterProfiles.length;
-  if (v.runs.length !== slots) issue(ctx, 'Invocation must retain all declared canonical slots');
-  unique(v.runs.map(r => r.repetition), ctx, 'run repetition');
-  unique(v.runs.map(r => r.artifactDirectory), ctx, 'run directory');
-  v.runs.forEach((run, index) => {
-    const perRound = order.length * config.adapterProfiles.length;
-    const expectedRound = Math.floor(index / perRound) + 1;
-    const caseIndex = Math.floor(index % perRound / config.adapterProfiles.length);
-    const profile = config.adapterProfiles[index % config.adapterProfiles.length];
-    if (run.round !== expectedRound || run.caseIndex !== caseIndex || run.scenarioId !== order[caseIndex] || run.adapterProfile !== profile) issue(ctx, 'Run slot differs from canonical invocation order');
-    if (v.status !== 'pending' && (run.status === 'scheduled' || run.status === 'running')) issue(ctx, 'Terminal invocation must finalize untouched slots');
-  });
 });
 export type ComparisonCaptureInvocation = z.infer<typeof comparisonCaptureInvocationSchema>;
 export type ComparisonPhaseInstance = z.infer<typeof comparisonPhaseInstanceSchema>;
@@ -242,37 +168,11 @@ function rawSlotPath(path:string):boolean {
 }
 function sameIdentityFacts(a:Record<string,unknown>,b:Record<string,unknown>):boolean {return Object.keys(comparisonIdentityShape).every(key=>a[key]===b[key]);}
 const drainSummary = z.strictObject({entries:count,serializedBytes:count}).refine(v=>v.entries!==0 || v.serializedBytes===0,'Empty drain cannot contain serialized bytes');
-export const comparisonCaptureStatusSchema = z.strictObject({
-  ...comparisonIdentityShape,status:z.enum(['complete','partial','unavailable']),reasons:z.array(reason).max(32),
-  captureMetadata:availability(comparisonCaptureMetadataSchema),evidenceMetadata:z.discriminatedUnion('status',[missingFact,z.strictObject({status:z.literal('available')})]),
-  payloads:z.array(payloadStatus).max(4096),unavailablePaths:z.array(unavailablePath).max(4096),
-  terminalPageDrain:availability(drainSummary),terminalProducerDrain:availability(drainSummary),finalPageInstrumentation:availability(comparisonInstrumentationSchema),traceEof:availability(z.strictObject({observedAtHostMs:timestamp,clockDomain:z.literal('host-monotonic-ms')})),
-}).superRefine((v,ctx)=>{
-  if(v.status==='complete' ? v.reasons.length!==0 : v.reasons.length===0) issue(ctx,'Capture status needs explicit unsuccessful reasons');
-  const paths=[...v.payloads.map(p=>p.path),...v.unavailablePaths.map(p=>p.path)]; unique(paths,ctx,'capture path');
-  if(paths.length>4096 || paths.some(path=>!rawSlotPath(path))) issue(ctx,'Capture paths must be bounded declared raw members');
-  if(v.captureMetadata.status==='available' && !sameIdentityFacts(v,v.captureMetadata.value)) issue(ctx,'Capture metadata identity mismatch');
-  if(v.status==='complete' && ([v.captureMetadata,v.evidenceMetadata,v.terminalPageDrain,v.terminalProducerDrain,v.finalPageInstrumentation,v.traceEof].some(f=>f.status!=='available') || v.payloads.some(f=>f.status==='partial') || v.unavailablePaths.length)) issue(ctx,'Complete capture requires genuinely acquired complete facts');
-  if(v.status==='complete' && v.finalPageInstrumentation.status==='available' && v.finalPageInstrumentation.value.buffers.some(b=>b.status==='partial')) issue(ctx,'Complete capture cannot hide buffer loss');
-});
 export type ComparisonCaptureStatus = z.infer<typeof comparisonCaptureStatusSchema>;
-export const comparisonRawInventorySchema = z.strictObject({...comparisonIdentityShape,status:z.literal('partial'),reason,files:z.array(comparisonInventoryFileSchema).max(4096)}).superRefine((v,ctx)=>{
-  unique(v.files.map(f=>f.path),ctx,'raw inventory path');
-  if(v.files.some(f=>!rawSlotPath(f.path))) issue(ctx,'Raw inventory excludes its own manifest, evidence and derived files');
-});
 export type ComparisonRawInventory = z.infer<typeof comparisonRawInventorySchema>;
-export const comparisonFinalizationStatusSchema = z.strictObject({...comparisonIdentityShape,status:z.literal('failed'),reason,manifest:z.strictObject({path:z.enum(['evidence.json','raw-inventory.json']).nullable(),state:z.enum(['unusable','not-written'])}),failedAtHostMs:timestamp,datasetSealEligible:z.literal(false)}).refine(v=>(v.manifest.path===null)===(v.manifest.state==='not-written'),'Finalization manifest availability must agree');
 export type ComparisonFinalizationStatus = z.infer<typeof comparisonFinalizationStatusSchema>;
-export const comparisonDatasetFinalizationFailureSchema = z.strictObject({...comparisonVersionShape,invocationId:z.uuid(),status:z.literal('failed'),reasons:z.array(reason).min(1).max(32),failedAtHostMs:timestamp,sealPath:z.literal('dataset-seal.json'),sealState:z.enum(['absent','present-unusable','unavailable'])});
 export type ComparisonDatasetFinalizationFailure = z.infer<typeof comparisonDatasetFinalizationFailureSchema>;
 const traceCompletionFact=z.strictObject({observedAtHostMs:timestamp,dataLossOccurred:z.boolean().optional(),stream:text.optional(),traceFormat:z.enum(['json','proto']).optional(),streamCompression:z.enum(['none','gzip']).optional()});
-export const comparisonTraceAuxiliarySchema = z.strictObject({...comparisonIdentityShape,cap:z.literal(256),observedCallbacks:count,retainedCallbacks:count.max(256),droppedCallbacks:count,invalidCallbacks:count,status:z.enum(['complete','partial']),reason:reason.optional(),completion:availability(traceCompletionFact)}).superRefine((v,ctx)=>{
-  if(v.observedCallbacks!==v.retainedCallbacks+v.droppedCallbacks+v.invalidCallbacks) issue(ctx,'Trace callback accounting must agree');
-  // Invalid callbacks consume ordinals in the first256 inspected cohort; later callbacks are uninspected drops.
-  if(v.retainedCallbacks+v.invalidCallbacks>256 || v.droppedCallbacks!==Math.max(0,v.observedCallbacks-256)) issue(ctx,'Trace callback admission must use the first256 observed callbacks');
-  if(v.status==='partial' ? v.reason===undefined : v.reason!==undefined) issue(ctx,'Trace auxiliary status requires explicit partial reason');
-  if(v.status==='complete' && (v.droppedCallbacks>0 || v.invalidCallbacks>0 || v.completion.status!=='available' || v.completion.value.dataLossOccurred!==false || !v.completion.value.stream || v.completion.value.traceFormat==='proto' || v.completion.value.streamCompression==='gzip')) issue(ctx,'Complete trace auxiliary requires actual supported completion without loss');
-});
 export type ComparisonTraceAuxiliary = z.infer<typeof comparisonTraceAuxiliarySchema>;
 const nativeCompletion = z.discriminatedUnion('status',[
   missingFact,z.strictObject({status:z.literal('acknowledged'),completionAtHostMs:timestamp,latencyMs:timestamp}),
@@ -280,14 +180,6 @@ const nativeCompletion = z.discriminatedUnion('status',[
 ]);
 const nativeResult=z.strictObject({recipeId:text,index:count,kind:z.enum(['wheel','composer','return-control']),invocationAtHostMs:timestamp,completion:nativeCompletion}).superRefine((v,ctx)=>{
   if(v.completion.status!=='unavailable' && (v.completion.completionAtHostMs<v.invocationAtHostMs || v.completion.latencyMs!==v.completion.completionAtHostMs-v.invocationAtHostMs)) issue(ctx,'Native settlement must use exact same-host arithmetic');
-});
-export const comparisonNativeDispatchResultsSchema = z.strictObject({...comparisonIdentityShape,status:z.enum(['complete','partial']),reason:reason.optional(),hostDispatches:z.array(comparisonHostDispatchSchema).max(14),results:z.array(nativeResult).max(14)}).superRefine((v,ctx)=>{
-  if(v.status==='partial' ? v.reason===undefined : v.reason!==undefined) issue(ctx,'Native auxiliary status requires explicit partial reason');
-  const key=(r:{recipeId:string;index:number;kind:string})=>`${r.recipeId}:${r.index}:${r.kind}`;
-  unique(v.hostDispatches.map(key),ctx,'native dispatch'); unique(v.results.map(key),ctx,'native result');
-  const dispatches=new Map(v.hostDispatches.map(d=>[key(d),d]));
-  for(const result of v.results) if(dispatches.get(key(result))?.hostMonotonicMs!==result.invocationAtHostMs) issue(ctx,'Native result must bind to an actual dispatch invocation');
-  if(v.status==='complete' && (v.results.length!==v.hostDispatches.length || v.results.some(r=>r.completion.status==='unavailable'))) issue(ctx,'Complete native auxiliary requires actual settlement for every invoked action');
 });
 export type ComparisonNativeDispatchResults = z.infer<typeof comparisonNativeDispatchResultsSchema>;
 const measuredBytes=z.strictObject({byteLength:count,sha256:hash});
@@ -314,19 +206,144 @@ const provenanceMember=z.strictObject({role:z.enum(['build-record','build-source
     else if(v.beforeCopy.value.byteLength!==v.copied.value.byteLength || v.beforeCopy.value.byteLength!==v.afterCopy.value.byteLength || v.beforeCopy.value.sha256!==v.copied.value.sha256 || v.beforeCopy.value.sha256!==v.afterCopy.value.sha256 || originalRole && v.originalSha256!==v.copied.value.sha256) issue(ctx,'Acquired bytes must match genuine original and all measured stages');
   }
 });
-export const comparisonProvenanceAcquisitionSchema = z.strictObject({...comparisonIdentityShape,status:z.enum(['complete','partial']),reason:reason.optional(),members:z.array(provenanceMember).max(4096)}).superRefine((v,ctx)=>{
-  unique(v.members.map(m=>m.path),ctx,'provenance member'); unique(v.members.map(m=>`${m.role}:${m.key}`),ctx,'provenance original key');
-  if(v.status==='partial' ? v.reason===undefined : v.reason!==undefined || v.members.some(m=>m.status==='partial')) issue(ctx,'Provenance status must preserve partial acquisition');
-});
 export type ComparisonProvenanceAcquisition = z.infer<typeof comparisonProvenanceAcquisitionSchema>;
-const invocationClaimSchema=z.strictObject({...comparisonVersionShape,kind:z.literal('invocation-ownership-claim'),invocationId:z.uuid(),createdAt:isoTime,purpose:z.enum(['publication','conformance']),configuration:comparisonInvocationSchema});
 const datasetMember=z.strictObject({path:comparisonArtifactPathSchema,byteLength:count,sha256:hash});
-const datasetSlot=z.strictObject({identity:comparisonIdentitySchema,artifactDirectory:comparisonArtifactPathSchema,status:z.enum(['valid','invalid','failed'])});
 function ancestorPaths(path:string):string[] {const parts=path.split('/'); return parts.slice(0,-1).map((_,i)=>parts.slice(0,i+1).join('/'));}
 function sortedUnique(values:readonly string[],ctx:z.RefinementCtx,label:string) {
   unique(values,ctx,label); if(values.some((path,i)=>i>0 && path<values[i-1]!)) issue(ctx,`${label} must be sorted`);
 }
-export const comparisonDatasetInventorySchema=z.strictObject({
+export type ComparisonDatasetInventory = z.infer<typeof comparisonDatasetInventorySchema>;
+
+const legacyInstrumentationObject = z.strictObject({
+  runtimeProbe: z.strictObject(probeShape), domProbe: z.strictObject({...probeShape, selectionStrategy: z.literal('bounded-visible-candidates')}), scrollProbe: z.strictObject(probeShape), transportDrain: z.strictObject(probeShape),
+  eventTiming: comparisonObserverSchema, loaf: comparisonObserverSchema, buffers: z.array(comparisonBoundedBufferSchema),
+});
+function validateInstrumentation(v:z.infer<typeof legacyInstrumentationObject>,ctx:z.RefinementCtx){
+  unique(v.buffers.map(b => b.name), ctx, 'buffer name');
+  for (const [expected, observer] of [['event', v.eventTiming], ['long-animation-frame', v.loaf]] as const) if (observer.status === 'available' && observer.value.entryType !== expected) issue(ctx, 'Observer entry type differs from instrumentation slot');
+}
+const legacyInstrumentationSchema=legacyInstrumentationObject.superRefine(validateInstrumentation);
+const freshProbeSchema=z.strictObject({samplingMode:z.literal('on-demand'),callbacks:count,callbackDurationTotalMs:timestamp,maximumObservedGapMs:comparisonAvailabilitySchema(timestamp)}).refine(v=>v.callbacks>=2||v.maximumObservedGapMs.status==='unavailable','At least two actual callbacks are needed for a gap');
+export const comparisonFreshInstrumentationSchema=z.strictObject({...legacyInstrumentationObject.shape,freshScrollProbe:freshProbeSchema}).superRefine(validateInstrumentation);
+
+function buildComparisonArtifactSchemas<const V extends ComparisonSchemaVersion,I extends typeof legacyInstrumentationSchema|typeof comparisonFreshInstrumentationSchema>(base:ComparisonBaseSchemas<V>,instrumentation:I){
+ const {comparisonIdentityShape,comparisonIdentitySchema,comparisonVersionShape}=base;
+const comparisonPhasesSchema = z.strictObject({...comparisonIdentityShape, status: z.enum(['complete', 'partial']), reason: text.optional(), instances: z.array(comparisonPhaseInstanceSchema), openPhase: comparisonOpenPhaseSchema.nullable()}).superRefine((v, ctx) => {
+  if (v.status === 'complete' ? v.reason !== undefined || v.openPhase !== null : v.reason === undefined) issue(ctx, 'Phase status requires complete closure or explicit partial reason');
+  unique([...v.instances.map(p => p.instanceId), ...(v.openPhase ? [v.openPhase.instanceId] : [])], ctx, 'phase instance identity');
+  unique([...v.instances.flatMap(p => [p.startMark, p.endMark]), ...(v.openPhase ? [v.openPhase.startMark] : [])], ctx, 'phase mark');
+  if (v.instances.some((p, i) => i > 0 && p.startMs < v.instances[i - 1]!.endMs)) issue(ctx, 'Phase intervals must be chronological and nonoverlapping');
+  if (v.openPhase && v.instances.length && v.openPhase.startMs < v.instances.at(-1)!.endMs) issue(ctx, 'Open phase overlaps a closed interval');
+});
+const comparisonInstrumentationSchema=instrumentation;
+const comparisonEvidenceSchema = z.strictObject({
+  ...comparisonIdentityShape, status: z.enum(['pending', 'complete', 'partial']), reason: text.optional(), files: z.array(comparisonInventoryFileSchema), unavailableFiles: z.array(z.strictObject({path: comparisonArtifactPathSchema, reason: text})),
+  trace: comparisonTraceSchema, instrumentation: comparisonInstrumentationSchema,
+}).superRefine((v, ctx) => {
+  if (v.status === 'partial' ? v.reason === undefined : v.reason !== undefined) issue(ctx, 'Evidence status requires explicit partial reason');
+  unique([...v.files.map(f => f.path), ...v.unavailableFiles.map(f => f.path)], ctx, 'inventory path');
+  const derived = new Set(['evidence.json', 'results.json', 'metrics.json', 'summary.md', 'report.json', 'report.html', 'report.md']);
+  if (v.files.some(f => derived.has(f.path.split('/').at(-1)!))) issue(ctx, 'Payload inventory excludes itself and derived analysis files');
+  // Both admitted concrete schemas have mandatory instrumentation. Zod's generic
+  // optional-output mapping cannot infer that outer key; no data is converted here.
+  const acquired = v as typeof v & {instrumentation:z.output<I>};
+  if (v.status === 'complete' && (v.files.some(f => f.status === 'partial') || acquired.instrumentation.buffers.some(b => b.status === 'partial') || v.trace.status === 'available' && (!v.trace.complete || v.trace.tracingComplete.status === 'available' && v.trace.tracingComplete.value.dataLossOccurred))) issue(ctx, 'Complete evidence cannot claim partial or lost capture');
+});
+const comparisonFinalRuntimeSchema = z.strictObject({...comparisonIdentityShape, timestampMs: timestamp, clockDomain: z.literal('page-performance-ms'), snapshot: runtimeSnapshot});
+const comparisonVisibleValidationSchema = z.strictObject({...comparisonIdentityShape, timestampMs: timestamp, clockDomain: z.literal('page-performance-ms'), coverage});
+const comparisonExceptionsSchema = z.strictObject({...comparisonIdentityShape, exceptions:z.array(comparisonExceptionEntrySchema)});
+const comparisonValidationSchema = z.strictObject({...comparisonIdentityShape, status, checks: z.array(z.strictObject({name: text, passed: z.boolean(), reason: text.nullable(), evidencePaths: paths}).refine(v => v.passed ? v.reason === null : v.reason !== null, 'Unsuccessful check requires a reason')).min(1), reasons: z.array(text)}).superRefine((v, ctx) => {
+  validateVerdict(v, ctx);
+  unique(v.checks.map(c => c.name), ctx, 'validation check name');
+  if (v.status === 'valid' && v.checks.some(c => !c.passed)) issue(ctx, 'Valid verdict cannot contain unsuccessful checks');
+});
+const comparisonRunResultsSchema = z.strictObject({
+  ...comparisonIdentityShape, generatedAt: isoTime, status, reasons: z.array(text), metrics: metricList,
+  phases: z.array(z.strictObject({phase: comparisonScoredPresentationPhaseSchema, instanceId: phaseInstanceIdSchema, metrics: metricList})), presentation: comparisonRendererPresentationSchema,
+  diagnostics: z.array(z.strictObject({name: text, value: z.number().finite(), unit: text, scored: z.literal(false), evidencePaths: paths.min(1)})),
+}).superRefine((v, ctx) => {
+  validateVerdict(v, ctx);
+  unique(v.phases.map(p => p.instanceId), ctx, 'result phase identity');
+  unique(v.diagnostics.map(d => d.name), ctx, 'diagnostic name');
+  if (v.status !== 'valid') {
+    if ([...v.metrics, ...v.phases.flatMap(p => p.metrics)].some(m => m.measurement.status === 'available')) issue(ctx, 'Unsuccessful run cannot have available scored metrics');
+    if (v.presentation.status === 'available' && v.presentation.value.phases.some(p => p.rendererVisualUpdateFps.status === 'available' || p.presentationIntervals.status === 'available')) issue(ctx, 'Unsuccessful run cannot have scored presentation');
+  }
+});
+const comparisonCaptureMetadataSchema = z.strictObject({...comparisonIdentityShape,
+  browserProtocol:z.strictObject({protocolVersion:text,product:text,revision:text,userAgent:text,jsVersion:text}),chromiumDownloadRevision:text,playwrightVersion:text,
+  instrumentation:z.strictObject({sourceHashes:z.record(comparisonArtifactPathSchema,hash).refine(v=>Object.keys(v).length>0,'Actual source inventory must not be empty'),installerSha256:hash,probeIntervalMs:z.literal(50),limits:comparisonCaptureLimitsSchema}),
+});
+const comparisonCheckpointsSchema = z.strictObject({...comparisonIdentityShape, inputRecipe: comparisonInputRecipeSchema, hostDispatches: z.array(comparisonHostDispatchSchema), hostFrameGuards: z.array(comparisonHostFrameGuardSchema), scroll: z.array(scrollCheckpoint), counters: z.array(comparisonCounterCheckpointSchema), deadlines: z.array(comparisonDeadlineSchema)}).superRefine((v, ctx) => {
+  const order=['baseline','history-ready','replay-end'];
+  if(v.counters.some((counter,i)=>i>0&&order.indexOf(counter.lifecycle)<=order.indexOf(v.counters[i-1]!.lifecycle))) issue(ctx,'Counter lifecycle must be unique and ordered');
+  unique(v.deadlines.map(d => d.stage), ctx, 'deadline stage');
+  unique(v.hostDispatches.map(d => `${d.recipeId}:${d.index}`), ctx, 'dispatch identity');
+  for (const d of v.hostDispatches) {
+    if (d.kind === 'wheel' && d.recipeId !== v.inputRecipe.wheel.recipeId || d.kind === 'composer' && d.recipeId !== v.inputRecipe.composer.recipeId) issue(ctx, 'Dispatch recipe identity mismatch');
+  }
+});
+const comparisonScheduledRunSchema = z.strictObject({...comparisonIdentityShape, seed: count, mode: z.enum(['headed', 'headless']), artifactDirectory: comparisonArtifactPathSchema});
+const comparisonCaptureInvocationSchema = z.strictObject({...comparisonVersionShape, createdAt: isoTime, purpose: z.enum(['publication', 'conformance']), status: z.enum(['pending', 'complete', 'failed']), configuration: comparisonInvocationSchema, runs: z.array(runSlot)}).superRefine((v, ctx) => {
+  const config = v.configuration, order = longThreadCaseOrder(config.seed);
+  if (v.purpose === 'publication' && (config.rounds !== 3 || config.adapterProfiles.length !== 1)) issue(ctx, 'Publication requires three rounds and one adapter profile');
+  const slots = config.rounds * order.length * config.adapterProfiles.length;
+  if (v.runs.length !== slots) issue(ctx, 'Invocation must retain all declared canonical slots');
+  unique(v.runs.map(r => r.repetition), ctx, 'run repetition');
+  unique(v.runs.map(r => r.artifactDirectory), ctx, 'run directory');
+  v.runs.forEach((run, index) => {
+    const perRound = order.length * config.adapterProfiles.length;
+    const expectedRound = Math.floor(index / perRound) + 1;
+    const caseIndex = Math.floor(index % perRound / config.adapterProfiles.length);
+    const profile = config.adapterProfiles[index % config.adapterProfiles.length];
+    if (run.round !== expectedRound || run.caseIndex !== caseIndex || run.scenarioId !== order[caseIndex] || run.adapterProfile !== profile) issue(ctx, 'Run slot differs from canonical invocation order');
+    if (v.status !== 'pending' && (run.status === 'scheduled' || run.status === 'running')) issue(ctx, 'Terminal invocation must finalize untouched slots');
+  });
+});
+const comparisonCaptureStatusSchema = z.strictObject({
+  ...comparisonIdentityShape,status:z.enum(['complete','partial','unavailable']),reasons:z.array(reason).max(32),
+  captureMetadata:availability(comparisonCaptureMetadataSchema),evidenceMetadata:z.discriminatedUnion('status',[missingFact,z.strictObject({status:z.literal('available')})]),
+  payloads:z.array(payloadStatus).max(4096),unavailablePaths:z.array(unavailablePath).max(4096),
+  terminalPageDrain:availability(drainSummary),terminalProducerDrain:availability(drainSummary),finalPageInstrumentation:availability(comparisonInstrumentationSchema),traceEof:availability(z.strictObject({observedAtHostMs:timestamp,clockDomain:z.literal('host-monotonic-ms')})),
+}).superRefine((v,ctx)=>{
+  if(v.status==='complete' ? v.reasons.length!==0 : v.reasons.length===0) issue(ctx,'Capture status needs explicit unsuccessful reasons');
+  const paths=[...v.payloads.map(p=>p.path),...v.unavailablePaths.map(p=>p.path)]; unique(paths,ctx,'capture path');
+  if(paths.length>4096 || paths.some(path=>!rawSlotPath(path))) issue(ctx,'Capture paths must be bounded declared raw members');
+  if(v.captureMetadata.status==='available' && !sameIdentityFacts(v,v.captureMetadata.value)) issue(ctx,'Capture metadata identity mismatch');
+  if(v.status==='complete' && ([v.captureMetadata,v.evidenceMetadata,v.terminalPageDrain,v.terminalProducerDrain,v.finalPageInstrumentation,v.traceEof].some(f=>f.status!=='available') || v.payloads.some(f=>f.status==='partial') || v.unavailablePaths.length)) issue(ctx,'Complete capture requires genuinely acquired complete facts');
+  if(v.status==='complete' && v.finalPageInstrumentation.status==='available') {
+    const acquired = v.finalPageInstrumentation as typeof v.finalPageInstrumentation & {value:z.output<I>};
+    if(acquired.value.buffers.some(b=>b.status==='partial')) issue(ctx,'Complete capture cannot hide buffer loss');
+  }
+});
+const comparisonRawInventorySchema = z.strictObject({...comparisonIdentityShape,status:z.literal('partial'),reason,files:z.array(comparisonInventoryFileSchema).max(4096)}).superRefine((v,ctx)=>{
+  unique(v.files.map(f=>f.path),ctx,'raw inventory path');
+  if(v.files.some(f=>!rawSlotPath(f.path))) issue(ctx,'Raw inventory excludes its own manifest, evidence and derived files');
+});
+const comparisonFinalizationStatusSchema = z.strictObject({...comparisonIdentityShape,status:z.literal('failed'),reason,manifest:z.strictObject({path:z.enum(['evidence.json','raw-inventory.json']).nullable(),state:z.enum(['unusable','not-written'])}),failedAtHostMs:timestamp,datasetSealEligible:z.literal(false)}).refine(v=>(v.manifest.path===null)===(v.manifest.state==='not-written'),'Finalization manifest availability must agree');
+const comparisonDatasetFinalizationFailureSchema = z.strictObject({...comparisonVersionShape,invocationId:z.uuid(),status:z.literal('failed'),reasons:z.array(reason).min(1).max(32),failedAtHostMs:timestamp,sealPath:z.literal('dataset-seal.json'),sealState:z.enum(['absent','present-unusable','unavailable'])});
+const comparisonTraceAuxiliarySchema = z.strictObject({...comparisonIdentityShape,cap:z.literal(256),observedCallbacks:count,retainedCallbacks:count.max(256),droppedCallbacks:count,invalidCallbacks:count,status:z.enum(['complete','partial']),reason:reason.optional(),completion:availability(traceCompletionFact)}).superRefine((v,ctx)=>{
+  if(v.observedCallbacks!==v.retainedCallbacks+v.droppedCallbacks+v.invalidCallbacks) issue(ctx,'Trace callback accounting must agree');
+  // Invalid callbacks consume ordinals in the first256 inspected cohort; later callbacks are uninspected drops.
+  if(v.retainedCallbacks+v.invalidCallbacks>256 || v.droppedCallbacks!==Math.max(0,v.observedCallbacks-256)) issue(ctx,'Trace callback admission must use the first256 observed callbacks');
+  if(v.status==='partial' ? v.reason===undefined : v.reason!==undefined) issue(ctx,'Trace auxiliary status requires explicit partial reason');
+  if(v.status==='complete' && (v.droppedCallbacks>0 || v.invalidCallbacks>0 || v.completion.status!=='available' || v.completion.value.dataLossOccurred!==false || !v.completion.value.stream || v.completion.value.traceFormat==='proto' || v.completion.value.streamCompression==='gzip')) issue(ctx,'Complete trace auxiliary requires actual supported completion without loss');
+});
+const comparisonNativeDispatchResultsSchema = z.strictObject({...comparisonIdentityShape,status:z.enum(['complete','partial']),reason:reason.optional(),hostDispatches:z.array(comparisonHostDispatchSchema).max(14),results:z.array(nativeResult).max(14)}).superRefine((v,ctx)=>{
+  if(v.status==='partial' ? v.reason===undefined : v.reason!==undefined) issue(ctx,'Native auxiliary status requires explicit partial reason');
+  const key=(r:{recipeId:string;index:number;kind:string})=>`${r.recipeId}:${r.index}:${r.kind}`;
+  unique(v.hostDispatches.map(key),ctx,'native dispatch'); unique(v.results.map(key),ctx,'native result');
+  const dispatches=new Map(v.hostDispatches.map(d=>[key(d),d]));
+  for(const result of v.results) if(dispatches.get(key(result))?.hostMonotonicMs!==result.invocationAtHostMs) issue(ctx,'Native result must bind to an actual dispatch invocation');
+  if(v.status==='complete' && (v.results.length!==v.hostDispatches.length || v.results.some(r=>r.completion.status==='unavailable'))) issue(ctx,'Complete native auxiliary requires actual settlement for every invoked action');
+});
+const comparisonProvenanceAcquisitionSchema = z.strictObject({...comparisonIdentityShape,status:z.enum(['complete','partial']),reason:reason.optional(),members:z.array(provenanceMember).max(4096)}).superRefine((v,ctx)=>{
+  unique(v.members.map(m=>m.path),ctx,'provenance member'); unique(v.members.map(m=>`${m.role}:${m.key}`),ctx,'provenance original key');
+  if(v.status==='partial' ? v.reason===undefined : v.reason!==undefined || v.members.some(m=>m.status==='partial')) issue(ctx,'Provenance status must preserve partial acquisition');
+});
+const invocationClaimSchema=z.strictObject({...comparisonVersionShape,kind:z.literal('invocation-ownership-claim'),invocationId:z.uuid(),createdAt:isoTime,purpose:z.enum(['publication','conformance']),configuration:comparisonInvocationSchema});
+const datasetSlot=z.strictObject({identity:comparisonIdentitySchema,artifactDirectory:comparisonArtifactPathSchema,status:z.enum(['valid','invalid','failed'])});
+const comparisonDatasetInventorySchema=z.strictObject({
   ...comparisonVersionShape,invocationId:z.uuid(),status:z.enum(['sealed','partial']),reason:reason.optional(),configuration:comparisonInvocationSchema,
   invocationClaim:invocationClaimSchema,invocationLedger:comparisonCaptureInvocationSchema,root:z.literal('.'),
   ledger:z.strictObject({path:z.literal('invocation.json'),byteLength:count,sha256:hash}),
@@ -381,4 +398,34 @@ export const comparisonDatasetInventorySchema=z.strictObject({
   const declaredDirectories=new Set(v.directories);
   if(v.directories.length>allowedDirectories.size || v.directories.some(dir=>!allowedDirectories.has(dir)) || [...requiredDirectories].some(dir=>!declaredDirectories.has(dir))) issue(ctx,'Dataset directories must bind scheduled slots and actually present candidate ancestors');
 });
-export type ComparisonDatasetInventory = z.infer<typeof comparisonDatasetInventorySchema>;
+ return {comparisonPhasesSchema,comparisonInstrumentationSchema,comparisonEvidenceSchema,comparisonFinalRuntimeSchema,comparisonVisibleValidationSchema,comparisonExceptionsSchema,comparisonValidationSchema,comparisonRunResultsSchema,comparisonCaptureMetadataSchema,comparisonCheckpointsSchema,comparisonScheduledRunSchema,comparisonCaptureInvocationSchema,comparisonCaptureStatusSchema,comparisonRawInventorySchema,comparisonFinalizationStatusSchema,comparisonDatasetFinalizationFailureSchema,comparisonTraceAuxiliarySchema,comparisonNativeDispatchResultsSchema,comparisonProvenanceAcquisitionSchema,invocationClaimSchema,datasetSlot,comparisonDatasetInventorySchema};
+}
+export function createComparisonArtifactSchemas(base:ComparisonBaseSchemas<'2.0.0'>,instrumentation:typeof legacyInstrumentationSchema&{readonly shape:{readonly freshScrollProbe?:never}}):ReturnType<typeof buildComparisonArtifactSchemas<'2.0.0',typeof legacyInstrumentationSchema>>;
+export function createComparisonArtifactSchemas(base:ComparisonBaseSchemas<'2.1.0'>,instrumentation:typeof comparisonFreshInstrumentationSchema):ReturnType<typeof buildComparisonArtifactSchemas<'2.1.0',typeof comparisonFreshInstrumentationSchema>>;
+export function createComparisonArtifactSchemas(base:ComparisonBaseSchemas<'2.0.0'>|ComparisonBaseSchemas<'2.1.0'>,instrumentation:typeof legacyInstrumentationSchema|typeof comparisonFreshInstrumentationSchema){
+ if(base===null||typeof base!=='object'||base.versions.collectorVersion!==base.version||base.versions.analyzerVersion!==base.version)throw new Error('Unsupported comparison artifact schema family');
+ if(base.version==='2.0.0'&&instrumentation===legacyInstrumentationSchema)return buildComparisonArtifactSchemas(base,legacyInstrumentationSchema);
+ if(base.version==='2.1.0'&&instrumentation===comparisonFreshInstrumentationSchema)return buildComparisonArtifactSchemas(base,comparisonFreshInstrumentationSchema);
+ throw new Error('Unsupported comparison artifact schema family');
+}
+const legacyComparisonArtifacts=createComparisonArtifactSchemas(legacyComparisonBase,legacyInstrumentationSchema);
+export const comparisonPhasesSchema=legacyComparisonArtifacts.comparisonPhasesSchema;
+export const comparisonInstrumentationSchema=legacyComparisonArtifacts.comparisonInstrumentationSchema;
+export const comparisonEvidenceSchema=legacyComparisonArtifacts.comparisonEvidenceSchema;
+export const comparisonFinalRuntimeSchema=legacyComparisonArtifacts.comparisonFinalRuntimeSchema;
+export const comparisonVisibleValidationSchema=legacyComparisonArtifacts.comparisonVisibleValidationSchema;
+export const comparisonExceptionsSchema=legacyComparisonArtifacts.comparisonExceptionsSchema;
+export const comparisonValidationSchema=legacyComparisonArtifacts.comparisonValidationSchema;
+export const comparisonRunResultsSchema=legacyComparisonArtifacts.comparisonRunResultsSchema;
+export const comparisonCaptureMetadataSchema=legacyComparisonArtifacts.comparisonCaptureMetadataSchema;
+export const comparisonCheckpointsSchema=legacyComparisonArtifacts.comparisonCheckpointsSchema;
+export const comparisonScheduledRunSchema=legacyComparisonArtifacts.comparisonScheduledRunSchema;
+export const comparisonCaptureInvocationSchema=legacyComparisonArtifacts.comparisonCaptureInvocationSchema;
+export const comparisonCaptureStatusSchema=legacyComparisonArtifacts.comparisonCaptureStatusSchema;
+export const comparisonRawInventorySchema=legacyComparisonArtifacts.comparisonRawInventorySchema;
+export const comparisonFinalizationStatusSchema=legacyComparisonArtifacts.comparisonFinalizationStatusSchema;
+export const comparisonDatasetFinalizationFailureSchema=legacyComparisonArtifacts.comparisonDatasetFinalizationFailureSchema;
+export const comparisonTraceAuxiliarySchema=legacyComparisonArtifacts.comparisonTraceAuxiliarySchema;
+export const comparisonNativeDispatchResultsSchema=legacyComparisonArtifacts.comparisonNativeDispatchResultsSchema;
+export const comparisonProvenanceAcquisitionSchema=legacyComparisonArtifacts.comparisonProvenanceAcquisitionSchema;
+export const comparisonDatasetInventorySchema=legacyComparisonArtifacts.comparisonDatasetInventorySchema;

@@ -1,4 +1,5 @@
-import {comparisonObservationSchema,comparisonExceptionEntrySchema,comparisonBoundedBufferSchema,type ComparisonIdentity} from '@chat-ui-bench/contract';
+import {comparisonObservationSchema,comparisonExceptionEntrySchema,comparisonBoundedBufferSchema} from '@chat-ui-bench/contract';
+import type {ComparisonRuntimeIdentity as ComparisonIdentity} from './comparison-runtime-family.js';
 import type {ComparisonOwnershipClock} from './comparison-ownership.js';
 import type {ComparisonSlotContext} from './long-thread-run.js';
 import type {DrainedPageEntry, PreNavigationTransferState} from './comparison-observations.js';

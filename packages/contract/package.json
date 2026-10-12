@@ -8,6 +8,6 @@
     "./fixture": { "types": "./dist/fixture.d.ts", "import": "./dist/fixture.js" },
     "./hash": { "types": "./dist/hash.d.ts", "import": "./dist/hash.js" }
   },
-  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.types.json" },
   "dependencies": { "zod": "4.6.5" }
 }

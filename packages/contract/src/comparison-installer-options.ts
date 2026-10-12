@@ -25,3 +25,6 @@ export const mainOptionsSchema=z.strictObject({
 export type InstallerRunIdentity=z.infer<typeof installerRunIdentitySchema>;
 export type PreNavigationOptions=z.infer<typeof preNavigationOptionsSchema>;
 export type MainOptions=z.infer<typeof mainOptionsSchema>;
+
+const freshSamplingPolicySchema=z.strictObject({mode:z.literal('fresh-page-acquisition'),minimumPostToLaterPageMs:z.literal(800),maxWaitCallbacks:z.literal(64)});
+export const freshMainOptionsSchema=z.strictObject({...mainOptionsSchema.shape,scoredScrollSampling:freshSamplingPolicySchema});

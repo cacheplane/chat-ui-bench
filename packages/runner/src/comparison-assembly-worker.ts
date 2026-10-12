@@ -2,7 +2,7 @@ import {assembleComparisonInstaller} from './comparison-installer.js';
 import {pathToFileURL} from 'node:url';
 import type {Readable, Writable} from 'node:stream';
 
-const inputCap = 2 * 6 * 65536 + 7;
+const inputCap = 2 * 6 * 65536 + 7 + 8;
 const outputCap = 2 * 6 * 1048576 + 174;
 
 /** Internal wire primitive; the standalone entry has no parent-module imports. */
@@ -47,9 +47,9 @@ export async function runComparisonAssemblyWorker(input: Readable, output: Writa
   const bytes = Buffer.concat(chunks, length);
   const decoded = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(bytes);
   const tuple: unknown = JSON.parse(decoded);
-  if (!Array.isArray(tuple) || tuple.length !== 2 || tuple.some(value => typeof value !== 'string' || value.length > 65536 || Buffer.byteLength(value, 'utf8') > 65536)) throw new Error('worker-input-grammar');
+  if (!Array.isArray(tuple) || (tuple.length !== 2 && tuple.length !== 3) || tuple.slice(0,2).some(value => typeof value !== 'string' || value.length > 65536 || Buffer.byteLength(value, 'utf8') > 65536) || (tuple.length===3 && tuple[2]!=='2.0.0' && tuple[2]!=='2.1.0')) throw new Error('worker-input-grammar');
   if (!bytes.equals(Buffer.from(JSON.stringify(tuple), 'utf8'))) throw new Error('worker-input-encoding');
-  const pair = assembleComparisonInstaller(tuple[0] as string, tuple[1] as string);
+  const pair = assembleComparisonInstaller(tuple[0] as string, tuple[1] as string, tuple.length===2?'2.0.0':tuple[2] as '2.0.0'|'2.1.0');
   const wire = Buffer.from(JSON.stringify({preNavigation: pair.preNavigation, main: pair.main, preNavigationByteLength: pair.preNavigationByteLength, mainByteLength: pair.mainByteLength, installerSha256: pair.installerSha256}), 'utf8');
   if (wire.length > outputCap) throw new Error('worker-output-limit');
   await writeWorkerWire(output, wire);
