@@ -145,6 +145,16 @@ analyze these version 2 artifacts. Long-thread offline analysis, presentation
 eligibility, competitor adapters, and comparative reports remain in development;
 these capture commands do not establish published FPS results or rankings.
 
+Private offline renderer diagnostics describe matched target Blink
+`AnimationFrame` lifecycle records and their emitted presentation callbacks
+inside admitted trace windows. They include short monitored frames, but coverage
+of all compositor or display frames is unverified. Callbacks can coalesce onto
+one later compositor feedback or use fallback swap/failure timestamps. Legacy
+`rendererVisualUpdateFps` field names and the `updates/s` unit label remain for
+compatibility; they do not qualify display FPS or complete renderer updates.
+Conditional parser availability does not establish source execution, coverage,
+an independent oracle or scoring eligibility. Historical reports stay unchanged.
+
 New CLI captures use collector/analyzer family 2.1.0. Scored scroll checkpoints
 acquire current page geometry on demand; the later history checkpoint waits
 until at least 800 ms after the original post-wheel sample on the same page

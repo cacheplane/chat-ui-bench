@@ -172,7 +172,7 @@ export function serializeComparisonReport(report: ComparisonOfflineReport): {jso
   if (fields > 336) throw new Error('Comparison report closed projection root text fields');
   if (Buffer.byteLength(JSON.stringify(structure)) > 2 * 1024 * 1024) throw new Error('Comparison report closed projection structural reserve');
   const json = JSON.stringify(report, null, 2) + '\n';
-  const lines = ['# Offline comparison diagnostics', '', 'scoringEligibility: false. Recorded-file consistency only; conditional target-renderer updates/s, not monitor refresh. Integer phase and interval values use microseconds. No ranks or aggregates.', ''];
+  const lines = ['# Offline comparison diagnostics', '', 'scoringEligibility: false. Matched target Blink lifecycle/callback records per trace-window second; legacy rendererVisualUpdateFps field names do not qualify display FPS. Integer phase/interval values use microseconds. No ranks or aggregates.', ''];
   // GFM email autolinks postprocess decoded, consolidated text nodes. Keep @
   // in its own literal code node; an entity alone would recreate the email.
   function escape(value: string) {return value.replace(/@+|[&<>\[\]()`|:.\\\r\n\u0000-\u001f\u007f]/g, char => char[0] === '@' ? '`' + char + '`' : '&#' + char.charCodeAt(0) + ';');}

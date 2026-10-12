@@ -2,6 +2,7 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 import fs from 'node:fs/promises';
 import {parseComparisonRendererPresentation} from './comparison-presentation.js';
 import * as presentationModule from './comparison-presentation.js';
+import {unavailableComparisonRendererDiagnostic} from './comparison-renderer-diagnostic.js';
 import {projectComparisonReport, serializeComparisonReport} from './comparison-report.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, unlink, open, writeFile, link} from 'node:fs/promises';
@@ -2017,6 +2018,11 @@ async function rendererDiagnosticFixture(version: '2.0.0' | '2.1.0', journey: 'f
   await refresh();
   return {...f, phases, trace, auxiliary, metadata, capture, evidence, refresh};
 }
+const rendererCaption = {
+  metricScope: 'matched target Blink AnimationFrame lifecycle/callback records',
+  measurementMeaning: 'conditional original trace-window event-association diagnostic; all compositor/display frame coverage unverified',
+  unresolvedDomains: ['serialized-phase-origin', 'independent-oracle', 'capture-quality', 'journey-correctness', 'source-executed-authenticity', 'live-content-and-sampling', 'mode-and-cohort', 'cleanup-eligibility', 'scoring-eligibility', 'frame-emission-coverage', 'presentation-feedback-fallback', 'presentation-callback-coalescing'],
+};
 describe('comparison conditional renderer diagnostic initial capabilities', () => {
   it.each((['2.0.0', '2.1.0'] as const).flatMap(version => (['follow', 'history-reading'] as const).map(journey => ({version, journey}))))('retains canonical $version $journey parser capability without scoring', async ({version, journey}) => {
     const f = await rendererDiagnosticFixture(version, journey), result = await loadComparisonInvocation(f.root), row = result.runs[f.selectedIndex]!;
@@ -2027,7 +2033,22 @@ describe('comparison conditional renderer diagnostic initial capabilities', () =
     expect(diagnostic.presentation.value.phases).toHaveLength(journey === 'follow' ? 3 : 6);
     expect(diagnostic.presentation.value.phases.every(phase => phase.rendererVisualUpdateFps.status === 'available' && phase.rendererVisualUpdateFps.numerator === 2 && phase.rendererVisualUpdateFps.denominatorUs === 800 && phase.presentationIntervals.status === 'available' && phase.presentationIntervals.intervalsUs.length === 1 && phase.presentationIntervals.intervalsUs[0] === 200)).toBe(true);
     expect(diagnostic.guards).toEqual({'owned-originals': 'verified', 'trace-completion': 'verified', 'trace-topology': 'verified', 'canonical-phases': 'verified', 'existing-parser': 'verified', 'serialized-phase-origin': 'unavailable', 'independent-oracle': 'unavailable'});
+    expect(diagnostic).toMatchObject(rendererCaption);
     expect(result.collection.status).toBe('partial');
+  });
+  it('keeps the unavailable factory caption explicit without inventing coverage', () => {
+    const value = unavailableComparisonRendererDiagnostic('original unavailable');
+    expect(value.status).toBe('unavailable'); expect(value.presentation).toEqual({status: 'unavailable', reason: 'original unavailable'});
+    expect(value.scoringEligibility).toBe(false); expect(Object.values(value.guards)).toEqual(Array(7).fill('unavailable'));
+    expect(value).toMatchObject(rendererCaption);
+  });
+  it.each(['2.0.0', '2.1.0'] as const)('retains the honest caption when %s original completion is unavailable', async version => {
+    const f = await rendererDiagnosticFixture(version);
+    expect((await loadComparisonInvocation(f.root)).runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic.status).toBe('available');
+    f.capture.traceEof = {status: 'unavailable', reason: 'original EOF unavailable'}; await f.json(f.prefix + 'capture-status.json', f.capture); await f.refresh();
+    const result = await loadComparisonInvocation(f.root), value = result.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic;
+    expect(value.status).toBe('unavailable'); expect(value.scoringEligibility).toBe(false); expect(value.presentation.status).toBe('unavailable');
+    expect(value).toMatchObject(rendererCaption); expect(result.runs[f.selectedIndex]!.captureValidation?.status).toBe('failed');
   });
 });
 
@@ -2090,6 +2111,7 @@ describe('comparison conditional renderer diagnostic retained controls', () => {
     const f = await rendererDiagnosticFixture('2.1.0'), target = join(f.root, f.prefix + 'trace.json'), replacement = f.root + '-replacement'; owned.push(replacement); await writeFile(replacement, await readFile(target)); const original = fs.open.bind(fs); let closes = 0;
     vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const handle = await original(...args); if (String(args[0]) !== target) return handle; return new Proxy(handle, {get(object, key) {if (key === 'close') return async () => {await object.close(); if (++closes === 3) await rename(replacement, target);}; const value = Reflect.get(object, key); return typeof value === 'function' ? value.bind(object) : value;}});});
     const result = await loadComparisonInvocation(f.root); expect(closes).toBe(3); expect(result.byteIntegrity.seal).toBe('partial'); expect(result.runs[f.selectedIndex]).toHaveProperty('rendererPresentationCapabilityDiagnostic.presentation.status', 'unavailable');
+    expect(result.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic).toMatchObject(rendererCaption);
   });
 });
 
