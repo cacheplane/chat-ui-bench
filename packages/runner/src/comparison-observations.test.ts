@@ -7,6 +7,76 @@ import {page,install,preOptions,mainOptions,controlledRangeGeometry} from './com
 afterEach(()=>vi.unstubAllGlobals());
 function observations(state:any){return state.drain(64).filter((v:any)=>v.cohort==='observation').map((v:any)=>JSON.parse(v.serialized));}
 
+test.each(['forward','reverse','surrogates','maximum-surrogates'] as const)('interval negatives reach a genuine interior glyph within the original budget (%s)',order=>{
+  const p=page(),width=order==='surrogates'||order==='maximum-surrogates'?2:1,count=order==='maximum-surrogates'?262144:8192,data=(width===2?'🌍':'x').repeat(count);p.setText(data);
+  const coordinate=(offset:number)=>order==='reverse'?count-offset/width-count/2:offset/width-count/2;
+  const layout=controlledRangeGeometry(p,{
+    envelope:(_node,start,end)=>({left:1,top:Math.min(coordinate(start),coordinate(end)),right:10,bottom:Math.max(coordinate(start),coordinate(end))}),
+    glyphs:(_node,start,end)=>[{left:1,top:Math.min(coordinate(start),coordinate(end)),right:10,bottom:Math.max(coordinate(start),coordinate(end))}],
+  });
+  const state=install(p);try{
+    p.tick(51);const result=state.readScroll();
+    expect(result).toMatchObject({status:'available',value:{activeVisible:true,geometry:{status:'available'}}});
+    if(result.status==='available'&&result.value.geometry.status==='available')expect(result.value.geometry.value.contentRects.some(r=>r.top<100&&r.bottom>0)).toBe(true);
+    expect(layout.calls.some(call=>call.kind==='glyphs'&&call.start/width>=count/2-100&&call.start/width<=count/2+100)).toBe(true);
+    expect(layout.calls.every(call=>call.start%width===0&&call.end%width===0)).toBe(true);
+    expect(layout.calls.filter(call=>call.kind==='glyphs').every(call=>call.end-call.start===width)).toBe(true);
+    expect(layout.detached).toHaveLength(layout.calls.length);
+    expect(COMPARISON_CAPTURE_LIMITS.maxRectsPerSample).toBe(2048);expect(COMPARISON_CAPTURE_LIMITS.maxRectsPerCallback).toBe(4096);
+  }finally{state.stop();}
+});
+test('overlapping interval envelopes with disjoint glyphs remain a complete negative',()=>{
+  const p=page();p.setText('A'.repeat(128));const outside={left:1,top:200,right:10,bottom:201};
+  const layout=controlledRangeGeometry(p,{envelope:()=>({left:1,top:-10,right:10,bottom:210}),glyphs:()=>[outside]});
+  const state=install(p);try{p.tick(51);expect(state.readScroll()).toMatchObject({status:'available',value:{activeVisible:false}});expect(layout.calls.filter(call=>call.kind==='glyphs')).toHaveLength(128);expect(layout.detached).toHaveLength(layout.calls.length);}finally{state.stop();}
+});
+test('a later subrange reserves two units before querying when only one sample unit remains',()=>{
+  const p=page();p.setText('A');const other:any={nodeType:3,length:4,data:'BBBB',isConnected:true,parentElement:p.content};p.content.nodes.push(other);p.content.contains=()=>true;
+  const outside={left:0,top:200,right:1,bottom:201};const layout=controlledRangeGeometry(p,{envelope:()=>({left:0,top:0,right:1,bottom:201}),glyphs:()=>Array(2040).fill(outside)});
+  const state=install(p);try{p.tick(51);expect(state.readScroll()).toMatchObject({status:'unavailable',reason:expect.stringContaining('before envelope query')});expect(layout.calls.filter(row=>row.kind==='envelope')).toHaveLength(2);expect(layout.calls.filter(row=>row.node===other)).toEqual([{kind:'envelope',node:other,start:0,end:4}]);expect(layout.detached).toHaveLength(layout.calls.length);}finally{state.stop();}
+});
+test.each([2041,2042])('interval charges preserve the exact sample2048 boundary (%i fragments)',count=>{
+  const p=page();p.setText('ABCD');const inside={left:1,top:1,right:2,bottom:2};let reads=0;
+  const layout=controlledRangeGeometry(p,{envelope:()=>inside,glyphs:()=>new Proxy(Array(count).fill(inside),{get:(target,key,receiver)=>{if(typeof key==='string'&&/^\d+$/.test(key))reads++;return Reflect.get(target,key,receiver);}})});
+  const state=install(p);try{p.tick(51);expect(state.readScroll().status).toBe(count===2041?'available':'unavailable');expect(reads).toBe(count===2041?count:0);expect(layout.calls.map(row=>row.kind)).toEqual(['envelope','envelope','glyphs']);expect(layout.detached).toHaveLength(3);}finally{state.stop();}
+});
+test.each([2040,2041])('interval active and history share exact callback4096 (%i historical fragments)',count=>{
+  const p=page();p.setText('ABCD');const node:any={nodeType:3,length:4,data:'EFGH',isConnected:true,parentElement:null},content:any={isConnected:true,parentElement:p.scroller,contains:(v:any)=>v===node,nodes:[node]};node.parentElement=content;
+  const historical={id:'history',role:'user',hostElement:p.host,contentElement:content};p.bridge.readCaptureCandidates=()=>({status:'available',value:{active:p.candidate,historical:[historical]}});
+  const inside={left:1,top:1,right:2,bottom:2};let historyReads=0;
+  const layout=controlledRangeGeometry(p,{envelope:()=>inside,glyphs:n=>n===p.node?Array(2041).fill(inside):new Proxy(Array(count).fill(inside),{get:(target,key,receiver)=>{if(typeof key==='string'&&/^\d+$/.test(key))historyReads++;return Reflect.get(target,key,receiver);}})});
+  const state=install(p);try{p.tick(51);expect(state.readScroll()).toMatchObject({status:'available',value:{activeVisible:true,anchorGeometry:{status:count===2040?'available':'unavailable'}}});expect(historyReads).toBe(count===2040?count:0);for(const owner of [p.node,node])expect(layout.calls.filter(row=>row.node===owner).map(row=>row.kind)).toEqual(['envelope','envelope','glyphs']);expect(layout.detached).toHaveLength(6);}finally{state.stop();}
+});
+test.each(['setStart','setEnd','detach'] as const)('a later subrange %s failure detaches and blocks every glyph',failure=>{
+  const p=page();p.setText('ABCD');let ordinal=0,detached=0,glyphs=0;
+  p.context.document.createRange=()=>{const later=++ordinal===2;return {setStart:()=>{if(later&&failure==='setStart')throw false;},setEnd:()=>{if(later&&failure==='setEnd')throw 0;},getBoundingClientRect:()=>({left:0,top:0,right:10,bottom:10}),getClientRects:()=>{glyphs++;return [{left:0,top:0,right:10,bottom:10}];},detach:()=>{detached++;if(later&&failure==='detach')throw undefined;}};};
+  const state=install(p);try{p.tick(51);expect(state.readScroll().status).toBe('unavailable');expect(detached).toBe(2);expect(glyphs).toBe(0);expect(ordinal).toBe(2);}finally{state.stop();}
+});
+test.each([undefined,null,false,0,'',{}])('a later subrange preserves exact primary %j before detach failure',primary=>{
+  const p=page();p.setText('ABCD');const cleanup={},pairs:unknown[][]=[];let detached=0,envelopes=0;
+  p.context.AggregateError=class extends AggregateError{constructor(errors:unknown[],message:string){pairs.push(errors);super(errors,message);}};
+  p.context.document.createRange=()=>{let start=-1,end=-1;return {setStart:(_node:any,value:number)=>{start=value;},setEnd:(_node:any,value:number)=>{end=value;},getBoundingClientRect:()=>{envelopes++;if(end-start===2)throw primary;return {left:0,top:0,right:10,bottom:10};},getClientRects:()=>[{left:0,top:0,right:10,bottom:10}],detach:()=>{detached++;if(end-start===2)throw cleanup;}};};
+  const state=install(p);try{p.tick(51);expect(state.readScroll().status).toBe('unavailable');expect(envelopes).toBe(2);expect(detached).toBe(2);expect(pairs).toHaveLength(1);expect(pairs[0]![0]).toBe(primary);expect(pairs[0]![1]).toBe(cleanup);}finally{state.stop();}
+});
+test.each(['host','content','id','role','text','mutation'] as const)('a subrange rechecks original %s facts before its negative can prune',change=>{
+  const p=page();p.setText('ABCD');let dirty=false;
+  p.context.MutationObserver=class{observe(){}takeRecords(){return dirty?[{}]:[];}disconnect(){}};
+  const outside={left:0,top:200,right:10,bottom:210},inside={left:0,top:0,right:10,bottom:10};
+  const layout=controlledRangeGeometry(p,{envelope:(_node,start,end)=>{if(end-start===4)return inside;if(change==='host')p.candidate.hostElement={...p.host};else if(change==='content')p.candidate.contentElement={...p.content};else if(change==='id')p.candidate.id='replacement';else if(change==='role')(p.candidate as any).role='user';else if(change==='text')p.setText('EFGH');else dirty=true;return outside;},glyphs:()=>[inside]});
+  const state=install(p);try{p.tick(51);expect(state.readScroll().status).toBe('unavailable');expect(layout.calls).toHaveLength(2);expect(layout.calls.every(row=>row.kind==='envelope')).toBe(true);expect(layout.detached).toHaveLength(2);}finally{state.stop();}
+});
+test.each([{left:0,top:NaN,right:10,bottom:10},{left:0,top:0,right:Infinity,bottom:10},{left:10,top:0,right:0,bottom:10}])('a nonfinite or inverted subrange cannot prune or provide glyph proof (%j)',invalid=>{
+  const p=page();p.setText('ABCD');const inside={left:0,top:0,right:10,bottom:10};
+  const layout=controlledRangeGeometry(p,{envelope:(_node,start,end)=>end-start===4?inside:invalid,glyphs:()=>[inside]});
+  const state=install(p);try{p.tick(51);expect(state.readScroll().status).toBe('unavailable');expect(layout.calls).toHaveLength(2);expect(layout.detached).toHaveLength(2);}finally{state.stop();}
+});
+test('stopping during a fresh subrange query revokes all later intervals and glyph proof',async()=>{
+  const p=page();p.setText('ABCD');const inside={left:0,top:0,right:10,bottom:10};let state:ReturnType<typeof install>;
+  const layout=controlledRangeGeometry(p,{envelope:(_node,start,end)=>{if(end-start===2)state.stop();return inside;},glyphs:()=>[inside]});
+  const options={...mainOptions,scoredScrollSampling:{mode:'fresh-page-acquisition' as const,minimumPostToLaterPageMs:800 as const,maxWaitCallbacks:64 as const}};
+  state=install(p,true,options);const result=await state.readScrollFresh({notBeforePageMs:null});expect(result.status).toBe('unavailable');expect(layout.calls).toHaveLength(2);expect(layout.calls.every(row=>row.kind==='envelope')).toBe(true);expect(layout.detached).toHaveLength(2);expect(observations(state).some((row:any)=>row.kind==='scroll-checkpoint')).toBe(false);state.stop();
+});
+
 test('whole Text envelope prunes long offscreen active prose before glyph budget exhaustion',()=>{
   const p=page();p.setText('a'.repeat(8192));
   const offscreen={left:0,top:200,right:100,bottom:220};

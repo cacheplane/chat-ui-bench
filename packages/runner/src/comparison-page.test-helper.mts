@@ -36,7 +36,7 @@ export function install(p:ReturnType<typeof page>,pre=true,options=mainOptions) 
 
 // Independent synthetic layout answers: an envelope never supplies glyph answers.
 export function controlledRangeGeometry(p:ReturnType<typeof page>,answers:{
-  envelope:(node:any)=>{left:number;top:number;right:number;bottom:number};
+  envelope:(node:any,start:number,end:number)=>{left:number;top:number;right:number;bottom:number};
   glyphs:(node:any,start:number,end:number)=>{left:number;top:number;right:number;bottom:number}[];
 }) {
   const calls:{kind:'envelope'|'glyphs';node:any;start:number;end:number}[]=[],detached:any[]=[];
@@ -45,7 +45,7 @@ export function controlledRangeGeometry(p:ReturnType<typeof page>,answers:{
     return {
       setStart:(value:any,offset:number)=>{node=value;start=offset;},
       setEnd:(value:any,offset:number)=>{expect(value).toBe(node);end=offset;},
-      getBoundingClientRect:()=>{calls.push({kind:'envelope',node,start,end});return answers.envelope(node);},
+      getBoundingClientRect:()=>{calls.push({kind:'envelope',node,start,end});return answers.envelope(node,start,end);},
       getClientRects:()=>{calls.push({kind:'glyphs',node,start,end});return answers.glyphs(node,start,end);},
       detach:()=>{detached.push(node);},
     };

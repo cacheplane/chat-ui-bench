@@ -10,6 +10,105 @@ function fixture(setup?:(p:ReturnType<typeof page>)=>void){
   setup?.(p);
   return {p,waits,delays,state:install(p,true,options),wake(time:number){p.setTime(time);const [token,callback]=waits.entries().next().value??[];waits.delete(token);callback?.();}};
 }
+function anchorFixture(setup?:(p:ReturnType<typeof page>)=>void){
+  const f=fixture(setup);f.p.setText('A');
+  const historical=(id:string)=>{const node:any={nodeType:3,length:1,data:'H',isConnected:true,parentElement:null},content:any={isConnected:true,parentElement:f.p.scroller,contains:(value:any)=>value===node,nodes:[node]};node.parentElement=content;return {id,role:'user' as const,hostElement:{...f.p.host},contentElement:content};};
+  let history:ReturnType<typeof historical>[]=[];
+  f.p.bridge.readCaptureCandidates=()=>({status:'available',value:{active:f.p.candidate,historical:history}});
+  f.state.setPhase('history-reading');
+  return {...f,historical,history:(value:ReturnType<typeof historical>[])=>{history=value;}};
+}
+test('post-window binds current visible owner instead of the pre-wheel anchor and preserves it800ms later',async()=>{
+  const f=anchorFixture(),beforeOwner=f.historical('before'),postOwner=f.historical('post');
+  try{f.history([beforeOwner]);f.p.setTime(10);expect(await f.state.readScrollFresh({notBeforePageMs:null})).toMatchObject({status:'available',value:{anchorId:'before',anchorGeometry:{status:'available'}}});
+    f.history([postOwner,beforeOwner]);f.p.setTime(20);const post=await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'});expect(post).toMatchObject({status:'available',value:{anchorId:'post',anchorGeometry:{status:'available'}}});
+    f.p.setTime(821);const later=await f.state.readScrollFresh({notBeforePageMs:820,anchorWindow:'preserve-history-window'});expect(later).toMatchObject({status:'available',value:{anchorId:'post',timestampMs:821,anchorGeometry:{status:'available'}}});
+  }finally{f.state.stop();}
+});
+test('later-preserve rejects a different history phase instance even with the same name ID and owner',async()=>{
+  const f=anchorFixture(),owner=f.historical('post');
+  try{f.history([owner]);f.p.setTime(10);expect(await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).toMatchObject({status:'available',value:{anchorId:'post',anchorGeometry:{status:'available'}}});
+    f.p.setTime(20);f.state.closePhase();f.p.setTime(21);f.state.setPhase('history-reading');f.p.setTime(821);
+    expect(await f.state.readScrollFresh({notBeforePageMs:810,anchorWindow:'preserve-history-window'})).toEqual({status:'unavailable',reason:'History anchor window phase instance changed'});
+  }finally{f.state.stop();}
+});
+test('a consumed post window with no visible owner never binds one that first appears later',async()=>{
+  const f=anchorFixture();try{f.p.setTime(10);expect(await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).toMatchObject({status:'available',value:{anchorId:null,anchorGeometry:{status:'unavailable'}}});
+    f.history([f.historical('late')]);f.p.setTime(811);expect(await f.state.readScrollFresh({notBeforePageMs:810,anchorWindow:'preserve-history-window'})).toMatchObject({status:'available',value:{anchorId:null,anchorGeometry:{status:'unavailable'}}});
+  }finally{f.state.stop();}
+});
+test('a failed actual phase boundary revokes the bound window even if its open instance remains unchanged',async()=>{
+  const f=anchorFixture();try{f.history([f.historical('post')]);f.p.setTime(10);expect(await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).toMatchObject({status:'available',value:{anchorId:'post',anchorGeometry:{status:'available'}}});
+    const mark=f.p.bridge.markPhase;f.p.bridge.markPhase=(phase,boundary)=>({...mark(phase,boundary),timestampMs:NaN});expect(()=>f.state.closePhase()).toThrow('Invalid actual closing boundary');f.p.setTime(811);
+    expect(await f.state.readScrollFresh({notBeforePageMs:810,anchorWindow:'preserve-history-window'})).toEqual({status:'unavailable',reason:'History anchor window phase instance changed'});
+  }finally{f.state.stop();}
+});
+test.each(['missing','replacement'])('later window retains its bound ID when its owner is %s instead of selecting a new visible owner',async kind=>{
+  const f=anchorFixture(),owner=f.historical('post');try{f.history([owner]);f.p.setTime(10);expect(await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).toMatchObject({status:'available',value:{anchorId:'post',anchorGeometry:{status:'available'}}});
+    f.history(kind==='missing'?[f.historical('substitute')]:[f.historical('post'),f.historical('substitute')]);f.p.setTime(811);
+    expect(await f.state.readScrollFresh({notBeforePageMs:810,anchorWindow:'preserve-history-window'})).toMatchObject({status:'available',value:{anchorId:'post',anchorGeometry:{status:'unavailable',reason:kind==='missing'?'Historical anchor unavailable':'Historical anchor owner changed'}}});
+  }finally{f.state.stop();}
+});
+test('a second begin cannot reset the bound window and leaves the poll cache and poll statistics independent',async()=>{
+  const f=anchorFixture(),poll=f.historical('poll'),post=f.historical('post');try{f.history([poll]);f.p.tick(51);const cached=f.state.readScroll(),stats=f.state.readInstrumentation().scrollProbe;expect(cached).toMatchObject({status:'available',value:{anchorId:'poll'}});
+    f.history([post]);f.p.setTime(73);expect(await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).toMatchObject({status:'available',value:{anchorId:'post'}});
+    f.history([f.historical('substitute'),post]);expect(await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).toEqual({status:'unavailable',reason:'History anchor window already begun'});f.p.setTime(873);
+    expect(await f.state.readScrollFresh({notBeforePageMs:873,anchorWindow:'preserve-history-window'})).toMatchObject({status:'available',value:{anchorId:'post'}});expect(f.state.readScroll()).toEqual(cached);expect(f.state.readInstrumentation().scrollProbe).toEqual(stats);
+  }finally{f.state.stop();}
+});
+test('window mode and minimum are immutable primitive snapshots while waiting',async()=>{
+  const f=anchorFixture(),owner=f.historical('post');try{f.history([owner]);const input:{notBeforePageMs:number|null;anchorWindow:'begin-history-window'|'preserve-history-window'}={notBeforePageMs:1000,anchorWindow:'begin-history-window'};let settled=false;const pending=f.state.readScrollFresh(input);void pending.then(()=>{settled=true;});input.notBeforePageMs=null;input.anchorWindow='preserve-history-window';f.wake(2);await Promise.resolve();expect(settled).toBe(false);f.wake(1000);expect(await pending).toMatchObject({status:'available',value:{anchorId:'post',timestampMs:1000}});
+  }finally{f.state.stop();}
+});
+test.each([undefined,null,false,0,'',{}])('throwing window mode %j releases admission without consuming the window',async primary=>{
+  const f=anchorFixture();try{f.history([f.historical('post')]);const input=Object.defineProperty({notBeforePageMs:null},'anchorWindow',{enumerable:true,get(){throw primary;}});expect((await f.state.readScrollFresh(input)).status).toBe('unavailable');expect(await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).toMatchObject({status:'available',value:{anchorId:'post'}});
+  }finally{f.state.stop();}
+});
+test.each(['first','end'])('phase revocation in the %s acquisition clock prevents anchor commit and success emission',async boundary=>{
+  const f=anchorFixture();try{f.history([f.historical('post')]);f.state.drain(64);let clocks=0;const now=f.p.context.performance.now;f.p.context.performance.now=()=>{clocks++;if(clocks===(boundary==='first'?1:2)){f.p.setTime(21);f.state.closePhase();f.state.setPhase('history-reading');}return now();};
+    expect((await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).status).toBe('unavailable');expect(clocks).toBe(boundary==='first'?1:2);expect(f.state.drain(64).map(row=>JSON.parse(row.serialized)).some(row=>row.kind==='scroll-checkpoint')).toBe(false);if(boundary==='end')expect(()=>f.state.readInstrumentation()).toThrow('History anchor window phase instance changed');
+  }finally{f.state.stop();}
+});
+test.each([undefined,null,false,0,'',{}])('phase revocation preserves original geometry primary %j and ordered cleanup',async primary=>{
+  const cleanup={},pairs:unknown[][]=[];let f:ReturnType<typeof anchorFixture>;
+  f=anchorFixture(p=>{p.context.AggregateError=class extends AggregateError{constructor(errors:unknown[],message:string){pairs.push(errors);super(errors,message);}};
+    p.context.MutationObserver=class{observe(){}takeRecords(){return [];}disconnect(){throw cleanup;}};
+    const original=p.context.document.createRange;p.context.document.createRange=()=>({...original(),getBoundingClientRect:()=>{f.p.setTime(21);f.state.closePhase();f.state.setPhase('history-reading');throw primary;}});
+  });
+  try{f.history([f.historical('post')]);f.p.setTime(20);expect((await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).status).toBe('unavailable');expect(pairs).toHaveLength(1);expect(pairs[0]![0]).toBe(primary);expect(pairs[0]![1]).toBe(cleanup);expect(pairs[0]).toHaveLength(2);expect(()=>f.state.readInstrumentation()).toThrow('History anchor window phase instance changed');}finally{f.state.stop();}
+});
+test('phase change in the timer provider clears its owned token without a stale-timestamp cleanup record',async()=>{
+  let f:ReturnType<typeof anchorFixture>;
+  f=anchorFixture(p=>{const set=p.context.setTimeout,clear=p.context.clearTimeout;
+    p.context.setTimeout=(callback:()=>void,delay:number)=>{if(delay===50)return set(callback,delay);f.p.setTime(20);f.state.closePhase();f.state.setPhase('history-reading');return set(callback,delay);};
+    p.context.clearTimeout=(token:number)=>{clear(token);if(token>=1000)throw false;};
+  });
+  try{f.history([f.historical('post')]);f.p.setTime(10);f.state.drain(64);const result=await f.state.readScrollFresh({notBeforePageMs:1000,anchorWindow:'begin-history-window'});expect(result.status).toBe('unavailable');expect(f.waits.size).toBe(0);expect(f.state.drain(64).map(row=>JSON.parse(row.serialized)).every(row=>row.kind==='phase')).toBe(true);if(result.status==='unavailable'){expect(result.reason).toContain('History anchor window phase instance changed');expect(result.reason).toContain('Capture cleanup failed: false');}}finally{f.state.stop();}
+});
+for(const boundary of ['begin','existing','cleanup'] as const)test.each([undefined,null,false,0,'',{}])('historical-only '+boundary+' failure preserves primary %j before cleanup on phase revocation',async primary=>{
+  const cleanup={},pairs:unknown[][]=[];let f:ReturnType<typeof anchorFixture>,enabled=false,selected:unknown,owner:ReturnType<ReturnType<typeof anchorFixture>['historical']>;
+  const revoke=()=>{f.p.setTime(900);f.state.closePhase();f.state.setPhase('history-reading');};
+  f=anchorFixture(p=>{p.context.AggregateError=class extends AggregateError{constructor(errors:unknown[],message:string){pairs.push(errors);super(errors,message);}};
+    p.context.MutationObserver=class{observe(){}takeRecords(){return [];}disconnect(){if(enabled){if(boundary==='cleanup')revoke();throw cleanup;}}};
+    const create=p.context.document.createRange;p.context.document.createRange=()=>{const original=create();return {...original,selectNodeContents(node:unknown){selected=node;original.selectNodeContents(node);},setStart(node:unknown,offset:number){selected=node;original.setStart(node,offset);},getBoundingClientRect(){if(enabled&&selected===owner.contentElement.nodes[0]){if(boundary!=='cleanup')revoke();throw primary;}return original.getBoundingClientRect();}};};
+  });
+  try{owner=f.historical('post');f.history([owner]);if(boundary==='existing'){f.p.setTime(10);expect(await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).toMatchObject({status:'available',value:{activeVisible:true,anchorGeometry:{status:'available'}}});}
+    f.state.drain(64);enabled=true;f.p.setTime(810);const result=await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:boundary==='existing'?'preserve-history-window':'begin-history-window'});expect(result.status).toBe('unavailable');expect(pairs).toHaveLength(1);expect(pairs[0]).toHaveLength(2);expect(pairs[0]![0]).toBe(primary);expect(pairs[0]![1]).toBe(cleanup);expect(f.state.drain(64).map(row=>JSON.parse(row.serialized)).some(row=>row.kind==='scroll-checkpoint')).toBe(false);
+  }finally{enabled=false;f.state.stop();}
+});
+test('ordinary historical geometry failure remains an available snapshot with its unavailable anchor diagnostic',async()=>{
+  let f:ReturnType<typeof anchorFixture>,selected:unknown,owner:ReturnType<ReturnType<typeof anchorFixture>['historical']>;
+  f=anchorFixture(p=>{const create=p.context.document.createRange;p.context.document.createRange=()=>{const original=create();return {...original,selectNodeContents(node:unknown){selected=node;original.selectNodeContents(node);},setStart(node:unknown,offset:number){selected=node;original.setStart(node,offset);},getBoundingClientRect(){if(selected===owner.contentElement.nodes[0])throw false;return original.getBoundingClientRect();}};};});
+  try{owner=f.historical('post');f.history([owner]);expect(await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).toMatchObject({status:'available',value:{activeVisible:true,anchorId:null,anchorGeometry:{status:'unavailable',reason:'false'}}});}finally{f.state.stop();}
+});
+for(const boundary of ['cleanup','clock'] as const)test.each([undefined,null,false,0,'',{}])('historical primary '+boundary+' failure preserves primary %j when the phase remains unchanged',async primary=>{
+  const secondary={},pairs:unknown[][]=[];let f:ReturnType<typeof anchorFixture>,selected:unknown,owner:ReturnType<ReturnType<typeof anchorFixture>['historical']>;
+  f=anchorFixture(p=>{p.context.AggregateError=class extends AggregateError{constructor(errors:unknown[],message:string){pairs.push(errors);super(errors,message);}};p.context.MutationObserver=class{observe(){}takeRecords(){return [];}disconnect(){if(boundary==='cleanup')throw secondary;}};
+    const create=p.context.document.createRange;p.context.document.createRange=()=>{const original=create();return {...original,selectNodeContents(node:unknown){selected=node;original.selectNodeContents(node);},setStart(node:unknown,offset:number){selected=node;original.setStart(node,offset);},getBoundingClientRect(){if(selected===owner.contentElement.nodes[0])throw primary;return original.getBoundingClientRect();}};};
+  });
+  try{owner=f.historical('post');f.history([owner]);if(boundary==='clock'){let clocks=0;f.p.context.performance.now=()=>{if(++clocks===2)throw secondary;return 10;};}expect((await f.state.readScrollFresh({notBeforePageMs:null,anchorWindow:'begin-history-window'})).status).toBe('unavailable');expect(pairs).toHaveLength(1);expect(pairs[0]).toHaveLength(2);expect(pairs[0]![0]).toBe(primary);expect(pairs[0]![1]).toBe(secondary);
+  }finally{f.p.context.performance.now=()=>900;f.state.stop();}
+});
 test('fresh immediate acquisition uses current content/page time and leaves poll cache/statistics unchanged',async()=>{
   const {p,state}=fixture();p.setText('A');p.tick(51);const poll=state.readScroll(),stats=state.readInstrumentation();state.drain(64);p.setText('B');p.setTime(73);
   expect(await state.readScrollFresh({notBeforePageMs:null})).toMatchObject({status:'available',value:{timestampMs:73,activeVisible:true}});
