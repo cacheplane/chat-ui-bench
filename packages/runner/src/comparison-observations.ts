@@ -226,7 +226,7 @@ export function installComparisonObservations(createComparisonBuffer:BufferFacto
       if(clipX||clipY){const r=client(ancestor,work,per);clippingAncestorRects.push(r);clippingAncestorAxes.push({clipX,clipY});effective=intersect(effective,r,clipX,clipY);}ancestor=ancestor.parentElement;
     }
     const contentRects:ComparisonRect[]=[];let visible=false;
-    for(const item of sampled.nodes){const {node,data}=item;if(!node.isConnected||node.length!==data.length||node.data!==data)throw new Error('Prose mutated during geometry');let left=0,right=data.length,fromLeft=true;
+    for(const item of sampled.nodes){const {node,data}=item;if(!node.isConnected||node.length!==data.length||node.data!==data)throw new Error('Prose mutated during geometry');let left=0,right=data.length;
       if(data.length>0){
         if(limits.maxRectsPerSample-per.rects<2||limits.maxRectsPerCallback-work.rects<2)throw new Error('Prose rectangle budget exhausted before envelope query');
         per.rects+=2;work.rects+=2;
@@ -237,7 +237,23 @@ export function installComparisonObservations(createComparisonBuffer:BufferFacto
       function backward(offset:number):number{const code=data.charCodeAt(offset-1),previous=data.charCodeAt(offset-2);return code>=0xdc00&&code<=0xdfff&&previous>=0xd800&&previous<=0xdbff?2:1;}
       while(left<right){const end=left+forward(left);if(!/^\s$/u.test(data.slice(left,end)))break;left=end;}
       while(left<right){const start=right-backward(right);if(!/^\s$/u.test(data.slice(start,right)))break;right=start;}
-      while(left<right){let start:number,end:number;if(fromLeft){start=left;end=left+forward(left);left=end;}else{end=right;start=right-backward(right);right=start;}fromLeft=!fromLeft;if(/^\s$/u.test(data.slice(start,end)))continue;
+      // DFS keeps only one pending sibling per depth. Envelopes prune negatives;
+      // even an overlapping interval still needs a whole-codepoint glyph proof.
+      const intervals=left<right?[{start:left,end:right,envelopeAlreadyKnown:true}]:[];
+      while(intervals.length){const span=intervals.pop()!,{start,end}=span;assertOwner(item);
+        if(start+forward(start)!==end){
+          if(!span.envelopeAlreadyKnown){
+            if(limits.maxRectsPerSample-per.rects<2||limits.maxRectsPerCallback-work.rects<2)throw new Error('Prose rectangle budget exhausted before envelope query');
+            per.rects+=2;work.rects+=2;
+            const envelope=proseRange(item,start,end,range=>rectangle(range.getBoundingClientRect()));
+            if(envelope.right<=envelope.left||envelope.bottom<=envelope.top||intersect(effective,envelope)===null)continue;
+          }
+          let middle=Math.floor((start+end)/2);
+          const previous=data.charCodeAt(middle-1),next=data.charCodeAt(middle);
+          if(previous>=0xd800&&previous<=0xdbff&&next>=0xdc00&&next<=0xdfff)middle++;
+          intervals.push({start:middle,end,envelopeAlreadyKnown:false},{start,end:middle,envelopeAlreadyKnown:false});continue;
+        }
+        if(/^\s$/u.test(data.slice(start,end)))continue;
         if(per.rects>=limits.maxRectsPerSample||work.rects>=limits.maxRectsPerCallback)throw new Error('Prose rectangle budget exhausted before range query');per.rects++;work.rects++;
         proseRange(item,start,end,range=>{const rects=range.getClientRects();
           if(!Number.isSafeInteger(rects.length)||rects.length<0||rects.length>limits.maxRectsPerSample-per.rects||rects.length>limits.maxRectsPerCallback-work.rects)throw new Error('DOMRectList exceeds remaining budget before iteration');
