@@ -1,11 +1,13 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import fs from 'node:fs/promises';
+import {parseComparisonRendererPresentation} from './comparison-presentation.js';
+import * as presentationModule from './comparison-presentation.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, unlink, open, writeFile, link} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {loadComparisonMember, loadComparisonJson, loadComparisonJsonLines, loadComparisonInvocation, type ComparisonMemberReference} from './comparison-load.js';
-import {longThreadCaseOrder, createLongThreadMatrix, createLongThreadFixture, longThreadFixtureSchema, canonicalSerialize, comparisonManifestSchema, comparisonDatasetInventorySchema, comparisonSchemasForVersionPair} from '@chat-ui-bench/contract';
+import {longThreadCaseOrder, createLongThreadMatrix, createLongThreadFixture, longThreadFixtureSchema, canonicalSerialize, COMPARISON_CAPTURE_LIMITS, comparisonPhaseMarks, PRESENTATION_TRACE_CATEGORIES, PRESENTATION_CAPABILITY, PRESENTATION_CONTRACT_VERSION, comparisonManifestSchema, comparisonDatasetInventorySchema, comparisonSchemasForVersionPair} from '@chat-ui-bench/contract';
 
 const owned: string[] = [];
 afterEach(async () => {vi.restoreAllMocks(); for (const path of owned.splice(0)) await rm(path, {recursive: true, force: true});});
@@ -1830,5 +1832,173 @@ describe('comparison loader streamed JSONL admission', () => {
       expect(result.status).toBe('admitted-jsonl'); if (result.status !== 'admitted-jsonl') throw new Error('Expected inclusive record count');
       expect(result.records).toHaveLength(count); expect(result.admission).toHaveLength(count); expect(result.fact.byteLength).toBe(3 * count);
     } else expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'jsonlRecords', limit: 131072, observed: 131073}));
+  });
+});
+
+// Synthetic trace/metadata records on real owned files; no native oracle or captured code execution.
+async function rendererDiagnosticFixture(version: '2.0.0' | '2.1.0', journey: 'follow' | 'history-reading' = 'follow') {
+  const selected = longThreadCaseOrder(1).findIndex(id => id.includes('-' + journey + '-'));
+  const f = await finalContentFixture(version, selected), prefix = f.prefix, identity = {...f.versions, repetition: f.row.repetition, scenarioId: f.row.scenarioId, round: f.row.round, caseIndex: f.row.caseIndex, adapterProfile: f.row.adapterProfile};
+  const unavailable = {status: 'unavailable', reason: 'synthetic unavailable'}, probe = {intervalMs: 50, callbacks: 0, callbackDurationTotalMs: 0, maximumObservedGapMs: unavailable};
+  const instrumentation = f.schemas.comparisonInstrumentationSchema.parse({runtimeProbe: probe, domProbe: {...probe, selectionStrategy: 'bounded-visible-candidates'}, scrollProbe: probe, transportDrain: probe, eventTiming: unavailable, loaf: unavailable, buffers: [], ...(version === '2.1.0' ? {freshScrollProbe: {samplingMode: 'on-demand', callbacks: 0, callbackDurationTotalMs: 0, maximumObservedGapMs: unavailable}} : {})});
+  const metadata = f.schemas.comparisonCaptureMetadataSchema.parse({...identity, browserProtocol: {protocolVersion: '1.3', product: 'Chrome/156', revision: 'synthetic', userAgent: 'synthetic', jsVersion: 'synthetic'}, chromiumDownloadRevision: 'synthetic', playwrightVersion: '1.64.0', instrumentation: {sourceHashes: {'probe.ts': 'a'.repeat(64)}, installerSha256: 'b'.repeat(64), probeIntervalMs: 50, limits: COMPARISON_CAPTURE_LIMITS}});
+  const sequence = journey === 'follow' ? ['streaming-follow', 'composer-input', 'streaming-follow'] : ['streaming-follow', 'history-reading', 'return-to-response', 'streaming-follow', 'composer-input', 'streaming-follow'];
+  const phases = f.schemas.comparisonPhasesSchema.parse({...identity, status: 'complete', openPhase: null, instances: sequence.map((phase, i) => ({phase, instanceId: String(i), startMs: i * 10 + 1, endMs: i * 10 + 9, ...comparisonPhaseMarks(phase, String(i))}))});
+  const event = (name: string, ph: string, ts: number, args: Record<string, unknown> = {}, local = '0x1') => ({name, ph, ts, pid: 10, tid: 20, cat: 'blink.user_timing', args, id2: {local}});
+  const trace = {traceEvents: [event('TracingStartedInBrowser', 'I', 1, {data: {frames: [{frame: 'root', url: 'https://synthetic.test/', processId: 10}]}}), event('thread_name', 'M', 0, {name: 'CrRendererMain'}), ...phases.instances.flatMap((phase, i) => {
+    const start = i * 1000 + 100, end = start + 800;
+    return [event(phase.startMark, 'I', start, {data: {startTime: phase.startMs}}), event(phase.endMark, 'I', end, {data: {startTime: phase.endMs}}), ...[0, 1].flatMap(j => [event('AnimationFrame', 'b', start + 10 + j * 200, {id: `${i}-${j}`}, '0x1'), event('AnimationFrame', 'e', start + 20 + j * 200, {}, '0x1'), event('AnimationFrame::Presentation', 'n', start + 30 + j * 200, {id: `${i}-${j}`})])];
+  })]};
+  const corePrecondition = parseComparisonRendererPresentation({trace, target: {appURL: 'https://synthetic.test/', frameId: 'root'}, phases: phases.instances.map(p => ({phase: p.phase as 'streaming-follow' | 'composer-input' | 'history-reading' | 'return-to-response', instanceId: p.instanceId, startMark: p.startMark, endMark: p.endMark})), evidencePaths: ['trace.json']});
+  expect(corePrecondition.presentation.status).toBe('available');
+  const completion = {status: 'available', value: {observedAtHostMs: 100, dataLossOccurred: false, stream: 'synthetic-stream', traceFormat: 'json', streamCompression: 'none'}};
+  const auxiliary = f.schemas.comparisonTraceAuxiliarySchema.parse({...identity, cap: 256, observedCallbacks: 0, retainedCallbacks: 0, droppedCallbacks: 0, invalidCallbacks: 0, status: 'complete', completion});
+  const declaration = {status: 'available', format: 'cdp-json', file: 'trace.json', categories: [...PRESENTATION_TRACE_CATEGORIES], complete: true, tracingComplete: {status: 'available', value: {dataLossOccurred: false, stream: 'synthetic-stream', traceFormat: 'json', streamCompression: 'none'}}, bufferUsage: [], presentation: {status: 'available', value: {capability: PRESENTATION_CAPABILITY, contractVersion: PRESENTATION_CONTRACT_VERSION, sessionTarget: 'page', targetId: 'target', appURL: 'https://synthetic.test/', frameTree: {frameTree: {frame: {id: 'root', url: 'https://synthetic.test/'}}}, frameTreeCapturePoint: 'before-tracing', isolatedBrowserProcess: true, singleWorkloadPage: true}}};
+  await f.json(prefix + 'phases.json', phases); await f.json(prefix + 'trace.json', trace); await f.json(prefix + 'trace-auxiliary.json', auxiliary); await f.json(prefix + 'capture-metadata.json', metadata);
+  const capture = f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8')));
+  Object.assign(capture, f.schemas.comparisonCaptureStatusSchema.parse({...capture, captureMetadata: {status: 'available', value: metadata}})); capture.evidenceMetadata = {status: 'available'}; capture.traceEof = {status: 'available', value: {observedAtHostMs: 101, clockDomain: 'host-monotonic-ms'}};
+  await f.json(prefix + 'capture-status.json', f.schemas.comparisonCaptureStatusSchema.parse(capture));
+  await f.refreshSlot(selected, ['phases.json', 'trace.json', 'trace-auxiliary.json', 'capture-metadata.json']);
+  Object.assign(capture, f.schemas.comparisonCaptureStatusSchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'capture-status.json'), 'utf8'))));
+  const raw = f.schemas.comparisonRawInventorySchema.parse(JSON.parse(await readFile(join(f.root, prefix + 'raw-inventory.json'), 'utf8')));
+  const evidence = f.schemas.comparisonEvidenceSchema.parse({...raw, trace: declaration, instrumentation, unavailableFiles: []});
+  await f.json(prefix + 'evidence.json', evidence); await unlink(join(f.root, prefix + 'raw-inventory.json'));
+  const refresh = async () => {
+    for (const file of evidence.files) {const b = await readFile(join(f.root, prefix + file.path)); file.byteLength = b.length; file.sha256 = createHash('sha256').update(b).digest('hex');}
+    await f.json(prefix + 'evidence.json', f.schemas.comparisonEvidenceSchema.parse(evidence));
+    await f.refreshSeal(f.seal.members.some(m => m.path === prefix + 'evidence.json') ? [] : [prefix + 'evidence.json'], [prefix + 'raw-inventory.json']);
+  };
+  await refresh();
+  return {...f, phases, trace, auxiliary, metadata, capture, evidence, refresh};
+}
+describe('comparison conditional renderer diagnostic initial capabilities', () => {
+  it.each((['2.0.0', '2.1.0'] as const).flatMap(version => (['follow', 'history-reading'] as const).map(journey => ({version, journey}))))('retains canonical $version $journey parser capability without scoring', async ({version, journey}) => {
+    const f = await rendererDiagnosticFixture(version, journey), result = await loadComparisonInvocation(f.root), row = result.runs[f.selectedIndex]!;
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(row.references.inventory.status).toBe('complete'); expect(row.manifest?.workload.journey).toBe(journey); expect(row.captureValidation?.status).toBe('failed');
+    expect(row).toHaveProperty('rendererPresentationCapabilityDiagnostic', expect.objectContaining({status: 'available', scoringEligibility: false, notFullIntegratedDerivation: true, phaseOrigin: expect.objectContaining({status: 'unavailable-serialization-policy-unverified'}), presentation: expect.objectContaining({status: 'available', value: expect.objectContaining({phases: expect.any(Array)})})}));
+    const diagnostic = row.rendererPresentationCapabilityDiagnostic;
+    if (diagnostic.presentation.status !== 'available') throw new Error('canonical renderer support');
+    expect(diagnostic.presentation.value.phases).toHaveLength(journey === 'follow' ? 3 : 6);
+    expect(diagnostic.presentation.value.phases.every(phase => phase.rendererVisualUpdateFps.status === 'available' && phase.rendererVisualUpdateFps.numerator === 2 && phase.rendererVisualUpdateFps.denominatorUs === 800 && phase.presentationIntervals.status === 'available' && phase.presentationIntervals.intervalsUs.length === 1 && phase.presentationIntervals.intervalsUs[0] === 200)).toBe(true);
+    expect(diagnostic.guards).toEqual({'owned-originals': 'verified', 'trace-completion': 'verified', 'trace-topology': 'verified', 'canonical-phases': 'verified', 'existing-parser': 'verified', 'serialized-phase-origin': 'unavailable', 'independent-oracle': 'unavailable'});
+    expect(result.collection.status).toBe('partial');
+  });
+});
+
+describe('comparison conditional renderer diagnostic mandatory guards', () => {
+  it.each(['descriptor', 'inventory-byte', 'extra-scored-phase', 'extra-mark'] as const)('rejects source-backed %s contradiction after a canonical positive', async kind => {
+    const f = await rendererDiagnosticFixture('2.1.0'); expect((await loadComparisonInvocation(f.root)).runs[f.selectedIndex]).toHaveProperty('rendererPresentationCapabilityDiagnostic.status', 'available');
+    if (kind === 'descriptor') {const path = f.prefix + 'descriptor.json', value = JSON.parse(await readFile(join(f.root, path), 'utf8')); value.repetition = 'different'; await f.json(path, value); await f.refresh();}
+    if (kind === 'inventory-byte') {f.evidence.files.find(file => file.path === 'phases.json')!.sha256 = '0'.repeat(64); await f.json(f.prefix + 'evidence.json', f.evidence); await f.refreshSeal();}
+    if (kind === 'extra-scored-phase') {const last = f.phases.instances.at(-1)!; f.phases.instances.push({...last, phase: 'history-reading', instanceId: '999', startMs: last.endMs + 1, endMs: last.endMs + 2, ...comparisonPhaseMarks('history-reading', '999')}); await f.json(f.prefix + 'phases.json', f.phases); await f.refresh();}
+    if (kind === 'extra-mark') {f.trace.traceEvents.push({...f.trace.traceEvents[2]!, name: comparisonPhaseMarks('streaming-follow', '999').startMark, ts: 99999}); await f.json(f.prefix + 'trace.json', f.trace); await f.refresh();}
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[f.selectedIndex]).toHaveProperty('rendererPresentationCapabilityDiagnostic.status', 'unavailable'); expect(result.runs[f.selectedIndex]!.captureValidation?.status).toBe('failed');
+  });
+});
+
+describe('comparison conditional renderer diagnostic retained controls', () => {
+  it.each(['missing-eof', 'stream', 'loss', 'aux-accounting', 'categories', 'frame', 'url', 'child', 'isolation', 'wrong-row', 'partial-phases', 'registry-4097', 'duplicate-mark', 'lifecycle', 'foreign-feedback', 'unsafe-time', 'missing-trace'] as const)('fails closed for %s on byte-rebound canonical files', async kind => {
+    const f = await rendererDiagnosticFixture('2.1.0'); expect((await loadComparisonInvocation(f.root)).runs[f.selectedIndex]).toHaveProperty('rendererPresentationCapabilityDiagnostic.status', 'available');
+    const declaration = f.evidence.trace; if (declaration.status !== 'available' || declaration.presentation.status !== 'available') throw new Error('canonical declaration');
+    if (kind === 'missing-eof') Object.assign(f.capture.traceEof, {status: 'unavailable', reason: 'actual EOF missing', value: undefined});
+    if (kind === 'stream') {if (f.auxiliary.completion.status !== 'available') throw new Error('canonical completion'); f.auxiliary.completion.value.stream = 'different';}
+    if (kind === 'loss') {if (declaration.tracingComplete.status !== 'available') throw new Error('canonical completion'); declaration.tracingComplete.value.dataLossOccurred = true;}
+    if (kind === 'aux-accounting') f.auxiliary.observedCallbacks = 1;
+    if (kind === 'categories') declaration.categories = ['blink.user_timing'];
+    if (kind === 'frame') declaration.presentation.value.frameTree.frameTree.frame.id = 'different';
+    if (kind === 'url') declaration.presentation.value.appURL = 'https://different.test/';
+    if (kind === 'child') declaration.presentation.value.frameTree.frameTree.childFrames = [{frame: {id: 'child', url: 'https://synthetic.test/'}}];
+    if (kind === 'isolation') declaration.presentation.value.isolatedBrowserProcess = false;
+    if (kind === 'wrong-row') f.metadata.repetition = 'different';
+    if (kind === 'partial-phases') Object.assign(f.phases, {status: 'partial', reason: 'actual open phase'});
+    if (kind === 'registry-4097') f.phases.instances = Array(4097).fill(f.phases.instances[0]);
+    if (kind === 'duplicate-mark') f.trace.traceEvents.push({...f.trace.traceEvents[2]!});
+    if (kind === 'lifecycle') f.trace.traceEvents.push({...f.trace.traceEvents[0]!, name: 'FrameCommittedInBrowser'});
+    if (kind === 'foreign-feedback') f.trace.traceEvents.push({...f.trace.traceEvents.find(e => e.name === 'AnimationFrame::Presentation')!, pid: 999});
+    if (kind === 'unsafe-time') f.trace.traceEvents[2]!.ts = Number.MAX_SAFE_INTEGER + 1;
+    await f.json(f.prefix + 'capture-status.json', f.capture); await f.json(f.prefix + 'trace-auxiliary.json', f.auxiliary); await f.json(f.prefix + 'capture-metadata.json', f.metadata); await f.json(f.prefix + 'phases.json', f.phases); await f.json(f.prefix + 'trace.json', f.trace); await f.refresh();
+    if (kind === 'missing-trace') {await unlink(join(f.root, f.prefix + 'trace.json')); f.evidence.files = f.evidence.files.filter(file => file.path !== 'trace.json'); await f.json(f.prefix + 'evidence.json', f.evidence); await f.refreshSeal([], [f.prefix + 'trace.json']);}
+    const result = await loadComparisonInvocation(f.root), diagnostic = result.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic;
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(diagnostic.status).toBe('unavailable'); expect(diagnostic.scoringEligibility).toBe(false); expect(diagnostic.presentation.status).toBe('unavailable');
+    if (kind === 'registry-4097') expect(diagnostic.issues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'phaseRegistry', limit: 4096, observed: 4097}));
+  });
+  it.each(['missing', 'malformed', 'last-digit'] as const)('retains conditional support with %s origin metadata, never scoring', async mode => {
+    const f = await rendererDiagnosticFixture('2.1.0'), event = f.trace.traceEvents[2]!, data = event.args.data as Record<string, unknown>;
+    if (mode === 'missing') delete data.startTime; else if (mode === 'malformed') data.startTime = 'invalid'; else data.startTime = 1.0000000000000002;
+    await f.json(f.prefix + 'trace.json', f.trace); await f.refresh(); const result = await loadComparisonInvocation(f.root), diagnostic = result.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic;
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(diagnostic.status).toBe('available'); expect(diagnostic.phaseOrigin.status).toBe(mode === 'missing' ? 'unavailable-missing-metadata' : mode === 'malformed' ? 'unavailable-malformed-metadata' : 'unavailable-serialization-policy-unverified'); expect(diagnostic.scoringEligibility).toBe(false);
+  });
+  it.each([0, 1])('retains %i actual feedback per window without inventing intervals/zero rate', async count => {
+    const f = await rendererDiagnosticFixture('2.1.0'); f.trace.traceEvents = f.trace.traceEvents.filter(event => event.name !== 'AnimationFrame::Presentation' || count === 1 && String(event.args.id).endsWith('-0'));
+    await f.json(f.prefix + 'trace.json', f.trace); await f.refresh(); const diagnostic = (await loadComparisonInvocation(f.root)).runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic;
+    expect(diagnostic.status).toBe('available'); if (diagnostic.presentation.status !== 'available') throw new Error('canonical parser');
+    expect(diagnostic.presentation.value.phases.every(phase => phase.presentationIntervals.status === 'unavailable')).toBe(true); expect(diagnostic.presentation.value.phases.every(phase => count === 0 ? phase.rendererVisualUpdateFps.status === 'unavailable' : phase.rendererVisualUpdateFps.status === 'available' && phase.rendererVisualUpdateFps.numerator === 1)).toBe(true);
+  });
+  it.each([undefined, null, false, 0, '', new Error('actual close')] as const)('retains exact trace close failure %s and revokes all favorable diagnostics', async primary => {
+    const f = await rendererDiagnosticFixture('2.1.0'), target = join(f.root, f.prefix + 'trace.json'), original = fs.open.bind(fs); let closes = 0;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const handle = await original(...args); if (String(args[0]) !== target) return handle; return new Proxy(handle, {get(object, key) {if (key === 'close') return async () => {await object.close(); if (++closes === 3) throw primary;}; const value = Reflect.get(object, key); return typeof value === 'function' ? value.bind(object) : value;}});});
+    const result = await loadComparisonInvocation(f.root); expect(closes).toBe(3); expect(result.byteIntegrity.seal).toBe('partial'); expect(result.runs.every(row => row.rendererPresentationCapabilityDiagnostic.status === 'unavailable')).toBe(true);
+    const failure = result.byteIntegrity.ioFailures.find(value => value.path === f.prefix + 'trace.json' && value.operation === 'close')!; expect(failure).toBeDefined(); expect(Object.hasOwn(failure, 'error')).toBe(true); expect(failure.error).toBe(primary);
+  });
+  it('revokes a previously supported trace after final original identity replacement', async () => {
+    const f = await rendererDiagnosticFixture('2.1.0'), target = join(f.root, f.prefix + 'trace.json'), replacement = f.root + '-replacement'; owned.push(replacement); await writeFile(replacement, await readFile(target)); const original = fs.open.bind(fs); let closes = 0;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const handle = await original(...args); if (String(args[0]) !== target) return handle; return new Proxy(handle, {get(object, key) {if (key === 'close') return async () => {await object.close(); if (++closes === 3) await rename(replacement, target);}; const value = Reflect.get(object, key); return typeof value === 'function' ? value.bind(object) : value;}});});
+    const result = await loadComparisonInvocation(f.root); expect(closes).toBe(3); expect(result.byteIntegrity.seal).toBe('partial'); expect(result.runs[f.selectedIndex]).toHaveProperty('rendererPresentationCapabilityDiagnostic.presentation.status', 'unavailable');
+  });
+});
+
+describe('comparison renderer unchanged resource boundaries', () => {
+  it.each([4096, 4097])('checks raw phase registry %i before schema refinements', async count => {
+    const f = await rendererDiagnosticFixture('2.1.0'), last = f.phases.instances.at(-1)!;
+    f.phases.instances.push(...Array.from({length: count - f.phases.instances.length}, (_, i) => ({phase: 'validation' as const, instanceId: String(i + 3), startMs: last.endMs + 1 + i * 2, endMs: last.endMs + 2 + i * 2, ...comparisonPhaseMarks('validation', String(i + 3))})));
+    await f.json(f.prefix + 'phases.json', f.phases); await f.refresh(); const result = await loadComparisonInvocation(f.root), diagnostic = result.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic;
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(diagnostic.status).toBe(count === 4096 ? 'available' : 'unavailable');
+    if (count === 4097) expect(diagnostic.issues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'phaseRegistry', limit: 4096, observed: 4097}));
+  });
+  it.each(['invalid-utf8', 'duplicate-keys', 'depth64', 'depth65'] as const)('uses private trace admission for %s without rewriting bytes', async mode => {
+    const f = await rendererDiagnosticFixture('2.1.0'), path = f.prefix + 'trace.json';
+    if (mode === 'invalid-utf8') await writeFile(join(f.root, path), Buffer.from([0x22, 0xc3, 0x28, 0x22]));
+    else if (mode === 'duplicate-keys') await writeFile(join(f.root, path), '{"traceEvents":[],"trace\\u0045vents":[]}');
+    else {const nested = mode === 'depth64' ? 63 : 64, original = JSON.stringify(f.trace); await writeFile(join(f.root, path), original.slice(0, -1) + ',"deep":' + '['.repeat(nested) + 'null' + ']'.repeat(nested) + '}');}
+    await f.refresh(); const before = await readFile(join(f.root, path)), core = vi.spyOn(presentationModule, 'parseComparisonRendererPresentation'), result = await loadComparisonInvocation(f.root), diagnostic = result.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic;
+    expect(core).toHaveBeenCalledTimes(mode === 'depth64' ? 1 : 0); expect(await readFile(join(f.root, path))).toEqual(before); expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(diagnostic.guards['owned-originals']).toBe('verified'); expect(Object.values(result.runs[f.selectedIndex]!.finalContent).every(lane => lane.status === 'complete')).toBe(true); expect(diagnostic.status).toBe(mode === 'depth64' ? 'available' : 'unavailable');
+    if (mode === 'depth65') expect(diagnostic.issues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'jsonDepth', limit: 64, observed: 65}));
+    if (mode === 'invalid-utf8' || mode === 'duplicate-keys') expect(diagnostic.issues).toContainEqual(expect.objectContaining({kind: 'malformed', role: 'trace'}));
+  });
+  it.each([8388608, 8388609])('preserves trace work at exact %i units', {timeout: 120000}, async work => {
+    const input = '{"traceEvents":[],"padding":[' + 'null,'.repeat(work - 6) + 'null]}', f = await jsonFixture(input, 'trace'), result = await loadComparisonJson(f.root, f.reference);
+    if (work === 8388608) {expect(result.status).toBe('admitted-json'); if (result.status !== 'admitted-json') throw new Error('trace work positive'); expect(result.admission.analyzerWorkUnits).toBe(work);}
+    else expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'jsonWorkUnits', limit: 8388608, observed: 8388609}));
+  });
+  it.each([128 * 1024 * 1024, 128 * 1024 * 1024 + 1])('preserves original trace byte role at %i bytes', {timeout: 60000}, async size => {
+    const f = await fixture(), path = join(f.root, f.reference.path), handle = await open(path, 'w'); try {await handle.truncate(size);} finally {await handle.close();}
+    const hash = createHash('sha256'), block = Buffer.alloc(65536); for (let left = size; left > 0; left -= block.length) hash.update(block.subarray(0, Math.min(left, block.length)));
+    const result = await loadComparisonMember(f.root, {path: f.reference.path, role: 'trace', expected: {byteLength: size, sha256: hash.digest('hex')}});
+    if (size === 128 * 1024 * 1024) expect(result.status).toBe('verified-bytes'); else expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'roleBytes', limit: 128 * 1024 * 1024, observed: size}));
+  });
+});
+
+describe('comparison trace semantic rejection preserves physical failure authority', () => {
+  it.each([undefined, null, false, 0, '', new Error('original read')] as const)('keeps actual later descriptor read failure %s after syntax rejection', async primary => {
+    const f = await rendererDiagnosticFixture('2.1.0'), path = f.prefix + 'trace.json', target = join(f.root, path);
+    await writeFile(target, '{"traceEvents":[],"trace\\u0045vents":[]}' + ' '.repeat(70000)); await f.refresh(); const original = fs.open.bind(fs); let opens = 0, readCalls = 0;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const handle = await original(...args); if (String(args[0]) !== target || ++opens !== 3) return handle; return new Proxy(handle, {get(object, key) {if (key === 'read') return async (...args: Parameters<typeof object.read>) => {if (++readCalls === 2) throw primary; return Reflect.apply(object.read, object, args);}; const value = Reflect.get(object, key); return typeof value === 'function' ? value.bind(object) : value;}});});
+    const result = await loadComparisonInvocation(f.root); expect(readCalls).toBe(2); expect(result.byteIntegrity.seal).toBe('partial'); expect(result.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic.issues).toContainEqual(expect.objectContaining({kind: 'malformed', path: 'trace.json', reason: expect.stringMatching(/duplicate decoded key/i)})); expect(result.runs.every(row => row.rendererPresentationCapabilityDiagnostic.status === 'unavailable')).toBe(true);
+    const failure = result.byteIntegrity.ioFailures.find(value => value.path === path && value.operation === 'read')!; expect(failure).toBeDefined(); expect(Object.hasOwn(failure, 'error')).toBe(true); expect(failure.error).toBe(primary);
+  });
+  it('keeps an unknown native JSON decoder throw outside the known scanner exception seam', async () => {
+    const f = await rendererDiagnosticFixture('2.1.0'), bytes = await readFile(join(f.root, f.prefix + 'trace.json'), 'utf8'), original = JSON.parse;
+    vi.spyOn(JSON, 'parse').mockImplementation((...args) => {if (args[0] === bytes) throw false; return Reflect.apply(original, JSON, args);});
+    const result = await loadComparisonInvocation(f.root); expect(result.byteIntegrity.seal).toBe('partial'); expect(result.runs[f.selectedIndex]).toHaveProperty('rendererPresentationCapabilityDiagnostic.status', 'unavailable');
+  });
+});
+
+describe('comparison renderer original phase payload authority', () => {
+  it.each(['lost', 'partial'] as const)('rejects explicit %s phases despite available bytes and registry', async mode => {
+    const f = await rendererDiagnosticFixture('2.1.0'); expect((await loadComparisonInvocation(f.root)).runs[f.selectedIndex]).toHaveProperty('rendererPresentationCapabilityDiagnostic.status', 'available');
+    if (mode === 'lost') {f.capture.payloads = f.capture.payloads.filter(file => file.path !== 'phases.json'); f.capture.unavailablePaths.push({path: 'phases.json', reason: 'original acquisition unavailable'});}
+    else Object.assign(f.capture.payloads.find(file => file.path === 'phases.json')!, {status: 'partial', reason: 'original acquisition partial'});
+    await f.json(f.prefix + 'capture-status.json', f.schemas.comparisonCaptureStatusSchema.parse(f.capture)); await f.refresh(); const result = await loadComparisonInvocation(f.root);
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(result.runs[f.selectedIndex]).toHaveProperty('rendererPresentationCapabilityDiagnostic.status', 'unavailable');
   });
 });
