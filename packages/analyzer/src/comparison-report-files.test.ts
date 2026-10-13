@@ -27,6 +27,49 @@ it('publishes actual two-file external diagnostics and preserves original bytes'
   }
   expect(await readFile(join(f.input, 'invocation.json'))).toEqual(f.bytes);
 });
+it('rejects an unknown trace policy before publisher directory or path inspection', async () => {
+  const f = await fixture(), stat = vi.spyOn(fs, 'lstat'), real = vi.spyOn(fs, 'realpath');
+  await expect(Reflect.apply(publishComparisonReport, undefined, [f.input, f.output, {tracePolicy: 'unreviewed'}])).rejects.toThrow(/trace policy/);
+  expect(stat).not.toHaveBeenCalled(); expect(real).not.toHaveBeenCalled();
+});
+it.each([undefined, 'streamed-renderer-events-v1'] as const)('canonical publication retains admitted policy %s', async tracePolicy => {
+  const f = await fixture(); await publishComparisonReport(f.input, f.output, tracePolicy === undefined ? {} : {tracePolicy});
+  const report = JSON.parse(await readFile(join(f.output, 'comparison-results.json'), 'utf8'));
+  expect(report.publicationStatus).toBeUndefined(); expect(report.scoringEligibility).toBe(false);
+  expect(Object.hasOwn(report, 'tracePolicy')).toBe(tracePolicy !== undefined); if (tracePolicy !== undefined) expect(report.tracePolicy).toBe(tracePolicy);
+});
+it.each([
+  {initial: undefined, next: 'streamed-renderer-events-v1'},
+  {initial: 'streamed-renderer-events-v1' as const, next: undefined},
+  {initial: 'streamed-renderer-events-v1' as const, next: 'unreviewed'},
+])('publisher retains originally admitted $initial policy despite later $next caller mutation', async ({initial, next}) => {
+  const f = await fixture(), stat = fs.lstat.bind(fs), options = initial === undefined ? {} : {tracePolicy: initial}; let paused = false;
+  let arrive!: () => void, release!: () => void; const arrived = new Promise<void>(resolve => {arrive = resolve;}), held = new Promise<void>(resolve => {release = resolve;});
+  vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {const actual = await Reflect.apply(stat, undefined, args); if (String(args[0]) === f.input && !paused) {paused = true; arrive(); await held;} return actual;});
+  const pending = publishComparisonReport(f.input, f.output, options).then(value => ({fulfilled: true as const, value}), error => ({fulfilled: false as const, error}));
+  await arrived; Reflect.set(options, 'tracePolicy', next); release(); const result = await pending;
+  expect(paused).toBe(true); expect(result.fulfilled).toBe(true); if (!result.fulfilled) throw Error('Initially admitted policy was replaced after filesystem access');
+  const report = JSON.parse(await readFile(join(f.output, 'comparison-results.json'), 'utf8'));
+  expect(Object.hasOwn(report, 'tracePolicy')).toBe(initial !== undefined); if (initial !== undefined) expect(report.tracePolicy).toBe(initial);
+  expect(await readFile(join(f.input, 'invocation.json'))).toEqual(f.bytes);
+});
+it.each([false, 0, undefined])('output lstat code getter failure %j preserves original and prevents publication', async secondary => {
+  const f = await fixture(), stat = fs.lstat.bind(fs); let missingObserved = 0, getterCalls = 0;
+  const original = Object.defineProperty({}, 'code', {get() {getterCalls++; throw secondary;}});
+  vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+    if (String(args[0]) !== f.output) return Reflect.apply(stat, undefined, args);
+    try {await Reflect.apply(stat, undefined, args);} catch (error) {
+      if (error !== null && typeof error === 'object' && Reflect.get(error, 'code') === 'ENOENT') {missingObserved++; throw original;}
+      throw error;
+    }
+    throw Error('Missing-output positive precondition failed');
+  });
+  const mkdir = vi.spyOn(fs, 'mkdir'), open = vi.spyOn(fs, 'open');
+  const result = await publishComparisonReport(f.input, f.output).then(value => ({fulfilled: true as const, value}), error => ({fulfilled: false as const, error}));
+  expect(result.fulfilled).toBe(false); if (result.fulfilled) throw Error('Opaque original output failure was admitted');
+  expect(Object.is(result.error, original)).toBe(true); expect(missingObserved).toBe(1); expect(getterCalls).toBe(1);
+  expect(mkdir).not.toHaveBeenCalled(); expect(open).not.toHaveBeenCalled(); expect(await readFile(join(f.input, 'invocation.json'))).toEqual(f.bytes);
+});
 it('same original into two new directories produces byte-identical JSON and Markdown', async () => {
   const f = await fixture(), second = join(f.parent, 'second');
   await publishComparisonReport(f.input, f.output); await publishComparisonReport(f.input, second);

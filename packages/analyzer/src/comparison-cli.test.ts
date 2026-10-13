@@ -11,6 +11,9 @@ afterEach(async () => {for (const path of owned.splice(0)) await rm(path, {recur
 it('requires explicit original and new output paths', () => {
   expect(parseComparisonReportArgs(['--artifact-dir', '/original', '--out', '/new-report'])).toEqual({input: '/original', output: '/new-report'});
 });
+it('admits only the explicit closed streamed trace policy without changing default arguments', () => {
+  expect(parseComparisonReportArgs(['--artifact-dir', '/original', '--out', '/new-report', '--trace-policy', 'streamed-renderer-events-v1'])).toEqual({input: '/original', output: '/new-report', tracePolicy: 'streamed-renderer-events-v1'});
+});
 it.each([[], ['--artifact-dir', '/original'], ['--artifact-dir', '/original', '--artifact-dir', '/other'], ['--artifact-dir', '/original', '--out', 'relative'], ['--out', '/new', '--artifact-dir', '/original'], ['--artifact-dir', '/original', '--out', '/new', '--allow-partial']].map(args => ({args})))('rejects malformed closed arguments $args', ({args}) => {
   expect(() => parseComparisonReportArgs(args)).toThrow(/Usage|absolute/);
 });

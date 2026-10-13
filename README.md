@@ -155,6 +155,18 @@ compatibility; they do not qualify display FPS or complete renderer updates.
 Conditional parser availability does not establish source execution, coverage,
 an independent oracle or scoring eligibility. Historical reports stay unchanged.
 
+The private offline comparison CLI accepts the explicit opt-in
+`--trace-policy streamed-renderer-events-v1`. Its default keeps the original
+8,388,608 JSON work limit. The new policy validates the complete JSON stream
+under a separate 16,777,216 work ceiling and retains bounded original renderer,
+metadata, lifecycle and canonical mark records for the same parser. It never
+falls back from a failed default load. Reports distinguish scanner EOF, stopped
+prefix statistics and independently closed physical bytes, retain every admitted
+slot and reported verdict, and remain ineligible for scoring. Read buffers are
+at most 65,536 raw bytes; transient decoded strings are bounded in UTF16 code
+units, not physical heap bytes. This policy does not establish frame coverage,
+source execution, origin equivalence or FPS.
+
 New CLI captures use collector/analyzer family 2.1.0. Scored scroll checkpoints
 acquire current page geometry on demand; the later history checkpoint waits
 until at least 800 ms after the original post-wheel sample on the same page

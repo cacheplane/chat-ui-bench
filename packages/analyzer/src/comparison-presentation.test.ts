@@ -3,6 +3,19 @@ import { comparisonPhaseMarks, comparisonRendererPresentationSchema, comparisonS
 import { parseComparisonRendererPresentation, type ComparisonRendererPresentationInput } from './comparison-presentation.js';
 import { loadPresentationFixture, presentationFixtures, presentationIntervalGoldenIndex } from './presentation-fixtures.test-helper.js';
 import { parseRendererPresentation } from './presentation.js';
+import {admitPresentationNumericSlots} from './presentation-core.js';
+import {StreamedTraceAdmission} from './comparison-trace-stream.js';
+
+describe('streamed numeric preallocation boundary', () => {
+  it('admits exact43690 aggregate slots and rejects next slot before allocation', () => {
+    expect(admitPresentationNumericSlots(1, 21845)).toBe(43690);
+    expect(() => admitPresentationNumericSlots(2, 21845)).toThrow(/numeric slots/);
+  });
+  it.each([-1, NaN, Infinity, 1.5])('rejects invalid prior or delivery cardinality%s', value => {
+    expect(() => admitPresentationNumericSlots(value, 1)).toThrow();
+    expect(() => admitPresentationNumericSlots(0, value)).toThrow();
+  });
+});
 
 const phases = comparisonScoredPresentationPhaseSchema.options;
 function authentic(index = 0, phase = phases[0]!): ComparisonRendererPresentationInput {
@@ -44,7 +57,7 @@ describe('comparison strict wrapper', () => {
     const input = authentic(); Object.assign(input.phases[0]!, {phase});
     expect(parseComparisonRendererPresentation(input)).toEqual({presentation: {status: 'unavailable', reason: expect.any(String)}});
   });
-  it.each([[], ['../trace.json'], ['/trace.json'], ['trace.json', 'bad path']])('rejects absent/unsafe evidence %#', evidencePaths => {
+  it.each([[], ['../trace.json'], ['/trace.json'], ['trace.json', 'bad path']].map(evidencePaths => ({evidencePaths})))('rejects absent/unsafe evidence %#', ({evidencePaths}) => {
     expect(parseComparisonRendererPresentation({...authentic(), evidencePaths}).presentation.status).toBe('unavailable');
   });
   it('rejects wrong marks and unknown phase fields', () => {
@@ -120,5 +133,15 @@ describe('comparison boundary and whole-trace safety', () => {
   it.each(mutations)('rejects %s without partial scored output', (_name, mutate) => {
     const input = syntheticComparison(); mutate(input);
     expect(parseComparisonRendererPresentation(input)).toEqual({presentation: {status: 'unavailable', reason: expect.any(String)}});
+  });
+  it.each(mutations)('streamed selector preserves original %s rejection', (_name, mutate) => {
+    const canonical = syntheticComparison();
+    expect(parseComparisonRendererPresentation(canonical).presentation.status).toBe('available');
+    const input = syntheticComparison(); mutate(input);
+    const legacy = parseComparisonRendererPresentation(input), scanner = new StreamedTraceAdmission(), bytes = Buffer.from(JSON.stringify(input.trace));
+    try {
+      for (let offset = 0; offset < bytes.length; offset += 65536) scanner.feed(bytes.subarray(offset, offset + 65536)); scanner.finish();
+      expect(parseComparisonRendererPresentation({...input, trace: scanner.trace()}, 'streamed-renderer-events-v1')).toEqual(legacy);
+    } finally {scanner.dispose();}
   });
 });

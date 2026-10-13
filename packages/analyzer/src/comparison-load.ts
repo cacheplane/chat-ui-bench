@@ -9,6 +9,7 @@ import {unavailableComparisonProvenanceGraph, provenanceGraphAdmission, provenan
 import {longThreadFixtureSchema, type LongThreadFixture} from '@chat-ui-bench/contract';
 import {unavailableComparisonFinalContent, checkComparisonFinalContent, finalContentCardinalityIssues, replaceFinalContentIssue, revokeComparisonFinalContent, type ComparisonFinalContent, type FinalRuntime, type FinalVisible} from './comparison-final-content.js';
 import {unavailableComparisonRendererDiagnostic, checkComparisonRendererDiagnostic, revokeComparisonRendererDiagnostic, type ComparisonRendererDiagnostic} from './comparison-renderer-diagnostic.js';
+import {StreamedTraceAdmission, isStreamedTraceFailure, selectComparisonTracePolicy, notStartedTraceAdmission, type ComparisonTraceLoadOptions, type TraceAdmissionStatistics} from './comparison-trace-stream.js';
 
 type ComparisonSchemas = ReturnType<typeof comparisonSchemasForVersionPair>;
 type ComparisonIdentity = z.output<ComparisonSchemas['comparisonIdentitySchema']>;
@@ -55,8 +56,16 @@ type Ancestor = {path: string; dev: bigint; ino: bigint};
 const sameAncestors = (a: Ancestor[], b: Ancestor[]) => a.length === b.length
   && a.every((row, i) => row.path === b[i]!.path && row.dev === b[i]!.dev && row.ino === b[i]!.ino);
 
+const memberFailures = new WeakSet<object>();
 class MemberFailure extends Error {
-  constructor(readonly issue: ComparisonLoadingIssue) {super(issue.reason);}
+  constructor(readonly issue: ComparisonLoadingIssue) {super(issue.reason); memberFailures.add(this);}
+}
+function isMemberFailure(value: unknown): value is MemberFailure {
+  return (typeof value === 'object' && value !== null || typeof value === 'function') && memberFailures.has(value);
+}
+function isNodeMissing(value: unknown): boolean {
+  try {return typeof value === 'object' && value !== null && 'code' in value && value.code === 'ENOENT';}
+  catch {return false;}
 }
 const INVOCATION_BYTE_LIMIT = 16 * 1024 * MIB;
 type OwnedMetadata = {status: 'verified-metadata'; path: string; byteLength: number; loadingIssues: []};
@@ -107,7 +116,7 @@ async function checkDeclaredAbsence(root: string, path: string, owner: Invocatio
   };
   async function lookup(absolutePath: string): Promise<BigIntStats | null> {
     try {return await fs.lstat(absolutePath, {bigint: true});} catch (error) {
-      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return null;
+      if (isNodeMissing(error)) return null;
       owner.ioFailure('path-stat', path, error); return fail('unreadable', preview(error, 'Declared absent pathname lookup failed: '));
     }
   }
@@ -132,7 +141,7 @@ async function checkDeclaredAbsence(root: string, path: string, owner: Invocatio
     })) fail('identity', 'Declared absent ancestor identity changed during pathname lookup');
     if (await lookup(join(root, path))) fail('membership', 'Declared absent pathname appeared during pathname lookup');
     return null;
-  } catch (error) {if (error instanceof MemberFailure) return error.issue; throw error;}
+  } catch (error) {if (isMemberFailure(error)) return error.issue; throw error;}
 }
 function preview(error: unknown, prefix = ''): string {
   let text: string; try {text = String(error);} catch {text = 'Unrenderable original filesystem failure';}
@@ -242,10 +251,10 @@ async function readCheckedMember(
     if (expected && fact.sha256 !== expected.sha256) fail('integrity', 'Original digest differs from declared digest');
     }
   } catch (error) {
-    if (error instanceof MemberFailure) issues.push(error.issue);
+    if (isMemberFailure(error)) issues.push(error.issue);
     else {
       ioFailures.push({operation, error});
-      const missing = typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
+      const missing = isNodeMissing(error);
       issues.push({kind: missing ? originalFile !== undefined || handle !== undefined ? 'identity' : 'absent' : 'unreadable',
         path: reference.path, role: reference.role, reason: preview(error)});
     }
@@ -265,7 +274,7 @@ async function readCheckedMember(
       const parent = originalPath.slice(0, originalPath.lastIndexOf('/'));
       if (!sameAncestors(originalChain, await ancestors(parent))) fail('identity', 'Ancestor identity changed after descriptor close');
     } catch (error) {
-      if (error instanceof MemberFailure) issues.push(error.issue);
+      if (isMemberFailure(error)) issues.push(error.issue);
       else {
         ioFailures.push({operation: 'path-stat', error});
         issues.push({kind: 'identity', path: reference.path, role: reference.role, reason: preview(error, 'Post-close pathname identity unavailable: ')});
@@ -508,9 +517,11 @@ export interface ComparisonLoadedBootstrapRun {
   finalContent: ComparisonFinalContent;
   rendererPresentationCapabilityDiagnostic: ComparisonRendererDiagnostic;
   counterCheckpoints: ComparisonCounterCheckpoints;
+  traceAdmission?: TraceAdmissionStatistics;
 }
 type Claim = z.output<ComparisonSchemas['comparisonDatasetInventorySchema']['shape']['invocationClaim']>;
 export interface ComparisonLoadedInvocationBootstrap {
+  tracePolicy?: 'streamed-renderer-events-v1';
   family: ComparisonSchemaPair | null;
   root: {claim: ComparisonLoadedDocument<Claim>; ledger: ComparisonLoadedDocument<ComparisonInvocation>;
     seal: ComparisonLoadedDocument<ComparisonDataset>};
@@ -536,7 +547,7 @@ async function measuredJson(root: string, path: string, role: 'root-json' | 'dat
   let scanner: JsonAdmission | null = new JsonAdmission(reference), syntaxFailure: ComparisonLoadingIssue | undefined;
   let admission: ComparisonJsonAdmission | undefined;
   function stopTraceSyntax(error: unknown): void {
-    if (role !== 'trace' || !(error instanceof MemberFailure) || (error.issue.kind !== 'malformed' && error.issue.kind !== 'admission-limit')) throw error;
+    if (role !== 'trace' || !isMemberFailure(error) || (error.issue.kind !== 'malformed' && error.issue.kind !== 'admission-limit')) throw error;
     syntaxFailure = error.issue; scanner = null; chunks.length = 0;
   }
   const loaded = await readCheckedMember(root, reference, bytes => {
@@ -545,7 +556,7 @@ async function measuredJson(root: string, path: string, role: 'root-json' | 'dat
     if (scanner) chunks.push(Buffer.from(bytes));
   }, () => {if (scanner) try {admission = scanner.finish();} catch (error) {stopTraceSyntax(error);}}, 'measured-bootstrap', owner?.scope(diagnostic));
   try {owner?.retain(loaded);} catch (error) {
-    if (!(error instanceof MemberFailure)) throw error;
+    if (!isMemberFailure(error)) throw error;
     return {status: 'failed', path, fact: loaded.fact, loadingIssues: [error.issue]};
   }
   if (loaded.status === 'failed') return syntaxFailure ? {...loaded, loadingIssues: [syntaxFailure, ...loaded.loadingIssues]} : loaded;
@@ -553,6 +564,34 @@ async function measuredJson(root: string, path: string, role: 'root-json' | 'dat
   try {return {status: 'admitted-json', path, fact: loaded.fact, value: JSON.parse(Buffer.concat(chunks, loaded.fact.byteLength).toString('utf8')) as unknown,
     admission: admission!, loadingIssues: []};}
   catch (error) {return {status: 'failed', path, fact: loaded.fact, loadingIssues: [{kind: 'malformed', path, role, reason: preview(error)}]};}
+}
+/** Selected originals only; the same owned descriptor closes physical bytes independently. */
+async function measuredStreamedTrace(root: string, path: string, owner: InvocationBytes) {
+  const scanner = new StreamedTraceAdmission(); let syntaxFailure: ComparisonLoadingIssue | undefined;
+  const inspect = (operation: () => void) => {
+    try {operation();} catch (error) {
+      if (!isStreamedTraceFailure(error)) throw error;
+      const failure = error.failure;
+      syntaxFailure = failure.kind === 'admission-limit'
+        ? {kind: 'admission-limit', path, role: 'trace', reason: failure.reason, limitName: failure.limitName!, limit: failure.limit!, observed: failure.observed!, observation: 'lower-bound'}
+        : {kind: 'malformed', path, role: 'trace', reason: failure.reason};
+      scanner.dispose();
+    }
+  };
+  try {
+    const loaded = await readCheckedMember(root, {path, role: 'trace'}, bytes => {if (!syntaxFailure) inspect(() => scanner.feed(bytes));}, () => {if (!syntaxFailure) inspect(() => scanner.finish());}, 'measured-bootstrap', owner.scope());
+    let raw: LoadedComparisonJson & {traceSyntaxUnavailable?: true};
+    try {owner.retain(loaded);} catch (error) {
+      if (!isMemberFailure(error)) throw error;
+      const statistics = scanner.statistics(); scanner.dispose();
+      const raw: LoadedComparisonJson & {traceSyntaxUnavailable?: true} = {status: 'failed', path, fact: loaded.fact, loadingIssues: [error.issue]};
+      return {raw, statistics};
+    }
+    if (loaded.status === 'failed') raw = syntaxFailure ? {...loaded, loadingIssues: [syntaxFailure, ...loaded.loadingIssues]} : loaded;
+    else if (syntaxFailure) raw = {status: 'failed', path, fact: loaded.fact, loadingIssues: [syntaxFailure], traceSyntaxUnavailable: true};
+    else raw = {status: 'admitted-json', path, fact: loaded.fact, value: scanner.trace(), admission: scanner.statistics().completeTotals!, loadingIssues: []};
+    return {raw, statistics: scanner.statistics(loaded.status === 'verified-bytes' ? 'verified' : 'unverified'), dispose: () => scanner.dispose()};
+  } catch (error) {scanner.dispose(); throw error;}
 }
 /** Bounded physical membership only: file SHA/aggregate/reference closure follows separately. */
 async function physicalInventory(root: string, slots: string[], seal: ComparisonDataset | null,
@@ -615,11 +654,11 @@ async function physicalInventory(root: string, slots: string[], seal: Comparison
         result.inspectedEntries++; if (result.inspectedEntries > maxEntries) throw new MemberFailure({kind: 'admission-limit', path: path || '.', role: 'unknown', limitName: 'directoryEntries', limit: maxEntries, observed: result.inspectedEntries, observation: 'lower-bound', reason: 'Bounded directory entry work exceeded'});
         names.push(entry.name); operation = 'path-stat'; await visit(entry.name);
       }
-    } catch (error) {primaryPresent = true; primary = error; if (!(error instanceof MemberFailure)) ioFailure(operation, path, error);}
+    } catch (error) {primaryPresent = true; primary = error; if (!isMemberFailure(error)) ioFailure(operation, path, error);}
     finally {if (handle) try {await handle.close();} catch (error) {cleanup.push(error); ioFailure('directory-close', path, error);}}
-    if (primaryPresent && !(primary instanceof MemberFailure)) issue(path, 'unreadable', preview(primary));
+    if (primaryPresent && !isMemberFailure(primary)) issue(path, 'unreadable', preview(primary));
     for (const error of cleanup) issue(path, 'unreadable', preview(error, 'Original directory close failed: '));
-    if (primaryPresent && primary instanceof MemberFailure) throw primary;
+    if (primaryPresent && isMemberFailure(primary)) throw primary;
     return names.sort();
   }
   const memberships = new Map<string, string[]>(), queue = [''];
@@ -636,7 +675,7 @@ async function physicalInventory(root: string, slots: string[], seal: Comparison
         if (admittedRole === null && !derived && !directories.has(relative)) {
           issue(relative, 'membership', 'Unknown physical member or directory; payload not read');
           let stat: BigIntStats; try {stat = await pathStat(relative);} catch (error) {
-            unknown({path: relative, type: 'unavailable', byteLength: null, reason: error instanceof MemberFailure ? error.issue.reason : preview(error)}); throw error;
+            unknown({path: relative, type: 'unavailable', byteLength: null, reason: isMemberFailure(error) ? error.issue.reason : preview(error)}); throw error;
           }
           const type = stat.isSymbolicLink() ? 'symlink' : stat.isFile() ? 'file' : stat.isDirectory() ? 'directory' : 'other';
           unknown({path: relative, type, byteLength: type === 'file' && stat.size <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(stat.size) : null,
@@ -674,11 +713,12 @@ async function physicalInventory(root: string, slots: string[], seal: Comparison
       const after = await pathStat(path);
       if (after.isSymbolicLink() || !after.isFile() || !identity(before, after)) issue(path, 'identity', 'Original regular file identity changed during physical inspection');
     }
-  } catch (error) {result.status = 'partial'; if (error instanceof MemberFailure) add(error.issue); else issue('.', 'unreadable', preview(error));}
+  } catch (error) {result.status = 'partial'; if (isMemberFailure(error)) add(error.issue); else issue('.', 'unreadable', preview(error));}
   result.files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0); result.directories.sort(); return result;
 }
 /** Closed-family bootstrap and owned byte closure; semantic reference closure remains partial. */
-export async function loadComparisonInvocation(root: string): Promise<ComparisonLoadedInvocationBootstrap> {
+export async function loadComparisonInvocation(root: string, options: ComparisonTraceLoadOptions = {}): Promise<ComparisonLoadedInvocationBootstrap> {
+  const tracePolicy = selectComparisonTracePolicy(options);
   const issues = issueList();
   const owner = new InvocationBytes();
   const add = (path: string, reason: string, kind: ComparisonLoadingIssue['kind'] = 'malformed', role: ComparisonRawRole = 'root-json') => {
@@ -689,7 +729,7 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
     availability: {status: 'unreadable', path, reason: 'Document not admitted by root bootstrap'}});
   const ledgerRaw = await measuredJson(root, 'invocation.json', 'root-json', owner);
   const claimRaw = await measuredJson(root, 'invocation-claim.json', 'root-json', owner);
-  const result: ComparisonLoadedInvocationBootstrap = {family: null, root: {claim: unparsed('invocation-claim.json'), ledger: unparsed('invocation.json'), seal: unparsed('dataset-seal.json')},
+  const result: ComparisonLoadedInvocationBootstrap = {...(tracePolicy === undefined ? {} : {tracePolicy}), family: null, root: {claim: unparsed('invocation-claim.json'), ledger: unparsed('invocation.json'), seal: unparsed('dataset-seal.json')},
     scheduled: null, runs: [], byteIntegrity: {status: 'not-inspected', admission: 'unavailable', observedUniqueBytes: 0, files: [], seal: 'not-verified', ioFailures: owner.ioFailures, additionalIoFailureCount: 0}, collection: {status: 'unavailable', reasons: ['Slot inventory and acquisition reference schema agreement not yet verified'], onDiskConsistencyOnly: true},
     loadingIssues: issues.loadingIssues, additionalLoadingIssueCount: 0,
     physicalInventory: {status: 'not-inspected', files: [], directories: [], candidates: {root: 0, slots: []}, inspectedEntries: 0, ioFailures: [], additionalIoFailureCount: 0, unknownEntries: [], additionalUnknownEntryCount: 0}};
@@ -815,7 +855,7 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
           validation = await slotDocument<ComparisonValidation>('validation.json', schemas.comparisonValidationSchema);
         // Exceptions are baseline diagnostic evidence; their absence cannot be hidden by a failed-not-started label.
         await slotDocument<ComparisonExceptions>('exceptions.json', schemas.comparisonExceptionsSchema);
-        result.runs.push({identity, artifactDirectory: row.artifactDirectory, descriptor: descriptor.value, manifest: manifest.value, captureValidation: validation.value,
+        result.runs.push({... (tracePolicy === undefined ? {} : {traceAdmission: notStartedTraceAdmission()}), identity, artifactDirectory: row.artifactDirectory, descriptor: descriptor.value, manifest: manifest.value, captureValidation: validation.value,
           rawAvailability: {descriptor: descriptor.availability, manifest: manifest.availability, captureValidation: validation.availability},
           loadingIssues: rowIssues.loadingIssues, additionalLoadingIssueCount: rowIssues.count(), references: unavailableComparisonReferences('Slot references not admitted by invocation preflight'), provenanceGraph: unavailableComparisonProvenanceGraph('Captured provenance graph not yet checked'), finalContent: unavailableComparisonFinalContent('Final content not admitted by invocation preflight'), rendererPresentationCapabilityDiagnostic: unavailableComparisonRendererDiagnostic('Renderer diagnostics not admitted by invocation preflight'), counterCheckpoints: unavailableCounterCheckpoints(row.artifactDirectory + '/checkpoints.json')});
       }
@@ -827,7 +867,7 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
           const loaded = await readCheckedMember(root, declared ? {path: file.path, role: file.role, expected: declared}
             : {path: file.path, role: file.role}, undefined, undefined, 'measured-bootstrap', owner.scope());
           try {owner.retain(loaded);} catch (error) {
-            if (!(error instanceof MemberFailure)) throw error;
+            if (!isMemberFailure(error)) throw error;
             issues.add(error.issue); hashComplete = false;
           }
           if (loaded.status === 'failed') {hashComplete = false; loaded.loadingIssues.forEach(issue => issues.add(issue));}
@@ -965,16 +1005,20 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
               : {kind: doc?.availability.status === 'malformed' ? 'malformed' : 'unreadable', path: name, role: 'slot-json', reason: doc?.availability.status === 'parsed' ? 'Original final content unavailable' : doc?.availability.reason ?? 'Owned original final content read unavailable'}));
           }
           const phasesRaw = await graphOriginal('phases.json'), auxiliaryRaw = await graphOriginal('trace-auxiliary.json'), metadataRaw = await graphOriginal('capture-metadata.json');
-          const traceRaw = files.has('trace.json') ? await measuredJson(root, prefix + 'trace.json', 'trace', owner) : null;
+          const streamed = files.has('trace.json') && tracePolicy !== undefined ? await measuredStreamedTrace(root, prefix + 'trace.json', owner) : null;
+          const traceRaw = streamed?.raw ?? (files.has('trace.json') ? await measuredJson(root, prefix + 'trace.json', 'trace', owner) : null);
+          if (streamed) run.traceAdmission = streamed.statistics;
+          try {
           if (traceRaw?.status === 'failed' && !traceRaw.traceSyntaxUnavailable) hashComplete = false;
           const original = (raw: LoadedComparisonJson | null) => raw?.status === 'admitted-json' ? raw.value : null;
-          run.rendererPresentationCapabilityDiagnostic = checkComparisonRendererDiagnostic({schemas, identity: run.identity, manifest: run.manifest, descriptor: run.descriptor, originals: files,
+          run.rendererPresentationCapabilityDiagnostic = checkComparisonRendererDiagnostic({schemas, identity: run.identity, manifest: run.manifest, descriptor: run.descriptor, originals: files, ...(tracePolicy === undefined ? {} : {tracePolicy}),
             trace: original(traceRaw), phases: original(phasesRaw), auxiliary: original(auxiliaryRaw), metadata: original(metadataRaw),
             evidence: names[0] === 'evidence.json' ? inventory?.value : null, capture: capture.value});
           for (const raw of [traceRaw, phasesRaw, auxiliaryRaw, metadataRaw]) if (raw?.status === 'failed') for (const issue of raw.loadingIssues) {
             const diagnostic = run.rendererPresentationCapabilityDiagnostic;
             if (diagnostic.issues.length < 32) diagnostic.issues.push({...issue, path: issue.path.slice(prefix.length)}); else diagnostic.additionalIssueCount++;
           }
+          } finally {streamed?.dispose?.();}
         }
         if (owner.failedOwnedReads.size > 0) hashComplete = false;
         let absencesClosed = true;
@@ -1020,6 +1064,7 @@ export async function loadComparisonInvocation(root: string): Promise<Comparison
           if (closure) result.byteIntegrity.seal = 'byte-closed';
         }
         if (result.byteIntegrity.seal !== 'byte-closed') for (const run of result.runs) {revokeComparisonReferences(run.references); revokeComparisonProvenanceGraph(run.provenanceGraph); revokeComparisonFinalContent(run.finalContent); revokeComparisonRendererDiagnostic(run.rendererPresentationCapabilityDiagnostic);
+          if (run.traceAdmission) run.traceAdmission.physicalClosure = 'unverified';
           run.counterCheckpoints.status = 'unavailable'; run.counterCheckpoints.recordedSnapshotCount = null; run.counterCheckpoints.snapshots = []; run.counterCheckpoints.reason = 'Final original byte and ownership closure not verified';}
         const referencesComplete = result.runs.every(run => Object.values(run.references).every(lane => lane.status === 'complete'));
         result.collection.reasons = [...(referencesComplete ? [] : ['Slot inventory and acquisition reference schema agreement not yet verified']),

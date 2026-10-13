@@ -24,10 +24,12 @@ function errorCategory(value: unknown) {
   if (typeof value === 'string') return {type: 'string', value: text(value)};
   if (typeof value === 'boolean') return {type: 'boolean', value};
   if (typeof value === 'number') return {type: 'number', value: Number.isFinite(value) ? value : null, finite: Number.isFinite(value)};
-  if (value instanceof Error) {
-    const message = Object.getOwnPropertyDescriptor(value, 'message');
-    return {type: 'error', message: message && Object.hasOwn(message, 'value') && typeof message.value === 'string' ? text(message.value) : null};
-  }
+  try {
+    if (value instanceof Error) {
+      const message = Object.getOwnPropertyDescriptor(value, 'message');
+      return {type: 'error', message: message && Object.hasOwn(message, 'value') && typeof message.value === 'string' ? text(message.value) : null};
+    }
+  } catch {return {type: 'opaque-object'};}
   return {type: typeof value === 'object' || typeof value === 'function' ? 'opaque-object' : typeof value};
 }
 export const comparisonReportErrorCategory = errorCategory;
@@ -76,6 +78,14 @@ export function projectComparisonReport(loaded: ComparisonLoadedInvocationBootst
         reasons: run.captureValidation.reasons.slice(0, 32).map(text), omittedReasonCount: Math.max(0, run.captureValidation.reasons.length - 32),
         checks: run.captureValidation.checks.slice(0, 32).map(check => ({name: text(check.name), passed: check.passed, reason: check.reason === null ? null : text(check.reason)})), omittedCheckCount: Math.max(0, run.captureValidation.checks.length - 32)},
       configuration, loading: issues(run.loadingIssues, run.additionalLoadingIssueCount),
+      ...(run.traceAdmission === undefined ? {} : {traceAdmission: {
+        policy: run.traceAdmission.policy, scannerCompletion: run.traceAdmission.scannerCompletion, physicalClosure: run.traceAdmission.physicalClosure,
+        completeTotals: run.traceAdmission.completeTotals === null ? null : {...run.traceAdmission.completeTotals},
+        observedPrefix: run.traceAdmission.observedPrefix === null ? null : {...run.traceAdmission.observedPrefix}, legacyWorkThreshold: {...run.traceAdmission.legacyWorkThreshold},
+        firstFailure: run.traceAdmission.firstFailure === null ? null : {kind: run.traceAdmission.firstFailure.kind,
+          limitName: run.traceAdmission.firstFailure.limitName, limit: run.traceAdmission.firstFailure.limit, observed: run.traceAdmission.firstFailure.observed,
+          utf8Byte: run.traceAdmission.firstFailure.utf8Byte, offsetMeaning: run.traceAdmission.firstFailure.offsetMeaning},
+      }}),
       references: {inventory: lane(run.references.inventory), capture: lane(run.references.capture), acquisition: lane(run.references.acquisition)},
       provenance: {...lane(run.provenanceGraph), expectedMembers: run.provenanceGraph.expectedMembers, observedAcquisitionMembers: run.provenanceGraph.observedAcquisitionMembers, manifestAgreement: run.provenanceGraph.manifestAgreement},
       finalContent: {fixture: {...lane(run.finalContent.fixture), expectedMessages: run.finalContent.fixture.expectedMessages, observedMessages: run.finalContent.fixture.observedMessages},
@@ -110,7 +120,7 @@ export function projectComparisonReport(loaded: ComparisonLoadedInvocationBootst
         issues: issues(run.rendererPresentationCapabilityDiagnostic.issues, run.rendererPresentationCapabilityDiagnostic.additionalIssueCount, 2)},
     };
   }) : [];
-  return {format: 'comparison-offline-diagnostic-v1' as const, scoringEligibility: false as const,
+  return {...(loaded.tracePolicy === undefined ? {} : {tracePolicy: loaded.tracePolicy}), format: 'comparison-offline-diagnostic-v1' as const, scoringEligibility: false as const,
     displayStringHashEncoding: 'sha256-canonical-json-string-utf8' as const,
     meaning: 'recorded-file consistency and conditional renderer diagnostics' as const, family: loaded.family === null ? null : {...loaded.family},
     rowsAdmitted, declaredRows: ledger?.runs.length ?? null, scheduledRows: loaded.scheduled, analysisStatus: loaded.collection.status,

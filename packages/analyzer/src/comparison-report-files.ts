@@ -3,6 +3,7 @@ import {constants, type BigIntStats} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {dirname, isAbsolute, join, normalize, parse, relative, sep} from 'node:path';
 import {loadComparisonInvocation} from './comparison-load.js';
+import {selectComparisonTracePolicy} from './comparison-trace-stream.js';
 import {projectComparisonReport, serializeComparisonReport, assertComparisonReportBytes} from './comparison-report.js';
 
 const sameInode = (a: BigIntStats, b: BigIntStats) => a.dev === b.dev && a.ino === b.ino;
@@ -68,7 +69,9 @@ async function readback(fact: Awaited<ReturnType<typeof ownedWrite>>) {
   if (errors.length) originalFailure(errors);
   if (!sameFile(fact.stat, await fs.lstat(fact.path, {bigint: true}))) throw new Error('Comparison report output identity changed after readback close');
 }
-export async function publishComparisonReport(input: string, output: string) {
+export async function publishComparisonReport(input: string, output: string, options: import('./comparison-trace-stream.js').ComparisonTraceLoadOptions = {}) {
+  const tracePolicy = selectComparisonTracePolicy(options);
+  const admittedOptions = tracePolicy === undefined ? {} : {tracePolicy};
   if (!isAbsolute(input) || !isAbsolute(output) || normalize(input) !== input || normalize(output) !== output) throw new Error('Comparison report requires canonical absolute paths');
   if (within(input, output) || within(output, input)) throw new Error('Comparison report input/output overlap');
   const inputChain = await directoryChain(input), outputParent = await directoryChain(dirname(output));
@@ -76,10 +79,12 @@ export async function publishComparisonReport(input: string, output: string) {
   if (outputParent.some(entry => sameInode(entry.stat, inputChain.at(-1)!.stat))) throw new Error('Comparison report physical input/output overlap');
   let exists = false;
   try {await fs.lstat(output, {bigint: true}); exists = true;} catch (error) {
-    if (error === null || typeof error !== 'object' || Reflect.get(error, 'code') !== 'ENOENT') throw error;
+    let missing = false;
+    try {missing = error !== null && typeof error === 'object' && Reflect.get(error, 'code') === 'ENOENT';} catch { /* Unknown errno retains the original rejection. */ }
+    if (!missing) throw error;
   }
   if (exists) throw new Error('Comparison report existing output destination');
-  const report = projectComparisonReport(await loadComparisonInvocation(input)), encoded = serializeComparisonReport(report);
+  const report = projectComparisonReport(await loadComparisonInvocation(input, admittedOptions)), encoded = serializeComparisonReport(report);
   await checkChain(inputChain); await checkChain(outputParent);
   await fs.mkdir(output, {mode: 0o700});
   const outputChain = await directoryChain(output), files = [];
