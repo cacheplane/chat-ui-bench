@@ -24,6 +24,7 @@
     "test:browser:comparison": "vitest run --config vitest.comparison.browser.config.ts --no-color"
   },
   "devDependencies": {
+    "@copilotkit/aimock": "1.45.1",
     "@types/node": "24.10.1",
     "playwright": "1.64.0",
     "tsx": "4.23.15",
