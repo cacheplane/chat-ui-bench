@@ -26,7 +26,7 @@ export function page() {
   context.window=context;
   context.MutationObserver=class{observe(){}takeRecords(){return [];}disconnect(){}};
   const consoleOriginals={...nativeConsole};
-  return {context,bridge,candidate,node,content,host,scroller,composer,nativeConsole:consoleOriginals,timers,frames,listeners,setText:(v:string)=>{text=v;},setTime:(v:number)=>{time=v;},tick:(v:number)=>{time=v;const [id,fn]=timers.entries().next().value??[];timers.delete(id);fn?.();},frame:(v:number)=>{time=v;const [id,fn]=frames.entries().next().value??[];frames.delete(id);fn?.(v);},emit:(type:string,e:any)=>{for(const fn of listeners.get(type)??[])fn({...e,type});}};
+  return {context,bridge,candidate,node,content,host,scroller,composer,nativeConsole:consoleOriginals,timers,frames,listeners,setText:(v:string)=>{text=v;},setTime:(v:number)=>{time=v;},tick:(v:number)=>{time=v;const [id,fn]=timers.entries().next().value??[];timers.delete(id!);fn?.();},frame:(v:number)=>{time=v;const [id,fn]=frames.entries().next().value??[];frames.delete(id!);fn?.(v);},emit:(type:string,e:any)=>{for(const fn of listeners.get(type)??[])fn({...e,type});}};
 }
 export function install(p:ReturnType<typeof page>,pre=true,options=mainOptions) {
   if(pre) runInNewContext(`(${implementation.installComparisonPreNavigation.toString()})(${createComparisonBuffer.toString()}, options)`,{...p.context,options:preOptions,window:p.context});

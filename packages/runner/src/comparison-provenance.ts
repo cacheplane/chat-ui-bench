@@ -48,7 +48,7 @@ export interface ComparisonAcquisitionSnapshot {
   persistence: {path: 'provenance/acquisition.json'; status: 'not-attempted' | 'pending' | 'complete' | 'failed'; reason?: string};
 }
 export interface ComparisonProvenanceSession {
-  acquire(preNavigationOptionsJSON: string, mainOptionsJSON: string): Promise<ComparisonAcquiredInstrumentation>;
+  acquire(preNavigationOptionsJSON: string, mainOptionsJSON: string, diagnosticMode?:'none'|'history-window-diagnostic-v1'): Promise<ComparisonAcquiredInstrumentation>;
   snapshotAcquisition(): ComparisonAcquisitionSnapshot;
   recheckBeforeServing(): Promise<ComparisonServingFacts>;
 }
@@ -81,7 +81,7 @@ export function createComparisonProvenanceSession(context: ComparisonSlotContext
     writer: {text: writer.text.bind(writer), json: writer.json.bind(writer), append: writer.append.bind(writer), appendSerialized: writer.appendSerialized.bind(writer), stream: writer.stream.bind(writer)}, attempted: false, complete: false,
     snapshot: {acquisition: {...identity, status: 'partial', reason: 'comparison-not-yet-acquired', members: []}, payloads: ['instrumentation/pre-navigation.js', 'instrumentation/main.js'].map(path => ({path: path as 'instrumentation/pre-navigation.js' | 'instrumentation/main.js', status: 'not-attempted', measurement: unavailable('comparison-payload-not-acquired')})), persistence: {path: 'provenance/acquisition.json', status: 'not-attempted'}}};
   const session: ComparisonProvenanceSession = Object.freeze({
-    async acquire(this: ComparisonProvenanceSession, pre: string, main: string) {return acquireSession(brandedState(this), pre, main);},
+    async acquire(this: ComparisonProvenanceSession, pre: string, main: string, diagnosticMode:'none'|'history-window-diagnostic-v1'='none') {return acquireSession(brandedState(this), pre, main,diagnosticMode);},
     snapshotAcquisition(this: ComparisonProvenanceSession) {return snapshot(brandedState(this));},
     async recheckBeforeServing(this: ComparisonProvenanceSession) {return recheckSession(requireState(this));},
   });
@@ -249,7 +249,9 @@ function workerEnvironment(): NodeJS.ProcessEnv {
   if (process.platform === 'win32') {const keys = Object.keys(process.env).filter(key => key.toLowerCase() === 'systemroot'); if (keys.length !== 1 || typeof process.env[keys[0]!] !== 'string' || !process.env[keys[0]!]) throw new Error('Unproved Windows worker prerequisites'); env.SystemRoot = process.env[keys[0]!]!;}
   return env;
 }
-async function acquireSession(state: SessionState, pre: string, main: string): Promise<ComparisonAcquiredInstrumentation> {
+async function acquireSession(state: SessionState, pre: string, main: string,diagnosticMode:'none'|'history-window-diagnostic-v1'): Promise<ComparisonAcquiredInstrumentation> {
+  if(typeof diagnosticMode!=='string'||diagnosticMode!=='none'&&diagnosticMode!=='history-window-diagnostic-v1')throw new Error('Unsupported comparison diagnostic mode');
+  if(diagnosticMode!=='none'&&state.version!=='2.1.0')throw new Error('Diagnostic requires explicit matched2.1 family');
   if (state.attempted) throw new Error('Comparison acquisition is one-shot'); state.attempted = true;
   try {
     validateOptions(state, pre, 'pre'); validateOptions(state, main, 'main'); state.lifecycle.assertActive();
@@ -277,7 +279,9 @@ async function acquireSession(state: SessionState, pre: string, main: string): P
     state.lifecycle.assertActive(); const tracker = createObservedComparisonProcess(process.execPath, [worker.path], {cwd: state.root, env: workerEnvironment()}, state.signal, {cap: 12583086});
     await state.lifecycle.adopt(tracker.resource); // First creator follow-up.
     state.lifecycle.assertActive();
-    await guarded(state, () => tracker.write(Buffer.from(JSON.stringify(state.version==='2.0.0'?[pre,main]:[pre,main,state.version]), 'utf8')));
+    const tuple=diagnosticMode==='none'?(state.version==='2.0.0'?[pre,main]:[pre,main,state.version]):[pre,main,state.version,diagnosticMode];
+    const wire=JSON.stringify(tuple);if(Buffer.byteLength(wire,'utf8')>2*6*65536+7+8)throw new Error('Comparison assembly input limit');
+    await guarded(state, () => tracker.write(Buffer.from(wire, 'utf8')));
     const result = await guarded(state, () => tracker.result); const pair = parseComparisonAssemblyOutput(result.stdout);
     assertOriginals(await originalFacts(state), original);
     for (const [index, payload] of [pair.preNavigation, pair.main].entries()) {

@@ -111,13 +111,13 @@ async function fixture() {
   expect(nativeLock).toBeDefined();
   // This is controlled Linux metadata emulation, not a claim about this decoder's OS or an actual Linux capture.
   probe.nativeCompiler = {...probe.nativeCompiler, name: '@typescript/typescript-linux-x64', resolutionPath: nativePath, executablePath: nativePath + '/lib/tsc', platform: 'linux', architecture: 'x64', integrity: nativeLock.integrity, version: nativeLock.version};
-  const output120 = [...await physicalFiles(repository, 'packages/contract/dist'), ...await physicalFiles(repository, 'packages/runner/dist')].sort();
-  expect(output120).toHaveLength(120);
+  const output126 = [...await physicalFiles(repository, 'packages/contract/dist'), ...await physicalFiles(repository, 'packages/runner/dist')].sort();
+  expect(output126).toHaveLength(126);
   const metadata43 = [...new Set([...build.packages, probe.compiler, probe.nativeCompiler].map(pkg => pkg.resolutionPath + '/package.json'))].sort();
   expect(metadata43).toHaveLength(43);
   const assets = Object.keys(build.assetHashes).map(key => 'apps/threadplane/dist/' + key);
   const raw2 = ['apps/threadplane/.build-evidence.json', 'packages/runner/.comparison-build-evidence.json'];
-  const union = [...new Set([...source41, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output120, ...metadata43, ...assets, ...raw2])].sort();
+  const union = [...new Set([...source41, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output126, ...metadata43, ...assets, ...raw2])].sort();
   for (const key of union) {
     if (raw2.includes(key) || key === nativePath + '/package.json') continue;
     await mkdir(dirname(join(workspace, key)), {recursive: true});
@@ -220,7 +220,7 @@ test('closed original snapshot retains actual copy bytes and controlled Linux me
   const bytes = await readFile(receipt!.path), manifest = JSON.parse(bytes.toString());
   expect(bytes.length).toBe(receipt!.byteLength); expect(sha256(bytes)).toBe(receipt!.sha256);
   expect(manifest.format).toBe('comparison-ci-original-snapshot-v2');
-  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source41).toEqual(source41); expect(manifest.inventories.output120).toHaveLength(120); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata43).toHaveLength(43);
+  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source41).toEqual(source41); expect(manifest.inventories.output126).toHaveLength(126); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata43).toHaveLength(43);
   for (const row of manifest.records) {expect((await readFile(join(receipt!.directory, row.copied.path))).equals(await readFile(row.originalPath))).toBe(true); expect(row.before).toEqual(row.after); expect(row.copied.fact).toEqual(row.before.fact);}
   expect(receipt!.lifetime.manifest.fact).toEqual({byteLength: receipt!.byteLength, sha256: receipt!.sha256});
   expect(receipt!.lifetime.directories.length).toBeGreaterThan(0);

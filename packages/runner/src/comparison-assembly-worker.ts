@@ -47,9 +47,9 @@ export async function runComparisonAssemblyWorker(input: Readable, output: Writa
   const bytes = Buffer.concat(chunks, length);
   const decoded = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(bytes);
   const tuple: unknown = JSON.parse(decoded);
-  if (!Array.isArray(tuple) || (tuple.length !== 2 && tuple.length !== 3) || tuple.slice(0,2).some(value => typeof value !== 'string' || value.length > 65536 || Buffer.byteLength(value, 'utf8') > 65536) || (tuple.length===3 && tuple[2]!=='2.0.0' && tuple[2]!=='2.1.0')) throw new Error('worker-input-grammar');
+  if (!Array.isArray(tuple) || (tuple.length !== 2 && tuple.length !== 3 && tuple.length !== 4) || tuple.slice(0,2).some(value => typeof value !== 'string' || value.length > 65536 || Buffer.byteLength(value, 'utf8') > 65536) || (tuple.length>=3 && tuple[2]!=='2.0.0' && tuple[2]!=='2.1.0') || (tuple.length===4 && (tuple[2]!=='2.1.0'||tuple[3]!=='history-window-diagnostic-v1'))) throw new Error('worker-input-grammar');
   if (!bytes.equals(Buffer.from(JSON.stringify(tuple), 'utf8'))) throw new Error('worker-input-encoding');
-  const pair = assembleComparisonInstaller(tuple[0] as string, tuple[1] as string, tuple.length===2?'2.0.0':tuple[2] as '2.0.0'|'2.1.0');
+  const pair = assembleComparisonInstaller(tuple[0] as string, tuple[1] as string, tuple.length===2?'2.0.0':tuple[2] as '2.0.0'|'2.1.0',tuple.length===4?'history-window-diagnostic-v1':'none');
   const wire = Buffer.from(JSON.stringify({preNavigation: pair.preNavigation, main: pair.main, preNavigationByteLength: pair.preNavigationByteLength, mainByteLength: pair.mainByteLength, installerSha256: pair.installerSha256}), 'utf8');
   if (wire.length > outputCap) throw new Error('worker-output-limit');
   await writeWorkerWire(output, wire);
