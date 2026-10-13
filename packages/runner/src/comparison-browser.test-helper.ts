@@ -353,6 +353,36 @@ export async function readiness() {
 }
 export type TestWindow = Window & {benchHost?: LongThreadCaptureHost};
 
+/** Self-contained page callback: H01 and pure controls execute the same serialized observer. */
+export async function observeEmptyHostFrames(id: string) {
+  const host = (window as TestWindow).benchHost!;
+  const element = document.querySelector<HTMLElement>(`chat-message[data-bench-message-id="${id}"]`);
+  if (!element) throw new Error('Actual assistant host is absent');
+  const body=element.querySelector('.chat-message__assistant-body');
+  if(!body||!body.isConnected||!element.contains(body))throw new Error('Actual assistant body is absent');
+  const observedAt = performance.now();
+  const empty = () => host.readProgress().activeMessage?.id === id && host.readProgress().activeMessage?.text === '' && element.textContent === '' && body.textContent === '' && body.isConnected && element.contains(body) && element.querySelector('.chat-message__assistant-body')===body;
+  const snapshot=()=>{const content=document.querySelector(host.locators.messageContent(id));return {at:performance.now(),active:host.readProgress().activeMessage,selector:host.locators.messageContent(id),contentPresent:content!==null,contentConnected:content?.isConnected??null,contentText:content?.textContent??null,hostText:element.textContent,bodyText:body.textContent,outerHTML:element.outerHTML};};
+  const snapshots=[snapshot()];let allEmpty = empty(), retained = element.isConnected;
+  const frames: number[] = [];
+  const callbacks: {timestampMs:number;eligible:boolean;empty:boolean;retained:boolean;snapshotIndex:number}[] = [];
+  while (frames.length < 2) {
+    const timestamp=await new Promise<number>(done => requestAnimationFrame(done));
+    const currentEmpty=empty(),currentRetained=element.isConnected && document.querySelector(`chat-message[data-bench-message-id="${id}"]`) === element;
+    allEmpty = currentEmpty && allEmpty;
+    retained = currentRetained && retained;
+    snapshots.push(snapshot());
+    const valid=Number.isFinite(timestamp)&&timestamp>=0;
+    const eligible=valid&&(frames.length===0?timestamp>=observedAt:timestamp>frames[0]!);
+    callbacks.push({timestampMs:timestamp,eligible,empty:currentEmpty,retained:currentRetained,snapshotIndex:snapshots.length-1});
+    if(!valid||frames.length>0&&!eligible)throw new Error('Distinct chronological rAF timestamp unavailable');
+    // A rendering-opportunity timestamp may precede this observer's performance.now sample.
+    // Preserve that original callback and wait; the accepted pair stays strictly chronological.
+    if(eligible)frames.push(timestamp);
+  }
+  return {messageId: id, empty: allEmpty, retained, frames, observedAt,snapshots,callbacks};
+}
+
 export interface RootResult {
   directory: string; config: LongThreadConfiguration; execution: ComparisonInvocationExecution;
   attempts: number; initializedBeforeFirst: number; control: BrowserControl;cleanupFailures:unknown[];

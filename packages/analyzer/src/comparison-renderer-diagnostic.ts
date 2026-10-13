@@ -10,7 +10,7 @@ const guards = ['owned-originals', 'trace-completion', 'trace-topology', 'canoni
 type Guard = typeof guards[number];
 export interface ComparisonRendererDiagnostic {
   status: 'available' | 'unavailable'; scoringEligibility: false; notFullIntegratedDerivation: true;
-  metricScope: 'target renderer visual updates'; measurementMeaning: 'conditional original trace-window parser capability';
+  metricScope: 'matched target Blink AnimationFrame lifecycle/callback records'; measurementMeaning: 'conditional original trace-window event-association diagnostic; all compositor/display frame coverage unverified';
   guards: Record<Guard, 'verified' | 'unavailable'>;
   unresolvedDomains: readonly string[];
   issues: ComparisonLoadingIssue[]; additionalIssueCount: number;
@@ -19,9 +19,9 @@ export interface ComparisonRendererDiagnostic {
 }
 export function unavailableComparisonRendererDiagnostic(reason: string): ComparisonRendererDiagnostic {
   return {status: 'unavailable', scoringEligibility: false, notFullIntegratedDerivation: true,
-    metricScope: 'target renderer visual updates', measurementMeaning: 'conditional original trace-window parser capability',
+    metricScope: 'matched target Blink AnimationFrame lifecycle/callback records', measurementMeaning: 'conditional original trace-window event-association diagnostic; all compositor/display frame coverage unverified',
     guards: Object.fromEntries(guards.map(key => [key, 'unavailable'])) as ComparisonRendererDiagnostic['guards'],
-    unresolvedDomains: ['serialized-phase-origin', 'independent-oracle', 'capture-quality', 'journey-correctness', 'source-executed-authenticity', 'live-content-and-sampling', 'mode-and-cohort', 'cleanup-eligibility', 'scoring-eligibility'],
+    unresolvedDomains: ['serialized-phase-origin', 'independent-oracle', 'capture-quality', 'journey-correctness', 'source-executed-authenticity', 'live-content-and-sampling', 'mode-and-cohort', 'cleanup-eligibility', 'scoring-eligibility', 'frame-emission-coverage', 'presentation-feedback-fallback', 'presentation-callback-coalescing'],
     issues: [{kind: 'unreadable', path: 'trace.json', role: 'trace', reason}], additionalIssueCount: 0,
     phaseOrigin: {status: 'unavailable-missing-metadata', marks: []}, presentation: {status: 'unavailable', reason}};
 }

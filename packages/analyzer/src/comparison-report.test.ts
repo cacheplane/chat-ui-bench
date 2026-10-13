@@ -142,8 +142,26 @@ it.each([3, 6])('preserves %i conditional scalar phases without interval arrays 
   diagnostic.status = 'available'; diagnostic.presentation = comparisonRendererPresentationSchema.parse({status: 'available', capability: PRESENTATION_CAPABILITY, contractVersion: PRESENTATION_CONTRACT_VERSION, value: {scope: 'target renderer visual updates', phases}});
   const rendered = projectComparisonReport(f.loaded).rows[0]!.renderer;
   expect(rendered.phases).toHaveLength(count);
-  expect(rendered.phases[0]).toMatchObject({durationUs: 100, rendererVisualUpdateFps: {value: 20000, numerator: 2, denominatorUs: 100}, presentationIntervals: {sampleCount: 1, median: 20, p95: 20, max: 20, unit: 'us'}});
+  expect(rendered.phases[0]).toMatchObject({durationUs: 100, rendererVisualUpdateFps: {value: 20000, numerator: 2, denominatorUs: 100, unit: 'updates/s'}, presentationIntervals: {sampleCount: 1, median: 20, p95: 20, max: 20, unit: 'us'}});
   expect(rendered.scoringEligibility).toBe(false); expect(JSON.stringify(rendered)).not.toMatch(/timestampsUs|intervalsUs/);
+  expect(rendered.metricScope).toBe('matched target Blink AnimationFrame lifecycle/callback records');
+  expect(rendered.measurementMeaning).toBe('conditional original trace-window event-association diagnostic; all compositor/display frame coverage unverified');
+  expect(rendered.unresolvedDomains).toEqual(diagnostic.unresolvedDomains);
+  expect(rendered.unresolvedDomains.slice(-3)).toEqual(['frame-emission-coverage', 'presentation-feedback-fallback', 'presentation-callback-coalescing']);
+  const output = serializeComparisonReport(projectComparisonReport(f.loaded));
+  expect(JSON.parse(output.json).rows[0].renderer).toEqual(rendered);
+  expect(output.markdown).toContain('legacy rendererVisualUpdateFps field names do not qualify display FPS');
+  expect(output.markdown).toContain('presentation-feedback-fallback');
+});
+
+it('reports an unavailable renderer caption without changing numerical availability', async () => {
+  const f = await originalFixture(), report = projectComparisonReport(f.loaded), renderer = report.rows[0]!.renderer;
+  expect(renderer.status).toBe('unavailable'); expect(renderer.phases).toEqual([]); expect(renderer.scoringEligibility).toBe(false);
+  expect(renderer.metricScope).toBe('matched target Blink AnimationFrame lifecycle/callback records');
+  expect(renderer.unresolvedDomains.slice(-3)).toEqual(['frame-emission-coverage', 'presentation-feedback-fallback', 'presentation-callback-coalescing']);
+  const output = serializeComparisonReport(report);
+  expect(JSON.parse(output.json).rows[0].renderer).toEqual(renderer);
+  expect(output.markdown).toContain('legacy rendererVisualUpdateFps field names do not qualify display FPS');
 });
 
 it('annotation digest covers only retained preview and explicitly retains omitted units', async () => {
@@ -162,7 +180,7 @@ it('Markdown escapes original HTML, pipes, line breaks and captured link syntax'
   expect(rendered.markdown).not.toContain('<script>'); expect(rendered.markdown).not.toContain('[click]'); expect(rendered.markdown).not.toContain('`code`');
   expect(rendered.markdown).not.toContain('https://captured.invalid');
   expect(rendered.markdown).toContain('scoringEligibility: false');
-  expect(rendered.markdown).toContain('updates/s'); expect(rendered.markdown).toContain('microseconds');
+  expect(rendered.markdown).toContain('records per trace-window second'); expect(rendered.markdown).toContain('microseconds');
 });
 
 it('renders captured www and email declarations as literal Markdown while preserving JSON text', async () => {
