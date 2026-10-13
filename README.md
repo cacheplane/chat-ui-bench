@@ -160,6 +160,16 @@ No upstream recording is configured. A separately named
 `registerDeterministicErrorFixture` provides a small agent error case.
 Run fixture conformance with `npm test -- tests/fixtures/aimock.test.ts`.
 
+`compileCanonicalHistoryRestoreFixture` and
+`registerCanonicalHistoryRestoreFixture` provide a separate empty-history run
+with `RUN_STARTED`, a complete `MESSAGES_SNAPSHOT`, and `RUN_FINISHED`, using
+the public AIMock snapshot builder. Supply a distinct restore run ID and use the
+wire snapshot as history for the existing canonical continuation run. Restoration
+timestamps use the synthetic clock at epoch + 0, 1, and 2 ms and inherit the
+canonical compiler's safe epoch + 10000 bound. Digests cover source, restoration
+events, and ordered projected history. These transport fixtures do not establish
+SDK connection or UI lifecycle conformance; those checks remain separate.
+
 The Threadplane Angular custom-transport profile is implemented with pinned
 `@threadplane/*` 0.3.2 and Angular 21.2.25. It uses the published packages and a
 local deterministic SSE replay transport. This profile is distinct from a

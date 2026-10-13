@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { AGUIMock, type AGUIEvent, type AGUIRunAgentInput } from '@copilotkit/aimock/agui';
 import { canonicalSerialize, createLongThreadFixture, payloadBytes } from '@chat-ui-bench/contract';
-import { compileCanonicalLongThreadFixture, registerCanonicalLongThreadFixture, registerDeterministicErrorFixture } from './aimock.js';
+import { compileCanonicalLongThreadFixture, registerCanonicalLongThreadFixture, registerDeterministicErrorFixture, compileCanonicalHistoryRestoreFixture, registerCanonicalHistoryRestoreFixture } from './aimock.js';
 
 const identity = { threadId: 'fixture-thread', runId: 'fixture-run', epochMs: 1700000000000 };
 const sourceFixture = () => createLongThreadFixture({ historyCount: 100, responseBytes: 6400, journey: 'follow' });
@@ -104,6 +104,123 @@ describe('canonical AIMock compiler', () => {
     expect(payloadBytes(deltas.map(event => event.delta).join(''))).toBe(262144);
     expect(compiled.events[1]).toMatchObject({ messageId: `response-${historyCount}` });
   });
+});
+
+const restoreIdentity = { ...identity, runId: 'fixture-history-restore' };
+const expectedRestoreEvents = (source: ReturnType<typeof sourceFixture>): AGUIEvent[] => {
+  const clock = (scheduledMs: number) => ({ timestamp: restoreIdentity.epochMs + scheduledMs, metadata: { clock: 'synthetic-canonical-history-restore-ms', epochMs: restoreIdentity.epochMs, scheduledMs } });
+  return [
+    { type: 'RUN_STARTED', threadId: restoreIdentity.threadId, runId: restoreIdentity.runId, ...clock(0) },
+    { type: 'MESSAGES_SNAPSHOT', messages: source.history.map(({ id, role, text }) => ({ id, role, content: text })), ...clock(1) },
+    { type: 'RUN_FINISHED', threadId: restoreIdentity.threadId, runId: restoreIdentity.runId, ...clock(2) },
+  ];
+};
+
+describe('canonical AIMock history restoration', () => {
+  it('uses each identity getter once after canonical source admission and emits only admitted values', () => {
+    const reads = { threadId: 0, runId: 0, epochMs: 0 };
+    const changingIdentity = {
+      get threadId() { return ++reads.threadId === 1 ? restoreIdentity.threadId : ''; },
+      get runId() { return ++reads.runId === 1 ? restoreIdentity.runId : ''; },
+      get epochMs() { return ++reads.epochMs === 1 ? restoreIdentity.epochMs : -100; },
+    };
+    const invalidSource = sourceFixture();
+    invalidSource.history[0]!.text = invalidSource.history[0]!.text.replace('The', 'Two');
+    expect(() => compileCanonicalHistoryRestoreFixture(invalidSource, changingIdentity)).toThrow(/canonical generator/);
+    expect(reads).toEqual({ threadId: 0, runId: 0, epochMs: 0 });
+    const source = sourceFixture();
+    const restore = compileCanonicalHistoryRestoreFixture(source, changingIdentity);
+    expect(restore.input).toEqual({ threadId: restoreIdentity.threadId, runId: restoreIdentity.runId, messages: [] });
+    expect(restore.events).toEqual(expectedRestoreEvents(source));
+    expect(reads).toEqual({ threadId: 1, runId: 1, epochMs: 1 });
+  });
+  it('compiles exactly three full-history events with independently computed restoration digests', () => {
+    const source = sourceFixture();
+    const continuationBefore = compileCanonicalLongThreadFixture(source, identity);
+    const restore = compileCanonicalHistoryRestoreFixture(source, restoreIdentity);
+    expect(restore.events).toHaveLength(3);
+    expect(restore.input).toEqual({ threadId: restoreIdentity.threadId, runId: restoreIdentity.runId, messages: [] });
+    const expected = expectedRestoreEvents(source);
+    expect(restore.events).toEqual(expected);
+    expect(restore.fixture.events).toEqual(expected);
+    const snapshot = expected[1]!;
+    if (snapshot.type !== 'MESSAGES_SNAPSHOT') throw new Error('Expected history snapshot');
+    expect(restore.digests).toEqual({ sourceSha256: sha(canonicalSerialize(source)), eventsSha256: sha(canonicalSerialize(expected)), historySha256: sha(canonicalSerialize(snapshot.messages)) });
+    expect(compileCanonicalHistoryRestoreFixture(source, restoreIdentity)).toMatchObject({ input: restore.input, events: restore.events, digests: restore.digests });
+    expect(compileCanonicalLongThreadFixture(source, identity)).toMatchObject({ input: continuationBefore.input, events: continuationBefore.events, digests: continuationBefore.digests });
+  });
+  it('accepts only empty history and exact declared IDs while inheriting canonical and epoch admission', () => {
+    const source = sourceFixture();
+    const restore = compileCanonicalHistoryRestoreFixture(source, restoreIdentity);
+    const predicate = restore.fixture.match.predicate!;
+    const empty = { threadId: restoreIdentity.threadId, runId: restoreIdentity.runId, messages: [] };
+    expect(predicate({ ...empty, state: {}, tools: [], context: [] })).toBe(true);
+    for (const input of [null, {}, { ...empty, messages: undefined }, { ...empty, messages: null }, { ...empty, threadId: 'wrong' }, { ...empty, runId: identity.runId }, compileCanonicalLongThreadFixture(source, restoreIdentity).input]) expect(predicate(input as AGUIRunAgentInput)).toBe(false);
+    const throwing = { ...empty }; Object.defineProperty(throwing, 'messages', { get() { throw new Error('Malformed accessor'); } });
+    expect(predicate(throwing)).toBe(false);
+    for (const invalid of [{ ...restoreIdentity, threadId: '' }, { ...restoreIdentity, runId: 'x'.repeat(129) }, { ...restoreIdentity, epochMs: Number.MAX_SAFE_INTEGER - 9999 }]) expect(() => compileCanonicalHistoryRestoreFixture(source, invalid)).toThrow();
+    const boundary = compileCanonicalHistoryRestoreFixture(source, { ...restoreIdentity, epochMs: Number.MAX_SAFE_INTEGER - 10000 });
+    expect(boundary.events.at(-1)!.timestamp).toBe(Number.MAX_SAFE_INTEGER - 9998);
+    source.history[0]!.text = source.history[0]!.text.replace('The', 'Two');
+    expect(() => compileCanonicalHistoryRestoreFixture(source, restoreIdentity)).toThrow(/canonical generator/);
+  });
+  it.each([1000, 10000] as const)('compiles full %i-message restoration without larger loopback runs', historyCount => {
+    const source = createLongThreadFixture({ historyCount, responseBytes: 262144, journey: 'history-reading', seed: 42 });
+    const restore = compileCanonicalHistoryRestoreFixture(source, restoreIdentity);
+    expect(restore.events).toHaveLength(3);
+    const snapshot = restore.events[1]!;
+    expect(snapshot.type).toBe('MESSAGES_SNAPSHOT');
+    if (snapshot.type !== 'MESSAGES_SNAPSHOT') throw new Error('Expected history snapshot');
+    expect(snapshot.messages).toEqual(source.history.map(({ id, role, text }) => ({ id, role, content: text })));
+    expect(snapshot.messages).toHaveLength(historyCount);
+    expect(restore.digests).toMatchObject({ historySha256: sha(canonicalSerialize(snapshot.messages)) });
+    expect(compileCanonicalHistoryRestoreFixture(source, restoreIdentity)).toMatchObject({ events: restore.events, digests: restore.digests });
+  });
+  it('restores over real SSE then continues from wire history with disjoint IDs, owned registration and repeatable reset', async () => {
+    const mock = new AGUIMock();
+    const source = sourceFixture();
+    const restore = registerCanonicalHistoryRestoreFixture(mock, source, restoreIdentity);
+    const continuation = registerCanonicalLongThreadFixture(mock, source, identity);
+    const emptyInput = { threadId: restoreIdentity.threadId, runId: restoreIdentity.runId, messages: [] };
+    const expected = expectedRestoreEvents(source);
+    const continuationEvents = structuredClone(continuation.events);
+    const restoreDigests = { ...restore.digests };
+    const continuationDigests = { ...continuation.digests };
+    source.history[0]!.text = 'caller source mutation';
+    const returned = restore.events.find(event => event.type === 'MESSAGES_SNAPSHOT');
+    const returnedFixture = restore.fixture.events.find(event => event.type === 'MESSAGES_SNAPSHOT');
+    if (returned?.type === 'MESSAGES_SNAPSHOT') returned.messages[0]!.content = 'returned nested snapshot mutation';
+    if (returnedFixture?.type === 'MESSAGES_SNAPSHOT') returnedFixture.messages[1]!.content = 'returned fixture nested snapshot mutation';
+    restore.events.push({ type: 'RUN_ERROR', message: 'returned array mutation' });
+    restore.fixture.match.predicate = () => true;
+    restore.input.messages!.push({ id: 'returned-input-mutation', role: 'user', content: 'mutation' });
+    const url = await mock.start();
+    try {
+      const response = await post(url, emptyInput);
+      expect(response.status).toBe(200); expect(response.contentType).toMatch(/^text\/event-stream/);
+      const wire = parseSse(response.body);
+      expect(wire).toHaveLength(3); expect(wire).toEqual(expected);
+      expect(sha(canonicalSerialize(wire))).toBe(restoreDigests.eventsSha256);
+      const snapshot = wire[1]!;
+      if (snapshot.type !== 'MESSAGES_SNAPSHOT') throw new Error('Expected actual wire snapshot');
+      expect(sha(canonicalSerialize(snapshot.messages))).toBe(restoreDigests.historySha256);
+      const wireContinuation = { threadId: identity.threadId, runId: identity.runId, messages: snapshot.messages };
+      const replay = await post(url, wireContinuation);
+      expect(replay.status).toBe(200); expect(replay.contentType).toMatch(/^text\/event-stream/);
+      const replayWire = parseSse(replay.body);
+      expect(replayWire).toHaveLength(204); expect(replayWire).toEqual(continuationEvents);
+      expect(sha(canonicalSerialize(replayWire))).toBe(continuationDigests.eventsSha256);
+      for (const wrong of [{ ...emptyInput, runId: identity.runId }, { ...wireContinuation, runId: restoreIdentity.runId }, { ...emptyInput, threadId: 'wrong' }, { ...wireContinuation, threadId: 'wrong' }]) expect((await post(url, wrong)).status).toBe(404);
+      mock.reset();
+      expect((await post(url, emptyInput)).status).toBe(404);
+      expect((await post(url, wireContinuation)).status).toBe(404);
+      const restoredAgain = registerCanonicalHistoryRestoreFixture(mock, sourceFixture(), restoreIdentity);
+      const continuationAgain = registerCanonicalLongThreadFixture(mock, sourceFixture(), identity);
+      expect(restoredAgain.digests).toEqual(restoreDigests); expect(continuationAgain.digests).toEqual(continuationDigests);
+      const restoredResponse = await post(url, emptyInput); expect(restoredResponse.body).toBe(response.body);
+      const replayResponse = await post(url, wireContinuation); expect(replayResponse.body).toBe(replay.body);
+    } finally { await mock.stop(); }
+  }, 10000);
 });
 
 describe('real AIMock loopback conformance', () => {
