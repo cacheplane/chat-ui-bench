@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import {parseComparisonRendererPresentation} from './comparison-presentation.js';
 import * as presentationModule from './comparison-presentation.js';
 import {unavailableComparisonRendererDiagnostic} from './comparison-renderer-diagnostic.js';
+import {StreamedTraceAdmission} from './comparison-trace-stream.js';
 import {projectComparisonReport, serializeComparisonReport} from './comparison-report.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, unlink, open, writeFile, link} from 'node:fs/promises';
@@ -2023,6 +2024,134 @@ const rendererCaption = {
   measurementMeaning: 'conditional original trace-window event-association diagnostic; all compositor/display frame coverage unverified',
   unresolvedDomains: ['serialized-phase-origin', 'independent-oracle', 'capture-quality', 'journey-correctness', 'source-executed-authenticity', 'live-content-and-sampling', 'mode-and-cohort', 'cleanup-eligibility', 'scoring-eligibility', 'frame-emission-coverage', 'presentation-feedback-fallback', 'presentation-callback-coalescing'],
 };
+describe('explicit streamed trace policy', () => {
+  it('preserves actual scanner opaque parse rejection and ordered falsy descriptor close without reflective masking', async () => {
+    const f = await rendererDiagnosticFixture('2.1.0'), original = new Proxy({}, {getPrototypeOf() {throw 0;}}), selected = JSON.stringify(f.trace.traceEvents[0]), parse = JSON.parse, target = join(f.root, f.prefix + 'trace.json'), originalOpen = fs.open.bind(fs); let opens = 0, closes = 0;
+    // Direct original synchronous seam: mock wrappers may reflect a thrown Proxy.
+    JSON.parse = (...args: Parameters<typeof JSON.parse>) => {if (args[0] === selected) throw original; return Reflect.apply(parse, JSON, args);};
+    try {
+    const states: ReturnType<StreamedTraceAdmission['liveState']>[] = [], dispose = StreamedTraceAdmission.prototype.dispose;
+    vi.spyOn(StreamedTraceAdmission.prototype, 'dispose').mockImplementation(function(this: StreamedTraceAdmission) {dispose.call(this); states.push(this.liveState());});
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const h = await originalOpen(...args); if (String(args[0]) !== target || ++opens !== 3) return h; return new Proxy(h, {get(object, key) {if (key === 'close') return async () => {closes++; await object.close(); throw '';}; const value = Reflect.get(object, key); return typeof value === 'function' ? value.bind(object) : value;}});});
+    const result = await loadComparisonInvocation(f.root, {tracePolicy: 'streamed-renderer-events-v1'});
+    expect(closes).toBe(1); expect(result.byteIntegrity.seal).toBe('partial');
+    const failures = result.byteIntegrity.ioFailures.filter(row => row.path === f.prefix + 'trace.json');
+    expect(failures.map(row => row.operation)).toEqual(['read', 'close']); expect(Object.is(failures[0]!.error, original)).toBe(true); expect(failures[1]!.error).toBe('');
+    expect(states.length).toBeGreaterThan(0); expect(states.every(state => Object.values(state).every(value => value === 0))).toBe(true);
+    expect(result.runs.every(row => row.rendererPresentationCapabilityDiagnostic.status === 'unavailable')).toBe(true);
+    expect(() => serializeComparisonReport(projectComparisonReport(result))).not.toThrow();
+    } finally {JSON.parse = parse;}
+  });
+  it('records caller-selected root policy and unknown observations when no trace was inspected', async () => {
+    const f = await rootFixture(3, 'headed', '2.1.0'), legacy = await loadComparisonInvocation(f.root), streamed = await loadComparisonInvocation(f.root, {tracePolicy: 'streamed-renderer-events-v1'});
+    expect(streamed).toHaveProperty('tracePolicy', 'streamed-renderer-events-v1');
+    expect(projectComparisonReport(streamed)).toHaveProperty('tracePolicy', 'streamed-renderer-events-v1');
+    expect(streamed.runs).toHaveLength(36);
+    for (const row of streamed.runs) expect(row.traceAdmission).toMatchObject({scannerCompletion: 'not-started', physicalClosure: 'unverified', completeTotals: null, observedPrefix: null, firstFailure: null, legacyWorkThreshold: {status: 'unknown-not-observed'}});
+    expect(Object.hasOwn(legacy, 'tracePolicy')).toBe(false); expect(Object.hasOwn(projectComparisonReport(legacy), 'tracePolicy')).toBe(false);
+    expect(legacy.runs.every(row => !Object.hasOwn(row, 'traceAdmission'))).toBe(true);
+    const oldAgain = await loadComparisonInvocation(f.root, {});
+    expect(serializeComparisonReport(projectComparisonReport(oldAgain))).toEqual(serializeComparisonReport(projectComparisonReport(legacy)));
+  });
+  it.each(['canonical', 'syntax-failure', 'unknown-parser-failure'] as const)('releases selected staging on original%s path', async mode => {
+    const f = await rendererDiagnosticFixture('2.1.0'), completed: ReturnType<StreamedTraceAdmission['liveState']>[] = [], originalDispose = StreamedTraceAdmission.prototype.dispose;
+    vi.spyOn(StreamedTraceAdmission.prototype, 'dispose').mockImplementation(function(this: StreamedTraceAdmission) {originalDispose.call(this); completed.push(this.liveState());});
+    if (mode === 'syntax-failure') {await writeFile(join(f.root, f.prefix + 'trace.json'), JSON.stringify(f.trace).slice(0, -1) + ',"bad":NaN}'); await f.refresh();}
+    if (mode === 'unknown-parser-failure') {const originalParse = JSON.parse, selected = JSON.stringify(f.trace.traceEvents[0]); vi.spyOn(JSON, 'parse').mockImplementation((...args) => {if (args[0] === selected) throw false; return Reflect.apply(originalParse, JSON, args);});}
+    const result = await loadComparisonInvocation(f.root, {tracePolicy: 'streamed-renderer-events-v1'});
+    expect(completed.length).toBeGreaterThan(0); expect(completed.every(value => Object.values(value).every(count => count === 0))).toBe(true);
+    if (mode === 'canonical') expect(result.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic.status).toBe('available');
+    else expect(result.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic.status).toBe('unavailable');
+    if (mode === 'unknown-parser-failure') {expect(result.byteIntegrity.seal).toBe('partial'); expect(result.byteIntegrity.ioFailures.some(value => Object.hasOwn(value, 'error') && value.error === false)).toBe(true);}
+  });
+  it.each((['2.0.0', '2.1.0'] as const).flatMap(version => (['follow', 'history-reading'] as const).map(journey => ({version, journey}))))('preserves complete canonical $version $journey numbers and guards', async ({version, journey}) => {
+    const f = await rendererDiagnosticFixture(version, journey), legacy = await loadComparisonInvocation(f.root), streamed = await loadComparisonInvocation(f.root, {tracePolicy: 'streamed-renderer-events-v1'});
+    expect(legacy.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic.status).toBe('available');
+    expect(streamed.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic).toEqual(legacy.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic);
+    expect(streamed.runs.map(row => row.captureValidation)).toEqual(legacy.runs.map(row => row.captureValidation));
+    expect(legacy.runs.every(row => row.traceAdmission === undefined)).toBe(true);
+    expect(streamed.runs[f.selectedIndex]!.traceAdmission).toMatchObject({scannerCompletion: 'eof-finished', physicalClosure: 'verified'});
+  });
+  it('retains complete same-FD physical facts when a discarded tail fails lexical admission', async () => {
+    const f = await rendererDiagnosticFixture('2.1.0'), bytes = JSON.stringify(f.trace), path = f.prefix + 'trace.json';
+    await writeFile(join(f.root, path), bytes.slice(0, -1) + ',"extra":{"x":0,"\\u0078":1}}'); await f.refresh();
+    const result = await loadComparisonInvocation(f.root, {tracePolicy: 'streamed-renderer-events-v1'}), row = result.runs[f.selectedIndex]!;
+    expect(result.byteIntegrity.seal).toBe('byte-closed'); expect(row.rendererPresentationCapabilityDiagnostic.status).toBe('unavailable');
+    expect(row.traceAdmission).toMatchObject({scannerCompletion: 'stopped', physicalClosure: 'verified', completeTotals: null, firstFailure: {kind: 'malformed'}});
+  });
+  it.each([undefined, null, false, 0, ''] as const)('revokes physical authority on original falsy final trace close%j after scanner EOF', async primary => {
+    const f = await rendererDiagnosticFixture('2.1.0'), target = join(f.root, f.prefix + 'trace.json'), original = fs.open.bind(fs); let opens = 0;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {const handle = await original(...args); if (String(args[0]) !== target || ++opens !== 3) return handle; return new Proxy(handle, {get(object, key) {
+      if (key === 'close') return async () => {await object.close(); throw primary;}; const value = Reflect.get(object, key); return typeof value === 'function' ? value.bind(object) : value;
+    }});});
+    const result = await loadComparisonInvocation(f.root, {tracePolicy: 'streamed-renderer-events-v1'}), row = result.runs[f.selectedIndex]!;
+    expect(result.byteIntegrity.seal).toBe('partial'); expect(row.traceAdmission).toMatchObject({scannerCompletion: 'eof-finished', physicalClosure: 'unverified'});
+    expect(result.runs.every(row => row.rendererPresentationCapabilityDiagnostic.status === 'unavailable')).toBe(true);
+    const failure = result.byteIntegrity.ioFailures.find(failure => failure.path === f.prefix + 'trace.json' && failure.operation === 'close');
+    expect(failure).toBeDefined(); expect(Object.hasOwn(failure!, 'error')).toBe(true); expect(failure!.error).toBe(primary);
+  });
+  it('rejects unknown policy before opening the original root', async () => {
+    const root = await mkdtemp(join(await realpath(tmpdir()), 'unknown-trace-policy-')); owned.push(root);
+    const calls = vi.spyOn(fs, 'opendir');
+    await expect(Reflect.apply(loadComparisonInvocation, undefined, [root, {tracePolicy: 'unreviewed'}])).rejects.toThrow(/trace policy/);
+    expect(calls).not.toHaveBeenCalled();
+  });
+  it('admits the same canonical plus irrelevant trace beyond legacy work without changing old admission', async () => {
+    const f = await rendererDiagnosticFixture('2.1.0'), original = await loadComparisonInvocation(f.root);
+    const expected = original.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic;
+    expect(expected.status).toBe('available'); expect(expected.presentation.status).toBe('available');
+    const unknown = '{"name":"unused","ph":"I","a":[' + 'null,'.repeat(23) + 'null]},';
+    const raw = JSON.stringify(f.trace);
+    await writeFile(join(f.root, f.prefix + 'trace.json'), raw.slice(0, -2) + ',' + unknown.repeat(271000).slice(0, -1) + ']}'); await f.refresh();
+    const legacy = await loadComparisonInvocation(f.root);
+    expect(legacy.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic.status).toBe('unavailable');
+    expect(legacy.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic.issues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'jsonWorkUnits', limit: 8388608, observed: 8388609}));
+    const streamed = await loadComparisonInvocation(f.root, {tracePolicy: 'streamed-renderer-events-v1'}), actual = streamed.runs[f.selectedIndex]!.rendererPresentationCapabilityDiagnostic;
+    expect(actual.status).toBe('available'); expect(actual.presentation).toEqual(expected.presentation); expect(actual.guards).toEqual(expected.guards);
+    expect(streamed.runs[f.selectedIndex]!.captureValidation?.status).toBe('failed'); expect(streamed.runs).toHaveLength(12);
+    expect(Reflect.get(streamed.runs[f.selectedIndex]!, 'traceAdmission')).toMatchObject({policy: 'streamed-renderer-events-v1', scannerCompletion: 'eof-finished', physicalClosure: 'verified', legacyWorkThreshold: expect.objectContaining({status: 'crossed'})});
+  }, 90000);
+});
+describe('opaque original filesystem exception preservation', () => {
+  it('retains opaque original directory read plus independent falsy close in physical inventory', async () => {
+    const f = await rootFixture(), original = new Proxy({}, {getPrototypeOf() {throw 0;}}), opendir = fs.opendir.bind(fs); let closes = 0, injected = false;
+    vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {
+      const h = await Reflect.apply(opendir, undefined, args); if (String(args[0]) !== f.root || injected) return h; injected = true;
+      return new Proxy(h, {get(object, key) {
+        if (key === 'read') return async () => {await object.read(); throw original;};
+        if (key === 'close') return async () => {closes++; await object.close(); throw false;};
+        const value = Reflect.get(object, key); return typeof value === 'function' ? value.bind(object) : value;
+      }});
+    });
+    const observed = await loadComparisonInvocation(f.root).then(value => ({fulfilled: true as const, value}), error => ({fulfilled: false as const, error}));
+    expect(closes).toBe(1); expect(observed.fulfilled).toBe(true); if (!observed.fulfilled) throw Error('Original inventory exception escaped its ledger');
+    expect(observed.value.physicalInventory.status).toBe('partial'); expect(observed.value.byteIntegrity.seal).not.toBe('byte-closed');
+    expect(Object.is(observed.value.physicalInventory.ioFailures[0]!.error, original)).toBe(true);
+    expect(observed.value.physicalInventory.ioFailures[1]!.error).toBe(false); expect(observed.value.physicalInventory.ioFailures.slice(0, 2).map(row => row.operation)).toEqual(['directory-read', 'directory-close']);
+  });
+  it.each((['path', 'open', 'read', 'post-close'] as const).flatMap(operation => (['getPrototypeOf', 'has', 'get'] as const).map(trap => ({operation, trap}))))('retains original $operation $trap failure and actual independent close', async ({operation, trap}) => {
+    const f = await fixture(), target = join(f.root, f.reference.path), original = new Proxy(trap === 'get' ? {code: 'ENOENT'} : {}, {[trap]() {throw 0;}}), originalStat = fs.lstat.bind(fs), originalOpen = fs.open.bind(fs); let stats = 0, closes = 0;
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      if (String(args[0]) === target) {stats++; if (operation === 'path' && stats === 1 || operation === 'post-close' && stats === 3) throw original;}
+      return Reflect.apply(originalStat, undefined, args);
+    });
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      if (String(args[0]) === target && operation === 'open') throw original;
+      const h = await originalOpen(...args); if (String(args[0]) !== target) return h;
+      return new Proxy(h, {get(object, key) {
+        if (key === 'read' && operation === 'read') return async (...readArgs: Parameters<typeof object.read>) => {await Reflect.apply(object.read, object, readArgs); throw original;};
+        if (key === 'close') return async () => {closes++; await object.close(); if (operation === 'read') throw false;};
+        const value = Reflect.get(object, key); return typeof value === 'function' ? value.bind(object) : value;
+      }});
+    });
+    const observed = await loadComparisonMember(f.root, f.reference).then(value => ({fulfilled: true as const, value}), error => ({fulfilled: false as const, error}));
+    expect(observed.fulfilled).toBe(true); expect(closes).toBe(operation === 'read' || operation === 'post-close' ? 1 : 0);
+    if (!observed.fulfilled) throw Error('Original opaque value escaped owned ledger');
+    expect(observed.value.status).toBe('failed'); if (observed.value.status !== 'failed') throw Error('Controlled original failure was admitted');
+    expect(observed.value.ioFailures?.[0]!.error).toBe(original); expect(observed.value.loadingIssues[0]!.kind).toBe(operation === 'post-close' ? 'identity' : 'unreadable');
+    if (operation === 'read') {expect(observed.value.ioFailures?.map(row => row.operation)).toEqual(['read', 'close']); expect(observed.value.ioFailures?.[1]!.error).toBe(false);}
+  });
+});
 describe('comparison conditional renderer diagnostic initial capabilities', () => {
   it.each((['2.0.0', '2.1.0'] as const).flatMap(version => (['follow', 'history-reading'] as const).map(journey => ({version, journey}))))('retains canonical $version $journey parser capability without scoring', async ({version, journey}) => {
     const f = await rendererDiagnosticFixture(version, journey), result = await loadComparisonInvocation(f.root), row = result.runs[f.selectedIndex]!;

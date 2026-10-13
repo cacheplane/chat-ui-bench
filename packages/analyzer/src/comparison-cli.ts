@@ -2,11 +2,15 @@ import {isAbsolute, resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {publishComparisonReport} from './comparison-report-files.js';
 import {comparisonReportErrorCategory} from './comparison-report.js';
+import {selectComparisonTracePolicy, type ComparisonTraceLoadOptions} from './comparison-trace-stream.js';
 
-export function parseComparisonReportArgs(args: readonly string[]): {input: string; output: string} {
-  if (args.length !== 4 || args[0] !== '--artifact-dir' || args[2] !== '--out' || !args[1] || !args[3]) throw new Error('Usage: bench:analyze:comparison --artifact-dir ABSOLUTE_ORIGINAL --out ABSOLUTE_NEW_EXTERNAL_DIRECTORY');
+export function parseComparisonReportArgs(args: readonly string[]): {input: string; output: string} & ComparisonTraceLoadOptions {
+  if ((args.length !== 4 && args.length !== 6) || args[0] !== '--artifact-dir' || args[2] !== '--out' || !args[1] || !args[3]) throw new Error('Usage: bench:analyze:comparison --artifact-dir ABSOLUTE_ORIGINAL --out ABSOLUTE_NEW_EXTERNAL_DIRECTORY');
+  if (args.length === 6 && (args[4] !== '--trace-policy' || args[5] !== 'streamed-renderer-events-v1')) throw new Error('Unknown comparison trace policy');
+  const options: ComparisonTraceLoadOptions = args.length === 6 ? {tracePolicy: 'streamed-renderer-events-v1'} : {};
+  selectComparisonTracePolicy(options);
   if (!isAbsolute(args[1]) || !isAbsolute(args[3])) throw new Error('Comparison report requires absolute original/output paths');
-  return {input: args[1], output: args[3]};
+  return {input: args[1], output: args[3], ...options};
 }
 
 async function writeReceipt(stream: NodeJS.WriteStream, value: unknown) {
@@ -20,7 +24,7 @@ async function writeReceipt(stream: NodeJS.WriteStream, value: unknown) {
 
 export async function runComparisonReportCli(args: readonly string[]): Promise<number> {
   const paths = parseComparisonReportArgs(args);
-  const receipt = await publishComparisonReport(paths.input, paths.output);
+  const receipt = await publishComparisonReport(paths.input, paths.output, paths.tracePolicy === undefined ? {} : {tracePolicy: paths.tracePolicy});
   await writeReceipt(process.stdout, receipt);
   // The maintained loader has only partial/unavailable collection variants.
   // Complete publication does not turn this unfinished scientific scope green.

@@ -33,6 +33,7 @@ export function revokeComparisonRendererDiagnostic(value: ComparisonRendererDiag
   if (value.issues.length < 32) value.issues.push(issue); else value.additionalIssueCount++;
 }
 interface Input {
+  tracePolicy?: 'streamed-renderer-events-v1';
   schemas: Schemas; identity: z.output<Schemas['comparisonIdentitySchema']>; manifest: z.output<Schemas['comparisonManifestSchema']> | null; descriptor: z.output<Schemas['comparisonScheduledRunSchema']> | null;
   originals: Map<string, {actual: {byteLength: number; sha256: string} | null; seal: {byteLength: number; sha256: string} | null; role: ComparisonRawRole}>;
   trace: unknown; phases: unknown; evidence: unknown; auxiliary: unknown; capture: unknown; metadata: unknown;
@@ -104,7 +105,7 @@ export function checkComparisonRendererDiagnostic(input: Input): ComparisonRende
   const inputs = scored.map(phase => ({phase: phase.phase as 'streaming-follow' | 'composer-input' | 'history-reading' | 'return-to-response', instanceId: phase.instanceId, ...comparisonPhaseMarks(phase.phase, phase.instanceId)}));
   const events = record(input.trace)?.traceEvents, expectedMarks = new Set(phases.instances.flatMap(phase => [phase.startMark, phase.endMark]));
   if (Array.isArray(events) && events.some(event => {const name = record(event)?.name; return typeof name === 'string' && name.startsWith('bench:comparison:') && !expectedMarks.has(name);})) {fail('trace.json', 'Unexpected canonical phase mark outside original registry'); return out;}
-  const parser = parseComparisonRendererPresentation({trace: input.trace, target: {appURL: topology.appURL, frameId: frame.frame.id}, phases: inputs, evidencePaths: ['trace.json']});
+  const parser = parseComparisonRendererPresentation({trace: input.trace, target: {appURL: topology.appURL, frameId: frame.frame.id}, phases: inputs, evidencePaths: ['trace.json']}, input.tracePolicy);
   if (parser.presentation.status !== 'available') {fail('trace.json', parser.presentation.reason, 'malformed'); return out;}
   out.guards['trace-topology'] = 'verified'; out.guards['canonical-phases'] = 'verified'; out.guards['existing-parser'] = 'verified';
   let missing = false, malformed = false;

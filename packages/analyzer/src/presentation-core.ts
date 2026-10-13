@@ -56,11 +56,21 @@ const evidence = ['Pinned renderer AnimationFrame begin/end pairs joined to Anim
  * Unlike the permissive upstream handler, ambiguity/incomplete target pairs fail closed.
  * Collector/mode/revision/correctness guards belong to the production caller.
  */
-export function parsePresentationCore<Phase extends string>(input: PresentationCoreInput<Phase>, validatePhase: (phase: PresentationCorePhaseInput<Phase>) => void): PresentationCoreResult<Phase> {
-  try { return parseSupported(input, validatePhase); }
+export function admitPresentationNumericSlots(previous: number, distinctDeliveries: number): number {
+  if (!Number.isSafeInteger(previous) || previous < 0 || !Number.isSafeInteger(distinctDeliveries) || distinctDeliveries < 0) throw new Error('Invalid presentation numeric slots cardinality');
+  const slots = previous + (distinctDeliveries === 0 ? 0 : distinctDeliveries * 2 - 1);
+  if (!Number.isSafeInteger(slots) || slots > 43690) throw new Error('Presentation numeric slots exceeded43690');
+  return slots;
+}
+export function parsePresentationCore<Phase extends string>(input: PresentationCoreInput<Phase>, validatePhase: (phase: PresentationCorePhaseInput<Phase>) => void, tracePolicy?: 'streamed-renderer-events-v1'): PresentationCoreResult<Phase> {
+  try {
+    if (tracePolicy !== undefined && tracePolicy !== 'streamed-renderer-events-v1') throw new Error('Unknown comparison trace policy');
+    if (tracePolicy !== undefined && input.phases.length > 6) throw new Error('Streamed presentation supports at most6 phases');
+    return parseSupported(input, validatePhase, tracePolicy);
+  }
   catch (error) { return { presentation: { status: 'unavailable', reason: `Unsupported renderer presentation trace: ${error instanceof Error ? error.message : 'malformed input'}` } }; }
 }
-function parseSupported<Phase extends string>(input: PresentationCoreInput<Phase>, validatePhase: (phase: PresentationCorePhaseInput<Phase>) => void): PresentationCoreResult<Phase> {
+function parseSupported<Phase extends string>(input: PresentationCoreInput<Phase>, validatePhase: (phase: PresentationCorePhaseInput<Phase>) => void, tracePolicy?: 'streamed-renderer-events-v1'): PresentationCoreResult<Phase> {
   const container = object(input.trace);
   if (!Array.isArray(container.traceEvents)) throw new Error('Missing traceEvents array');
   const events = container.traceEvents.map(value => {
@@ -159,10 +169,21 @@ function parseSupported<Phase extends string>(input: PresentationCoreInput<Phase
     return { begin, end, ...(presentation ? { feedback: presentation } : {}) };
   });
   const diagnostics: PresentationCoreDiagnostics<Phase> = { wholeTracePairCount: pairs.length, wholeTraceNonPresentedPairCount: pairs.filter(p => !p.feedback).length, identityMismatches: 0, phases: [] };
+  let numericSlots = 0;
   const output = phases.map(phase => {
     const inside = (ts: number) => ts >= phase.startUs && ts < phase.endUs;
     const eligible = pairs.filter(p => inside(p.begin.ts) && p.feedback && inside(p.feedback.ts));
-    const timestampsUs = [...new Set(eligible.map(p => p.feedback!.ts))].sort((a, b) => a - b);
+    let timestampsUs: number[];
+    if (tracePolicy === undefined) timestampsUs = [...new Set(eligible.map(p => p.feedback!.ts))].sort((a, b) => a - b);
+    else {
+      const distinct = new Set<number>();
+      for (const pair of eligible) {
+        distinct.add(pair.feedback!.ts);
+        admitPresentationNumericSlots(numericSlots, distinct.size);
+      }
+      numericSlots = admitPresentationNumericSlots(numericSlots, distinct.size);
+      timestampsUs = [...distinct].sort((a, b) => a - b);
+    }
     const durationUs = phase.endUs - phase.startUs;
     // A pair touching/spanning the phase but failing dual-boundary eligibility is excluded.
     const boundaryExcludedPairCount = pairs.filter(p => p.feedback && !(inside(p.begin.ts) && inside(p.feedback.ts)) && (inside(p.begin.ts) || inside(p.feedback.ts) || (p.begin.ts < phase.startUs && p.feedback.ts >= phase.endUs))).length;

@@ -12,11 +12,11 @@ export type ComparisonPresentationPairDiagnostics = PresentationCoreDiagnostics<
 export interface ComparisonRendererPresentationResult { presentation: ComparisonRendererPresentation; diagnostics?: ComparisonPresentationPairDiagnostics }
 
 /** Parser capability only; collector/mode/revision/correctness guards remain required before scoring. */
-export function parseComparisonRendererPresentation(input: ComparisonRendererPresentationInput): ComparisonRendererPresentationResult {
+export function parseComparisonRendererPresentation(input: ComparisonRendererPresentationInput, tracePolicy?: 'streamed-renderer-events-v1'): ComparisonRendererPresentationResult {
   try {
     if (!Array.isArray(input.evidencePaths) || input.evidencePaths.length === 0) throw new Error('Missing presentation evidence paths');
     const evidencePaths = input.evidencePaths.map(path => comparisonArtifactPathSchema.parse(path));
-    const result = parsePresentationCore(input, phase => { comparisonPresentationPhaseInputSchema.parse(phase); });
+    const result = parsePresentationCore(input, phase => { comparisonPresentationPhaseInputSchema.parse(phase); }, tracePolicy);
     if (result.presentation.status === 'unavailable') return {presentation: comparisonRendererPresentationSchema.parse(result.presentation)};
     const presentation = comparisonRendererPresentationSchema.parse({
       capability: PRESENTATION_CAPABILITY, contractVersion: PRESENTATION_CONTRACT_VERSION, status: 'available',

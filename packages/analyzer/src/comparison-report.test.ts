@@ -265,6 +265,9 @@ it('closed36-row issue-heavy projection remains below derived output ceilings', 
   const f = await originalFixture(3), large = '🙂'.repeat(2048);
   const values = Array.from({length: 32}, () => ({kind: 'admission-limit' as const, path: large, role: 'trace' as const, reason: large, limitName: large, observed: Number.MAX_SAFE_INTEGER, observation: 'lower-bound' as const, limit: Number.MAX_SAFE_INTEGER}));
   for (const row of f.loaded.runs) {
+    row.traceAdmission = {policy: 'streamed-renderer-events-v1', scannerCompletion: 'stopped', physicalClosure: 'verified', completeTotals: null,
+      observedPrefix: {scannedUtf8Bytes: 134217728, workUnits: 16777217, traceEvents: 1048576, maximumDepth: 64, retainedBytes: 16777216, retainedWork: 2097152, retainedEvents: 65536},
+      legacyWorkThreshold: {status: 'crossed', observed: 8388609, utf8Byte: 134217728}, firstFailure: {kind: 'admission-limit', limitName: 'activeKeyBytes', limit: 1048576, observed: 1048577, utf8Byte: 134217728, offsetMeaning: 'scanner-event-position', reason: 'not retained by report'}};
     row.loadingIssues = values;
     for (const lane of [row.references.inventory, row.references.capture, row.references.acquisition, row.provenanceGraph, row.finalContent.fixture, row.finalContent.runtime, row.finalContent.coverage, row.rendererPresentationCapabilityDiagnostic]) lane.issues = values;
     row.counterCheckpoints = {status: 'unavailable', originalFileFact: {byteLength: Number.MAX_SAFE_INTEGER, sha256: '5'.repeat(64)}, rawAvailability: {status: 'unreadable', path: large, reason: large}, reason: large, recordedSnapshotCount: null,
@@ -273,6 +276,24 @@ it('closed36-row issue-heavy projection remains below derived output ceilings', 
   const serialized = serializeComparisonReport(projectComparisonReport(f.loaded));
   expect(Buffer.byteLength(serialized.json)).toBeLessThanOrEqual(19251200);
   expect(Buffer.byteLength(serialized.markdown)).toBeLessThanOrEqual(23539712);
+});
+it('keeps bounded36-row numeric payload private and projects only interval summaries', async () => {
+  const f = await originalFixture(3); let numericSlots = 0;
+  for (const row of f.loaded.runs) {
+    const timestampsUs = Array.from({length: 21845}, (_, i) => 100 + i * 2), intervalsUs = Array(21844).fill(2);
+    numericSlots += timestampsUs.length + intervalsUs.length;
+    row.rendererPresentationCapabilityDiagnostic.status = 'available';
+    row.rendererPresentationCapabilityDiagnostic.presentation = comparisonRendererPresentationSchema.parse({status: 'available', capability: PRESENTATION_CAPABILITY, contractVersion: PRESENTATION_CONTRACT_VERSION, value: {scope: 'target renderer visual updates', phases: [{
+      phase: 'streaming-follow', instanceId: '0', ...comparisonPhaseMarks('streaming-follow', '0'), startUs: 0, endUs: 100000, durationUs: 100000, target: {frameId: 'frame', pid: 10, tid: 11}, boundaryExcludedPairCount: 0, nonPresentedPairCount: 0,
+      rendererVisualUpdateFps: {status: 'available', value: 218450, unit: 'updates/s', numerator: 21845, denominatorUs: 100000, evidence: ['trace.json']},
+      presentationIntervals: {status: 'available', timestampsUs, intervalsUs, median: 2, p95: 2, max: 2, unit: 'us', evidence: ['trace.json']},
+    }]}});
+  }
+  expect(numericSlots * 8).toBeLessThanOrEqual(12582720);
+  const report = projectComparisonReport(f.loaded), encoded = serializeComparisonReport(report);
+  expect(report.rows).toHaveLength(36); expect(report.rows.every(row => row.reportedLedgerStatus === 'failed')).toBe(true);
+  expect(report.rows[0]!.renderer.phases[0]!.presentationIntervals).toMatchObject({sampleCount: 21844, median: 2, p95: 2, max: 2});
+  expect(encoded.json).not.toMatch(/timestampsUs|intervalsUs|traceEvents/); expect(Buffer.byteLength(encoded.json)).toBeLessThanOrEqual(19251200);
 });
 
 it('fixed output predicate admits exact24MiB and rejects +1 and invalid arithmetic', () => {
@@ -285,6 +306,12 @@ it.each([undefined, null, false, 0, ''])('retains original falsy IO category %j 
   const report = projectComparisonReport(f.loaded);
   expect(report.byteIntegrity.ioFailures.values[0]?.error).toMatchObject({type: error === null ? 'null' : typeof error});
   expect(serializeComparisonReport(report).json).not.toContain('stack');
+});
+it.each(['getPrototypeOf', 'getOwnPropertyDescriptor'] as const)('projects retained opaque original %s failure without replacing the loaded value', async trap => {
+  const f = await originalFixture(), original = new Proxy(new Error('original'), {[trap]() {throw false;}});
+  f.loaded.byteIntegrity.ioFailures = [{operation: 'read', path: 'trace.json', error: original}];
+  const report = projectComparisonReport(f.loaded); expect(report.byteIntegrity.ioFailures.values[0]!.error).toEqual({type: 'opaque-object'});
+  expect(f.loaded.byteIntegrity.ioFailures[0]!.error).toBe(original); expect(() => serializeComparisonReport(report)).not.toThrow();
 });
 
 it('opaque error objects are not coerced and root issues retain original32 with exact omissions', async () => {
