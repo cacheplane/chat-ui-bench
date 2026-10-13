@@ -123,6 +123,39 @@ deadlines and recording actual emission timing, backpressure, and terminal
 failures. Runtime and visible-DOM evidence have separate contracts so future
 virtualized adapters can report their actual coverage.
 
+Shared chat/agent test fixtures use the pinned development dependency
+`@copilotkit/aimock` 1.45.1 through `tests/fixtures/aimock.ts`:
+
+```ts
+import { AGUIMock } from '@copilotkit/aimock/agui';
+import { createLongThreadFixture } from '@chat-ui-bench/contract';
+import { registerCanonicalLongThreadFixture } from './tests/fixtures/aimock.js';
+
+const mock = new AGUIMock();
+const compiled = registerCanonicalLongThreadFixture(mock,
+  createLongThreadFixture({ historyCount: 100, responseBytes: 6400, journey: 'follow' }),
+  { threadId: 'chat-thread', runId: 'chat-run', epochMs: 1700000000000 });
+const url = await mock.start();
+try {
+  const response = await fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(compiled.input), signal: AbortSignal.timeout(3000),
+  });
+  const sse = await response.text(); // Drain the response before stopping.
+} finally { await mock.stop(); }
+```
+
+The compiler validates canonical generator provenance, projects the complete
+ordered history, preserves response identity and all 200 deltas, and exposes
+separate SHA-256 digests for canonical source JSON, event JSON, and response text.
+Thread/run IDs must contain 1–128 ASCII letters, digits, or `._:-`, beginning
+with a letter or digit. Explicit timestamps and metadata describe a synthetic
+clock over the canonical 10-second schedule. AIMock sends these 204 SSE events
+without deadline pacing; benchmark timing still uses the independent producer.
+No upstream recording is configured. A separately named
+`registerDeterministicErrorFixture` provides a small agent error case.
+Run fixture conformance with `npm test -- tests/fixtures/aimock.test.ts`.
+
 The Threadplane Angular custom-transport profile is implemented with pinned
 `@threadplane/*` 0.3.2 and Angular 21.2.25. It uses the published packages and a
 local deterministic SSE replay transport. This profile is distinct from a
