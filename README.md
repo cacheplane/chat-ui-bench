@@ -69,16 +69,20 @@ unavailable, not zero latency, and these scripted events are not field INP.
 Heap counters are not total browser memory. Retention uses strong named heap
 paths and native backing storage, not a guessed JS heap increase.
 
-Collector 1.1 supports **headed target renderer visual updates** through the
-phase-local `rendererVisualUpdateFps` capability. Each phase counts distinct
-presentation feedback timestamps whose animation begin and feedback both fall
-inside its trace-clock boundaries, divided by the full phase duration. Reports
-include consecutive feedback intervals, median, nearest-rank p95, and maximum.
-Correctness, pinned browser identity, complete traces, and supported single-page
-topology gate scoring. A workload supplying 20 updates/s can have a healthy
-20 updates/s rate; this is not a 60 FPS target. Headless presentation, global
-compositor FPS, monitor refresh, and dropped-frame percentages remain unavailable.
-Old collector 1.0 artifacts retain their original unavailable presentation meaning.
+Collector 1.1 retains the phase-local `rendererVisualUpdateFps` capability for
+compatibility. Its numerator counts distinct emitted feedback timestamps joined
+to matched target Blink `AnimationFrame` lifecycle records whose begin and
+feedback both fall inside the phase's trace-clock boundaries; its denominator
+is the full phase duration. Reports include consecutive timestamp intervals,
+median, nearest-rank p95, and maximum. This is a conditional trace association
+rate. Coverage of all renderer, compositor, or display frames is unverified.
+Callbacks can share one later compositor feedback, and failure paths can use
+fallback swap timestamps. Correctness, pinned identity, complete traces, and
+supported topology validate parser prerequisites; they do not establish display
+FPS or timestamp origin. Existing field names, numbers, and historical scoring
+gates remain unchanged. Headless presentation, global compositor FPS, monitor
+refresh, and dropped-frame percentages remain unavailable. Old collector 1.0
+artifacts retain their original unavailable presentation meaning.
 
 The original DevTools import failure came from browser-target CDP tracing lacking
 the workload WebContents frame tree. Pinned Chromium's TracingHandler uses the

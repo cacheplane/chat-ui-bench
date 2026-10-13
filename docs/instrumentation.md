@@ -130,28 +130,43 @@ performance metrics, including the intentional omitted-delta variant.
   schemas, missing names/paths, or unsupported snapshots yield unavailable.
   Five retained 4 MiB buffers mean 5 / 20,971,520 bytes; the releasing control
   means 0 / 0. No 20 MiB JS heap-used increase is assumed.
-- Headed collector 1.1 `rendererVisualUpdateFps` measures delivered target renderer
-  visual updates, using pinned Chromium 156.0.8078.4, browser revision
+- Headed collector 1.1 `rendererVisualUpdateFps` retains its historical field name
+  and numerical calculation. It measures a conditional rate of emitted feedback
+  timestamps joined to matched target Blink `AnimationFrame` lifecycle records,
+  using pinned Chromium 156.0.8078.4, browser revision
   f842f52ef39fd97b449eb27cff414bf05a98ddce, and matching DevTools frontend
   2d671c506c4e5f8958b027e26047deb0acfbd7f9. AnimationFrame begin/end pairs join
   feedback by exact string `args.id`; `id2.local` identifies the async track,
-  and begin-frame source/sequence are not presentation join keys. Feedback trace
-  timestamps describe presentation, not callback execution time.
+  and begin-frame source/sequence are not presentation join keys. The trace uses
+  the feedback timestamp rather than callback execution time. That timestamp's
+  origin is not independently established: failure paths may substitute swap
+  timestamps, and multiple callbacks can share later compositor feedback.
   Both animation begin and feedback must fall in the phase's [start,end) trace
-  microsecond interval. Equal feedback timestamps coalesce to one delivery.
-  The numerator is distinct eligible deliveries; the denominator is the complete
+  microsecond interval. Equal feedback timestamps coalesce to one counted value.
+  The numerator is distinct eligible timestamps; the denominator is the complete
   phase duration, including idle periods. Intervals are consecutive distinct
   feedback differences within that phase, with ordinary median, nearest-rank p95,
   and maximum. Repeated phase ordinals remain separate; intervals are never pooled
-  or bridged between phases. A 20 updates/s input cadence can be healthy at 20;
+  or bridged between phases. Input cadence and idle periods affect this rate;
   the contract specifies no universal 60 FPS target.
-  Scoring requires valid correctness, headed mode, pinned identity, required
-  categories, complete loss-free trace, an isolated single workload page/root
+  The historical scoring gates require valid correctness, headed mode, pinned
+  identity, required categories, complete loss-free trace, an isolated single workload page/root
   document, one renderer/main thread, and no ambiguous or changing topology.
-  Boundary exclusions and non-presented pairs are diagnostics, not dropped-frame
-  percentages. Zero eligible feedback is unavailable; headless presentation,
+  These prerequisites do not establish coverage of every renderer, compositor,
+  or display frame, timestamp origin, or display FPS. Existing numerical outputs
+  and historical scoring behavior are preserved; those gates alone do not
+  qualify published FPS rankings. Boundary exclusions and non-presented pairs
+  remain diagnostics and cannot establish dropped-frame percentages.
+  Zero eligible feedback is unavailable; headless presentation,
   compositor-only scrolling, global compositor FPS, and monitor refresh are
   unavailable. Old 1.0 artifacts retain unavailable presentation semantics.
+
+The pinned Chromium source shows the
+[Blink lifecycle and callback emitter](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/third_party/blink/renderer/core/frame/animation_frame_timing_monitor.cc),
+[widget fallback timestamp paths](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/third_party/blink/renderer/core/frame/web_frame_widget_impl.cc),
+and [queued callback coalescing](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/third_party/blink/renderer/platform/widget/compositing/layer_tree_view.cc).
+These source paths explain possible limits; they do not establish which branches
+executed in a historical capture.
 
 The original browser-target capture failed DevTools import with “No frames found
 in trace data.” The [pinned Chromium TracingHandler](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/content/browser/devtools/protocol/tracing_handler.cc) obtains frame-tree metadata
