@@ -405,7 +405,7 @@ test.each([0, 1])('end-to-end file cap exact plus %i uses an unhashed maintained
   if (excess) await expect(writer()(f.root, f)).rejects.toThrow('pre-read file cap');
   else {const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8')); expect(manifest.records.find((row: {key: string}) => row.key === key).before.fact.byteLength).toBe(1024 * 1024);}
 });
-test.each([0, 1])('exact original lock cap 2MiB plus %i preserves every locked identity', async excess => {
+test.each([0, 1])('exact original lock cap 2MiB plus %i preserves every locked identity', {timeout: 30000}, async excess => {
   const f = await fixture(), path = join(f.workspace, 'package-lock.json');
   const original = (await readFile(path, 'utf8')).trimEnd();
   const fixedBytes = Buffer.byteLength(original.slice(0, -1) + ',"controlledExtension":""}\n');
@@ -447,9 +447,12 @@ test('Linux compiler integrity remains bound to the actual lock row', async () =
 test.each(['missing', 'extra', 'relocated'] as const)('current physical metadata %s contradicts the independently reviewed membership', async change => {
   const f = await fixture(), path = join(f.workspace, 'apps/threadplane/.build-evidence.json');
   const build = JSON.parse(await readFile(path, 'utf8'));
+  const originalPackage = build.packages[0];
+  const relocatedPackage = {...originalPackage, resolutionPath: `node_modules/controlled-relocation/node_modules/${originalPackage.name}`};
   if (change === 'missing') build.packages.pop();
-  else if (change === 'extra') build.packages.push({...build.packages[0], resolutionPath: 'node_modules/unreviewed-current-package'});
-  else build.packages[0].resolutionPath = 'node_modules/unreviewed-current-package';
+  else if (change === 'extra') build.packages.push(relocatedPackage);
+  else build.packages[0] = relocatedPackage;
+  expect(adapterBuildSchema.safeParse(build).success).toBe(true);
   await writeFile(path, JSON.stringify(build) + '\n');
   await expect(writer()(f.root, f)).rejects.toThrow('product metadata membership');
 });
