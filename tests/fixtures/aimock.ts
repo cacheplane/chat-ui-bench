@@ -1,4 +1,5 @@
 import type { AGUIEvent, AGUIFixture, AGUIMock, AGUIRunAgentInput } from '@copilotkit/aimock/agui';
+import { buildMessagesSnapshot } from '@copilotkit/aimock/agui';
 import { createHash } from 'node:crypto';
 import { canonicalSerialize, validateCanonicalLongThreadFixture } from '@chat-ui-bench/contract';
 
@@ -8,6 +9,12 @@ export interface CompiledCanonicalFixture {
   events: AGUIEvent[];
   fixture: AGUIFixture;
   digests: { sourceSha256: string; eventsSha256: string; responseSha256: string };
+}
+export interface CompiledCanonicalHistoryRestoreFixture {
+  input: AGUIRunAgentInput;
+  events: AGUIEvent[];
+  fixture: AGUIFixture;
+  digests: { sourceSha256: string; eventsSha256: string; historySha256: string };
 }
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex');
 
@@ -64,6 +71,31 @@ export function compileCanonicalLongThreadFixture(source: unknown, identity: Fix
 /** Register an independently owned fixture using the actual AIMock API, without upstream recording. */
 export function registerCanonicalLongThreadFixture(mock: AGUIMock, source: unknown, identity: FixtureIdentity): CompiledCanonicalFixture {
   const compiled = compileCanonicalLongThreadFixture(source, identity);
+  mock.addFixture({ match: { predicate: compiled.fixture.match.predicate! }, events: structuredClone(compiled.events) });
+  return compiled;
+}
+
+/** Restore complete canonical history separately from continuation; inherits the canonical epoch + 10000 bound. */
+export function compileCanonicalHistoryRestoreFixture(source: unknown, identity: FixtureIdentity): CompiledCanonicalHistoryRestoreFixture {
+  const canonical = compileCanonicalLongThreadFixture(source, identity);
+  const { threadId, runId } = canonical.input;
+  const epochMs = canonical.events[0]!.timestamp!; // Admitted RUN_STARTED always uses the validated epoch + 0.
+  const history = structuredClone(canonical.input.messages!);
+  const input: AGUIRunAgentInput = { threadId, runId, messages: [] };
+  const events: AGUIEvent[] = buildMessagesSnapshot(history, { threadId, runId }).map((event, scheduledMs) => ({
+    ...event, timestamp: epochMs + scheduledMs,
+    metadata: { clock: 'synthetic-canonical-history-restore-ms', epochMs, scheduledMs },
+  }));
+  return {
+    input, events,
+    fixture: { match: { predicate: exactInputPredicate(input) }, events: structuredClone(events) },
+    digests: { sourceSha256: canonical.digests.sourceSha256, eventsSha256: sha256(canonicalSerialize(events)), historySha256: sha256(canonicalSerialize(history)) },
+  };
+}
+
+/** Register owned restoration events and an empty-history predicate independent of returned diagnostics. */
+export function registerCanonicalHistoryRestoreFixture(mock: AGUIMock, source: unknown, identity: FixtureIdentity): CompiledCanonicalHistoryRestoreFixture {
+  const compiled = compileCanonicalHistoryRestoreFixture(source, identity);
   mock.addFixture({ match: { predicate: compiled.fixture.match.predicate! }, events: structuredClone(compiled.events) });
   return compiled;
 }

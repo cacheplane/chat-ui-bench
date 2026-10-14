@@ -2297,6 +2297,8 @@ test('genuine environment reads actual private Git state, typed CDP and original
 
 
 describe('isolated genuine filesystem capacity admission', () => {
+  // Includes filesystem fixture preparation before the unchanged 60s setup deadline starts.
+  const capacityWholeBodyMs = 120000;
   type CapacityState = {
     root?: string; output?: string; preparation?: Promise<void>; preparationSettled: boolean; abandoned: boolean;
     body?: Promise<void>; bodySettled: boolean;
@@ -2326,13 +2328,13 @@ describe('isolated genuine filesystem capacity admission', () => {
     const safe = current.preparationSettled && current.bodySettled && (!current.owner || current.underlyingSettled && disposed?.status === 'complete' && current.owner.canContinue);
     fileCase.resourceSafe = safe;
     const disposalFailure = selectPrimary(fileCase,[{outcome:outcomes[4],failures:current.owner?.failures ?? [],allowed:false}],[outcomes[0],outcomes[1],outcomes[5]]);
-    await preservePrimary(disposalFailure,fileCase,() => persistForensic(fileCase,safe ? 'settled' : 'unsafe', {test:capacityCaseName, allocation:{preparationHookMs:null, wholeBodyMs:60000, cleanupHookMs:10000, actualOwnerSetupMs:current.owner ? 60000 : 'N/A'}, root:current.root, output:current.output, localPaths:[...(fileCase.localPaths ?? [])], phases:current.phases, expectedCount:current.expectedCount, assets:current.assets, finalAnchor:current.finalAnchor, destinations:current.destinations, children:current.children, result:current.result ?? 'N/A', owner:current.owner ? 'created after actual pure preparation' : 'N/A', disposal:disposed ?? 'N/A', actualOwnershipSettled:current.owner ? true : 'N/A', canContinue:current.owner?.canContinue ?? 'N/A', primary:disposalFailure?.reason instanceof Error ? disposalFailure.reason.message : disposalFailure ? 'non-Error' : null, evidenceErrors:fileCase.evidenceErrors.map(row => row instanceof Error ? row.message : 'non-Error'), preparationSettled:current.preparationSettled, bodySettled:current.bodySettled, underlyingSettled:current.underlyingSettled, proofPassed:current.proofPassed, resourceSafe:safe, failures:current.owner?.failures ?? [], operations:outcomes.map(row => row.status === 'rejected' ? {status:row.status, reason:row.reason instanceof Error ? row.reason.message : 'non-Error rejection'} : {status:row.status})}));
+    await preservePrimary(disposalFailure,fileCase,() => persistForensic(fileCase,safe ? 'settled' : 'unsafe', {test:capacityCaseName, allocation:{preparationHookMs:null, wholeBodyMs:capacityWholeBodyMs, cleanupHookMs:10000, actualOwnerSetupMs:current.owner ? 60000 : 'N/A'}, root:current.root, output:current.output, localPaths:[...(fileCase.localPaths ?? [])], phases:current.phases, expectedCount:current.expectedCount, assets:current.assets, finalAnchor:current.finalAnchor, destinations:current.destinations, children:current.children, result:current.result ?? 'N/A', owner:current.owner ? 'created after actual pure preparation' : 'N/A', disposal:disposed ?? 'N/A', actualOwnershipSettled:current.owner ? true : 'N/A', canContinue:current.owner?.canContinue ?? 'N/A', primary:disposalFailure?.reason instanceof Error ? disposalFailure.reason.message : disposalFailure ? 'non-Error' : null, evidenceErrors:fileCase.evidenceErrors.map(row => row instanceof Error ? row.message : 'non-Error'), preparationSettled:current.preparationSettled, bodySettled:current.bodySettled, underlyingSettled:current.underlyingSettled, proofPassed:current.proofPassed, resourceSafe:safe, failures:current.owner?.failures ?? [], operations:outcomes.map(row => row.status === 'rejected' ? {status:row.status, reason:row.reason instanceof Error ? row.reason.message : 'non-Error rejection'} : {status:row.status})}));
     expect(safe).toBe(true); fileCase.safe = true;
     if (current.owner) expect(current.owner.failures).toEqual([expect.objectContaining({stage:'setup', message:'Comparison member capacity exceeded', resource:null})]);
     if (!current.proofPassed || !outcomes.every(row => row.status === 'fulfilled' || row === outcomes[2])) fileCase.retainPaths = true;
     })(); void fileCase.innerCleanup.catch(() => {}); await fileCase.innerCleanup;
   });
-  test(capacityCaseName, {timeout:60000}, async () => {
+  test(capacityCaseName, {timeout:capacityWholeBodyMs}, async () => {
     const fileCase = capturedFileCase();
     const current:CapacityState = {preparationSettled:false, bodySettled:false, abandoned:false, underlyingSettled:false, finalAnchor:false, destinations:0, children:0, proofPassed:false, phases:[], started:performance.now()};
     capacityCases.set(fileCase.task,current);
