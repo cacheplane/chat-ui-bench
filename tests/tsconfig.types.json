@@ -7,7 +7,9 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
   },
-  "include": ["fixtures/aimock.ts", "fixtures/aimock.test.ts", "fixtures/copilotkit-httpagent.ts", "fixtures/copilotkit-httpagent.test.ts", "type-tests/**/*.ts"]
+  "include": ["fixtures/aimock.ts", "fixtures/aimock.test.ts", "fixtures/copilotkit-httpagent.ts", "fixtures/copilotkit-httpagent.test.ts", "type-tests/**/*.ts", "support/**/*.ts", "hosted/**/*.ts", "../vitest.hosted-httpagent.config.ts"]
 }

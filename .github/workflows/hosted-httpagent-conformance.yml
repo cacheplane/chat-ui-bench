@@ -1,0 +1,77 @@
+name: Hosted HttpAgent conformance
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Reviewed same-source candidate (40 lowercase hexadecimal characters)
+        required: true
+        type: string
+      release_id:
+        description: Reviewed unused immutable hosted-httpagent release identity
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-httpagent-conformance
+  cancel-in-progress: false
+
+jobs:
+  conformance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: true
+      HOSTED_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      HOSTED_RELEASE_ID: ${{ inputs.release_id }}
+      HOSTED_RUNNER_MARKER: ubuntu-24.04-hosted-httpagent
+    steps:
+      - name: Check out exact released workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Provision native Node 24 source reader
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.20.0'
+
+      - name: Admit exact same-source immutable tag before dependencies
+        run: node tools/hosted-httpagent-admission.mjs --initialize-evidence
+
+      - name: Install locked dependencies with bounded original log
+        run: node tools/hosted-httpagent-step.mjs install
+
+      - name: Audit installed graph at high threshold
+        run: node tools/hosted-httpagent-step.mjs audit
+
+      - name: Build only contract declarations
+        run: node tools/hosted-httpagent-step.mjs contract
+
+      - name: Check strict public consumer and hosted source types
+        run: node tools/hosted-httpagent-step.mjs types
+
+      - name: Execute the one admitted eight-operation SDK matrix
+        timeout-minutes: 5
+        run: node tools/hosted-httpagent-step.mjs test
+
+      - name: Admit bounded actual file inventory before upload
+        id: artifacts
+        if: always()
+        timeout-minutes: 1
+        run: node tools/hosted-httpagent-admission.mjs --admit-artifacts
+
+      - name: Retain actual success or incomplete failure artifacts
+        if: always() && steps.artifacts.outcome == 'success'
+        timeout-minutes: 2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hosted-httpagent-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hosted-httpagent-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          retention-days: 7

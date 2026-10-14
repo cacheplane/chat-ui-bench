@@ -112,6 +112,68 @@ The [approved design](docs/superpowers/specs/2026-10-09-instrumentation-foundati
 sets the milestone boundaries. Reference calibration results are instrumentation
 checks and do not rank chat stacks.
 
+## Release-only direct HttpAgent transport preparation
+
+`tests/support/hosted-httpagent-contract.test.ts` checks inert admission, bounds,
+projection and ownership data without loading the SDK, AIMock, fixtures or allocating
+transport helper. Run those controls with
+`npm test -- tests/support/hosted-httpagent-contract.test.ts --no-color`.
+`npm run typecheck:fixtures` also checks the hosted matrix, helper, dedicated
+configuration and public consumer signatures with strict `noEmit`; it resolves
+installed types without executing their values. The consumer configuration retains
+`skipLibCheck` for dependency declarations.
+
+Default and browser test configurations explicitly exclude `tests/hosted/**`.
+The guarded `test:hosted:httpagent` script is reserved for a separately reviewed
+hosted release; do not invoke it locally, including to exercise a denial path.
+Its first guard reads actual inert `.ts` source using Node 24 native TypeScript
+stripping, before Vitest loading. The dedicated configuration admits before test
+discovery, and the module independently admits before dynamically loading the
+complete SDK/AIMock/fixture/allocating graph. No compiled guard or dependency
+loader substitutes for the native pre-dependency check.
+
+The manual-only `Hosted HttpAgent conformance` workflow uses Ubuntu 24.04, Node
+24.20.0, npm 11, pinned action revisions and the existing lockfile. A root-reviewed
+release supplies only `candidate_sha` and `release_id`; its unused immutable tag
+is `hosted-httpagent-${release_id}`. Checkout, trigger, workflow source and resolved
+tag commits must all equal the candidate, with exact full tag/workflow references
+and first attempt. Flags prevent accidental execution; they do not prove root
+authorization or historical single use. Root verifies the actual published source
+and remote immutable tag immediately before the one later dispatch. Never move,
+overwrite, reuse, retry or dispatch another attempt of that release.
+
+Actual hosted SDK qualification is pending. The prepared serial profile has eight
+HTTP operations: SDK restoration, same-agent continuation, deterministic protocol
+error, SDK content mismatch, SDK recognized metadata mismatch, raw wrong ID,
+settled-reset raw restoration miss and raw continuation miss. It uses H100/R6400,
+15-second operation and 10-second disposal limits, 512,000-byte bodies and 8 MiB
+retained capture. These are fixed liveness choices, not measured timing findings.
+Raw matcher failures are labeled separately from SDK evidence. Callback projections
+remain small; full wire/history oracles and actual raw publication live outside
+callbacks. SDK public promise disposition, finalization notification and idle state
+are distinct from harness-owned original/resource settlement. Boundary byte equality
+borrows captured chunks across arbitrary segmentation and hashes them incrementally;
+only the original semantic request and client wire response need joined copies.
+Raw-file and normal-receipt publication witnesses reuse one prepaid 64 KiB scratch
+buffer with serial no-follow regular-file reads, exact EOF/hash checks and observed
+original close. These observations occur outside the disposed transport horizon,
+within the same matrix deadline. Bounded terminal decoding retains its own charges.
+Public SDK observations do not prove
+inaccessible private SDK finalizer or cancellation promise completion.
+
+Success/failure artifacts retain initial incomplete workflow evidence, full normal
+observations and raw bytes, separate reduced terminal summaries, bounded command
+logs and actual exit status. A summary records its own publication as pending;
+the outside driver must await its original write and verify the actual artifacts.
+Missing artifacts, incomplete settlement, log overflow or hard termination remain
+failure. A shallow fixed-file inventory admits no symlinks or recursion and bounds
+all actual uploaded files together to 8 MiB. On inventory failure it retains the
+original files and bounded job diagnostics and denies upload; that failure never
+claims successful cleanup. A later passing run could qualify only the pinned direct
+Node/Linux AG-UI
+profile. React/provider/entitlement, browser origin/rendering, native closure,
+presentation timing, FPS and ranking remain deferred.
+
 ## Planned comparison adapters
 
 The shared version 2 workload contract and independent replay producer are
