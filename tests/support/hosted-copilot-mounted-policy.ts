@@ -140,7 +140,8 @@ export type GlobalFinal = Readonly<{ schemaVersion: 1; kind: 'global-final'; cas
 export type ClosureFacts = Readonly<{ kind: 'case-boundary'; caseNumber: 1 | 2; originalWitnesses: 19; nextCasePermitted: boolean }> |
   Readonly<{ kind: 'global-final'; cases: 2; caseOriginalWitnesses: 38; globalOriginalWitnesses: 10; availableStdio: number;
   applicationExit: Readonly<{ exitCode: number | null; signal: string | null }>; parentCoverage: 'spawn-complete'; applicationCoverage: 'post-bind-partial' }>;
-class Denied extends Error { constructor(readonly reason: PolicyReason, readonly status: 'invalid' | 'unavailable' = 'invalid') { super(reason); } }
+class Denied extends Error { readonly reason: PolicyReason; readonly status: 'invalid' | 'unavailable';
+  constructor(reason: PolicyReason, status: 'invalid' | 'unavailable' = 'invalid') { super(reason); this.reason = reason; this.status = status; } }
 const deny = (reason: PolicyReason, status: 'invalid' | 'unavailable' = 'invalid'): never => { throw new Denied(reason, status); };
 function freeze<T>(owned: T): T { if (typeof owned === 'object' && owned !== null) { for (const value of Object.values(owned)) freeze(value); Object.freeze(owned); } return owned; }
 function evaluate<F>(work: () => F): PolicyResult<F> {
