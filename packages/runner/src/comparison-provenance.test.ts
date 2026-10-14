@@ -82,7 +82,7 @@ const exactIdentityBoundaries = ['FD during copy','leaf between passes','ancesto
 const provenanceIntegrationControlMarginMs = 5000;
 const provenanceIntegrationBodyMs = COMPARISON_STAGE_BUDGETS.setup + COMPARISON_STAGE_BUDGETS.disposal + provenanceIntegrationControlMarginMs;
 const provenanceIntegrationCaseNames = new Set<string>([
-  'genuine current150 plan admits exact roles before the first destination failure',
+  'genuine current160 plan admits exact roles before the first destination failure',
   'registered session preserves actual member candidate on destination failure and new finalization writer persists pure partial snapshot',
   'actual source close rejection cannot publish a copied digest and independently completes the destination',
   'actual same-size source rejects pinned copy facts',
@@ -1436,7 +1436,7 @@ beforeEach(async ({task}) => {
   current.preparation = (async () => {
     mark('originalFixture entered');
     let fixtureRoot:string;
-    try {fixtureRoot = await originalFixture(!current.name.includes('current150'), path => {current.root = path; (fileCase.localPaths ??= new Set()).add(path); mark('physical root registered');}, mark, active);}
+    try {fixtureRoot = await originalFixture(!current.name.includes('current160'), path => {current.root = path; (fileCase.localPaths ??= new Set()).add(path); mark('physical root registered');}, mark, active);}
     finally {mark('originalFixture settled');}
     active(); root = fixtureRoot;
   if (current.name.startsWith('new genuine records cannot authorize unknown complete configuration ')) {
@@ -1615,7 +1615,7 @@ afterEach(async ({task}) => {
   if (current.diagnostic) fileCase.retainPaths = true;
   })(); void fileCase.innerCleanup.catch(() => {}); await fileCase.innerCleanup;
 });
-test('genuine current150 plan admits exact roles before the first destination failure', {timeout:provenanceIntegrationBodyMs}, async () => {
+test('genuine current160 plan admits exact roles before the first destination failure', {timeout:provenanceIntegrationBodyMs}, async () => {
   const output = await localOutput('comparison-full-plan-');
   const writer = await ComparisonArtifactWriter.create(output), owner = caseOwner();
   const build = adapterBuildSchema.parse(JSON.parse(await fs.readFile(join(root, 'apps/threadplane/.build-evidence.json'), 'utf8')));
@@ -1629,8 +1629,8 @@ test('genuine current150 plan admits exact roles before the first destination fa
   for (const [key, hash] of Object.entries(probe.compiledHashes).sort()) add('instrumentation-compiled-input', key, `instrumentation/compiled/${key}`, hash);
   for (const [key, hash] of Object.entries(build.assetHashes).sort()) add('served-asset', key, `provenance/assets/${key}`, hash);
   for (const key of [...new Set([...build.packages.map(row => row.resolutionPath!), probe.compiler.resolutionPath, probe.nativeCompiler.resolutionPath])].sort()) add('installed-package-metadata', key, `provenance/packages/${key}/package.json`);
-  expect(expected).toHaveLength(150);
-  expect(['build-record', 'instrumentation-build-record', 'build-source', 'instrumentation-source', 'instrumentation-compiled-input', 'served-asset', 'installed-package-metadata'].map(role => expected.filter(row => row.role === role).length)).toEqual([1, 1, 47, 31, 16, 11, 43]);
+  expect(expected).toHaveLength(160);
+  expect(['build-record', 'instrumentation-build-record', 'build-source', 'instrumentation-source', 'instrumentation-compiled-input', 'served-asset', 'installed-package-metadata'].map(role => expected.filter(row => row.role === role).length)).toEqual([1, 1, 47, 31, 16, 12, 52]);
   let session: import('./comparison-provenance.js').ComparisonProvenanceSession | undefined, disposed = false, streams = 0;
   try {
     const result = await owner.run('setup', async ownership => {
@@ -1646,7 +1646,7 @@ test('genuine current150 plan admits exact roles before the first destination fa
     const snapshot = session!.snapshotAcquisition(); expect(snapshot.acquisition.status).toBe('partial');
     expect(snapshot.acquisition.members.map(({role, key, path, originalSha256}) => ({role, key, path, ...(originalSha256 === undefined ? {} : {originalSha256})}))).toEqual(expected);
     expect(snapshot.acquisition.members.every(row => row.copied.status === 'unavailable')).toBe(true);
-    snapshot.acquisition.members.length = 0; expect(session!.snapshotAcquisition().acquisition.members).toHaveLength(150);
+    snapshot.acquisition.members.length = 0; expect(session!.snapshotAcquisition().acquisition.members).toHaveLength(160);
   } finally {if (!disposed) await firstLocalDisposal(owner); await owner.ownershipSettled; }
 });
 test('registered session preserves actual member candidate on destination failure and new finalization writer persists pure partial snapshot', {timeout:provenanceIntegrationBodyMs}, async () => {

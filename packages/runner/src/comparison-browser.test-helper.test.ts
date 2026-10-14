@@ -82,6 +82,60 @@ const source41 = [
   'packages/contract/tsconfig.types.json', 'packages/contract/type-tests/comparison-families.ts',
   'vitest.comparison.browser.config.ts', 'vitest.config.ts',
 ].sort();
+// Independent current Linux catalogue from the original failed-head build metadata.
+const expectedProductMetadata50 = [
+  "apps/threadplane/node_modules/@angular/build",
+  "apps/threadplane/node_modules/@angular/cli",
+  "apps/threadplane/node_modules/@angular/common",
+  "apps/threadplane/node_modules/@angular/compiler",
+  "apps/threadplane/node_modules/@angular/compiler-cli",
+  "apps/threadplane/node_modules/@angular/core",
+  "apps/threadplane/node_modules/@angular/platform-browser",
+  "apps/threadplane/node_modules/@angular/router",
+  "apps/threadplane/node_modules/@cacheplane/partial-json",
+  "apps/threadplane/node_modules/@cacheplane/partial-markdown",
+  "apps/threadplane/node_modules/@json-render/core",
+  "apps/threadplane/node_modules/@langchain/core",
+  "apps/threadplane/node_modules/@langchain/core/node_modules/langsmith",
+  "apps/threadplane/node_modules/@langchain/langgraph-sdk",
+  "apps/threadplane/node_modules/@langchain/langgraph-sdk/node_modules/p-queue",
+  "apps/threadplane/node_modules/@langchain/langgraph-sdk/node_modules/p-queue/node_modules/p-timeout",
+  "apps/threadplane/node_modules/@threadplane/a2ui",
+  "apps/threadplane/node_modules/@threadplane/chat",
+  "apps/threadplane/node_modules/@threadplane/langgraph",
+  "apps/threadplane/node_modules/@threadplane/render",
+  "apps/threadplane/node_modules/@threadplane/telemetry",
+  "apps/threadplane/node_modules/marked",
+  "apps/threadplane/node_modules/rxjs",
+  "apps/threadplane/node_modules/typescript",
+  "apps/threadplane/node_modules/vitest",
+  "node_modules/@cfworker/json-schema",
+  "node_modules/@langchain/protocol",
+  "node_modules/@opentelemetry/api",
+  "node_modules/@standard-schema/spec",
+  "node_modules/@types/json-schema",
+  "node_modules/base64-js",
+  "node_modules/commander",
+  "node_modules/eventemitter3",
+  "node_modules/is-network-error",
+  "node_modules/js-tiktoken",
+  "node_modules/katex",
+  "node_modules/mustache",
+  "node_modules/openai",
+  "node_modules/p-finally",
+  "node_modules/p-queue",
+  "node_modules/p-queue/node_modules/eventemitter3",
+  "node_modules/p-retry",
+  "node_modules/p-timeout",
+  "node_modules/react",
+  "node_modules/react-dom",
+  "node_modules/scheduler",
+  "node_modules/tslib",
+  "node_modules/undici",
+  "node_modules/ws",
+  "node_modules/zod"
+] as const;
+const expectedMetadata52 = [...expectedProductMetadata50.map(path => path + "/package.json"), "node_modules/typescript/package.json", "node_modules/@typescript/typescript-linux-x64/package.json"].sort();
 async function physicalFiles(root: string, relative: string): Promise<string[]> {
   const result: string[] = [];
   for (const entry of await readdir(join(root, relative), {withFileTypes: true})) {
@@ -113,11 +167,13 @@ async function fixture() {
   probe.nativeCompiler = {...probe.nativeCompiler, name: '@typescript/typescript-linux-x64', resolutionPath: nativePath, executablePath: nativePath + '/lib/tsc', platform: 'linux', architecture: 'x64', integrity: nativeLock.integrity, version: nativeLock.version};
   const output126 = [...await physicalFiles(repository, 'packages/contract/dist'), ...await physicalFiles(repository, 'packages/runner/dist')].sort();
   expect(output126).toHaveLength(126);
-  const metadata43 = [...new Set([...build.packages, probe.compiler, probe.nativeCompiler].map(pkg => pkg.resolutionPath + '/package.json'))].sort();
-  expect(metadata43).toHaveLength(43);
+  expect(build.packages.map(pkg => pkg.resolutionPath).sort()).toEqual(expectedProductMetadata50);
+  expect(Object.keys(build.assetHashes)).toHaveLength(12);
+  const metadata52 = [...new Set([...build.packages, probe.compiler, probe.nativeCompiler].map(pkg => pkg.resolutionPath + '/package.json'))].sort();
+  expect(metadata52).toEqual(expectedMetadata52);
   const assets = Object.keys(build.assetHashes).map(key => 'apps/threadplane/dist/' + key);
   const raw2 = ['apps/threadplane/.build-evidence.json', 'packages/runner/.comparison-build-evidence.json'];
-  const union = [...new Set([...source41, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output126, ...metadata43, ...assets, ...raw2])].sort();
+  const union = [...new Set([...source41, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output126, ...metadata52, ...assets, ...raw2])].sort();
   for (const key of union) {
     if (raw2.includes(key) || key === nativePath + '/package.json') continue;
     await mkdir(dirname(join(workspace, key)), {recursive: true});
@@ -219,15 +275,16 @@ test('closed original snapshot retains actual copy bytes and controlled Linux me
   const f = await fixture(), receipt = await writer()(f.root, f); expect(receipt).not.toBeNull();
   const bytes = await readFile(receipt!.path), manifest = JSON.parse(bytes.toString());
   expect(bytes.length).toBe(receipt!.byteLength); expect(sha256(bytes)).toBe(receipt!.sha256);
-  expect(manifest.format).toBe('comparison-ci-original-snapshot-v2');
-  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source41).toEqual(source41); expect(manifest.inventories.output126).toHaveLength(126); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata43).toHaveLength(43);
+  expect(manifest.format).toBe('comparison-ci-original-snapshot-v3');
+  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source41).toEqual(source41); expect(manifest.inventories.output126).toHaveLength(126); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata52).toEqual(expectedMetadata52);
   for (const row of manifest.records) {expect((await readFile(join(receipt!.directory, row.copied.path))).equals(await readFile(row.originalPath))).toBe(true); expect(row.before).toEqual(row.after); expect(row.copied.fact).toEqual(row.before.fact);}
   expect(receipt!.lifetime.manifest.fact).toEqual({byteLength: receipt!.byteLength, sha256: receipt!.sha256});
   expect(receipt!.lifetime.directories.length).toBeGreaterThan(0);
   for (const row of receipt!.lifetime.directories) {expect(row.identity.dev).toBe(row.created.dev); expect(row.identity.ino).toBe(row.created.ino); expect((await readdir(join(receipt!.directory, row.path))).sort()).toEqual(row.members);}
   expect(receipt!.work.readBytes).toBeGreaterThan(manifest.work.beforeManifestReadBytes);
   expect(receipt!.work.writtenBytes).toBe(manifest.originalBytes + receipt!.byteLength);
-  expect(receipt!.work.jsonFiles).toBe(59);
+  expect(receipt!.work.jsonFiles).toBe(68);
+  expect(manifest.limits).toMatchObject({fileBytes: 1024 * 1024, lockBytes: 2 * 1024 * 1024, originalBytes: 8 * 1024 * 1024, files: 311, jsonFiles: 69, manifestBytes: 23348128, readBytes: 170428224, writeBytes: 31736736});
 });
 test.each(['read', 'close'] as const)('shared ancestor sibling churn after %s preserves the original snapshot', async seam => {
   const f = await fixture(), ancestor = dirname(f.workspace), before = await stat(ancestor, {bigint: true});
@@ -348,12 +405,35 @@ test.each([0, 1])('end-to-end file cap exact plus %i uses an unhashed maintained
   if (excess) await expect(writer()(f.root, f)).rejects.toThrow('pre-read file cap');
   else {const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8')); expect(manifest.records.find((row: {key: string}) => row.key === key).before.fact.byteLength).toBe(1024 * 1024);}
 });
+test.each([0, 1])('exact original lock cap 2MiB plus %i preserves every locked identity', async excess => {
+  const f = await fixture(), path = join(f.workspace, 'package-lock.json');
+  const original = (await readFile(path, 'utf8')).trimEnd();
+  const fixedBytes = Buffer.byteLength(original.slice(0, -1) + ',"controlledExtension":""}\n');
+  const target = 2 * 1024 * 1024 + excess;
+  await lockExtension(f, JSON.stringify('x'.repeat(target - fixedBytes)));
+  const bytes = await readFile(path); expect(bytes.length).toBe(target);
+  if (excess) await expect(writer()(f.root, f)).rejects.toThrow('regular bounded original');
+  else {
+    const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8'));
+    const row = manifest.records.find((entry: {key: string}) => entry.key === 'package-lock.json');
+    expect(row.before.fact).toEqual({byteLength: target, sha256: sha256(bytes)});
+    expect(row.after).toEqual(row.before); expect(row.copied.fact).toEqual(row.before.fact);
+    expect(await readFile(join(receipt!.directory, row.copied.path))).toEqual(bytes);
+  }
+});
+test('foreign package-lock basename retains the ordinary 1MiB policy', () => {
+  const foreign = 'apps/threadplane/package-lock.json';
+  expect(helper.comparisonCiSnapshotFileCap('package-lock.json')).toBe(2 * 1024 * 1024);
+  expect(helper.comparisonCiSnapshotFileCap(foreign)).toBe(1024 * 1024);
+  expect(() => helper.comparisonCiSnapshotBudget(0, 1024 * 1024 + 1, helper.comparisonCiSnapshotFileCap(foreign), 'foreign lock cap')).toThrow('foreign lock cap');
+  expect(() => helper.comparisonCiSnapshotFileCap('../package-lock.json')).toThrow('normalized relative key');
+});
 test.each([0, 1])('end-to-end union cap exact plus %i preserves every hashed record', async excess => {
   const f = await fixture(); await padUnion(f, 8 * 1024 * 1024 + excess);
   if (excess) await expect(writer()(f.root, f)).rejects.toThrow('pre-read aggregate cap');
   else {const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8')); expect(manifest.originalBytes).toBe(8 * 1024 * 1024);}
 });
-test.each([['manifest', 22150528], ['read work', 157547264], ['write work', 30539136]])('budget predicate %s exact and plus one; not a full-writer ceiling-reach claim', (_label, maximum) => {
+test.each([['manifest', 23348128], ['read work', 170428224], ['write work', 31736736]])('budget predicate %s exact and plus one; not a full-writer ceiling-reach claim', (_label, maximum) => {
   const cap = Number(maximum), budget = helper.comparisonCiSnapshotBudget;
   expect(budget(cap - 1, 1, cap, 'controlled cap')).toBe(cap); expect(() => budget(cap - 1, 2, cap, 'controlled cap')).toThrow('controlled cap');
 });
@@ -364,6 +444,15 @@ test.each([-1, NaN, Infinity, 0.5, Number.MAX_SAFE_INTEGER + 1])('budget predica
 test('budget predicate rejects safe operands whose sum would overflow', () => {expect(() => helper.comparisonCiSnapshotBudget(Number.MAX_SAFE_INTEGER, 1, Number.MAX_SAFE_INTEGER, 'overflow')).toThrow('overflow');});
 test('changed original build source fails its actual digest', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'apps/threadplane/src/app.ts'), 'changed'); await expect(writer()(f.root, f)).rejects.toThrow('original digest');});
 test('Linux compiler integrity remains bound to the actual lock row', async () => {const f = await fixture(), path = join(f.workspace, 'packages/runner/.comparison-build-evidence.json'), probe = JSON.parse(await readFile(path, 'utf8')); probe.nativeCompiler.integrity = 'sha512-incorrect'; await writeFile(path, JSON.stringify(probe) + '\n'); await expect(writer()(f.root, f)).rejects.toThrow('locked package');});
+test.each(['missing', 'extra', 'relocated'] as const)('current physical metadata %s contradicts the independently reviewed membership', async change => {
+  const f = await fixture(), path = join(f.workspace, 'apps/threadplane/.build-evidence.json');
+  const build = JSON.parse(await readFile(path, 'utf8'));
+  if (change === 'missing') build.packages.pop();
+  else if (change === 'extra') build.packages.push({...build.packages[0], resolutionPath: 'node_modules/unreviewed-current-package'});
+  else build.packages[0].resolutionPath = 'node_modules/unreviewed-current-package';
+  await writeFile(path, JSON.stringify(build) + '\n');
+  await expect(writer()(f.root, f)).rejects.toThrow('product metadata membership');
+});
 test('duplicate decoded metadata keys fail bounded parsing', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'package-lock.json'), '{"packages":{},"\\u0070ackages":{}}'); await expect(writer()(f.root, f)).rejects.toThrow('duplicate key');});
 test('metadata depth fails bounded parsing', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'package-lock.json'), '{"packages":{},"nested":' + '['.repeat(34) + 'null' + ']'.repeat(34) + '}'); await expect(writer()(f.root, f)).rejects.toThrow('depth/AWU');});
 test.each([32, 33])('metadata exact depth %i retains valid lock packages and matching source records', async depth => {
