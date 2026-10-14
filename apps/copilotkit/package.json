@@ -6,7 +6,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:controls": "tsc -p tsconfig.controls.json --noEmit",
-    "typecheck:vendor": "tsc -p tsconfig.vendor.json --noEmit"
+    "typecheck:vendor": "tsc -p tsconfig.vendor.json --noEmit",
+    "build:hosted": "vite build --config vite.config.ts"
   },
   "dependencies": {
     "@copilotkit/react-core": "1.78.0",
