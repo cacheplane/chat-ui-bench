@@ -13,7 +13,8 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && npm run typecheck:fixtures",
+    "typecheck:fixtures": "tsc -p tests/tsconfig.types.json",
     "build": "npm run build --workspace @chat-ui-bench/contract && npm run build --workspace @chat-ui-bench/producer && npm run build --workspace @chat-ui-bench/reference && npm run build --workspace @chat-ui-bench/analyzer && npm run build --workspace @chat-ui-bench/runner && npm run build --workspace @chat-ui-bench/threadplane",
     "test:browser": "npm run build && vitest run --config vitest.browser.config.ts",
     "bench:calibrate": "node packages/runner/dist/cli.js",
@@ -24,6 +25,7 @@
     "test:browser:comparison": "vitest run --config vitest.comparison.browser.config.ts --no-color"
   },
   "devDependencies": {
+    "@ag-ui/client": "1.0.2",
     "@copilotkit/aimock": "1.45.1",
     "@types/node": "24.10.1",
     "playwright": "1.64.0",
