@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {lstatSync,readFileSync,realpathSync,writeFileSync} from 'node:fs';
 import {join,relative,resolve,isAbsolute} from 'node:path';
 import {assertDenseEntries,ordinaryPath,LIMITS} from './hosted-copilot-contract.ts';
-import {assertMappings,assertReferenceCount,type ModuleMapping} from './hosted-copilot-production-policy.ts';
+import {assertMappings,assertModuleOwnershipId,assertReferenceCount,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {readIntegratedAdmission} from './hosted-copilot-context.ts';
 export interface HookFile {contentSha256?:string|undefined;fileName:string;kind:'chunk'|'asset';imports:readonly string[];dynamicImports:readonly string[];moduleIds:readonly string[];originalNames:readonly string[];facadeModuleId:string|null}
 export function projectHookFacts(input:readonly HookFile[],modules:readonly ModuleMapping[]) {
@@ -12,7 +12,8 @@ export function projectHookFacts(input:readonly HookFile[],modules:readonly Modu
  for(const file of input) {
   if(!ordinaryPath(file.fileName)||file.fileName.endsWith('.map')||names.has(file.fileName)||!['chunk','asset'].includes(file.kind)) throw new Error('Output file ownership unavailable');names.add(file.fileName);
   if(typeof file.contentSha256!=='string'||file.contentSha256.length!==64||! /^[a-f0-9]+$/.test(file.contentSha256)) throw new Error('Captured hook content hash unavailable');
-  for(const entries of [file.imports,file.dynamicImports,file.moduleIds,file.originalNames]) assertDenseEntries(entries,4096,true);
+  assertDenseEntries(file.moduleIds,MODULE_OWNERSHIP_LIMIT,true);
+  for(const entries of [file.imports,file.dynamicImports,file.originalNames]) assertDenseEntries(entries,4096,true);
   referenceCount=assertReferenceCount([referenceCount,file.imports.length,file.dynamicImports.length]);
  }
  const files=input.map(file=> {
@@ -31,7 +32,7 @@ export function createProductionBuildPlugin():Plugin {
    if(called) throw new Error('Production mapping hook is once-only');called=true;
    const modules:ModuleMapping[]=[];
    for(const id of this.getModuleIds()) {
-    if(modules.length>=4096||id.length>4096) throw new Error('Module metadata bound');
+    assertModuleOwnershipId(id,modules.length);
     const info=this.getModuleInfo(id);if(!info||info.id!==id||typeof info.code!=='string') throw new Error('Unmapped/external/not-ready module source');
     if(id.startsWith('\0')||id.startsWith('virtual:')) modules.push({id,kind:'virtual',external:false});
     else {

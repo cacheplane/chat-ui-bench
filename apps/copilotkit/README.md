@@ -183,6 +183,20 @@ complete upload/qualification. Original full audit and vendor declaration exit 1
 remain recorded failures even when their exact reviewed continuation predicates
 allow later production steps. Owned helper types retain full declaration checking.
 
+The first hosted production build, run 38644135221 at source
+`534e72ed0f499b532ae7d99e3ced5cff5055e9c7`, failed after Vite reported
+9,212 transformed modules. The owned mapping hook reported its shared module
+count/ID-length bound; the original log does not identify which branch failed.
+The next prepared release uses the fixed identity
+`hosted-copilot-react-production-build-v2` and bounds module ownership records
+and per-chunk module IDs separately at 16,384. ID strings and resource references
+retain their 4,096 limits, mapping evidence stays within 4 MiB, and the shared
+artifact bound stays unchanged. Count and ID failures now have distinct bounded
+messages. The owned upload includes hidden files so the mandatory Vite manifest
+can be retained; its actual presence and byte identity still require artifact
+verification. The first failure is preserved, and this preparation does not
+establish that the second build or static inspection will succeed.
+
 This checkpoint has source compilation and inert supplied-data checks only. No
 local Vite/config/plugin/native parser, SDK, browser or provider acquisition was
 executed. The hosted build/static artifact still requires a separate dispatch gate
