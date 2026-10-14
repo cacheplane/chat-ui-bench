@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/controls.ts",
+    "../../tests/copilotkit-controls.test.ts"
+  ],
+  "compilerOptions": {
+    "skipLibCheck": false
+  }
+}
