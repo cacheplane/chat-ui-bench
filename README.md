@@ -142,7 +142,10 @@ authorization or historical single use. Root verifies the actual published sourc
 and remote immutable tag immediately before the one later dispatch. Never move,
 overwrite, reuse, retry or dispatch another attempt of that release.
 
-Actual hosted SDK qualification is pending. The prepared serial profile has eight
+The [direct HttpAgent transport prerelease](https://github.com/cacheplane/chat-ui-bench/releases/tag/hosted-httpagent-direct-agui-h100-r6400-v1)
+qualifies the exercised public AG-UI HttpAgent 1.0.2 transport with AIMock 1.45.1
+on Node 24.20.0 and hosted Ubuntu 24.04. Mounted CopilotKit React, browser geometry,
+FPS and private SDK finalizer settlement remain unqualified. Its serial profile has eight
 HTTP operations: SDK restoration, same-agent continuation, deterministic protocol
 error, SDK content mismatch, SDK recognized metadata mismatch, raw wrong ID,
 settled-reset raw restoration miss and raw continuation miss. It uses H100/R6400,

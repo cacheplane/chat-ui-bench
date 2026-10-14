@@ -31,7 +31,7 @@ resolves within this application workspace; other dependencies may be hoisted.
 Physical resolution and inherited lock changes must be reviewed with any later
 dependency remediation. This is not a production asset or executed import closure.
 
-The root-reviewed exact lock has SHA-256
+The original compile-only checkpoint lock had SHA-256
 `f816e3d6d9321f044764f2913e46f0dc975c0f76afa3e1f852aa18bc7c9de237`.
 A fresh `npm ci --ignore-scripts --no-audit --no-fund` completed successfully
 without changing that lock or any of the eight package manifests at that adoption
@@ -153,3 +153,38 @@ separate concrete reviewed releases.
 No React mount, runtime restoration, virtualization, production build, native
 geometry, browser conformance, timed workload, FPS or ranking is established by
 this checkpoint. Registry/profile integration remains deferred.
+
+## Prepared hosted production/static source
+
+`build:hosted` and `hosted-copilot-production.yml` prepare one separately reviewed
+exact-source hosted release. The source guard requires the fixed existing tag,
+actual Git/workflow source, first attempt and observed GitHub provider history
+before installing locked dependencies or loading Vite/configuration. Provider
+history and release observations have bounded pagination, explicit draft visibility
+and acquisition-window limits; they supply no atomic lease against later activity.
+The root-reviewed original metadata acceptance added only direct development
+parents for parse5 7.3.0, Rolldown 1.2.13 and LightningCSS 1.33.0. All 2,060 non-root
+lock records remain unchanged; npm sorted only the new parent keys. The accepted
+current lock SHA is `c9c4138247c23c593ceb5bd9f5275b59962aad0f017bcbc33dc78bcec3545a56`.
+
+The prepared builder keeps the real default HTML/React/chat/CSS and creates a
+minified production bundle without source maps. Public build mappings, emitted
+physical byte hashes and actual HTML/JS/CSS parsers must agree. Raw embedded
+checkbox SVG/CSS bytes are retained; only the exact reviewed decoded SVG identity
+is admitted. Literal import-meta asset URLs are supported; other URL constructors
+and arbitrary endpoint/eval/fetch strings remain unexecuted runtime graph gaps.
+Computed import-meta asset forms and unsupported resource syntax deny static
+coverage. Opaque binary image/font files carry byte identity only.
+
+Artifacts share a 128-file/32 MiB bound and references count every occurrence
+before deduplication within 4,096. Original process close, output EOF and file
+retention are separate from timers/signals. Overflow or incomplete retention denies
+complete upload/qualification. Original full audit and vendor declaration exit 1
+remain recorded failures even when their exact reviewed continuation predicates
+allow later production steps. Owned helper types retain full declaration checking.
+
+This checkpoint has source compilation and inert supplied-data checks only. No
+local Vite/config/plugin/native parser, SDK, browser or provider acquisition was
+executed. The hosted build/static artifact still requires a separate dispatch gate
+and original root/peer verification. Actual browser requests, telemetry, mounted
+H100/R6400, store/lifecycle/geometry, FPS and ranking remain pending separate gates.
