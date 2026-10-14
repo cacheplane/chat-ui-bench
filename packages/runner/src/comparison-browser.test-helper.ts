@@ -893,9 +893,9 @@ const CI_SNAPSHOT_NAMES={
     "apps/threadplane/node_modules/@threadplane/telemetry",
     "apps/threadplane/node_modules/marked",
     "apps/threadplane/node_modules/rxjs",
-    "apps/threadplane/node_modules/tslib",
     "apps/threadplane/node_modules/typescript",
     "apps/threadplane/node_modules/vitest",
+    "node_modules/tslib",
     "node_modules/zod"
   ],
   "source41": [
