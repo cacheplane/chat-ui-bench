@@ -170,6 +170,22 @@ canonical compiler's safe epoch + 10000 bound. Digests cover source, restoration
 events, and ordered projected history. These transport fixtures do not establish
 SDK connection or UI lifecycle conformance; those checks remain separate.
 
+`tests/fixtures/copilotkit-httpagent.ts` provides pure configuration checked
+against the public `@ag-ui/client` 1.0.2 types used by CopilotKit 1.78.0. It admits
+one owned canonical source, requires a shared thread and distinct restoration
+and continuation runs, and returns an empty constructor history, separate run
+parameters, complete projected expected history, and copied digests. Its
+nonblank endpoint string is preserved as data; it does not establish URL safety
+or request authorization. No SDK is constructed or executed by this helper.
+These checks establish consumer configuration compatibility, not SDK history
+restoration, transport, React, or performance conformance.
+
+After building, run `npm run typecheck:fixtures` for the strict compile-only
+public-type controls and AIMock/helper files; root `npm run typecheck` includes
+this check after workspace typechecking. Vendor declaration bodies retain
+`skipLibCheck`; consumer usage is checked. Run the pure helper tests with
+`npm test -- tests/fixtures/copilotkit-httpagent.test.ts`.
+
 The Threadplane Angular custom-transport profile is implemented with pinned
 `@threadplane/*` 0.3.2 and Angular 21.2.25. It uses the published packages and a
 local deterministic SSE replay transport. This profile is distinct from a

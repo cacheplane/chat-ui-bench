@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["fixtures/aimock.ts", "fixtures/aimock.test.ts", "fixtures/copilotkit-httpagent.ts", "fixtures/copilotkit-httpagent.test.ts", "type-tests/**/*.ts"]
+}
