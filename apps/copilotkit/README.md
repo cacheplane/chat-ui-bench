@@ -451,10 +451,22 @@ generic `AST traversal bound` error. The failing file, traversal phase and wheth
 depth or visits caused the refusal remain unknown. No STATIC, runtime or FPS
 outcome is qualified.
 
-The fixed identity `hosted-copilot-react-production-build-v10` adds diagnostics
-only: the existing AST traversal refusal can report a bounded source label,
-traversal phase, depth-or-visits reason, depth, shared visited count, safe node type
-and parser offsets. It retains the original prefix if projection fails, without
-expression text or identifier names. The depth and visit limits, traversal order,
-shared counter and first-refusal behavior remain unchanged. This is no traversal
-fix or performance/FPS claim; fresh admitted evidence is still required.
+The original V10 run `38817154354`, source
+`f4032ab3e518c112c87b9f9b5baaa35c4cd0824c`, artifact `12012015026`, built
+successfully. Its inspector then refused at `assets/index-FC4hQth_.js` with
+`AST traversal bound`: resource-walk, visits, depth7, visited500001,
+TemplateElement span1681754..1681757. The shared visited count includes resource
+walk and import-meta probe work; their composition remains unknown. The cutoff
+does not establish a unique-node count, remaining work or the cause of excess
+work. No STATIC, runtime or FPS outcome is qualified.
+
+The fixed identity `hosted-copilot-react-production-build-v11` adds diagnostic
+composition fields only: `resourcePops`, `probePops` and `probeCalls`. Pops include
+the rejected item and count work occurrences; probe calls count actual calls,
+including repeated arguments. The existing bounded source label, phase, reason,
+depth, shared visited count, safe node type and parser offsets remain. Projection
+failure retains the original prefix without expression text or identifier names.
+The depth and visit limits, traversal order, shared counter and first-refusal
+behavior remain unchanged. V11 composition and its hosted outcome remain unknown
+until fresh admitted evidence; this change makes no traversal fix or performance
+claim.
