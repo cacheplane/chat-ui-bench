@@ -98,3 +98,18 @@ describe('original file closure and full audit counts',()=>{
  it('validates full audit independently before the later audit-high step',()=>{expect(()=>assertFullAudit(original(1),{info:0,low:9,moderate:0,high:0,critical:0,total:9})).not.toThrow();expect(()=>assertFullAudit(original(1),{info:0,low:9,moderate:0,high:0,critical:0,total:10})).toThrow();});
  it.each([{info:1,total:10},{info:0,total:10}])('denies changed original full audit info or total %j',change=>expect(()=>assertExpectedAudit(original(1),original(0),{low:9,moderate:0,high:0,critical:0,...change})).toThrow());
 });
+
+describe('production output capacity v3 namespace and manifest',()=>{
+ const names=(count:number)=>Array.from({length:count},(_,i)=>`assets/${i}.js`);
+ const records=(count:number):policy.ManifestRecord[]=>Array.from({length:count},(_,i)=>({key:`key-${i}`,file:`assets/${i}.js`,imports:[],dynamicImports:[],css:[],assets:[]}));
+ const normalize=(from:string,raw:string,files:string[])=>policy.normalizeProductionReference(from,raw,files);
+ const manifest=(rows:ReturnType<typeof records>,files:string[])=>policy.assertProductionManifest(rows,files);
+ it('resolves target inside129 names while generic namespace remains128',()=>{expect(normalize('assets/0.js','./128.js',names(129)).target).toBe('assets/128.js');expect(()=>normalizeReference('assets/0.js','./128.js',names(129))).toThrow();});
+ it('admits129 manifest rows while generic rows remain128',()=>{expect(manifest(records(129),names(129)).referenceCount).toBe(129);expect(()=>assertManifest(records(129),names(129))).toThrow();});
+ it('bounds production names1025 and rejects1026 before reading elements',()=>{expect(normalize('assets/0.js','./1024.js',names(1025)).target).toBe('assets/1024.js');const input=names(1026);let reads=0;Object.defineProperty(input,0,{get(){reads++;throw Error('namespace read');}});expect(()=>normalize('assets/0.js','./1.js',input)).toThrow('production-output-files observed=1026 limit=1025');expect(reads).toBe(0);});
+ it('bounds manifest rows1024 and rejects1025 before reading elements',()=>{expect(manifest(records(1024),names(1025)).referenceCount).toBe(1024);const rows=records(1025);let reads=0;Object.defineProperty(rows,0,{get(){reads++;throw Error('manifest read');}});expect(()=>manifest(rows,names(1025))).toThrow('production-manifest-records observed=1025 limit=1024');expect(reads).toBe(0);});
+ it('refuses sparse production rows and names within expanded bounds',()=>{const rows=records(129);delete rows[64];expect(()=>manifest(rows,names(129))).toThrow('Sparse');const files=names(129);delete files[64];expect(()=>normalize('assets/0.js','./1.js',files)).toThrow('Sparse');});
+ it('preserves external query encoded traversal and unresolved denial',()=>{for(const raw of ['https://remote/a.js','./1.js?x','./%2e%2e/a.js','./missing.js'])expect(()=>normalize('assets/0.js',raw,names(129))).toThrow();});
+ it('preserves duplicate owners and unresolved manifest imports',()=>{expect(()=>manifest([records(1)[0]!,records(1)[0]!],names(129))).toThrow();expect(()=>manifest([{...records(1)[0]!,imports:['missing']}],names(129))).toThrow();});
+ it('preserves4096 occurrence counting including owner rows',()=>{const rows=records(1024).map(value=>({...value,assets:Array(3).fill('assets/0.js')}));expect(policy.assertProductionManifest(rows,names(1025)).referenceCount).toBe(4096);rows[0]!.assets.push('assets/0.js');expect(()=>policy.assertProductionManifest(rows,names(1025))).toThrow('Reference occurrence overflow');});
+});

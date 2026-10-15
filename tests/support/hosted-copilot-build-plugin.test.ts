@@ -31,3 +31,13 @@ describe('original physical module path metadata',()=>{
 describe('hook content bytes stay linked to final physical inventory',()=>{
  it('denies missing captured content hash',()=>expect(()=>projectHookFacts([{...row,contentSha256:undefined}],[module])).toThrow());
 });
+
+describe('production output capacity v3 hook rows',()=>{
+ const outputs=(count:number)=>Array.from({length:count},(_,i)=>({...row,fileName:`assets/${i}.js`,moduleIds:[],facadeModuleId:null}));
+ it('retains129 original chunk and asset rows',()=>{const facts=projectHookFacts(outputs(129),[]);expect(facts.files).toHaveLength(129);expect(facts.qualification).toBe(false);});
+ it('admits1024 output rows',()=>expect(projectHookFacts(outputs(1024),[]).files).toHaveLength(1024));
+ it('rejects1025 rows before projecting payload or reading elements',()=>{const input=outputs(1025);let reads=0;Object.defineProperty(input,0,{get(){reads++;throw Error('hook payload read');}});expect(()=>projectHookFacts(input,[])).toThrow('production-hook-files observed=1025 limit=1024');expect(reads).toBe(0);});
+ it('rejects sparse rows inside expanded capacity',()=>{const input=outputs(129);delete input[64];expect(()=>projectHookFacts(input,[])).toThrow('Sparse');});
+ it('preserves unknown-reference and source-map refusals at larger capacity',()=>{const input=outputs(129);input[0]!.imports=['missing.js'];expect(()=>projectHookFacts(input,[])).toThrow();input[0]!.imports=[];input[0]!.fileName='main.js.map';expect(()=>projectHookFacts(input,[])).toThrow();});
+ it('preserves4096 reference cap',()=>{const input=outputs(129);input[0]!.imports=Array(2048).fill(input[0]!.fileName);input[0]!.dynamicImports=Array(2049).fill(input[0]!.fileName);expect(()=>projectHookFacts(input,[])).toThrow('Reference occurrence overflow');});
+});

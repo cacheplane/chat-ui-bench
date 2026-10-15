@@ -76,3 +76,24 @@ describe('sparse public array input denial',()=>{
  it('denies middle parsed reference hole',()=>{const values=[{from:'assets/main.js',target:'assets/main.js'},{from:'assets/main.js',target:'assets/main.js'}];delete values[0];expect(()=>assertParsedAssetReferences({parserComplete:true,references:values},[file()])).toThrow('Sparse');});
  it('permits an explicitly empty parsed reference list',()=>expect(assertParsedAssetReferences({parserComplete:true,references:[]},[file()]).referenceCount).toBe(0));
 });
+
+import * as productionContract from './hosted-copilot-contract.ts';
+describe('production output capacity v3 fixed file profiles',()=>{
+ const facts=(count:number)=>Array.from({length:count},(_,i)=>({...file(),path:`assets/${i}.js`,bytes:0}));
+ const output=(values:ReturnType<typeof facts>)=>productionContract.assertProductionOutputInventory(values);
+ const artifact=(values:ReturnType<typeof facts>)=>productionContract.assertProductionArtifactInventory(values);
+ it('admits129 output files while generic129 stays denied',()=>{expect(output(facts(129)).files).toHaveLength(129);expect(()=>assertInventory(facts(129))).toThrow();});
+ it('admits129 artifact facts without widening generic inventory',()=>{expect(artifact(facts(129)).files).toHaveLength(129);expect(()=>assertInventory(facts(129))).toThrow();});
+ it('exposes immutable fixed domain counts',()=>{expect(productionContract.PRODUCTION_FILE_LIMITS).toEqual({hookFiles:1024,outputFiles:1025,manifestRecords:1024,artifactFiles:1152,visitedEntries:4096});expect(Object.isFrozen(productionContract.PRODUCTION_FILE_LIMITS)).toBe(true);expect(productionContract.LIMITS.files).toBe(128);});
+ it('admits1025 output files and refuses1026 with observed count',()=>{expect(output(facts(1025)).files).toHaveLength(1025);expect(()=>output(facts(1026))).toThrow('production-output-files observed=1026 limit=1025');});
+ it('admits1152 artifact facts and refuses1153 with observed count',()=>{expect(artifact(facts(1152)).files).toHaveLength(1152);expect(()=>artifact(facts(1153))).toThrow('production-artifact-files observed=1153 limit=1152');});
+ it('checks production output length before element traversal',()=>{const values=facts(1026);let reads=0;Object.defineProperty(values,0,{get(){reads++;throw Error('element read');}});expect(()=>output(values)).toThrow('production-output-files observed=1026 limit=1025');expect(reads).toBe(0);});
+ it('checks production artifact length before element traversal',()=>{const values=facts(1153);let reads=0;Object.defineProperty(values,0,{get(){reads++;throw Error('element read');}});expect(()=>artifact(values)).toThrow('production-artifact-files observed=1153 limit=1152');expect(reads).toBe(0);});
+ it('refuses sparse entries within expanded output range',()=>{const values=facts(129);delete values[64];expect(()=>output(values)).toThrow('Sparse');});
+ it('retains duplicate path and unsafe bytes denial',()=>{expect(()=>output([file(),file()])).toThrow();expect(()=>artifact([{...file(),bytes:Number.MAX_SAFE_INTEGER+1}])).toThrow();});
+ it('bounds observed traversal4096 and refuses next visited entry4097',()=>{expect(()=>productionContract.assertProductionCount('visited-entries',4096)).not.toThrow();expect(()=>productionContract.assertProductionCount('visited-entries',4097)).toThrow('production-visited-entries observed-at-refusal=4097 limit=4096');});
+ it('reserves final inventory regular file1152 and rejects1153',()=>{expect(productionContract.assertProductionFinalInventory(facts(1151),2000,1).files).toBe(1152);expect(()=>productionContract.assertProductionFinalInventory(facts(1152),2000,1)).toThrow('production-final-files observed=1153 limit=1152');});
+ it('reserves final directory entry4096 and refuses4097',()=>{expect(productionContract.assertProductionFinalInventory(facts(1),4095,1).entries).toBe(4096);expect(()=>productionContract.assertProductionFinalInventory(facts(1),4096,1)).toThrow('production-final-entries observed=4097 limit=4096');});
+ it('includes actual UTF8 serialized inventory and newline at32MiB boundary',()=>{const serialized=Buffer.byteLength(JSON.stringify({label:'é🙂'})+'\n'),values=[{...file(),bytes:32*1024*1024-serialized}];expect(productionContract.assertProductionFinalInventory(values,1,serialized).bytes).toBe(32*1024*1024);expect(()=>productionContract.assertProductionFinalInventory(values,1,serialized+1)).toThrow('production-final-bytes');});
+ it('refuses existing final inventory and contradictory entry counts',()=>{expect(()=>productionContract.assertProductionFinalInventory([{...file(),path:'artifact-inventory.json'}],1,1)).toThrow('pre-existing');expect(()=>productionContract.assertProductionFinalInventory(facts(2),1,1)).toThrow();});
+});

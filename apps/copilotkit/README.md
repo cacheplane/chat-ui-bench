@@ -176,7 +176,8 @@ and arbitrary endpoint/eval/fetch strings remain unexecuted runtime graph gaps.
 Computed import-meta asset forms and unsupported resource syntax deny static
 coverage. Opaque binary image/font files carry byte identity only.
 
-Artifacts share a 128-file/32 MiB bound and references count every occurrence
+Production artifacts use the explicit file profiles below and retain a 32 MiB
+aggregate byte bound. References count every occurrence
 before deduplication within 4,096. Original process close, output EOF and file
 retention are separate from timers/signals. Overflow or incomplete retention denies
 complete upload/qualification. Original full audit and vendor declaration exit 1
@@ -187,18 +188,51 @@ The first hosted production build, run 38644135221 at source
 `534e72ed0f499b532ae7d99e3ced5cff5055e9c7`, failed after Vite reported
 9,212 transformed modules. The owned mapping hook reported its shared module
 count/ID-length bound; the original log does not identify which branch failed.
-The next prepared release uses the fixed identity
-`hosted-copilot-react-production-build-v2` and bounds module ownership records
+The second original release used the fixed identity
+`hosted-copilot-react-production-build-v2` and bounded module ownership records
 and per-chunk module IDs separately at 16,384. ID strings and resource references
 retain their 4,096 limits, mapping evidence stays within 4 MiB, and the shared
 artifact bound stays unchanged. Count and ID failures now have distinct bounded
 messages. The owned upload includes hidden files so the mandatory Vite manifest
 can be retained; its actual presence and byte identity still require artifact
-verification. The first failure is preserved, and this preparation does not
-establish that the second build or static inspection will succeed.
+verification. Both original failures are preserved. The second build outcome and the next
+prepared profile are described below.
 
-This checkpoint has source compilation and inert supplied-data checks only. No
-local Vite/config/plugin/native parser, SDK, browser or provider acquisition was
-executed. The hosted build/static artifact still requires a separate dispatch gate
+This correction has local source compilation, supplied-data and tiny owned-file
+checks only. No local Vite build, plugin factory, installed parser, SDK, browser
+or provider acquisition was executed. The hosted build/static artifact still requires a separate dispatch gate
 and original root/peer verification. Actual browser requests, telemetry, mounted
 H100/R6400, store/lifecycle/geometry, FPS and ranking remain pending separate gates.
+
+
+### Production output capacity profile v3
+
+The original v2 run 38669171308 at source `a91f21ec` failed its required build
+after Vite reported 9,212 transformed modules. The owned hook rejected more than
+128 bundle output records. Its unique count branch supports a minimum of 129
+records; the exact count was not retained. No final output or supported static
+graph was qualified. The v2 tag, run and original evidence remain immutable.
+
+The fixed v3 profile allows 1,024 hook outputs, 1,025 physical output files
+(including the possible hook-absent `.vite/manifest.json`), 1,024 manifest records,
+1,152 artifact files including the final inventory, and 4,096 visited filesystem
+entries including that inventory entry. Generic, selected-source and mounted
+inventories remain 128. The successful writer cohort satisfies `48 + 2N + D`,
+where `N <= 14` and `D <= 1,025`, giving at most 1,101 files. The 1,152 ceiling
+provides headroom; it is not a measured required count or a guarantee that later
+byte, parser or reference checks pass.
+
+The aggregate 32 MiB includes the final inventory's measured UTF8 JSON and
+newline. Mapping and static evidence remain bounded to 4 MiB and 8 MiB,
+resource occurrences to 4,096, and module ownership to 16,384. Traversal limits
+bound visited entries after `readdir` enumeration, not its heap allocation or
+filesystem concurrency. Collectors preserve ordinary containment, artifact
+names, log bounds and original capture outcomes. Only admitted hosted inspection
+loads installed parsers.
+
+A future v3 ZIP qualification must separately admit at most 1,152 regular files
+and 4,096 entries, with unchanged compressed/expanded 32 MiB, containment, CRC
+and exclusive extraction rules. Existing v2 archive limits and evidence remain
+unchanged. Future v3 source, run, output counts and success are unknown. Actual
+STATIC success and separate mounted/runtime/frame/FPS qualification are required
+before publishing performance or competitive results.

@@ -1,7 +1,7 @@
 /** Supplied-data policies only. No parser, SDK, filesystem or network imports. */
 import {createHash} from 'node:crypto';
 import {posix} from 'node:path';
-import {assertDenseEntries,assertOriginalCommand,ordinaryPath,releaseTag,LIMITS,type OriginalCommand} from './hosted-copilot-contract.ts';
+import {assertDenseEntries,assertOriginalCommand,ordinaryPath,releaseTag,LIMITS,PRODUCTION_FILE_LIMITS,assertProductionCount,type OriginalCommand} from './hosted-copilot-contract.ts';
 export interface ProviderRun {id:string;headSha:string;title:string;event:string;workflowId:string;attempt:number;tag?:string}
 export interface ProviderPage<T> {page:number;totalCount:number|null;hasNext:boolean;records:readonly T[];status:number;bodyComplete:boolean}
 export interface ProviderSnapshot {repository:string;workflowId:string;candidateSha:string;releaseId:string;currentRunId:string;currentRun:ProviderRun;runPages:ProviderPage<ProviderRun>[];releasePages:ProviderPage<{id:string;tag:string}>[];releaseLookupStatus:number;acquisitionClosed:boolean;draftVisibility:'unverified'|'root-reviewed-visible'}
@@ -39,8 +39,8 @@ export function assertProviderSnapshot(v:ProviderSnapshot) {
  for(const release of releases) {if(!identity(release.id)||!scalar(release.tag)||releaseIds.has(release.id)) throw new Error('Release identity incomplete or duplicate');releaseIds.add(release.id);if(release.tag===v.releaseId) throw new Error('Observed release identity already used');}
  return Object.freeze({observedUnused:true as const,runRecords:runs.length,releaseRecords:releases.length,draftVisibility:v.draftVisibility,atomicLease:false as const,qualification:false as const,scope:'supplied acquisition-window observations only' as const});
 }
-export function normalizeReference(from:string,raw:string,names:readonly string[]) {
- assertDenseEntries(names,LIMITS.files);if(names.some(name=>!ordinaryPath(name))||new Set(names).size!==names.length||!names.includes(from)||!ordinaryPath(from)||!scalar(raw,4096)||raw.includes('\\')||raw.startsWith('//')||/^[A-Za-z][A-Za-z0-9+.-]*:/.test(raw)) throw new Error('Unsupported resource URL or owner');
+function normalizeInNamespace(from:string,raw:string,names:readonly string[],maximum:number) {
+ assertDenseEntries(names,maximum);if(names.some(name=>!ordinaryPath(name))||new Set(names).size!==names.length||!names.includes(from)||!ordinaryPath(from)||!scalar(raw,4096)||raw.includes('\\')||raw.startsWith('//')||/^[A-Za-z][A-Za-z0-9+.-]*:/.test(raw)) throw new Error('Unsupported resource URL or owner');
  const split=raw.indexOf('#'),path=split<0?raw:raw.slice(0,split),fragment=split<0?null:raw.slice(split+1);
  if(path.includes('?')||/%(?:2f|5c|00|25)/i.test(path)) throw new Error('Unsupported query/encoded separator');
  let decoded:string;try {decoded=decodeURIComponent(path);}catch {throw new Error('Malformed encoded resource URL');}
@@ -49,6 +49,11 @@ export function normalizeReference(from:string,raw:string,names:readonly string[
  const target=path===''?from:posix.normalize(decoded.startsWith('/')?decoded.slice(1):posix.join(posix.dirname(from),decoded));
  if(!ordinaryPath(target)||!names.includes(target)) throw new Error('Unresolved or escaping resource');
  return Object.freeze({from,raw,target,fragment,sameDocument:path==='',qualification:false as const});
+}
+export function normalizeReference(from:string,raw:string,names:readonly string[]) {return normalizeInNamespace(from,raw,names,LIMITS.files);}
+export function normalizeProductionReference(from:string,raw:string,names:readonly string[]) {
+ if(Array.isArray(names)) assertProductionCount('output-files',names.length);
+ return normalizeInNamespace(from,raw,names,PRODUCTION_FILE_LIMITS.outputFiles);
 }
 export function assertEmbeddedSvg(raw:string,occurrence=1) {
  const prefix='data:image/svg+xml;charset=utf-8,';
@@ -90,8 +95,8 @@ export function assertMappings(input:readonly ModuleMapping[]) {
  return Object.freeze({physical,virtual,qualification:false as const,scope:'supplied module classifications only' as const});
 }
 export interface ManifestRecord {key:string;file:string;imports:readonly string[];dynamicImports:readonly string[];css:readonly string[];assets:readonly string[]}
-export function assertManifest(rows:readonly ManifestRecord[],names:readonly string[]) {
- assertDenseEntries(rows,LIMITS.files);assertDenseEntries(names,LIMITS.files);const records=new Map<string,ManifestRecord>();let count=0;
+function manifestInNamespace(rows:readonly ManifestRecord[],names:readonly string[],rowMaximum:number,nameMaximum:number) {
+ assertDenseEntries(rows,rowMaximum);assertDenseEntries(names,nameMaximum);const records=new Map<string,ManifestRecord>();let count=0;
  if(names.some(name=>!ordinaryPath(name))||new Set(names).size!==names.length) throw new Error('Manifest admitted file names differ');
  for(const row of rows) {
   if(!scalar(row.key,4096)||records.has(row.key)||!ordinaryPath(row.file)||!names.includes(row.file)) throw new Error('Manifest owner/key unavailable');
@@ -104,6 +109,12 @@ export function assertManifest(rows:readonly ManifestRecord[],names:readonly str
   for(const path of [...row.css,...row.assets]) {if(!ordinaryPath(path)||!names.includes(path)) throw new Error('Manifest resource missing');references.push({from:row.file,target:path});}
  }
  return Object.freeze({referenceCount:count,references:Object.freeze(references.map(ref=>Object.freeze(ref))),qualification:false as const});
+}
+export function assertManifest(rows:readonly ManifestRecord[],names:readonly string[]) {return manifestInNamespace(rows,names,LIMITS.files,LIMITS.files);}
+export function assertProductionManifest(rows:readonly ManifestRecord[],names:readonly string[]) {
+ if(Array.isArray(rows)) assertProductionCount('manifest-records',rows.length);
+ if(Array.isArray(names)) assertProductionCount('output-files',names.length);
+ return manifestInNamespace(rows,names,PRODUCTION_FILE_LIMITS.manifestRecords,PRODUCTION_FILE_LIMITS.outputFiles);
 }
 function expectedFailure(original:OriginalCommand):void {const v=assertOriginalCommand(original);if(!v.closed||!v.streamsComplete||!v.uploadEligible||v.exitCode!==1||v.signal!==null) throw new Error('Original declared failure incomplete or changed');}
 export interface AuditCounts {info:number;low:number;moderate:number;high:number;critical:number;total:number}

@@ -26,3 +26,18 @@ describe('recognized static URL candidates exclude ordinary endpoint constructio
  it('denies computed import.meta member bases rather than dropping asset intent',()=>expect(()=>collectJsReferences({type:'Program',body:[{type:'NewExpression',callee:{type:'Identifier',name:'URL'},arguments:[{type:'Literal',value:'./x.png'},{type:'MemberExpression',computed:true,object:{type:'MetaProperty',meta:{type:'Identifier',name:'import'},property:{type:'Identifier',name:'meta'}},property:{type:'Identifier',name:'which'}}]}]})).toThrow());
  it('denies dynamic import options',()=>expect(()=>collectJsReferences({type:'Program',body:[{type:'ImportExpression',source:{type:'Literal',value:'./x.js'},options:{type:'ObjectExpression',properties:[]}}]})).toThrow());
 });
+
+import * as productionAssets from './hosted-copilot-static-assets.ts';
+import * as productionContract from './hosted-copilot-contract.ts';
+import {mkdtemp,mkdir,writeFile,rm,realpath,symlink} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createHash} from 'node:crypto';
+describe('production output capacity v3 owned collectors',()=>{
+ async function owned(action:(root:string)=>Promise<void>){const raw=await mkdtemp(join(tmpdir(),'copilot-production-capacity-v3-')),root=await realpath(raw);try{await action(root);}finally{await rm(root,{recursive:true,force:true});}}
+ it('collects129 tiny files through output and artifact paths without parsers or admission',async()=>owned(async root=>{await mkdir(join(root,'dist','assets'),{recursive:true});for(let i=0;i<129;i++)await writeFile(join(root,'dist','assets',`${i}.js`),'x');const output=await productionAssets.collectProductionOutput(join(root,'dist')),artifact=await productionAssets.collectProductionArtifact(root);expect(output.files).toHaveLength(129);expect(output.visitedEntries).toBe(130);expect(artifact.files).toHaveLength(129);expect(artifact.visitedEntries).toBe(131);expect(artifact.bytes).toBe(129);expect(output.byteMap.get('assets/0.js')).toEqual(Buffer.from('x'));expect(output.files[0]!.sha256).toBe(createHash('sha256').update('x').digest('hex'));expect('byteMap' in artifact).toBe(false);}));
+ it('collects the reserved hidden output manifest path as an ordinary owned file',async()=>owned(async root=>{await mkdir(join(root,'.vite'));await writeFile(join(root,'.vite','manifest.json'),'{}');const output=await productionAssets.collectProductionOutput(root);expect(output.files.map(value=>value.path)).toEqual(['.vite/manifest.json']);expect(output.visitedEntries).toBe(2);}));
+ it('rejects symlink output root and child without following them',async()=>owned(async root=>{await mkdir(join(root,'actual'));await writeFile(join(root,'actual','a.js'),'x');await symlink('actual',join(root,'alias'));await expect(productionAssets.collectProductionOutput(join(root,'alias'))).rejects.toThrow();await expect(productionAssets.collectProductionOutput(root)).rejects.toThrow();}));
+ it('rejects artifact filenames and directories outside existing whitelist',async()=>owned(async root=>{await writeFile(join(root,'unexpected.txt'),'x');await expect(productionAssets.collectProductionArtifact(root)).rejects.toThrow();await rm(join(root,'unexpected.txt'));await mkdir(join(root,'unexpected'));await expect(productionAssets.collectProductionArtifact(root)).rejects.toThrow();}));
+ it('refuses an already-present final inventory before publication',async()=>owned(async root=>{await writeFile(join(root,'artifact-inventory.json'),'{}');const collected=await productionAssets.collectProductionArtifact(root);expect(()=>productionContract.assertProductionFinalInventory(collected.files,collected.visitedEntries,10)).toThrow('pre-existing');}));
+});

@@ -2,8 +2,8 @@
 import {createHash} from 'node:crypto';
 import {lstat,readdir,readFile,realpath} from 'node:fs/promises';
 import {join,relative,resolve} from 'node:path';
-import {assertDenseEntries,assertInventory,LIMITS,ordinaryPath} from './hosted-copilot-contract.ts';
-import {assertEmbeddedSvg,assertManifest,assertMappings,assertReferenceCount,classifyJsReference,MODULE_OWNERSHIP_LIMIT,normalizeReference,type ManifestRecord,type ModuleMapping} from './hosted-copilot-production-policy.ts';
+import {assertDenseEntries,assertProductionOutputInventory,assertProductionArtifactInventory,assertProductionCount,PRODUCTION_FILE_LIMITS,LIMITS,ordinaryPath,type FileFact} from './hosted-copilot-contract.ts';
+import {assertEmbeddedSvg,assertProductionManifest,assertMappings,assertReferenceCount,classifyJsReference,MODULE_OWNERSHIP_LIMIT,normalizeProductionReference,type ManifestRecord,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {readIntegratedAdmission} from './hosted-copilot-context.ts';
 type Row=Record<string,unknown>;
 function row(v:unknown):Row {if(v===null||typeof v!=='object'||Array.isArray(v))throw new Error('Parser object absent');return v as Row;}
@@ -40,21 +40,57 @@ export function collectHtmlReferences(value:unknown):{references:string[];script
 export function collectCssReferences(value:unknown):string[]{const out:string[]=[];for(const dep of array(value)){const n=row(dep);if(n.type!=='import'&&n.type!=='url')throw new Error('Unsupported CSS dependency form');add(out,n.url);}return out;}
 export interface HookFile {contentSha256?:string;fileName:string;kind:'chunk'|'asset';imports:string[];dynamicImports:string[];moduleIds:string[];originalNames:string[];facadeModuleId:string|null}
 export interface HookFacts {schemaVersion:1;files:HookFile[];modules:ModuleMapping[]}
+interface CollectedFiles {files:readonly Readonly<FileFact>[];bytes:number;visitedEntries:number;qualification:false}
+interface CollectedOutput extends CollectedFiles {byteMap:Map<string,Uint8Array>}
+/** Explicit owned filesystem reads only; no source admission, installed parser or SDK calls. */
+export function collectProductionOutput(root:string):Promise<CollectedOutput> {return collectProductionFiles(root,'output');}
+export function collectProductionArtifact(root:string):Promise<CollectedFiles> {return collectProductionFiles(root,'artifact');}
+function collectProductionFiles(inputRoot:string,kind:'output'):Promise<CollectedOutput>;
+function collectProductionFiles(inputRoot:string,kind:'artifact'):Promise<CollectedFiles>;
+async function collectProductionFiles(inputRoot:string,kind:'output'|'artifact'):Promise<CollectedFiles|CollectedOutput> {
+ const root=resolve(inputRoot),rootStat=await lstat(root);
+ if(!rootStat.isDirectory()||rootStat.isSymbolicLink()||await realpath(root)!==root) throw new Error('Production collection root containment/type');
+ const files:FileFact[]=[],byteMap=kind==='output'?new Map<string,Uint8Array>():null;let total=0,visitedEntries=0;
+ async function walk(directory:string):Promise<void> {
+  // This caps visited work, not the allocation made internally by readdir.
+  for(const entry of await readdir(directory,{withFileTypes:true})) {
+   assertProductionCount('visited-entries',++visitedEntries);
+   const path=join(directory,entry.name),name=relative(root,path).split('\\').join('/'),before=await lstat(path);
+   if(!ordinaryPath(name)||before.isSymbolicLink()||await realpath(path)!==path) throw new Error('Production file containment/type');
+   if(before.isDirectory()) {
+    if(kind==='artifact'&&name!=='api'&&name!=='dist'&&!name.startsWith('dist/')) throw new Error('Unexpected artifact directory');
+    await walk(path);continue;
+   }
+   if(kind==='artifact') {
+    const allowed=name.startsWith('dist/')||/^api\/[0-9]{2}\.(?:body\.bin|json)$/.test(name)||/^(?:intent|admission|admission-failure|installed-profile|build-mappings|static-assets|artifact-inventory)\.json$/.test(name)||/^step-(?:profile|install|audit|audit-high|contract|consumer|controls|helpers|vendor|build|inspect)(?:-(?:started|result)\.json|\.(?:stdout|stderr))$/.test(name);
+    if(!allowed) throw new Error('Unexpected artifact file');
+    if(/\.(?:stdout|stderr)$/.test(name)&&before.size>4*1024*1024) throw new Error('Original command log overflow; retained originals not uploaded');
+   }
+   assertProductionCount(kind==='output'?'output-files':'artifact-files',files.length+1);
+   if(!before.isFile()||!Number.isSafeInteger(before.size)||before.size<0||(total+=before.size)>LIMITS.bytes) throw new Error('Production file aggregate bound/type');
+   const raw=await readFile(path),after=await lstat(path);
+   if(raw.length!==before.size||after.dev!==before.dev||after.ino!==before.ino||after.size!==before.size||after.mtimeMs!==before.mtimeMs) throw new Error('Production file bytes changed');
+   files.push({path:name,bytes:raw.length,sha256:createHash('sha256').update(raw).digest('hex'),regular:true,contained:true,symlink:false});
+   byteMap?.set(name,raw);
+  }
+ }
+ await walk(root);const inventory=kind==='output'?assertProductionOutputInventory(files):assertProductionArtifactInventory(files);
+ if(byteMap) return Object.freeze({...inventory,visitedEntries,byteMap});
+ return Object.freeze({...inventory,visitedEntries});
+}
 export async function inspectStaticAssets(input:{outputRoot:string;hookFiles:HookFacts}) {
  const admission=readIntegratedAdmission();if(resolve(input.outputRoot)!==resolve(admission.outputDirectory))throw new Error('Output differs from admitted source');
- const root=resolve(input.outputRoot);if(await realpath(root)!==root||(await lstat(root)).isSymbolicLink())throw new Error('Output root physical ownership absent');
- const files:{path:string;bytes:number;sha256:string;regular:true;contained:true;symlink:false}[]=[],bytes=new Map<string,Uint8Array>();let total=0,entries=0;
- async function walk(directory:string):Promise<void>{for(const entry of await readdir(directory,{withFileTypes:true})){if(++entries>512)throw new Error('Output directory-entry bound');const path=join(directory,entry.name),name=relative(root,path).split('\\').join('/'),stat=await lstat(path);if(!ordinaryPath(name)||stat.isSymbolicLink()||await realpath(path)!==path)throw new Error('Output containment/type');if(stat.isDirectory()){await walk(path);continue;}if(!stat.isFile()||files.length>=LIMITS.files||!Number.isSafeInteger(stat.size)||stat.size<0||(total+=stat.size)>LIMITS.bytes)throw new Error('Output aggregate bound');const raw=await readFile(path);const after=await lstat(path);if(raw.length!==stat.size||after.size!==stat.size||after.mtimeMs!==stat.mtimeMs||after.ino!==stat.ino)throw new Error('Output changed while reading');files.push({path:name,bytes:raw.length,regular:true,contained:true,symlink:false,sha256:createHash('sha256').update(raw).digest('hex')});bytes.set(name,raw);}}
- await walk(root);assertInventory(files);files.sort((a,b)=>a.path.localeCompare(b.path));const names=files.map(f=>f.path);
- const hooks=input.hookFiles;if(hooks.schemaVersion!==1)throw new Error('Hook schema');assertDenseEntries(hooks.files,LIMITS.files);assertMappings(hooks.modules);const moduleIds=new Set(hooks.modules.map(module=>module.id)),mapped=new Set<string>();let occurrences=0;
+ const collected=await collectProductionOutput(input.outputRoot),files=[...collected.files].sort((a,b)=>a.path.localeCompare(b.path)),bytes=collected.byteMap,names=files.map(f=>f.path);
+ const hooks=input.hookFiles;if(hooks.schemaVersion!==1)throw new Error('Hook schema');if(Array.isArray(hooks.files))assertProductionCount('hook-files',hooks.files.length);assertDenseEntries(hooks.files,PRODUCTION_FILE_LIMITS.hookFiles);assertMappings(hooks.modules);const moduleIds=new Set(hooks.modules.map(module=>module.id)),mapped=new Set<string>();let occurrences=0;
  const references:{from:string;raw:string;target:string|null;embedded:boolean;fragment:string|null;sameDocument:boolean;embeddedData:ReturnType<typeof assertEmbeddedSvg>|null}[]=[];let embedded=0;
- function reference(from:string,raw:string){occurrences=assertReferenceCount([occurrences,1]);if(raw.startsWith('data:')){const embeddedData=assertEmbeddedSvg(raw,++embedded);references.push({from,raw,target:null,embedded:true,fragment:null,sameDocument:false,embeddedData});}else {const ref=normalizeReference(from,raw,names);references.push({from,raw,target:ref.target,embedded:false,fragment:ref.fragment,sameDocument:ref.sameDocument,embeddedData:null});}}
+ function reference(from:string,raw:string){occurrences=assertReferenceCount([occurrences,1]);if(raw.startsWith('data:')){const embeddedData=assertEmbeddedSvg(raw,++embedded);references.push({from,raw,target:null,embedded:true,fragment:null,sameDocument:false,embeddedData});}else {const ref=normalizeProductionReference(from,raw,names);references.push({from,raw,target:ref.target,embedded:false,fragment:ref.fragment,sameDocument:ref.sameDocument,embeddedData:null});}}
  for(const file of hooks.files){if(mapped.has(file.fileName)||!names.includes(file.fileName)||!['chunk','asset'].includes(file.kind))throw new Error('Hook emitted file unavailable/duplicate');if(file.contentSha256!==files.find(actual=>actual.path===file.fileName)?.sha256)throw new Error('Final physical bytes differ from captured hook bytes');mapped.add(file.fileName);assertDenseEntries(file.moduleIds,MODULE_OWNERSHIP_LIMIT,true);for(const list of [file.imports,file.dynamicImports,file.originalNames])assertDenseEntries(list,4096,true);for(const raw of [...file.imports,...file.dynamicImports])reference(file.fileName,raw.startsWith('.')?raw:`/${raw}`);for(const id of file.moduleIds)if(!moduleIds.has(id))throw new Error('Hook module mapping missing');if(file.facadeModuleId!==null&&!moduleIds.has(file.facadeModuleId))throw new Error('Facade module mapping missing');}
  for(const name of names)if(name!=='.vite/manifest.json'&&!mapped.has(name))throw new Error('Output absent from hook inventory');
  const decode=(name:string,limit:number)=>{const raw=bytes.get(name);if(!raw||raw.length>limit)throw new Error('Text byte bound');return new TextDecoder('utf-8',{fatal:true}).decode(raw);};
  const manifestValue:unknown=JSON.parse(decode('.vite/manifest.json',256*1024)),manifest:ManifestRecord[]=[];
- for(const [key,value] of Object.entries(row(manifestValue))){const n=row(value);const list=(k:string)=>n[k]===undefined?[]:array(n[k]).map(string);manifest.push({key,file:string(n.file),imports:list('imports'),dynamicImports:list('dynamicImports'),css:list('css'),assets:list('assets')});}
- const manifestFacts=assertManifest(manifest,names);occurrences=assertReferenceCount([occurrences,manifestFacts.referenceCount]);for(const ref of manifestFacts.references)references.push({from:ref.from,raw:`/${ref.target}`,target:ref.target,embedded:false,fragment:null,sameDocument:false,embeddedData:null});
+ const manifestObject=row(manifestValue);assertProductionCount('manifest-records',Object.keys(manifestObject).length);const manifestEntries=Object.entries(manifestObject);
+ for(const [key,value] of manifestEntries){const n=row(value);const list=(k:string)=>n[k]===undefined?[]:array(n[k]).map(string);manifest.push({key,file:string(n.file),imports:list('imports'),dynamicImports:list('dynamicImports'),css:list('css'),assets:list('assets')});}
+ const manifestFacts=assertProductionManifest(manifest,names);occurrences=assertReferenceCount([occurrences,manifestFacts.referenceCount]);for(const ref of manifestFacts.references)references.push({from:ref.from,raw:`/${ref.target}`,target:ref.target,embedded:false,fragment:null,sameDocument:false,embeddedData:null});
  const {parse}=await import('parse5');const {parseAst}=await import('rolldown/parseAst');const {transform}=await import('lightningcss');
  function expectDenied(action:()=>unknown){let denied=false;try{action();}catch{denied=true;}if(!denied)throw new Error('Actual parser ambiguity microcase accepted');}
  const microJs=collectJsReferences(parseAst('import "./a.js";export * from "./a.js";import("./b.js");new URL("./x.png",import.meta.url)',null,'microcase.js'));

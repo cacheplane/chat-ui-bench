@@ -3,12 +3,13 @@ import type {Plugin} from 'vite';
 import {createHash} from 'node:crypto';
 import {lstatSync,readFileSync,realpathSync,writeFileSync} from 'node:fs';
 import {join,relative,resolve,isAbsolute} from 'node:path';
-import {assertDenseEntries,ordinaryPath,LIMITS} from './hosted-copilot-contract.ts';
+import {assertDenseEntries,ordinaryPath,PRODUCTION_FILE_LIMITS,assertProductionCount} from './hosted-copilot-contract.ts';
 import {assertMappings,assertModuleOwnershipId,assertReferenceCount,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {readIntegratedAdmission} from './hosted-copilot-context.ts';
 export interface HookFile {contentSha256?:string|undefined;fileName:string;kind:'chunk'|'asset';imports:readonly string[];dynamicImports:readonly string[];moduleIds:readonly string[];originalNames:readonly string[];facadeModuleId:string|null}
 export function projectHookFacts(input:readonly HookFile[],modules:readonly ModuleMapping[]) {
- assertDenseEntries(input,LIMITS.files);assertMappings(modules);const names=new Set<string>(),ids=new Set(modules.map(module=>module.id));let referenceCount=0;
+ if(Array.isArray(input)) assertProductionCount('hook-files',input.length);
+ assertDenseEntries(input,PRODUCTION_FILE_LIMITS.hookFiles);assertMappings(modules);const names=new Set<string>(),ids=new Set(modules.map(module=>module.id));let referenceCount=0;
  for(const file of input) {
   if(!ordinaryPath(file.fileName)||file.fileName.endsWith('.map')||names.has(file.fileName)||!['chunk','asset'].includes(file.kind)) throw new Error('Output file ownership unavailable');names.add(file.fileName);
   if(typeof file.contentSha256!=='string'||file.contentSha256.length!==64||! /^[a-f0-9]+$/.test(file.contentSha256)) throw new Error('Captured hook content hash unavailable');
@@ -40,7 +41,8 @@ export function createProductionBuildPlugin():Plugin {
      modules.push({id,kind:'physical',...source,external:false});
     }
    }
-   const entries=Object.values(bundle);if(entries.length>LIMITS.files) throw new Error('Emitted output file bound');
+   assertProductionCount('hook-files',Object.keys(bundle).length);
+   const entries=Object.values(bundle);
    const files:HookFile[]=entries.map(entry=>entry.type==='chunk'?{
     contentSha256:createHash('sha256').update(entry.code).digest('hex'),fileName:entry.fileName,kind:'chunk',imports:[...entry.imports],dynamicImports:[...entry.dynamicImports],moduleIds:[...entry.moduleIds],originalNames:[],facadeModuleId:entry.facadeModuleId,
    }:{contentSha256:createHash('sha256').update(entry.source).digest('hex'),fileName:entry.fileName,kind:'asset',imports:[],dynamicImports:[],moduleIds:[],originalNames:[...entry.originalFileNames],facadeModuleId:null});
