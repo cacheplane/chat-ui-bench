@@ -7,6 +7,54 @@ import {assertDenseEntries,ordinaryPath,PRODUCTION_FILE_LIMITS,assertProductionC
 import {assertMappings,assertModuleOwnershipId,assertReferenceCount,classifyHookMetadata,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {readIntegratedAdmission} from './hosted-copilot-context.ts';
 export interface HookFile {contentSha256?:string|undefined;fileName:string;kind:'chunk'|'asset';imports:readonly string[];dynamicImports:readonly string[];moduleIds:readonly string[];originalNames:readonly string[];facadeModuleId:string|null}
+type IdDiagnostic=Readonly<{type:string;value:string|null;utf8Bytes:number|null;truncated:boolean}>;
+type OwnershipSample=Readonly<{from:string;index?:number;id:IdDiagnostic}>;
+type OwnershipDiagnostic=Readonly<{missingModuleOccurrences:number;missingFacadeOccurrences:number;moduleSamples:readonly OwnershipSample[];facadeSamples:readonly OwnershipSample[]}>;
+type LookupSlot=Readonly<{category:'module'|'facade';sampleIndex:number;original:string|null;skipReason:'type'|'bound'|null}>;
+function summarizeId(value:unknown,fullBytes:number,prefixUnits:number):IdDiagnostic {
+ if(typeof value!=='string') return Object.freeze({type:value===null?'null':typeof value,value:null,utf8Bytes:null,truncated:false});
+ const utf8Bytes=Buffer.byteLength(value);return Object.freeze({type:'string',value:utf8Bytes<=fullBytes?value:value.slice(0,prefixUnits),utf8Bytes,truncated:utf8Bytes>fullBytes});
+}
+function lookupSlot(category:LookupSlot['category'],sampleIndex:number,value:unknown):LookupSlot {
+ const bounded=typeof value==='string'&&value.length>0&&value.length<=4096&&Buffer.byteLength(value)<=4096;
+ return Object.freeze({category,sampleIndex,original:bounded?value:null,skipReason:bounded?null:typeof value==='string'?'bound':'type'});
+}
+function boundedErrorName(error:unknown):string {
+ try {const name=(error as {name?:unknown}|null)?.name;return typeof name==='string'?name.slice(0,64):'Error';}catch{return 'Error';}
+}
+/** Private brand: only the strict ownership scan can create an enrichable denial. */
+class OwnershipMismatch extends Error {
+ readonly #slots:readonly LookupSlot[];
+ readonly #diagnostic:OwnershipDiagnostic;
+ readonly #prefix:string;
+ constructor(prefix:string,diagnostic:OwnershipDiagnostic,slots:readonly LookupSlot[]) {
+  super(prefix+' '+JSON.stringify(diagnostic));this.#prefix=prefix;this.#diagnostic=diagnostic;this.#slots=Object.freeze([...slots]);
+ }
+ enrich(lookup:(id:string)=>unknown):Error {
+  const observations=this.#slots.map(slot=>{
+   const base={category:slot.category,sampleIndex:slot.sampleIndex,external:null,externalAvailable:false};
+   if(slot.original===null) return {...base,status:'skipped',skipReason:slot.skipReason,idMatches:null,codeType:null};
+   try {
+    const info=lookup(slot.original);
+    if(info===null) return {...base,status:'missing',idMatches:null,codeType:null};
+    if(typeof info!=='object'||info===null) throw new Error('Invalid module info');
+    const {id,code} = info as {id?:unknown;code?:unknown};
+    return {...base,status:'available',id:summarizeId(id,256,64),idMatches:id===slot.original,codeType:code===null?'null':code===undefined?'undefined':typeof code==='string'?'string':'other'};
+   }catch(error){return {...base,status:'threw',idMatches:null,codeType:null,errorName:boundedErrorName(error)};}
+  });
+  // Four1024-ASCII owners + four512-byte IDs (at most6x JSON escaping),
+  // four256-byte returned IDs and four64-unit names plus scalars stay below32KiB.
+  // Formatting is informational: its failure must retain the original strict denial.
+  try {
+   const message=this.#prefix+' '+JSON.stringify({...this.#diagnostic,observations});
+   return Buffer.byteLength(message)<32768?new Error(message):this;
+  }catch{return this;}
+ }
+}
+/** Pure supplied-callback observation; unrelated errors retain their identity. */
+export function enrichOwnershipMismatch(error:Error,lookup:(id:string)=>unknown):Error {
+ return error instanceof OwnershipMismatch?error.enrich(lookup):error;
+}
 export function projectHookFacts(input:readonly HookFile[],modules:readonly ModuleMapping[]) {
  if(Array.isArray(input)) assertProductionCount('hook-files',input.length);
  assertDenseEntries(input,PRODUCTION_FILE_LIMITS.hookFiles);assertMappings(modules);const names=new Set<string>(),ids=new Set(modules.map(module=>module.id));let referenceCount=0;
@@ -18,9 +66,20 @@ export function projectHookFacts(input:readonly HookFile[],modules:readonly Modu
   referenceCount=assertReferenceCount([referenceCount,file.imports.length,file.dynamicImports.length]);
  }
  const metadataReferences=classifyHookMetadata(input);
+ let missingModuleOccurrences=0,missingFacadeOccurrences=0,firstPrefix='';
+ const moduleSamples:OwnershipSample[]=[],facadeSamples:OwnershipSample[]=[],moduleSlots:LookupSlot[]=[],facadeSlots:LookupSlot[]=[];
+ for(const file of input) {
+  for(const [index,id] of file.moduleIds.entries()) if(!ids.has(id)) {
+   missingModuleOccurrences++;firstPrefix||='Unknown emitted module ownership';
+   if(moduleSamples.length<2) {moduleSlots.push(lookupSlot('module',moduleSamples.length,id));moduleSamples.push(Object.freeze({from:file.fileName,index,id:summarizeId(id,512,128)}));}
+  }
+  if(file.facadeModuleId!==null&&!ids.has(file.facadeModuleId)) {
+   missingFacadeOccurrences++;firstPrefix||='Unknown facade module ownership';
+   if(facadeSamples.length<2) {facadeSlots.push(lookupSlot('facade',facadeSamples.length,file.facadeModuleId));facadeSamples.push(Object.freeze({from:file.fileName,id:summarizeId(file.facadeModuleId,512,128)}));}
+  }
+ }
+ if(firstPrefix) throw new OwnershipMismatch(firstPrefix,Object.freeze({missingModuleOccurrences,missingFacadeOccurrences,moduleSamples:Object.freeze(moduleSamples),facadeSamples:Object.freeze(facadeSamples)}),[...moduleSlots,...facadeSlots]);
  const files=input.map(file=> {
-  for(const id of file.moduleIds) if(!ids.has(id)) throw new Error('Unknown emitted module ownership');
-  if(file.facadeModuleId!==null&&!ids.has(file.facadeModuleId)) throw new Error('Unknown facade module ownership');
   return Object.freeze({...file,imports:Object.freeze([...file.imports]),dynamicImports:Object.freeze([...file.dynamicImports]),moduleIds:Object.freeze([...file.moduleIds]),originalNames:Object.freeze([...file.originalNames])});
  });
  return Object.freeze({schemaVersion:2 as const,files:Object.freeze(files),modules:Object.freeze(modules.map(module=>Object.freeze({...module}))),metadataReferences,metadataOccurrenceCount:referenceCount,qualification:false as const});
@@ -46,7 +105,12 @@ export function createProductionBuildPlugin():Plugin {
    const files:HookFile[]=entries.map(entry=>entry.type==='chunk'?{
     contentSha256:createHash('sha256').update(entry.code).digest('hex'),fileName:entry.fileName,kind:'chunk',imports:[...entry.imports],dynamicImports:[...entry.dynamicImports],moduleIds:[...entry.moduleIds],originalNames:[],facadeModuleId:entry.facadeModuleId,
    }:{contentSha256:createHash('sha256').update(entry.source).digest('hex'),fileName:entry.fileName,kind:'asset',imports:[],dynamicImports:[],moduleIds:[],originalNames:[...entry.originalFileNames],facadeModuleId:null});
-   const facts=projectHookFacts(files,modules),text=JSON.stringify(facts);
+   let facts:ReturnType<typeof projectHookFacts>;
+   try {facts=projectHookFacts(files,modules);}catch(error){
+    if(error instanceof OwnershipMismatch) throw enrichOwnershipMismatch(error,id=>this.getModuleInfo(id));
+    throw error;
+   }
+   const text=JSON.stringify(facts);
    if(Buffer.byteLength(text)>4*1024*1024) throw new Error('Mapping evidence byte bound');
    writeFileSync(join(admission.artifactDirectory,'build-mappings.json'),text+'\n',{flag:'wx'});
   }}};

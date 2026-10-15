@@ -2,7 +2,7 @@ import {mkdtempSync,writeFileSync,symlinkSync,mkdirSync,realpathSync} from 'node
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {describe,it,expect} from 'vitest';
-import {projectHookFacts,readPhysicalSource,type HookFile} from './hosted-copilot-build-plugin.ts';
+import {projectHookFacts,enrichOwnershipMismatch,readPhysicalSource,type HookFile} from './hosted-copilot-build-plugin.ts';
 const row:HookFile={contentSha256:'b'.repeat(64),fileName:'assets/main.js',kind:'chunk',imports:[],dynamicImports:[],moduleIds:['/owned/source.js'],originalNames:[],facadeModuleId:'/owned/source.js'};
 const module={id:'/owned/source.js',kind:'physical' as const,path:'source.js',sha256:'a'.repeat(64),external:false};
 describe('module ownership is independent of resource references',()=>{
@@ -132,5 +132,79 @@ describe('hook metadata v5',()=>{
  it('owns and freezes metadata independently of caller arrays',()=>{
   const imports=['missing.js'],facts=projectHookFacts([{...row,imports}],[module]);imports[0]='changed.js';
   expect(facts.files[0]!.imports).toEqual(['missing.js']);expect(facts.metadataReferences[0]!.raw).toBe('missing.js');expect(Object.isFrozen(facts.metadataReferences)).toBe(true);expect(Object.isFrozen(facts.metadataReferences[0])).toBe(true);
+ });
+});
+
+// Supplied literals and callbacks only; no factory, SDK or bundler invocation.
+describe('bounded emitted ownership diagnostics v6',()=>{
+ function failure(input:readonly HookFile[]):Error {try{projectHookFacts(input,[module]);}catch(error){return error as Error;}throw Error('Expected ownership denial');}
+ function report(error:Error) {expect(Buffer.byteLength(error.message)).toBeLessThan(32768);return JSON.parse(error.message.slice(error.message.indexOf('{')));}
+ const missing=(ids:unknown[],facade:unknown=null):HookFile=>({...row,moduleIds:ids as string[],facadeModuleId:facade as string|null});
+ it('counts duplicate occurrences and retains two ordered samples in both categories without mutation',()=>{
+  const input=[missing(['a','a','b'],'f'),{...missing(['c'],'g'),fileName:'other.js'},{...missing(['d'],'h'),fileName:'third.js'}],before=JSON.stringify(input),error=failure(input),data=report(error);
+  expect(error.message.startsWith('Unknown emitted module ownership ')).toBe(true);
+  expect(data).toMatchObject({missingModuleOccurrences:5,missingFacadeOccurrences:3,moduleSamples:[{from:row.fileName,index:0,id:{value:'a'}},{from:row.fileName,index:1,id:{value:'a'}}],facadeSamples:[{from:row.fileName,id:{value:'f'}},{from:'other.js',id:{value:'g'}}]});
+  expect(data.moduleSamples).toHaveLength(2);expect(data.facadeSamples).toHaveLength(2);expect(JSON.stringify(input)).toBe(before);
+ });
+ it('preserves first interleaved facade error before a later missing module',()=>{
+  const error=failure([missing([],'first'),{...missing(['later']),fileName:'other.js'}]);
+  expect(error.message.startsWith('Unknown facade module ownership ')).toBe(true);expect(report(error)).toMatchObject({missingModuleOccurrences:1,missingFacadeOccurrences:1});
+ });
+ it.each(['\0'.repeat(512),'🙂'.repeat(128),'bad\n\r\t\0"\\'])('retains full512 UTF8 bytes and escaped values',value=>{
+  expect(report(failure([missing([value])])).moduleSamples[0].id).toEqual({type:'string',value,utf8Bytes:Buffer.byteLength(value),truncated:false});
+ });
+ it.each(['x'.repeat(513),'🙂'.repeat(129),'x'.repeat(127)+'🙂'.repeat(200)])('bounds over512 bytes to128 UTF16 units',value=>{
+  expect(report(failure([missing([value])])).moduleSamples[0].id).toEqual({type:'string',value:value.slice(0,128),utf8Bytes:Buffer.byteLength(value),truncated:true});
+ });
+ it.each([null,undefined,123,true,1n,Symbol('private')])('retains malformed primitive type only',value=>{
+  expect(report(failure([missing([value],value)])).moduleSamples[0].id).toEqual({type:value===null?'null':typeof value,value:null,utf8Bytes:null,truncated:false});
+ });
+ it('does not coerce or serialize malformed objects',()=>{
+  let calls=0;const value={toString(){calls++;throw Error('coercion');},toJSON(){calls++;throw Error('serialization');}};
+  expect(report(failure([missing([value],value)])).facadeSamples[0].id.type).toBe('object');expect(calls).toBe(0);
+ });
+ it('keeps all earlier shape, mapping, hash, metadata and capacity refusals',()=>{
+  for(const input of [[{...missing(['unknown']),contentSha256:undefined}],[{...missing(['unknown']),imports:['../bad']}],[missing(new Array(1))],[missing(Array(16385).fill('unknown'))]]) {
+   const error=failure(input);expect(error.message).not.toMatch(/^Unknown (emitted|facade)/);
+  }
+  expect(()=>projectHookFacts([missing(['unknown'])],[{...module,external:true}])).toThrow();
+ });
+ it('preserves exact successful schema2 facts and freezes caller-independent copies',()=>{
+  const input={...row,imports:['missing.js']},facts=projectHookFacts([input],[module]);
+  expect(JSON.stringify(facts)).toBe(JSON.stringify({schemaVersion:2,files:[input],modules:[module],metadataReferences:[{from:row.fileName,kind:'import',index:0,raw:'missing.js',membership:'absent-from-hook-snapshot'}],metadataOccurrenceCount:1,qualification:false}));
+  expect(Object.isFrozen(facts)).toBe(true);expect(Object.isFrozen(facts.files)).toBe(true);expect(Object.isFrozen(facts.files[0]!.moduleIds)).toBe(true);expect(Object.isFrozen(facts.modules[0])).toBe(true);
+ });
+ it('queries at most four exact full originals, including4096 bytes, never diagnostic prefixes',()=>{
+  const full='x'.repeat(4096),error=failure([missing([full,'second','unretained'],'facade'),{...missing([],'last'),fileName:'other.js'}]),seen:string[]=[];
+  const enriched=enrichOwnershipMismatch(error,id=>{seen.push(id);return {id,code:null,isEntry:true,isExternal:true};});
+  expect(seen).toEqual([full,'second','facade','last']);expect(report(enriched).observations).toHaveLength(4);
+  expect(report(enriched).observations[0]).toMatchObject({category:'module',sampleIndex:0,status:'available',idMatches:true,codeType:'null',external:null,externalAvailable:false});
+  expect(enriched.message.startsWith('Unknown emitted module ownership ')).toBe(true);expect(report(enriched).missingModuleOccurrences).toBe(3);
+ });
+ it('skips empty, malformed, over4096 units and over4096 UTF8 originals',()=>{
+  const cases:unknown[]=['',{},'x'.repeat(4097),'🙂'.repeat(1025)];
+  for(const id of cases){let calls=0;const data=report(enrichOwnershipMismatch(failure([missing([id])]),()=>{calls++;return null;}));expect(calls).toBe(0);expect(data.observations[0]).toMatchObject({status:'skipped',external:null,externalAvailable:false});}
+ });
+ it('captures missing lookup and bounded returned ID and code types without external inference',()=>{
+  for(const code of [null,undefined,'secret',{},42]) {
+   const data=report(enrichOwnershipMismatch(failure([missing(['unknown'])]),()=>({id:'🙂'.repeat(65),code})));
+   expect(data.observations[0]).toMatchObject({status:'available',idMatches:false,codeType:code===null?'null':code===undefined?'undefined':typeof code==='string'?'string':'other',external:null,externalAvailable:false,id:{value:('🙂'.repeat(65)).slice(0,64),utf8Bytes:260,truncated:true}});
+   expect(JSON.stringify(data)).not.toContain('secret');
+  }
+  expect(report(enrichOwnershipMismatch(failure([missing(['a'])]),()=>null)).observations[0].status).toBe('missing');
+  expect(report(enrichOwnershipMismatch(failure([missing(['a'])]),()=>({id:'z'.repeat(256),code:''}))).observations[0].id.truncated).toBe(false);
+ });
+ it('cannot mask refusal with lookup or returned-info projection exceptions or malformed info',()=>{
+  const lookups=[()=>{throw {name:'n'.repeat(100),message:'private'};},()=>({get id(){throw Error('private');}}),()=>42,()=>{throw {get name(){throw Error('private');}};}];
+  for(const lookup of lookups){const error=enrichOwnershipMismatch(failure([missing(['a'],'b')]),lookup);expect(error.message.startsWith('Unknown emitted module ownership ')).toBe(true);const data=report(error);expect(data.missingModuleOccurrences).toBe(1);expect(data.missingFacadeOccurrences).toBe(1);expect(data.observations[0].status).toBe('threw');expect(data.observations[0].errorName.length).toBeLessThanOrEqual(64);expect(error.message).not.toContain('private');}
+ });
+ it('leaves unrelated error identity unchanged without lookup',()=>{
+  const error=Error('other');let calls=0;expect(enrichOwnershipMismatch(error,()=>{calls++;return null;})).toBe(error);expect(calls).toBe(0);
+ });
+ it('keeps worst escaped owners, IDs, returned IDs and error names below32KiB',()=>{
+  const owner='a'.repeat(1024),id='\0'.repeat(512),input=[{...missing([id,id],id),fileName:owner},{...missing([],id),fileName:'b'.repeat(1024)}];
+  const error=failure(input),data=report(error);expect(data.moduleSamples[0].from).toHaveLength(1024);
+  report(enrichOwnershipMismatch(error,()=>({id:'\0'.repeat(256),code:''})));
+  report(enrichOwnershipMismatch(error,()=>{throw {name:'\0'.repeat(64)};}));
  });
 });
