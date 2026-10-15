@@ -113,3 +113,43 @@ describe('production output capacity v3 namespace and manifest',()=>{
  it('preserves duplicate owners and unresolved manifest imports',()=>{expect(()=>manifest([records(1)[0]!,records(1)[0]!],names(129))).toThrow();expect(()=>manifest([{...records(1)[0]!,imports:['missing']}],names(129))).toThrow();});
  it('preserves4096 occurrence counting including owner rows',()=>{const rows=records(1024).map(value=>({...value,assets:Array(3).fill('assets/0.js')}));expect(policy.assertProductionManifest(rows,names(1025)).referenceCount).toBe(4096);rows[0]!.assets.push('assets/0.js');expect(()=>policy.assertProductionManifest(rows,names(1025))).toThrow('Reference occurrence overflow');});
 });
+
+// Compiler identity is supplied data; no native compiler/config import.
+describe('compiler runtime ownership v7',()=>{
+ const marker='\0rolldown/runtime.js',profile={provider:'rolldown',version:'1.2.13',runtimeModuleId:marker};
+ const owner={id:marker,provider:'rolldown',version:'1.2.13',origin:'public-runtime-module-id-export',moduleInfo:null,sourceEnumeration:'absent',external:null};
+ const file=(moduleIds:string[]=[],facadeModuleId:string|null=null,kind='chunk')=>({moduleIds,facadeModuleId,kind});
+ const mappings=(count:number)=>Array.from({length:count},(_,i)=>({id:`\0ordinary:${i}`,kind:'virtual' as const,external:false}));
+ it('owns one separate descriptor for repeated exact marker occurrences and preserves inputs',()=>{
+  const files=[file([marker,marker]),file([marker])],before=JSON.stringify(files),real=mappings(1),result=policy.assertCompilerRuntimeOwnership(files,real,profile,[owner]);
+  expect(result).toEqual({compilerProfile:profile,compilerRuntimeModules:[owner]});expect(JSON.stringify(files)).toBe(before);expect(real).toEqual(mappings(1));
+  expect(Object.isFrozen(result)).toBe(true);expect(Object.isFrozen(result.compilerProfile)).toBe(true);expect(Object.isFrozen(result.compilerRuntimeModules)).toBe(true);expect(Object.isFrozen(result.compilerRuntimeModules[0])).toBe(true);
+ });
+ it('requires zero owners for zero marker occurrences',()=>{
+  expect(policy.assertCompilerRuntimeOwnership([file()],[],profile,[]).compilerRuntimeModules).toEqual([]);
+  expect(()=>policy.assertCompilerRuntimeOwnership([file()],[],profile,[owner])).toThrow();
+  expect(()=>policy.assertCompilerRuntimeOwnership([file([marker])],[],profile,[])).toThrow();
+ });
+ it('rejects altered, missing and extra compiler profile fields',()=>{
+  for(const bad of [undefined,null,{}, {...profile,provider:'other'},{...profile,version:'1.2.14'},{...profile,runtimeModuleId:marker+'x'},{...profile,runtimeModuleId:marker.toUpperCase()},{...profile,runtimeModuleId:'x'+marker},{...profile,extra:1},Object.assign({...profile},{[Symbol('extra')]:true})])expect(()=>policy.assertCompilerRuntimeOwnership([file([marker])],[],bad,[owner])).toThrow();
+ });
+ it('rejects any owner tampering, extra/duplicate rows and source-registry overlap',()=>{
+  for(const bad of [{...owner,id:'unknown'},{...owner,provider:'other'},{...owner,version:'other'},{...owner,origin:'guess'},{...owner,moduleInfo:{}},{...owner,moduleInfo:undefined},{...owner,sourceEnumeration:'present'},{...owner,external:false},{...owner,path:'fake.js'},{}])expect(()=>policy.assertCompilerRuntimeOwnership([file([marker])],[],profile,[bad])).toThrow();
+  expect(()=>policy.assertCompilerRuntimeOwnership([file([marker])],[],profile,[owner,owner])).toThrow();
+  expect(()=>policy.assertCompilerRuntimeOwnership([file([marker])],[{id:marker,kind:'virtual',external:false}],profile,[owner])).toThrow();
+ });
+ it('rejects unknown module IDs, runtime facades and runtime in asset rows',()=>{
+  for(const files of [[file([marker,'unknown'])],[file([marker],marker)],[file([marker],null,'asset')],[file([marker],'unknown')]])expect(()=>policy.assertCompilerRuntimeOwnership(files,[],profile,[owner])).toThrow();
+ });
+ it('counts distinct ordinary plus runtime owners before reading payloads',()=>{
+  expect(policy.assertCompilerRuntimeOwnership([file([marker])],mappings(16383),profile,[owner]).compilerRuntimeModules).toHaveLength(1);
+  const real=mappings(16384);let reads=0;Object.defineProperty(real,0,{get(){reads++;throw Error('payload');}});
+  expect(()=>policy.assertCompilerRuntimeOwnership([file([marker])],real,profile,[owner])).toThrow('Module ownership count exceeds 16384');expect(reads).toBe(0);
+ });
+ it('keeps raw per-chunk capacity and dense-array refusals',()=>{
+  expect(policy.assertCompilerRuntimeOwnership([file(Array(16384).fill(marker))],[],profile,[owner]).compilerRuntimeModules).toHaveLength(1);
+  expect(()=>policy.assertCompilerRuntimeOwnership([file(Array(16385).fill(marker))],[],profile,[owner])).toThrow();
+  expect(()=>policy.assertCompilerRuntimeOwnership([file(new Array(1))],[],profile,[owner])).toThrow();
+  expect(()=>policy.assertCompilerRuntimeOwnership([file([marker])],[],profile,new Array(1))).toThrow();
+ });
+});

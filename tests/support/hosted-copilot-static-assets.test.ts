@@ -42,7 +42,9 @@ describe('production output capacity v3 owned collectors',()=>{
  it('refuses an already-present final inventory before publication',async()=>owned(async root=>{await writeFile(join(root,'artifact-inventory.json'),'{}');const collected=await productionAssets.collectProductionArtifact(root);expect(()=>productionContract.assertProductionFinalInventory(collected.files,collected.visitedEntries,10)).toThrow('pre-existing');}));
 });
 
-import {projectHookFacts,type HookFile} from './hosted-copilot-build-plugin.ts';
+import {projectHookFacts as projectHookFactsWithProfile,type HookFile} from './hosted-copilot-build-plugin.ts';
+const compilerProfile={provider:'rolldown' as const,version:'1.2.13' as const,runtimeModuleId:'\0rolldown/runtime.js'};
+function projectHookFacts(input:readonly HookFile[],modules:Parameters<typeof projectHookFactsWithProfile>[1]){return projectHookFactsWithProfile(input,modules,compilerProfile,[]);}
 import * as metadataPolicy from './hosted-copilot-production-policy.ts';
 describe('supported static graph v5',()=>{
  const owner='assets/main.js',missing='assets/katex.min-BuSKZrD3.js';
@@ -97,5 +99,29 @@ describe('supported static graph v5',()=>{
  });
  it('does not invent complete preload-helper coverage from arbitrary strings',()=>{
   expect(collectJsReferences(program([{type:'VariableDeclaration',declarations:[{type:'VariableDeclarator',init:{type:'ArrayExpression',elements:[literal('missing.css')]}}]}]))).toEqual([]);
+ });
+});
+
+describe('compiler runtime static snapshot v7',()=>{
+ const marker=compilerProfile.runtimeModuleId,name='assets/any-compiler-chunk.js',hook:HookFile={fileName:name,kind:'chunk',contentSha256:'b'.repeat(64),imports:[],dynamicImports:[],moduleIds:[marker,marker],originalNames:[],facadeModuleId:null};
+ const physical=(path:string)=>({path,bytes:1,sha256:'b'.repeat(64),regular:true,contained:true,symlink:false}),files=[physical(name),physical('.vite/manifest.json')];
+ const facts=()=>projectHookFactsWithProfile([hook],[],compilerProfile,[{id:marker,moduleInfo:null}]);
+ it('recomputes separate owner identity while preserving all raw occurrences and zero resource charge',()=>{
+  const hooks=facts(),snapshot=productionAssets.assertHookSnapshot(hooks,files);expect(snapshot.compilerProfile).toEqual(compilerProfile);expect(snapshot.compilerRuntimeModules).toEqual(hooks.compilerRuntimeModules);expect(snapshot.metadataOccurrenceCount).toBe(0);expect(hooks.files[0]!.moduleIds).toEqual([marker,marker]);
+  expect(metadataPolicy.projectStaticReferenceCounts({metadataOccurrences:0,manifestOwnerOccurrences:1,manifestEdgeOccurrences:0,parsedEdgeOccurrences:0}).referenceBudgetCharges).toBe(1);
+ });
+ it('rejects schema2 and missing/extra/duplicate/altered owner state or profile',()=>{
+  const hooks=facts(),owner=hooks.compilerRuntimeModules[0]!;
+  for(const changed of [{schemaVersion:2},{compilerProfile:{...compilerProfile,version:'wrong'}},{compilerRuntimeModules:[]},{compilerRuntimeModules:[owner,owner]},{compilerRuntimeModules:[{...owner,id:'unknown'}]},{compilerRuntimeModules:[{...owner,moduleInfo:{}}]},{compilerRuntimeModules:[{...owner,external:false}]},{compilerRuntimeModules:[{...owner,sourceEnumeration:'present'}]},{compilerRuntimeModules:[{...owner,extra:true}]}])expect(()=>productionAssets.assertHookSnapshot({...hooks,...changed} as unknown as productionAssets.HookFacts,files)).toThrow();
+  expect(()=>productionAssets.assertHookSnapshot({...hooks,files:[{...hook,moduleIds:[]}]},files)).toThrow();
+ });
+ it('rejects source-registry overlap, runtime facade, unknown ID and original physical hash tamper',()=>{
+  const hooks=facts();for(const changed of [{modules:[{id:marker,kind:'virtual',external:false}]},{files:[{...hook,facadeModuleId:marker}]},{files:[{...hook,moduleIds:[marker,'unknown']}]}])expect(()=>productionAssets.assertHookSnapshot({...hooks,...changed} as unknown as productionAssets.HookFacts,files)).toThrow();
+  expect(()=>productionAssets.assertHookSnapshot(hooks,[{...files[0]!,sha256:'a'.repeat(64)},files[1]!])).toThrow('physical bytes');
+ });
+ it('applies identical missing static/dynamic resource resolution to runtime chunks',()=>{
+  for(const type of ['ImportDeclaration','ImportExpression']){const refs=collectJsReferences(program([{type,source:literal('./missing.js')}]));expect(refs).toEqual(['./missing.js']);expect(()=>refs.map(raw=>metadataPolicy.normalizeProductionReference(name,raw,files.map(f=>f.path)))).toThrow('Unresolved');}
+  expect(()=>collectJsReferences(program([{type:'ImportExpression',source:{type:'Identifier',name:'computed'}}]))).toThrow();
+  expect(()=>metadataPolicy.assertProductionManifest([{key:'runtime',file:name,imports:[],dynamicImports:[],css:['missing.css'],assets:[]}],files.map(f=>f.path))).toThrow();
  });
 });

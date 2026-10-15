@@ -134,6 +134,54 @@ export function assertMappings(input:readonly ModuleMapping[]) {
  }
  return Object.freeze({physical,virtual,qualification:false as const,scope:'supplied module classifications only' as const});
 }
+export interface CompilerProfile {provider:'rolldown';version:'1.2.13';runtimeModuleId:string}
+export interface CompilerRuntimeModule {id:string;provider:'rolldown';version:'1.2.13';origin:'public-runtime-module-id-export';moduleInfo:null;sourceEnumeration:'absent';external:null}
+export interface CompilerRuntimeObservation {id:string;moduleInfo:null}
+interface EmittedModuleFile {kind:string;moduleIds:readonly string[];facadeModuleId:string|null}
+function exactOwnFields(value:unknown,keys:readonly string[]):value is Record<string,unknown> {
+ return value!==null&&typeof value==='object'&&!Array.isArray(value)&&Reflect.ownKeys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
+}
+/** Reviewed supplied profile; only the hosted config supplies actual public exports. */
+export function assertCompilerProfile(value:unknown):Readonly<CompilerProfile> {
+ if(!exactOwnFields(value,['provider','version','runtimeModuleId'])||value.provider!=='rolldown'||value.version!=='1.2.13'||value.runtimeModuleId!=='\0rolldown/runtime.js')throw new Error('Compiler profile differs');
+ return Object.freeze({provider:'rolldown',version:'1.2.13',runtimeModuleId:value.runtimeModuleId});
+}
+/** Count preflight precedes ownership sets or descriptor allocation. */
+export function assertCombinedModuleOwnershipCount(modules:readonly ModuleMapping[],runtimeOwners:number):void {
+ if(Array.isArray(modules)&&modules.length+runtimeOwners>MODULE_OWNERSHIP_LIMIT)throw new Error('Module ownership count exceeds 16384');
+}
+/** One exact null observation, never a synthetic code-ready source mapping. */
+export function projectCompilerRuntimeModules(suppliedProfile:unknown,observations:unknown):readonly Readonly<CompilerRuntimeModule>[] {
+ const profile=assertCompilerProfile(suppliedProfile);
+ if(!Array.isArray(observations))throw new Error('Compiler runtime observations absent');assertDenseEntries(observations,1,true);
+ return Object.freeze(observations.map(value=>{
+  if(!exactOwnFields(value,['id','moduleInfo'])||value.id!==profile.runtimeModuleId||value.moduleInfo!==null)throw new Error('Compiler runtime observation differs');
+  return Object.freeze({id:profile.runtimeModuleId,provider:profile.provider,version:profile.version,origin:'public-runtime-module-id-export' as const,moduleInfo:null,sourceEnumeration:'absent' as const,external:null});
+ }));
+}
+/** Replays every original occurrence; descriptor ownership is separate from resource edges. */
+export function assertCompilerRuntimeOwnership(files:readonly EmittedModuleFile[],modules:readonly ModuleMapping[],suppliedProfile:unknown,declared:unknown) {
+ const compilerProfile=assertCompilerProfile(suppliedProfile);
+ if(!Array.isArray(declared))throw new Error('Compiler runtime owners absent');
+ // Dense array guard rejects >1 before reading an owner payload.
+ assertDenseEntries(declared,1,true);assertCombinedModuleOwnershipCount(modules,declared.length);assertMappings(modules);
+ if(modules.some(module=>module.id===compilerProfile.runtimeModuleId))throw new Error('Compiler runtime appeared in source enumeration');
+ const ownerKeys=['id','provider','version','origin','moduleInfo','sourceEnumeration','external'];
+ for(const owner of declared)if(!exactOwnFields(owner,ownerKeys)||owner.id!==compilerProfile.runtimeModuleId||owner.provider!==compilerProfile.provider||owner.version!==compilerProfile.version||owner.origin!=='public-runtime-module-id-export'||owner.moduleInfo!==null||owner.sourceEnumeration!=='absent'||owner.external!==null)throw new Error('Compiler runtime owner differs');
+ if(Array.isArray(files))assertProductionCount('hook-files',files.length);assertDenseEntries(files,PRODUCTION_FILE_LIMITS.hookFiles);
+ const ids=new Set(modules.map(module=>module.id));let referenced=false;
+ for(const file of files) {
+  assertDenseEntries(file.moduleIds,MODULE_OWNERSHIP_LIMIT,true);
+  for(const id of file.moduleIds) {
+   if(id===compilerProfile.runtimeModuleId) {if(file.kind!=='chunk'||declared.length!==1)throw new Error('Compiler runtime emitted ownership differs');referenced=true;}
+   else if(!ids.has(id))throw new Error('Hook module mapping missing');
+  }
+  if(file.facadeModuleId!==null&&!ids.has(file.facadeModuleId))throw new Error('Facade module mapping missing');
+ }
+ if(declared.length!==(referenced?1:0))throw new Error('Compiler runtime referenced owner count differs');
+ const compilerRuntimeModules=projectCompilerRuntimeModules(compilerProfile,referenced?[{id:compilerProfile.runtimeModuleId,moduleInfo:null}]:[]);
+ return Object.freeze({compilerProfile,compilerRuntimeModules});
+}
 export interface ManifestRecord {key:string;file:string;imports:readonly string[];dynamicImports:readonly string[];css:readonly string[];assets:readonly string[]}
 function manifestInNamespace(rows:readonly ManifestRecord[],names:readonly string[],rowMaximum:number,nameMaximum:number) {
  assertDenseEntries(rows,rowMaximum);assertDenseEntries(names,nameMaximum);const records=new Map<string,ManifestRecord>();let count=0;

@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {lstatSync,readFileSync,realpathSync,writeFileSync} from 'node:fs';
 import {join,relative,resolve,isAbsolute} from 'node:path';
 import {assertDenseEntries,ordinaryPath,PRODUCTION_FILE_LIMITS,assertProductionCount} from './hosted-copilot-contract.ts';
-import {assertMappings,assertModuleOwnershipId,assertReferenceCount,classifyHookMetadata,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
+import {assertMappings,assertCompilerProfile,assertCombinedModuleOwnershipCount,projectCompilerRuntimeModules,assertCompilerRuntimeOwnership,type CompilerRuntimeObservation,assertModuleOwnershipId,assertReferenceCount,classifyHookMetadata,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {readIntegratedAdmission} from './hosted-copilot-context.ts';
 export interface HookFile {contentSha256?:string|undefined;fileName:string;kind:'chunk'|'asset';imports:readonly string[];dynamicImports:readonly string[];moduleIds:readonly string[];originalNames:readonly string[];facadeModuleId:string|null}
 type IdDiagnostic=Readonly<{type:string;value:string|null;utf8Bytes:number|null;truncated:boolean}>;
@@ -55,21 +55,25 @@ class OwnershipMismatch extends Error {
 export function enrichOwnershipMismatch(error:Error,lookup:(id:string)=>unknown):Error {
  return error instanceof OwnershipMismatch?error.enrich(lookup):error;
 }
-export function projectHookFacts(input:readonly HookFile[],modules:readonly ModuleMapping[]) {
+function prepareHookFacts(input:readonly HookFile[],modules:readonly ModuleMapping[],suppliedProfile:unknown) {
+ const compilerProfile=assertCompilerProfile(suppliedProfile);
  if(Array.isArray(input)) assertProductionCount('hook-files',input.length);
- assertDenseEntries(input,PRODUCTION_FILE_LIMITS.hookFiles);assertMappings(modules);const names=new Set<string>(),ids=new Set(modules.map(module=>module.id));let referenceCount=0;
+ assertDenseEntries(input,PRODUCTION_FILE_LIMITS.hookFiles);const names=new Set<string>();let referenceCount=0,runtimeReferenced=false;
  for(const file of input) {
   if(!ordinaryPath(file.fileName)||file.fileName.endsWith('.map')||names.has(file.fileName)||!['chunk','asset'].includes(file.kind)) throw new Error('Output file ownership unavailable');names.add(file.fileName);
   if(typeof file.contentSha256!=='string'||file.contentSha256.length!==64||! /^[a-f0-9]+$/.test(file.contentSha256)) throw new Error('Captured hook content hash unavailable');
   assertDenseEntries(file.moduleIds,MODULE_OWNERSHIP_LIMIT,true);
+  runtimeReferenced ||= file.moduleIds.includes(compilerProfile.runtimeModuleId);
   for(const entries of [file.imports,file.dynamicImports,file.originalNames]) assertDenseEntries(entries,4096,true);
   referenceCount=assertReferenceCount([referenceCount,file.imports.length,file.dynamicImports.length]);
  }
- const metadataReferences=classifyHookMetadata(input);
+ assertCombinedModuleOwnershipCount(modules,runtimeReferenced?1:0);assertMappings(modules);
+ if(modules.some(module=>module.id===compilerProfile.runtimeModuleId))throw new Error('Compiler runtime appeared in source enumeration');
+ const ids=new Set(modules.map(module=>module.id)),metadataReferences=classifyHookMetadata(input);
  let missingModuleOccurrences=0,missingFacadeOccurrences=0,firstPrefix='';
  const moduleSamples:OwnershipSample[]=[],facadeSamples:OwnershipSample[]=[],moduleSlots:LookupSlot[]=[],facadeSlots:LookupSlot[]=[];
  for(const file of input) {
-  for(const [index,id] of file.moduleIds.entries()) if(!ids.has(id)) {
+  for(const [index,id] of file.moduleIds.entries()) if(!ids.has(id)&&!(file.kind==='chunk'&&id===compilerProfile.runtimeModuleId)) {
    missingModuleOccurrences++;firstPrefix||='Unknown emitted module ownership';
    if(moduleSamples.length<2) {moduleSlots.push(lookupSlot('module',moduleSamples.length,id));moduleSamples.push(Object.freeze({from:file.fileName,index,id:summarizeId(id,512,128)}));}
   }
@@ -79,13 +83,39 @@ export function projectHookFacts(input:readonly HookFile[],modules:readonly Modu
   }
  }
  if(firstPrefix) throw new OwnershipMismatch(firstPrefix,Object.freeze({missingModuleOccurrences,missingFacadeOccurrences,moduleSamples:Object.freeze(moduleSamples),facadeSamples:Object.freeze(facadeSamples)}),[...moduleSlots,...facadeSlots]);
+ return {compilerProfile,runtimeReferenced,metadataReferences,referenceCount};
+}
+export function projectHookFacts(input:readonly HookFile[],modules:readonly ModuleMapping[],suppliedProfile:unknown,runtimeObservations:unknown) {
+ if(!Array.isArray(runtimeObservations))throw new Error('Compiler runtime observations absent');
+ assertDenseEntries(runtimeObservations,1,true);assertCombinedModuleOwnershipCount(modules,runtimeObservations.length);
+ const prepared=prepareHookFacts(input,modules,suppliedProfile);
+ return finishHookFacts(input,modules,prepared,runtimeObservations);
+}
+function finishHookFacts(input:readonly HookFile[],modules:readonly ModuleMapping[],prepared:ReturnType<typeof prepareHookFacts>,runtimeObservations:unknown) {
+ const declared=projectCompilerRuntimeModules(prepared.compilerProfile,runtimeObservations);
+ const {compilerProfile,compilerRuntimeModules}=assertCompilerRuntimeOwnership(input,modules,prepared.compilerProfile,declared);
  const files=input.map(file=> {
   return Object.freeze({...file,imports:Object.freeze([...file.imports]),dynamicImports:Object.freeze([...file.dynamicImports]),moduleIds:Object.freeze([...file.moduleIds]),originalNames:Object.freeze([...file.originalNames])});
  });
- return Object.freeze({schemaVersion:2 as const,files:Object.freeze(files),modules:Object.freeze(modules.map(module=>Object.freeze({...module}))),metadataReferences,metadataOccurrenceCount:referenceCount,qualification:false as const});
+ return Object.freeze({schemaVersion:3 as const,files:Object.freeze(files),modules:Object.freeze(modules.map(module=>Object.freeze({...module}))),compilerProfile,compilerRuntimeModules,metadataReferences:prepared.metadataReferences,metadataOccurrenceCount:prepared.referenceCount,qualification:false as const});
+}
+/** Pure supplied callback observation; data alone does not authenticate native authority. */
+export function observeCompilerRuntimeModule(suppliedProfile:unknown,referenced:boolean,lookup:(id:string)=>unknown):readonly Readonly<CompilerRuntimeObservation>[] {
+ const profile=assertCompilerProfile(suppliedProfile);
+ if(!referenced)return Object.freeze([]);
+ let moduleInfo:unknown;try{moduleInfo=lookup(profile.runtimeModuleId);}catch{throw new Error('Compiler runtime module info lookup failed');}
+ if(moduleInfo!==null)throw new Error('Compiler runtime module info must be null');
+ return Object.freeze([Object.freeze({id:profile.runtimeModuleId,moduleInfo:null})]);
+}
+/** Pure callback seam. Preparation preserves V6 denial precedence before reserved lookup. */
+export function projectHookFactsWithRuntimeLookup(input:readonly HookFile[],modules:readonly ModuleMapping[],suppliedProfile:unknown,lookup:(id:string)=>unknown) {
+ const prepared=prepareHookFacts(input,modules,suppliedProfile);
+ const observations=observeCompilerRuntimeModule(prepared.compilerProfile,prepared.runtimeReferenced,lookup);
+ return finishHookFacts(input,modules,prepared,observations);
 }
 /** Only the future admitted Vite config invokes this factory/hook. */
-export function createProductionBuildPlugin():Plugin {
+export function createProductionBuildPlugin(options:{compilerProfile:unknown}):Plugin {
+ const compilerProfile=assertCompilerProfile(options.compilerProfile);
  const admission=readIntegratedAdmission();let called=false;
  return {name:'copilot-production-owned-mappings',apply:'build',enforce:'post',
   generateBundle:{order:'post',handler(_options,bundle) {
@@ -93,6 +123,7 @@ export function createProductionBuildPlugin():Plugin {
    const modules:ModuleMapping[]=[];
    for(const id of this.getModuleIds()) {
     assertModuleOwnershipId(id,modules.length);
+    if(id===compilerProfile.runtimeModuleId)throw new Error('Compiler runtime appeared in source enumeration');
     const info=this.getModuleInfo(id);if(!info||info.id!==id||typeof info.code!=='string') throw new Error('Unmapped/external/not-ready module source');
     if(id.startsWith('\0')||id.startsWith('virtual:')) modules.push({id,kind:'virtual',external:false});
     else {
@@ -106,7 +137,7 @@ export function createProductionBuildPlugin():Plugin {
     contentSha256:createHash('sha256').update(entry.code).digest('hex'),fileName:entry.fileName,kind:'chunk',imports:[...entry.imports],dynamicImports:[...entry.dynamicImports],moduleIds:[...entry.moduleIds],originalNames:[],facadeModuleId:entry.facadeModuleId,
    }:{contentSha256:createHash('sha256').update(entry.source).digest('hex'),fileName:entry.fileName,kind:'asset',imports:[],dynamicImports:[],moduleIds:[],originalNames:[...entry.originalFileNames],facadeModuleId:null});
    let facts:ReturnType<typeof projectHookFacts>;
-   try {facts=projectHookFacts(files,modules);}catch(error){
+   try {facts=projectHookFactsWithRuntimeLookup(files,modules,compilerProfile,id=>this.getModuleInfo(id));}catch(error){
     if(error instanceof OwnershipMismatch) throw enrichOwnershipMismatch(error,id=>this.getModuleInfo(id));
     throw error;
    }
