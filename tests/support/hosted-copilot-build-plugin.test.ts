@@ -5,6 +5,14 @@ import {describe,it,expect} from 'vitest';
 import {projectHookFacts,readPhysicalSource,type HookFile} from './hosted-copilot-build-plugin.ts';
 const row:HookFile={contentSha256:'b'.repeat(64),fileName:'assets/main.js',kind:'chunk',imports:[],dynamicImports:[],moduleIds:['/owned/source.js'],originalNames:[],facadeModuleId:'/owned/source.js'};
 const module={id:'/owned/source.js',kind:'physical' as const,path:'source.js',sha256:'a'.repeat(64),external:false};
+describe('module ownership is independent of resource references',()=>{
+ const modules=(count:number)=>Array.from({length:count},(_,index)=>({id:`\0virtual:${index}`,kind:'virtual' as const,external:false}));
+ it.each([9212,16384])('retains every one of %i chunk module IDs',count=>{const owned=modules(count),ids=owned.map(value=>value.id);const facts=projectHookFacts([{...row,moduleIds:ids,facadeModuleId:ids[0]!,imports:Array(2048).fill(row.fileName),dynamicImports:Array(2048).fill(row.fileName)}],owned);expect(facts.files[0]!.moduleIds).toEqual(ids);expect(facts.modules).toHaveLength(count);expect(facts.referenceCount).toBe(4096);expect(facts.qualification).toBe(false);});
+ it('denies16385 chunk module IDs before reading elements',()=>{const owned=modules(16384),ids=Array<string>(16385).fill(owned[0]!.id);let reads=0;Object.defineProperty(ids,0,{get(){reads++;throw new Error('module ID accessed');}});expect(()=>projectHookFacts([{...row,moduleIds:ids,facadeModuleId:null}],owned)).toThrow('Array entry bound');expect(reads).toBe(0);});
+ it('denies sparse module IDs inside the new capacity',()=>{const owned=modules(16384);expect(()=>projectHookFacts([{...row,moduleIds:new Array<string>(9212),facadeModuleId:null}],owned)).toThrow('Sparse array entries denied');});
+ it('keeps original asset names bounded to4096',()=>{expect(projectHookFacts([{...row,originalNames:Array(4096).fill('source.js')}],[module]).files[0]!.originalNames).toHaveLength(4096);expect(()=>projectHookFacts([{...row,originalNames:Array(4097).fill('source.js')}],[module])).toThrow();});
+ it('denies4097 combined resource occurrences with many owned modules',()=>{const owned=modules(9212);expect(()=>projectHookFacts([{...row,moduleIds:owned.map(value=>value.id),facadeModuleId:null,imports:Array(2048).fill(row.fileName),dynamicImports:Array(2049).fill(row.fileName)}],owned)).toThrow('Reference occurrence overflow');});
+});
 describe('supplied production bundle hook facts',()=>{
  it('owns input metadata without a factory or build',()=>{const v=projectHookFacts([row],[module]);expect(v.schemaVersion).toBe(1);expect(v.files[0]!.fileName).toBe(row.fileName);expect(Object.isFrozen(v.files[0])).toBe(true);});
  it('denies sparse output rows',()=>expect(()=>projectHookFacts(new Array(1),[module])).toThrow());

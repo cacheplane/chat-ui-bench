@@ -70,10 +70,19 @@ export function classifyJsReference(node:{kind:string;specifier:string|null;base
  return node.specifier;
 }
 export interface ModuleMapping {id:string;kind:'physical'|'virtual';external:boolean;path?:string;sha256?:string}
+export const MODULE_OWNERSHIP_LIMIT=16384;
+/** Next zero-based ownership slot; count and character preflight precede byte scanning. */
+export function assertModuleOwnershipId(id:unknown,index:number):asserts id is string {
+ if(!Number.isSafeInteger(index)||index<0||index>=MODULE_OWNERSHIP_LIMIT) throw new Error('Module ownership count exceeds 16384');
+ if(typeof id!=='string'||id.length===0||id.length>4096) throw new Error('Module ownership ID shape/length denied');
+ if(Buffer.byteLength(id)>4096) throw new Error('Module ownership ID byte bound');
+}
 export function assertMappings(input:readonly ModuleMapping[]) {
- assertDenseEntries(input,4096,true);const ids=new Set<string>();let physical=0,virtual=0;
+ if(Array.isArray(input)&&input.length>MODULE_OWNERSHIP_LIMIT) throw new Error('Module ownership count exceeds 16384');
+ assertDenseEntries(input,MODULE_OWNERSHIP_LIMIT,true);const ids=new Set<string>();let physical=0,virtual=0,index=0;
  for(const row of input) {
-  if(typeof row.id!=='string'||row.id.length===0||row.id.length>4096||Buffer.byteLength(row.id)>4096||ids.has(row.id)||row.external!==false) throw new Error('Module mapping unavailable/duplicate/external');ids.add(row.id);
+  assertModuleOwnershipId(row.id,index++);
+  if(ids.has(row.id)||row.external!==false) throw new Error('Module mapping unavailable/duplicate/external');ids.add(row.id);
   if(row.kind==='physical') {if(!row.path||!ordinaryPath(row.path)||!row.sha256||!sha(row.sha256,64)||row.id.includes('\0')) throw new Error('Physical module ownership absent');physical++;}
   else if(row.kind==='virtual') {if(!(row.id.startsWith('\0')||row.id.startsWith('virtual:'))||row.path!==undefined||row.sha256!==undefined) throw new Error('Virtual module ownership differs');virtual++;}
   else throw new Error('Unsupported module mapping kind');

@@ -1,10 +1,21 @@
 import {describe,it,expect} from 'vitest';
+import * as policy from './hosted-copilot-production-policy.ts';
 import {assertFullAudit,capturedStreamComplete,assertProviderSnapshot,classifyVendorDiagnostics,assertProviderNextLink,normalizeReference,assertEmbeddedSvg,assertReferenceCount,assertMappings,assertManifest,assertExpectedAudit,assertExpectedVendor,classifyJsReference,type ProviderRun,type ProviderSnapshot} from './hosted-copilot-production-policy.ts';
 const sha='a'.repeat(40),hash='b'.repeat(64),id='hosted-copilot-react-production-build-v1';
 const run:ProviderRun={id:'10',headSha:sha,title:id,event:'workflow_dispatch',workflowId:'20',attempt:1,tag:id};
 const page=<T>(records:readonly T[],totalCount:number|null)=>({page:1,totalCount,hasNext:false,records,status:200,bodyComplete:true});
 function snapshot():ProviderSnapshot{return {repository:'cacheplane/chat-ui-bench',workflowId:'20',candidateSha:sha,releaseId:id,currentRunId:'10',currentRun:{...run},runPages:[page([{...run}],1)],releasePages:[page([],null)],releaseLookupStatus:404,acquisitionClosed:true,draftVisibility:'unverified'};}
 const original=(exitCode:number)=>({exitCode,signal:null,stdoutBytes:10,stderrBytes:0,stdoutRetainedBytes:10,stderrRetainedBytes:0,closed:true,streamsComplete:true});
+describe('bounded production module ownership capacity',()=>{
+ const mappings=(count:number)=>Array.from({length:count},(_,index)=>({id:`\0virtual:${index}`,kind:'virtual' as const,external:false}));
+ it.each([9212,16384])('retains all %i distinct module mappings',count=>expect(assertMappings(mappings(count))).toMatchObject({physical:0,virtual:count,qualification:false}));
+ it('denies module count before accessing an oversized row',()=>{const rows=mappings(16385);let reads=0;Object.defineProperty(rows,0,{get(){reads++;throw new Error('row accessed');}});expect(()=>assertMappings(rows)).toThrow('Module ownership count exceeds 16384');expect(reads).toBe(0);});
+ const guard=(id:unknown,index:number)=>(policy as unknown as {assertModuleOwnershipId:(id:unknown,index:number)=>void}).assertModuleOwnershipId(id,index);
+ it('distinguishes a full native module slot from an invalid ID',()=>{expect(()=>guard(null,16384)).toThrow('Module ownership count exceeds 16384');expect(()=>guard(null,0)).toThrow('Module ownership ID shape/length denied');});
+ it('admits exactly4096 ID characters and UTF8 bytes',()=>{const id='\0'+'a'.repeat(4095);expect(()=>guard(id,16383)).not.toThrow();expect(assertMappings([{id,kind:'virtual',external:false}])).toMatchObject({virtual:1});});
+ it('denies character overflow before the byte scanner',()=>{const original=Buffer.byteLength;let calls=0;let failure:unknown;try {Buffer.byteLength=()=>{calls++;throw new Error('byte scanner reached');};try {guard('a'.repeat(4097),0);}catch(error){failure=error;}}finally {Buffer.byteLength=original;}expect(calls).toBe(0);expect(failure).toBeInstanceOf(Error);expect((failure as Error).message).toBe('Module ownership ID shape/length denied');});
+ it('denies UTF8 byte overflow with bounded character length',()=>{const id='\0'+'é'.repeat(2048);expect(id.length).toBeLessThan(4096);expect(()=>guard(id,0)).toThrow('Module ownership ID byte bound');});
+});
 describe('supplied provider observations',()=>{
  it('excludes exactly validated current run and leaves draft/race scope open',()=>{const v=assertProviderSnapshot(snapshot());expect(v.observedUnused).toBe(true);expect(v.atomicLease).toBe(false);expect(v.draftVisibility).toBe('unverified');expect(v.qualification).toBe(false);});
  it('denies missing current row',()=>{const v=snapshot();v.runPages=[page([],0)];expect(()=>assertProviderSnapshot(v)).toThrow();});

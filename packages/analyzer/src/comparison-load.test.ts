@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
+import {createComparisonLoadTeardownObserver} from './comparison-load-teardown.test-helper.js';
 import fs from 'node:fs/promises';
 import {parseComparisonRendererPresentation} from './comparison-presentation.js';
 import * as presentationModule from './comparison-presentation.js';
@@ -13,7 +14,20 @@ import {loadComparisonMember, loadComparisonJson, loadComparisonJsonLines, loadC
 import {longThreadCaseOrder, createLongThreadMatrix, createLongThreadFixture, longThreadFixtureSchema, canonicalSerialize, COMPARISON_CAPTURE_LIMITS, comparisonPhaseMarks, PRESENTATION_TRACE_CATEGORIES, PRESENTATION_CAPABILITY, PRESENTATION_CONTRACT_VERSION, comparisonManifestSchema, comparisonDatasetInventorySchema, comparisonSchemasForVersionPair} from '@chat-ui-bench/contract';
 
 const owned: string[] = [];
-afterEach(async () => {vi.restoreAllMocks(); for (const path of owned.splice(0)) await rm(path, {recursive: true, force: true});});
+afterEach(async context => {
+  const observer=createComparisonLoadTeardownObserver({labels:()=>({taskId:context.task.id,testName:context.task.name}),initialOwnedCount:()=>owned.length,now:()=>performance.now(),log:line=>{console.info(line);}});
+  try {
+    observer.restoreStarted();
+    try {vi.restoreAllMocks();}catch(error){observer.restoreThrown();throw error;}
+    observer.restoreReturned();observer.batch(()=>owned.length);
+    for (const path of owned.splice(0)) {
+      observer.rmStarted(()=>path);
+      try {await rm(path, {recursive: true, force: true});}catch(error){observer.rmThrown();throw error;}
+      observer.rmReturned();
+    }
+    observer.summary('returned');
+  }catch(error){observer.summary('thrown');throw error;}
+});
 
 async function fixture() {
   const directory = await mkdtemp(join(await realpath(tmpdir()), 'chat-ui-bench-analysis-loader-')); owned.push(directory);
