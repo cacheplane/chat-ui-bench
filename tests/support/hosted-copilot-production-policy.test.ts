@@ -6,6 +6,13 @@ const run:ProviderRun={id:'10',headSha:sha,title:id,event:'workflow_dispatch',wo
 const page=<T>(records:readonly T[],totalCount:number|null)=>({page:1,totalCount,hasNext:false,records,status:200,bodyComplete:true});
 function snapshot():ProviderSnapshot{return {repository:'cacheplane/chat-ui-bench',workflowId:'20',candidateSha:sha,releaseId:id,currentRunId:'10',currentRun:{...run},runPages:[page([{...run}],1)],releasePages:[page([],null)],releaseLookupStatus:404,acquisitionClosed:true,draftVisibility:'unverified'};}
 const original=(exitCode:number)=>({exitCode,signal:null,stdoutBytes:10,stderrBytes:0,stdoutRetainedBytes:10,stderrRetainedBytes:0,closed:true,streamsComplete:true});
+describe('runtime URL shared accounting v9',()=>{
+ const counts={metadataOccurrences:1,manifestOwnerOccurrences:1,manifestEdgeOccurrences:1,parsedEdgeOccurrences:1,unqualifiedRuntimeUrlOccurrences:4092};
+ it('charges mixed4096 while retaining only two resolved static edges',()=>expect(policy.projectStaticReferenceCounts(counts)).toEqual({...counts,referenceBudgetCharges:4096,staticGraphReferenceOccurrences:2}));
+ it('refuses mixed4097',()=>expect(()=>policy.projectStaticReferenceCounts({...counts,unqualifiedRuntimeUrlOccurrences:4093})).toThrow('Reference occurrence overflow'));
+ it('requires a valid new counter and preserves all existing counter obligations',()=>{for(const key of Object.keys(counts)){for(const value of [undefined,-1,0.5,NaN,Infinity,Number.MAX_SAFE_INTEGER]){const input={...counts,[key]:value};expect(()=>Reflect.apply(policy.projectStaticReferenceCounts,null,[input])).toThrow();}}});
+ it('refuses a missing new counter',()=>expect(()=>Reflect.apply(policy.projectStaticReferenceCounts,null,[{metadataOccurrences:0,manifestOwnerOccurrences:0,manifestEdgeOccurrences:0,parsedEdgeOccurrences:0}])).toThrow());
+});
 describe('bounded production module ownership capacity',()=>{
  const mappings=(count:number)=>Array.from({length:count},(_,index)=>({id:`\0virtual:${index}`,kind:'virtual' as const,external:false}));
  it.each([9212,16384])('retains all %i distinct module mappings',count=>expect(assertMappings(mappings(count))).toMatchObject({physical:0,virtual:count,qualification:false}));

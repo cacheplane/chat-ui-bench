@@ -412,5 +412,37 @@ hosted admission; supplied-AST local tests do not prove the actual parser ABI or
 qualify emitted graph completeness. Unsupported computed-resource diagnostics
 retain the original error prefix with a bounded source label, node type and
 parser offsets, without source body contents. Vite preload helper tables and
-other runtime URL construction remain unqualified. The v8 build, STATIC, runtime,
-performance and FPS outcomes remain unknown until fresh original evidence.
+other runtime URL construction remain unqualified. The original v8 run
+`38734456206`, artifact `11970554810`, built successfully (exit 0), then the
+in-process inspector refused a computed Identifier in an emitted Vite preload
+helper. It produced no qualified STATIC report. That failed original is immutable;
+runtime, performance and FPS outcomes remain unqualified.
+
+The fixed identity `hosted-copilot-react-production-build-v9` adds a bounded,
+explicitly unresolved inventory for exactly `new URL(Identifier, import.meta.url)`
+and `new URL(import.meta.resolve(Identifier))`. Only direct, nonoptional,
+noncomputed forms with those exact argument counts qualify for this inventory.
+`collectJsResourceFacts` returns constant resource candidates and ordered runtime
+occurrences separately. The legacy `collectJsReferences` API and inline HTML
+scripts still refuse these computed resources. Computed imports, unsupported
+templates and ambiguous import-meta syntax remain denied; constants still require
+normalization and final inventory membership, including missing-asset refusal.
+
+Inspector result schema 4 (hook schema 3 remains unchanged) binds each runtime
+occurrence to its complete canonical emitted path, physical source SHA256,
+standalone-module unit kind and SHA256 of the decoded string passed to the parser.
+Locations are relative to that parsed string, with UTF16 code-unit semantics
+conditional on the future actual-parser Unicode control; they are not raw byte
+offsets. No expression text, identifier name, caller or target is inferred.
+
+Each runtime occurrence consumes the same shared4096 budget as metadata,
+manifest owners and edges, and parsed edges, before retention; unresolved rows
+are excluded from resolved static edge counts. The collector accepts only a
+remaining-occurrence credit bounded by that existing limit. Duplicates stay
+charged. Six additional hosted parser microcases bring the total to22, including
+both forms, strict compatibility, mixed occurrences, computed import and ambiguous
+base refusals, and a Unicode span control. They remain unexecuted locally.
+Parser completion covers only the declared syntax. Preload helper coverage,
+runtime targets, network enforcement and presentation remain unqualified; these
+rows authorize no assets or routes. V9 build, STATIC and runtime outcomes await
+fresh admitted original evidence.
