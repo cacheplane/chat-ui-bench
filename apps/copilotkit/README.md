@@ -334,7 +334,56 @@ refusal if enrichment formatting fails. These observations establish neither
 ownership nor provenance and do not add mappings, bypass admission, change
 successful schema 2 facts, or expand any capacity, dependency or parser support.
 UTF8 counting scans supplied strings; the output bound is not a constant-time
-processing guarantee. The cause of the v5 failure and the actual v6 build outcome
-remain unknown. Supported STATIC success and separate mounted/runtime/frame/FPS
-qualification remain required before publishing performance or competitive
-results.
+processing guarantee. The actual v5 missing ID and its cause remain unretained;
+the later v6 evidence below supplies a separate source-specific observation.
+Supported STATIC success
+and separate mounted/runtime/frame/FPS qualification remain required before
+publishing performance or competitive results.
+
+## Separate compiler-runtime ownership
+
+The original v6 run `38708386484`, at source
+`05680be054bcb52c3f3caf35f2a1b3e254fe1e75`, retained exactly one missing module
+occurrence: `\0rolldown/runtime.js`, at index 0 in
+`assets/rolldown-runtime-Dd_uD5pT.js`. Its same-hook `getModuleInfo` lookup returned
+null; there was no missing facade. The marker matches the pinned Rolldown public
+`RUNTIME_MODULE_ID` export. The 9,212 transformed modules are not a source-mapping
+count. The build failed before supported STATIC inspection, and runtime/frame/FPS
+qualification remains unavailable. The v6 tag, run and artifact remain immutable.
+
+The fixed identity `hosted-copilot-react-production-build-v7` uses hook and static
+report schema 3. The admitted Vite config supplies Rolldown's actual public
+`RUNTIME_MODULE_ID` and `VERSION` exports. The reviewed profile accepts exactly
+provider `rolldown`, version `1.2.13`, and that full marker. Supplied pure-test
+profiles or serialized claims alone do not authenticate native export authority.
+
+Ordinary physical/virtual source mappings retain their existing code-ready,
+source-enumerated semantics. A separate `compilerRuntimeModules` inventory has
+zero or one owner: it exists exactly when at least one emitted chunk module ID
+references the marker. Repeated occurrences in the same or different chunks all
+resolve to that one owner and remain in their original raw order. The marker
+must be absent from ordinary source enumeration and must never be a facade or
+an asset-row module ID. An unused owner, duplicate owner, different marker,
+version, or unknown ordinary module still refuses admission.
+
+When referenced, the hook queries the exact marker once and requires a strictly
+null result. The separate owner records the public-export origin, version,
+absent source enumeration, and null module-info/external classification. It
+fabricates no physical path, source hash, code contents or `external:false`
+source mapping. Unrelated missing-module/facade diagnostics retain their bounded
+V6 evidence and first-encountered family before the reserved runtime lookup.
+
+Ordinary mappings plus the runtime owner share the existing 16,384 distinct-owner
+cap. Repeated raw module occurrences retain the per-chunk 16,384 limit; runtime
+identity creates no resource edge or discount against the shared 4,096 reference
+budget. Output counts, byte limits, dependencies and supported parser forms are
+unchanged. Historical schema 2 artifacts retain their original source; the new
+inspector requires schema 3 and recomputes exact profile/owner integrity.
+
+Every emitted runtime JavaScript file still receives the same final inventory,
+physical byte-hash, fatal UTF8 decode, actual supported AST reference collection,
+and manifest/resource validation as other emitted JavaScript. No hashed filename
+or URL bypass is admitted. Marker ownership supplies no full runtime provenance,
+external classification, preload/helper/runtime-URL completeness or execution
+qualification. The actual v7 build and STATIC outcome remain unknown until new
+hosted evidence; performance and FPS remain unqualified.

@@ -2,7 +2,9 @@ import {mkdtempSync,writeFileSync,symlinkSync,mkdirSync,realpathSync} from 'node
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {describe,it,expect} from 'vitest';
-import {projectHookFacts,enrichOwnershipMismatch,readPhysicalSource,type HookFile} from './hosted-copilot-build-plugin.ts';
+import {projectHookFacts as projectHookFactsWithProfile,projectHookFactsWithRuntimeLookup,observeCompilerRuntimeModule,enrichOwnershipMismatch,readPhysicalSource,type HookFile} from './hosted-copilot-build-plugin.ts';
+const compilerProfile={provider:'rolldown' as const,version:'1.2.13' as const,runtimeModuleId:'\0rolldown/runtime.js'};
+function projectHookFacts(input:readonly HookFile[],modules:Parameters<typeof projectHookFactsWithProfile>[1]) {return projectHookFactsWithProfile(input,modules,compilerProfile,[]);}
 const row:HookFile={contentSha256:'b'.repeat(64),fileName:'assets/main.js',kind:'chunk',imports:[],dynamicImports:[],moduleIds:['/owned/source.js'],originalNames:[],facadeModuleId:'/owned/source.js'};
 const module={id:'/owned/source.js',kind:'physical' as const,path:'source.js',sha256:'a'.repeat(64),external:false};
 describe('module ownership is independent of resource references',()=>{
@@ -14,7 +16,7 @@ describe('module ownership is independent of resource references',()=>{
  it('denies4097 combined resource occurrences with many owned modules',()=>{const owned=modules(9212);expect(()=>projectHookFacts([{...row,moduleIds:owned.map(value=>value.id),facadeModuleId:null,imports:Array(2048).fill(row.fileName),dynamicImports:Array(2049).fill(row.fileName)}],owned)).toThrow('Reference occurrence overflow');});
 });
 describe('supplied production bundle hook facts',()=>{
- it('owns input metadata without a factory or build',()=>{const v=projectHookFacts([row],[module]);expect(v.schemaVersion).toBe(2);expect(v.files[0]!.fileName).toBe(row.fileName);expect(Object.isFrozen(v.files[0])).toBe(true);});
+ it('owns input metadata without a factory or build',()=>{const v=projectHookFacts([row],[module]);expect(v.schemaVersion).toBe(3);expect(v.files[0]!.fileName).toBe(row.fileName);expect(Object.isFrozen(v.files[0])).toBe(true);});
  it('denies sparse output rows',()=>expect(()=>projectHookFacts(new Array(1),[module])).toThrow());
  it('retains absent bundler metadata independently of emitted resources',()=>expect(projectHookFacts([{...row,imports:['missing.js']}],[module]).metadataReferences[0]!.membership).toBe('absent-from-hook-snapshot'));
  it('denies source-map/escape output names',()=>{expect(()=>projectHookFacts([{...row,fileName:'main.js.map'}],[module])).toThrow();expect(()=>projectHookFacts([{...row,fileName:'../main.js'}],[module])).toThrow();});
@@ -90,7 +92,7 @@ describe('bounded unsupported hook metadata diagnostics v5',()=>{
  });
  it('keeps valid static and dynamic facts identical and frozen',()=>{
   const input={...row,imports:[row.fileName],dynamicImports:[row.fileName]},facts=projectHookFacts([input],[module]);
-  expect(facts).toEqual({schemaVersion:2,files:[input],modules:[module],metadataReferences:[{from:row.fileName,kind:'import',index:0,raw:row.fileName,membership:'present-in-hook-snapshot'},{from:row.fileName,kind:'dynamic-import',index:0,raw:row.fileName,membership:'present-in-hook-snapshot'}],metadataOccurrenceCount:2,qualification:false});
+  expect(facts).toEqual({schemaVersion:3,files:[input],modules:[module],compilerProfile,compilerRuntimeModules:[],metadataReferences:[{from:row.fileName,kind:'import',index:0,raw:row.fileName,membership:'present-in-hook-snapshot'},{from:row.fileName,kind:'dynamic-import',index:0,raw:row.fileName,membership:'present-in-hook-snapshot'}],metadataOccurrenceCount:2,qualification:false});
   expect(Object.isFrozen(facts.files[0]!.imports)).toBe(true);expect(Object.isFrozen(facts.files[0]!.dynamicImports)).toBe(true);
  });
  it('keeps original source-map, sparse-array and combined-reference precedence',()=>{
@@ -104,7 +106,7 @@ describe('bounded unsupported hook metadata diagnostics v5',()=>{
 describe('hook metadata v5',()=>{
  it('retains absent dynamic metadata without claiming an emitted resource',()=>{
   const raw='assets/katex.min-BuSKZrD3.js',facts=projectHookFacts([{...row,dynamicImports:[raw]}],[module]);
-  expect(facts.schemaVersion).toBe(2);expect(facts.files[0]!.dynamicImports).toEqual([raw]);
+  expect(facts.schemaVersion).toBe(3);expect(facts.files[0]!.dynamicImports).toEqual([raw]);
   expect(facts.metadataReferences).toEqual([{from:row.fileName,kind:'dynamic-import',index:0,raw,membership:'absent-from-hook-snapshot'}]);
   expect(facts.metadataOccurrenceCount).toBe(1);expect(facts.qualification).toBe(false);
  });
@@ -169,9 +171,9 @@ describe('bounded emitted ownership diagnostics v6',()=>{
   }
   expect(()=>projectHookFacts([missing(['unknown'])],[{...module,external:true}])).toThrow();
  });
- it('preserves exact successful schema2 facts and freezes caller-independent copies',()=>{
+ it('preserves exact successful schema3 facts and freezes caller-independent copies',()=>{
   const input={...row,imports:['missing.js']},facts=projectHookFacts([input],[module]);
-  expect(JSON.stringify(facts)).toBe(JSON.stringify({schemaVersion:2,files:[input],modules:[module],metadataReferences:[{from:row.fileName,kind:'import',index:0,raw:'missing.js',membership:'absent-from-hook-snapshot'}],metadataOccurrenceCount:1,qualification:false}));
+  expect(JSON.stringify(facts)).toBe(JSON.stringify({schemaVersion:3,files:[input],modules:[module],compilerProfile,compilerRuntimeModules:[],metadataReferences:[{from:row.fileName,kind:'import',index:0,raw:'missing.js',membership:'absent-from-hook-snapshot'}],metadataOccurrenceCount:1,qualification:false}));
   expect(Object.isFrozen(facts)).toBe(true);expect(Object.isFrozen(facts.files)).toBe(true);expect(Object.isFrozen(facts.files[0]!.moduleIds)).toBe(true);expect(Object.isFrozen(facts.modules[0])).toBe(true);
  });
  it('queries at most four exact full originals, including4096 bytes, never diagnostic prefixes',()=>{
@@ -206,5 +208,51 @@ describe('bounded emitted ownership diagnostics v6',()=>{
   const error=failure(input),data=report(error);expect(data.moduleSamples[0].from).toHaveLength(1024);
   report(enrichOwnershipMismatch(error,()=>({id:'\0'.repeat(256),code:''})));
   report(enrichOwnershipMismatch(error,()=>{throw {name:'\0'.repeat(64)};}));
+ });
+});
+
+// This seam supplies literal callback results, never a plugin or native SDK.
+describe('compiler runtime hook v7',()=>{
+ const marker=compilerProfile.runtimeModuleId,owner={id:marker,provider:'rolldown',version:'1.2.13',origin:'public-runtime-module-id-export',moduleInfo:null,sourceEnumeration:'absent',external:null};
+ const runtime=(moduleIds=[marker]):HookFile=>({...row,moduleIds,facadeModuleId:null});
+ it('projects schema3 with one separate runtime owner and every repeated raw occurrence',()=>{
+  const files=[runtime([marker,row.moduleIds[0]!,marker]),{...runtime(),fileName:'arbitrary-runtime-name.js'}],before=JSON.stringify(files),observations=[{id:marker,moduleInfo:null}],facts=projectHookFactsWithProfile(files,[module],compilerProfile,observations);
+  expect(facts.schemaVersion).toBe(3);expect(facts.compilerProfile).toEqual(compilerProfile);expect(facts.compilerRuntimeModules).toEqual([owner]);expect(facts.modules).toEqual([module]);expect(facts.files).toEqual(files);expect(JSON.stringify(files)).toBe(before);expect(facts.metadataOccurrenceCount).toBe(0);expect(facts.qualification).toBe(false);
+ });
+ it('returns only frozen serializable exact null observation data from the callback helper',()=>{
+  const seen:string[]=[],observations=observeCompilerRuntimeModule(compilerProfile,true,id=>{seen.push(id);return null;});
+  expect(seen).toEqual([marker]);expect(JSON.stringify(observations)).toBe(JSON.stringify([{id:marker,moduleInfo:null}]));expect(Object.isFrozen(observations)).toBe(true);expect(Object.isFrozen(observations[0])).toBe(true);
+  expect(observeCompilerRuntimeModule(compilerProfile,false,()=>{throw Error('unused');})).toEqual([]);
+ });
+ it('observes the original marker once across chunks and zero times without occurrences',()=>{
+  const seen:string[]=[];const facts=projectHookFactsWithRuntimeLookup([runtime([marker,marker]),{...runtime(),fileName:'second.js'}],[module],compilerProfile,id=>{seen.push(id);return null;});expect(seen).toEqual([marker]);expect(facts.compilerRuntimeModules).toEqual([owner]);
+  projectHookFactsWithRuntimeLookup([row],[module],compilerProfile,()=>{throw Error('unexpected lookup');});
+ });
+ it('rejects missing/wrong/non-null/extra supplied observations and callback exceptions',()=>{
+  for(const observations of [[],[{id:'wrong',moduleInfo:null}],[{id:marker,moduleInfo:{}}],[{id:marker,moduleInfo:undefined}],[{id:marker,moduleInfo:null,extra:true}],[{id:marker,moduleInfo:null},{id:marker,moduleInfo:null}]])expect(()=>projectHookFactsWithProfile([runtime()],[module],compilerProfile,observations)).toThrow();
+  for(const result of [undefined,{},'',false])expect(()=>projectHookFactsWithRuntimeLookup([runtime()],[module],compilerProfile,()=>result)).toThrow();
+  expect(()=>projectHookFactsWithRuntimeLookup([runtime()],[module],compilerProfile,()=>{throw Error('lookup');})).toThrow();
+  expect(()=>projectHookFactsWithProfile([row],[module],compilerProfile,[{id:marker,moduleInfo:null}])).toThrow();
+ });
+ it('keeps ordinary unknown interleaved diagnostics ahead of compiler observation',()=>{
+  const input=[{...runtime(),facadeModuleId:'first-facade'},{...runtime(['unknown',marker]),fileName:'later.js'}];let calls=0;let failure:Error|undefined;
+  try{projectHookFactsWithRuntimeLookup(input,[module],compilerProfile,()=>{calls++;throw Error('must not preempt');});}catch(error){failure=error as Error;}
+  expect(calls).toBe(0);expect(failure!.message.startsWith('Unknown facade module ownership ')).toBe(true);
+  const enriched=enrichOwnershipMismatch(failure!,()=>null),data=JSON.parse(enriched.message.slice(enriched.message.indexOf('{')));expect(data).toMatchObject({missingModuleOccurrences:1,missingFacadeOccurrences:1,moduleSamples:[{id:{value:'unknown'}}]});expect(data.observations).toHaveLength(2);
+ });
+ it('keeps runtime facade/asset and ordinary registry overlap refusals',()=>{
+  expect(()=>projectHookFactsWithProfile([{...runtime(),facadeModuleId:marker}],[module],compilerProfile,[{id:marker,moduleInfo:null}])).toThrow('Unknown facade module ownership');
+  expect(()=>projectHookFactsWithProfile([{...runtime(),kind:'asset'}],[module],compilerProfile,[{id:marker,moduleInfo:null}])).toThrow();
+  expect(()=>projectHookFactsWithProfile([runtime()],[{id:marker,kind:'virtual',external:false}],compilerProfile,[{id:marker,moduleInfo:null}])).toThrow();
+  expect(()=>projectHookFactsWithProfile([runtime()],[module],undefined,[])).toThrow();
+ });
+ it('rejects aggregate declared owner overflow before reading ordinary or observation payloads',()=>{
+  const modules=Array.from({length:16384},(_,i)=>({id:`\0ordinary:${i}`,kind:'virtual' as const,external:false})),observations=[{id:marker,moduleInfo:null}];let reads=0;
+  Object.defineProperty(modules,0,{get(){reads++;throw Error('ordinary payload');}});Object.defineProperty(observations,0,{get(){reads++;throw Error('observation payload');}});
+  expect(()=>projectHookFactsWithProfile([{...row,moduleIds:[],facadeModuleId:null}],modules,compilerProfile,observations)).toThrow('Module ownership count exceeds 16384');expect(reads).toBe(0);
+ });
+ it('retains reference4096/4097 and malformed/overcount/hash guards before runtime lookup',()=>{
+  expect(projectHookFactsWithRuntimeLookup([{...runtime(),imports:Array(4096).fill(row.fileName)}],[module],compilerProfile,()=>null).metadataOccurrenceCount).toBe(4096);
+  for(const input of [[{...runtime(),imports:Array(4097).fill(row.fileName)}],[runtime(new Array(1))],[runtime(Array(16385).fill(marker))],[{...runtime(),contentSha256:undefined}]]){let calls=0;expect(()=>projectHookFactsWithRuntimeLookup(input,[module],compilerProfile,()=>{calls++;return null;})).toThrow();expect(calls).toBe(0);}
  });
 });

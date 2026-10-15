@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {lstat,readdir,readFile,realpath} from 'node:fs/promises';
 import {join,relative,resolve} from 'node:path';
 import {assertDenseEntries,assertProductionOutputInventory,assertProductionArtifactInventory,assertProductionCount,LIMITS,ordinaryPath,type FileFact} from './hosted-copilot-contract.ts';
-import {assertEmbeddedSvg,assertProductionManifest,assertMappings,assertReferenceCount,assertHookMetadataIntegrity,projectStaticReferenceCounts,classifyJsReference,MODULE_OWNERSHIP_LIMIT,normalizeProductionReference,type HookMetadataReference,type ManifestRecord,type ModuleMapping} from './hosted-copilot-production-policy.ts';
+import {assertEmbeddedSvg,assertProductionManifest,assertCompilerRuntimeOwnership,type CompilerProfile,type CompilerRuntimeModule,assertReferenceCount,assertHookMetadataIntegrity,projectStaticReferenceCounts,classifyJsReference,MODULE_OWNERSHIP_LIMIT,normalizeProductionReference,type HookMetadataReference,type ManifestRecord,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {readIntegratedAdmission} from './hosted-copilot-context.ts';
 type Row=Record<string,unknown>;
 function row(v:unknown):Row {if(v===null||typeof v!=='object'||Array.isArray(v))throw new Error('Parser object absent');return v as Row;}
@@ -39,22 +39,21 @@ export function collectHtmlReferences(value:unknown):{references:string[];script
 }
 export function collectCssReferences(value:unknown):string[]{const out:string[]=[];for(const dep of array(value)){const n=row(dep);if(n.type!=='import'&&n.type!=='url')throw new Error('Unsupported CSS dependency form');add(out,n.url);}return out;}
 export interface HookFile {contentSha256?:string|undefined;fileName:string;kind:'chunk'|'asset';imports:readonly string[];dynamicImports:readonly string[];moduleIds:readonly string[];originalNames:readonly string[];facadeModuleId:string|null}
-export interface HookFacts {schemaVersion:2;files:readonly HookFile[];modules:readonly ModuleMapping[];metadataReferences:readonly HookMetadataReference[];metadataOccurrenceCount:number;qualification:false}
+export interface HookFacts {schemaVersion:3;compilerProfile:Readonly<CompilerProfile>;compilerRuntimeModules:readonly Readonly<CompilerRuntimeModule>[];files:readonly HookFile[];modules:readonly ModuleMapping[];metadataReferences:readonly HookMetadataReference[];metadataOccurrenceCount:number;qualification:false}
 /** Supplied inventory/hook consistency only; no I/O or installed parser call. */
 export function assertHookSnapshot(hooks:HookFacts,files:readonly FileFact[]) {
- if(hooks.schemaVersion!==2||hooks.qualification!==false)throw new Error('Hook schema');
+ if(hooks.schemaVersion!==3||hooks.qualification!==false)throw new Error('Hook schema');
  const inventory=assertProductionOutputInventory(files),names=new Set(inventory.files.map(file=>file.path));
  const metadataReferences=assertHookMetadataIntegrity(hooks.files,hooks.metadataReferences,hooks.metadataOccurrenceCount);
- assertMappings(hooks.modules);const moduleIds=new Set(hooks.modules.map(module=>module.id)),mapped=new Set<string>();
+ const mapped=new Set<string>();
  for(const file of hooks.files) {
   if(mapped.has(file.fileName)||!names.has(file.fileName)||file.fileName.endsWith('.map')||!['chunk','asset'].includes(file.kind))throw new Error('Hook emitted file unavailable/duplicate');
   if(file.contentSha256!==inventory.files.find(actual=>actual.path===file.fileName)?.sha256)throw new Error('Final physical bytes differ from captured hook bytes');mapped.add(file.fileName);
   assertDenseEntries(file.moduleIds,MODULE_OWNERSHIP_LIMIT,true);for(const list of [file.imports,file.dynamicImports,file.originalNames])assertDenseEntries(list,4096,true);
-  for(const id of file.moduleIds)if(!moduleIds.has(id))throw new Error('Hook module mapping missing');
-  if(file.facadeModuleId!==null&&!moduleIds.has(file.facadeModuleId))throw new Error('Facade module mapping missing');
  }
  for(const name of names)if(name!=='.vite/manifest.json'&&!mapped.has(name))throw new Error('Output absent from hook inventory');
- return Object.freeze({metadataReferences,metadataOccurrenceCount:metadataReferences.length});
+ const compilerOwnership=assertCompilerRuntimeOwnership(hooks.files,hooks.modules,hooks.compilerProfile,hooks.compilerRuntimeModules);
+ return Object.freeze({metadataReferences,metadataOccurrenceCount:metadataReferences.length,...compilerOwnership});
 }
 interface CollectedFiles {files:readonly Readonly<FileFact>[];bytes:number;visitedEntries:number;qualification:false}
 interface CollectedOutput extends CollectedFiles {byteMap:Map<string,Uint8Array>}
@@ -121,7 +120,7 @@ export async function inspectStaticAssets(input:{outputRoot:string;hookFiles:Hoo
  for(const name of names){if(name.endsWith('.html')){const errors:unknown[]=[];const tree=parse(decode(name,256*1024),{sourceCodeLocationInfo:true,onParseError:error=>{errors.push(error);}});if(errors.length)throw new Error('HTML parser errors');const facts=collectHtmlReferences(tree);for(const raw of facts.references)reference(name,raw);for(const text of facts.scripts)js(name,text);for(const text of facts.styles)css(name,text);}else if(name.endsWith('.js')||name.endsWith('.mjs'))js(name,decode(name,16*1024*1024));else if(name.endsWith('.css'))css(name,decode(name,4*1024*1024));else if(name!=='.vite/manifest.json'&&!/\.(?:png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf)$/.test(name))throw new Error('Unsupported emitted asset type');}
  const referenceCharges=projectStaticReferenceCounts({metadataOccurrences:snapshot.metadataOccurrenceCount,manifestOwnerOccurrences:manifest.length,manifestEdgeOccurrences:manifestFacts.references.length,parsedEdgeOccurrences:parsedOccurrences});
  if(referenceCharges.referenceBudgetCharges!==occurrences||referenceCharges.staticGraphReferenceOccurrences!==references.length)throw new Error('Static reference accounting differs');
- return {schemaVersion:2 as const,files,references,metadataReferences:snapshot.metadataReferences,referenceCharges,staticGraphReferenceOccurrences:references.length,referenceBudgetCharges:occurrences,moduleMappings:hooks.modules,parserMicrocases:{count:6,passed:true as const},parserComplete:true as const,preloadHelperReferencesUnqualified:true as const,runtimeUrlConstructorsUnqualified:true as const,qualification:false as const,scope:'supported emitted AST and manifest resource forms only; Vite preload tables/helper calls, other URL constructors/runtime network/presentation remain unqualified'};
+ return {schemaVersion:3 as const,compilerProfile:snapshot.compilerProfile,compilerRuntimeModules:snapshot.compilerRuntimeModules,files,references,metadataReferences:snapshot.metadataReferences,referenceCharges,staticGraphReferenceOccurrences:references.length,referenceBudgetCharges:occurrences,moduleMappings:hooks.modules,parserMicrocases:{count:6,passed:true as const},parserComplete:true as const,preloadHelperReferencesUnqualified:true as const,runtimeUrlConstructorsUnqualified:true as const,qualification:false as const,scope:'supported emitted AST and manifest resource forms only; Vite preload tables/helper calls, other URL constructors/runtime network/presentation remain unqualified'};
 }
 
 export function assertParserTreeBounds(value:unknown):void {const stack=[{value,depth:1}];let count=0;while(stack.length){const entry=stack.pop()!;if(entry.depth>256||++count>500000)throw new Error('Parser tree bound');if(entry.value&&typeof entry.value==='object'){for(const child of Object.values(entry.value))if(child&&typeof child==='object')stack.push({value:child,depth:entry.depth+1});}}}
