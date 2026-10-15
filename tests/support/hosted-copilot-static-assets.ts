@@ -27,6 +27,22 @@ function computedResource(v:unknown,sourceName:string|undefined):never {
  } catch {/* Diagnostic projection cannot replace the original refusal. */}
  throw new Error(message);
 }
+function astTraversalBound(value:unknown,sourceName:string|undefined,phase:'resource-walk'|'import-meta-probe',reason:'depth'|'visits',depth:number,visited:number):never {
+ let message='AST traversal bound';
+ try {
+  const n=value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Row:null;let source:string|null=null,sourceTruncated=false;
+  if(typeof sourceName==='string') {
+   source='';let consumed=0;
+   for(const point of sourceName){const next:string=source+point;if(Buffer.byteLength(next)>128||Buffer.byteLength(JSON.stringify(next))>128)break;source=next;consumed+=point.length;}
+   sourceTruncated=consumed<sourceName.length;
+  }
+  const offset=(v:unknown)=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0&&v<=16*1024*1024?v:null;
+  const rawType=n?.type,nodeType=typeof rawType==='string'&&/^[A-Za-z0-9_]{1,32}$/.test(rawType)?rawType:null;
+  const detail=JSON.stringify({source,sourceTruncated,phase,reason,depth,visited,nodeType,start:offset(n?.start),end:offset(n?.end)});
+  if(Buffer.byteLength(message+' '+detail)<=512)message+=' '+detail;
+ } catch {/* Diagnostic projection cannot replace the original refusal. */}
+ throw new Error(message);
+}
 /** Only the two dynamic resource positions admit a zero-expression template. */
 function constantResource(v:unknown,sourceName:string|undefined):string {
  const n=row(v);if(n.type==='Literal')return literal(v);
@@ -48,9 +64,9 @@ function collectJsResources(value:unknown,sourceName:string|undefined,remainingO
  const out:string[]=[],unqualifiedRuntimeUrls:UnqualifiedRuntimeUrl[]=[],stack:{value:unknown;depth:number}[]=[{value,depth:1}];let nodes=0;
  const charge=()=>{const count=assertReferenceCount([out.length,unqualifiedRuntimeUrls.length,1]);if(count>remainingOccurrences)throw new Error('Reference occurrence overflow');};
  function reference(v:unknown){charge();add(out,v);}
- function containsImportMeta(v:unknown,depth:number):boolean {const pending=[{value:v,depth}];while(pending.length){const entry=pending.pop()!;if(entry.depth>256||++nodes>500000)throw new Error('AST traversal bound');const current=entry.value;if(current&&typeof current==='object'){if(!Array.isArray(current)){const n=row(current);if(n.type==='MetaProperty'&&row(n.meta).name==='import'&&row(n.property).name==='meta')return true;}for(const [key,child] of Object.entries(current)){if(key==='parent')throw new Error('Cyclic AST parent unsupported');if(child&&typeof child==='object')pending.push({value:child,depth:entry.depth+1});}}}return false;}
+ function containsImportMeta(v:unknown,depth:number):boolean {const pending=[{value:v,depth}];while(pending.length){const entry=pending.pop()!;if(entry.depth>256||++nodes>500000)astTraversalBound(entry.value,sourceName,'import-meta-probe',entry.depth>256?'depth':'visits',entry.depth,nodes);const current=entry.value;if(current&&typeof current==='object'){if(!Array.isArray(current)){const n=row(current);if(n.type==='MetaProperty'&&row(n.meta).name==='import'&&row(n.property).name==='meta')return true;}for(const [key,child] of Object.entries(current)){if(key==='parent')throw new Error('Cyclic AST parent unsupported');if(child&&typeof child==='object')pending.push({value:child,depth:entry.depth+1});}}}return false;}
  function retain(n:Row,form:UnqualifiedRuntimeUrl['form']) {if(mode==='strict')computedResource(n,sourceName);charge();const valid=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0&&v<=16*1024*1024;const {start,end}=n;if(start===undefined&&end===undefined){unqualifiedRuntimeUrls.push({form,nodeType:'Identifier',start:null,end:null});return;}if(!valid(start)||!valid(end)||end<start)throw new Error('Runtime URL span invalid');unqualifiedRuntimeUrls.push({form,nodeType:'Identifier',start,end});}
- while(stack.length){const entry=stack.pop()!;if(entry.depth>256||++nodes>500000)throw new Error('AST traversal bound');const n=row(entry.value);
+ while(stack.length){const entry=stack.pop()!;if(entry.depth>256||++nodes>500000)astTraversalBound(entry.value,sourceName,'resource-walk',entry.depth>256?'depth':'visits',entry.depth,nodes);const n=row(entry.value);
   if(n.type==='ImportDeclaration'||(n.type==='ExportNamedDeclaration'||n.type==='ExportAllDeclaration')&&n.source!==null&&n.source!==undefined)reference(classifyJsReference({kind:n.type==='ImportDeclaration'?'import':'export',specifier:literal(n.source),base:null}));
   if(n.type==='ImportExpression'){if(n.options!==null&&n.options!==undefined)throw new Error('Unsupported import options');reference(classifyJsReference({kind:'dynamic-import',specifier:constantResource(n.source,sourceName),base:null}));}
   if(n.type==='NewExpression'&&row(n.callee).type==='Identifier'&&row(n.callee).name==='URL'){const args=array(n.arguments);if(n.optional===true&&args.some(arg=>containsImportMeta(arg,entry.depth+1)))throw new Error('Ambiguous import.meta URL resource');if(args.length===2&&importMetaUrl(args[1])&&row(args[1]).optional!==true){const source=row(args[0]);if(source.type==='Identifier')retain(source,'import-meta-url-identifier');else {charge();add(out,classifyJsReference({kind:'new-url',specifier:constantResource(source,sourceName),base:'import-meta-url'}));}}else {const source=args.length===1?importMetaResolve(args[0]):null;if(source)retain(source,'import-meta-resolve-identifier');else if(args.some(arg=>containsImportMeta(arg,entry.depth+1)))throw new Error('Ambiguous import.meta URL resource');}/* Other URL constructors remain unqualified and uninventoried. */}

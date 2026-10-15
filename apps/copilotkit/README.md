@@ -444,5 +444,17 @@ both forms, strict compatibility, mixed occurrences, computed import and ambiguo
 base refusals, and a Unicode span control. They remain unexecuted locally.
 Parser completion covers only the declared syntax. Preload helper coverage,
 runtime targets, network enforcement and presentation remain unqualified; these
-rows authorize no assets or routes. V9 build, STATIC and runtime outcomes await
-fresh admitted original evidence.
+rows authorize no assets or routes. The original V9 run `38804206921`, artifact
+`12004689860`, built successfully (exit 0) in 2788.827789 ms, emitting 466 files
+with a 2174916-byte main JavaScript file. Its inspector then refused with the
+generic `AST traversal bound` error. The failing file, traversal phase and whether
+depth or visits caused the refusal remain unknown. No STATIC, runtime or FPS
+outcome is qualified.
+
+The fixed identity `hosted-copilot-react-production-build-v10` adds diagnostics
+only: the existing AST traversal refusal can report a bounded source label,
+traversal phase, depth-or-visits reason, depth, shared visited count, safe node type
+and parser offsets. It retains the original prefix if projection fails, without
+expression text or identifier names. The depth and visit limits, traversal order,
+shared counter and first-refusal behavior remain unchanged. This is no traversal
+fix or performance/FPS claim; fresh admitted evidence is still required.
