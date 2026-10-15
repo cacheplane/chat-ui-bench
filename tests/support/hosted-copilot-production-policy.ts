@@ -104,8 +104,8 @@ export function assertHookMetadataIntegrity(input:readonly HookMetadataFile[],de
  }
  return actual;
 }
-export function projectStaticReferenceCounts(input:{metadataOccurrences:number;manifestOwnerOccurrences:number;manifestEdgeOccurrences:number;parsedEdgeOccurrences:number}) {
- const referenceBudgetCharges=assertReferenceCount([input.metadataOccurrences,input.manifestOwnerOccurrences,input.manifestEdgeOccurrences,input.parsedEdgeOccurrences]);
+export function projectStaticReferenceCounts(input:{metadataOccurrences:number;manifestOwnerOccurrences:number;manifestEdgeOccurrences:number;parsedEdgeOccurrences:number;unqualifiedRuntimeUrlOccurrences:number}) {
+ const referenceBudgetCharges=assertReferenceCount([input.metadataOccurrences,input.manifestOwnerOccurrences,input.manifestEdgeOccurrences,input.parsedEdgeOccurrences,input.unqualifiedRuntimeUrlOccurrences]);
  return Object.freeze({...input,referenceBudgetCharges,staticGraphReferenceOccurrences:input.manifestEdgeOccurrences+input.parsedEdgeOccurrences});
 }
 export function classifyJsReference(node:{kind:string;specifier:string|null;base:string|null}):string|null {
