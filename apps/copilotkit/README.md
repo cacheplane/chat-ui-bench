@@ -244,7 +244,7 @@ The original v3 identity and failure remain unchanged.
 
 ## Bounded hook-reference diagnostics
 
-The new fixed experiment identity `hosted-copilot-react-production-build-v4`
+The fixed experiment identity `hosted-copilot-react-production-build-v4`
 preserves the exact missing-reference rejection and adds JSON identifying the
 first offending owner filename, import or dynamic-import kind, zero-based index
 within that array, and observed hook-file count. References of at most 4,096 UTF8
@@ -256,7 +256,44 @@ or serialize the supplied value. The complete error text stays below 32 KiB.
 
 This changes diagnostic detail, not accepted references, normalization or any
 build/asset capacity. Counting original UTF8 bytes scans the input string; the
-output bound is not a constant-time processing guarantee. Future actual v4
-source, run and outcome remain unknown. Actual STATIC success and separate
+output bound is not a constant-time processing guarantee.
+
+The original v4 run `38688289415` at source
+`671dd3ca235b4ffdef68f72a2bc77f82d682dd89` failed on dynamic-import metadata
+index 3 from `assets/index-FC4hQth_.js` to `assets/katex.min-BuSKZrD3.js`.
+The full 28-byte reference was absent from 466 hook files, after Vite reported
+9,212 transformed modules. Inspection did not run. Pinned Vite source can remove
+CSS-only JavaScript placeholders and rewrite import expressions; that mechanism
+does not prove the origin of this particular hashed reference.
+
+## Bundler metadata and supported static resources
+
+The new fixed identity `hosted-copilot-react-production-build-v5` separates
+bundler observations from final resource obligations. Hook schema 2 retains
+original imports and dynamic-import arrays, including order and duplicates.
+Each occurrence records its owner, kind, per-array index, raw name and literal
+membership in the complete hook snapshot. An absent metadata name is not called
+a deleted file, an external dependency or a resolved resource. Metadata names
+must satisfy the existing ordinary relative-path policy, including its 1,024
+character limit. Unsupported names and malformed values still receive bounded
+refusal diagnostics; there is no filename allowlist or fallback resolution.
+
+Inspection independently recomputes these classifications and checks captured
+hook hashes against final physical files. Only supported emitted JavaScript,
+HTML and CSS parser forms and manifest obligations create static resource edges.
+An actual missing or external import, computed import, missing manifest key or
+asset remains a refusal. Raw hook metadata is retained separately and never
+silently dropped or treated as a final parser reference.
+
+The shared 4,096 occurrence budget charges metadata occurrences, manifest owner
+rows, manifest edges and parsed edges. `referenceBudgetCharges` reports that
+total; `staticGraphReferenceOccurrences` counts only actual edge rows. The report
+also retains the separate charges and metadata classifications. File, module,
+mapping, static-evidence and aggregate byte limits remain unchanged.
+
+This supported-syntax graph excludes complete Vite `__vite__mapDeps`, preload
+tables, helper-call and runtime URL/network coverage. The six installed-parser
+microcases do not establish those additional forms. Future actual v5 source,
+run and outcome remain unknown. Supported STATIC success and separate
 mounted/runtime/frame/FPS qualification are required before publishing
 performance or competitive results.
