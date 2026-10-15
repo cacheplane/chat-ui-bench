@@ -268,7 +268,7 @@ does not prove the origin of this particular hashed reference.
 
 ## Bundler metadata and supported static resources
 
-The new fixed identity `hosted-copilot-react-production-build-v5` separates
+The fixed identity `hosted-copilot-react-production-build-v5` separates
 bundler observations from final resource obligations. Hook schema 2 retains
 original imports and dynamic-import arrays, including order and duplicates.
 Each occurrence records its owner, kind, per-array index, raw name and literal
@@ -293,7 +293,48 @@ mapping, static-evidence and aggregate byte limits remain unchanged.
 
 This supported-syntax graph excludes complete Vite `__vite__mapDeps`, preload
 tables, helper-call and runtime URL/network coverage. The six installed-parser
-microcases do not establish those additional forms. Future actual v5 source,
-run and outcome remain unknown. Supported STATIC success and separate
-mounted/runtime/frame/FPS qualification are required before publishing
-performance or competitive results.
+microcases do not establish those additional forms.
+
+The original v5 run `38697619613`, at source
+`17e9885fcfa85992e03a4491ba1dd283f08d75b7`, failed with
+`Unknown emitted module ownership` after metadata classification. Its actual
+missing module ID was not retained, and the cause of that mismatch remains
+unknown. Vite reported 9,212 transformed modules; that number is not an ownership
+mapping count. Supported STATIC inspection did not run, and mounted/runtime/frame/
+FPS results remain unavailable. The v5 tag, run and artifact remain immutable.
+
+## Bounded emitted ownership diagnostics
+
+The fixed identity `hosted-copilot-react-production-build-v6` adds diagnostic
+observations at the existing emitted-module ownership boundary. It still refuses
+any emitted module or facade ID absent from the collected ownership mappings.
+After existing shape, cap, hash, mapping and metadata checks, it counts every
+missing occurrence, including duplicates, and retains the first two module and
+two facade samples in input order. Samples identify the owner filename and, for
+module occurrences, the original zero-based index. The first encountered module
+or facade refusal family is preserved across files.
+
+String IDs of at most 512 UTF8 bytes are retained in full; larger IDs retain at
+most 128 UTF16 code units with explicit truncation and the original byte count.
+Malformed IDs retain only their primitive type. Supplied objects are never
+coerced or serialized. A truncated prefix cannot identify the complete ID.
+
+In a future admitted hosted build, the same hook queries `getModuleInfo` for at
+most four retained original string IDs, only when nonempty and at most 4,096
+UTF16 units and UTF8 bytes. It never queries a diagnostic prefix. Bounded
+observations distinguish available, missing, thrown and skipped lookups, compare
+the returned ID and record only the code type. Returned IDs use a 256 UTF8-byte
+full-value limit or a 64 UTF16-unit prefix. Lookup or projection failures retain
+only an error name of at most 64 UTF16 units and cannot replace the ownership
+refusal. External classification is always unavailable/null: the pinned public
+module-info API does not expose it, and null code cannot establish it.
+
+The full error stays below 32 KiB, with a fallback to the original bounded
+refusal if enrichment formatting fails. These observations establish neither
+ownership nor provenance and do not add mappings, bypass admission, change
+successful schema 2 facts, or expand any capacity, dependency or parser support.
+UTF8 counting scans supplied strings; the output bound is not a constant-time
+processing guarantee. The cause of the v5 failure and the actual v6 build outcome
+remain unknown. Supported STATIC success and separate mounted/runtime/frame/FPS
+qualification remain required before publishing performance or competitive
+results.
