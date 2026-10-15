@@ -11,14 +11,39 @@ function string(v:unknown):string {if(typeof v!=='string'||v.length===0||Buffer.
 function add(out:string[],v:unknown):void {out.push(string(v));assertReferenceCount([out.length]);}
 function array(v:unknown):unknown[]{if(!Array.isArray(v))throw new Error('Parser array absent');assertDenseEntries(v,500000,true);return v;}
 function literal(v:unknown):string {const n=row(v);if(n.type!=='Literal'||typeof n.value!=='string')throw new Error('Computed resource expression');return string(n.value);}
+function computedResource(v:unknown,sourceName:string|undefined):never {
+ let message='Computed resource expression';
+ try {
+  const n=row(v);let source:string|null=null,sourceTruncated=false;
+  if(typeof sourceName==='string') {
+   source='';let consumed=0;
+   for(const point of sourceName){const next:string=source+point;if(Buffer.byteLength(next)>128||Buffer.byteLength(JSON.stringify(next))>128)break;source=next;consumed+=point.length;}
+   sourceTruncated=consumed<sourceName.length;
+  }
+  const offset=(value:unknown)=>Number.isSafeInteger(value)&&typeof value==='number'&&value>=0&&value<=16*1024*1024?value:null;
+  const nodeType=typeof n.type==='string'&&/^[A-Za-z0-9_]{1,32}$/.test(n.type)?n.type:null;
+  const detail=JSON.stringify({source,sourceTruncated,nodeType,start:offset(n.start),end:offset(n.end)});
+  if(Buffer.byteLength(message+' '+detail)<=512)message+=' '+detail;
+ } catch {/* Diagnostic projection cannot replace the original refusal. */}
+ throw new Error(message);
+}
+/** Only the two dynamic resource positions admit a zero-expression template. */
+function constantResource(v:unknown,sourceName:string|undefined):string {
+ const n=row(v);if(n.type==='Literal')return literal(v);
+ if(n.type!=='TemplateLiteral'||!Array.isArray(n.expressions)||n.expressions.length!==0||!Array.isArray(n.quasis)||n.quasis.length!==1)computedResource(v,sourceName);
+ assertDenseEntries(n.expressions,0,true);assertDenseEntries(n.quasis,1);
+ const quasi=row(n.quasis[0]);if(quasi.type!=='TemplateElement'||quasi.tail!==true)computedResource(v,sourceName);
+ const value=row(quasi.value);if(typeof value.raw!=='string'||Buffer.byteLength(value.raw)>4096||typeof value.cooked!=='string')computedResource(v,sourceName);
+ return string(value.cooked);
+}
 function importMetaUrl(v:unknown):boolean {const n=row(v);if(n.type!=='MemberExpression'||n.computed!==false)return false;const o=row(n.object),p=row(n.property);return o.type==='MetaProperty'&&row(o.meta).name==='import'&&row(o.property).name==='meta'&&p.type==='Identifier'&&p.name==='url';}
 function containsImportMeta(v:unknown):boolean {const stack=[v];let count=0;while(stack.length){if(++count>500000)throw new Error('URL expression bound');const current=stack.pop();if(current&&typeof current==='object'){if(!Array.isArray(current)){const n=row(current);if(n.type==='MetaProperty'&&row(n.meta).name==='import'&&row(n.property).name==='meta')return true;}for(const child of Object.values(current))if(child&&typeof child==='object')stack.push(child);}}return false;}
-export function collectJsReferences(value:unknown):string[] {
+export function collectJsReferences(value:unknown,sourceName?:string):string[] {
  const out:string[]=[],stack:{value:unknown;depth:number}[]=[{value,depth:1}];let nodes=0;
  while(stack.length){const entry=stack.pop()!;if(entry.depth>256||++nodes>500000)throw new Error('AST traversal bound');const n=row(entry.value);
   if(n.type==='ImportDeclaration'||(n.type==='ExportNamedDeclaration'||n.type==='ExportAllDeclaration')&&n.source!==null&&n.source!==undefined)add(out,classifyJsReference({kind:n.type==='ImportDeclaration'?'import':'export',specifier:literal(n.source),base:null}));
-  if(n.type==='ImportExpression'){if(n.options!==null&&n.options!==undefined)throw new Error('Unsupported import options');add(out,classifyJsReference({kind:'dynamic-import',specifier:literal(n.source),base:null}));}
-  if(n.type==='NewExpression'&&row(n.callee).type==='Identifier'&&row(n.callee).name==='URL'){const args=array(n.arguments);if(args.length===2&&importMetaUrl(args[1]))add(out,classifyJsReference({kind:'new-url',specifier:literal(args[0]),base:'import-meta-url'}));else if(args.some(containsImportMeta))throw new Error('Ambiguous import.meta URL resource');/* Other URL constructors are unqualified runtime graph, not static asset refs. */}
+  if(n.type==='ImportExpression'){if(n.options!==null&&n.options!==undefined)throw new Error('Unsupported import options');add(out,classifyJsReference({kind:'dynamic-import',specifier:constantResource(n.source,sourceName),base:null}));}
+  if(n.type==='NewExpression'&&row(n.callee).type==='Identifier'&&row(n.callee).name==='URL'){const args=array(n.arguments);if(args.length===2&&importMetaUrl(args[1]))add(out,classifyJsReference({kind:'new-url',specifier:constantResource(args[0],sourceName),base:'import-meta-url'}));else if(args.some(containsImportMeta))throw new Error('Ambiguous import.meta URL resource');/* Other URL constructors are unqualified runtime graph, not static asset refs. */}
   for(const [key,v] of Object.entries(n)){if(key==='parent')throw new Error('Cyclic AST parent unsupported');if(v&&typeof v==='object'){if(Array.isArray(v)){for(let i=v.length-1;i>=0;i--){const x=v[i];if(x&&typeof x==='object'&&typeof row(x).type==='string')stack.push({value:x,depth:entry.depth+1});}}else if(typeof row(v).type==='string')stack.push({value:v,depth:entry.depth+1});}}
  }
  return out;
@@ -115,12 +140,15 @@ export async function inspectStaticAssets(input:{outputRoot:string;hookFiles:Hoo
  expectDenied(()=>collectHtmlReferences(parse('<base href="/">')));
  const microCss=transform({filename:'microcase.css',code:Buffer.from('@import "./a.css";.x{background:url("./x.png")}'),analyzeDependencies:true,minify:false,sourceMap:false,errorRecovery:false});
  if(JSON.stringify(collectCssReferences(microCss.dependencies??[]))!==JSON.stringify(['./a.css','./x.png']))throw new Error('Actual CSS parser microcase differs');
- function js(name:string,text:string){for(const raw of collectJsReferences(parseAst(text,null,name)))reference(name,raw);}
+ const constantCases=[['import(`./a.js`)','./a.js'],['new URL(`./x.png`,import.meta.url)','./x.png'],['import(`./\\u0061.js`)','./a.js'],['new URL(`./\\u0078.png`,import.meta.url)','./x.png']] as const;
+ for(const [code,expected]of constantCases)if(JSON.stringify(collectJsReferences(parseAst(code,null,'constant-template.js')))!==JSON.stringify([expected]))throw new Error('Actual constant template parser microcase differs');
+ for(const code of ['import(`./${name}.js`)','new URL(`./${name}.png`,import.meta.url)','import(tag`./a.js`)','import("./"+name)','import(`\\u{}`)','import(`./a.js`,{with:{type:"json"}})'])expectDenied(()=>collectJsReferences(parseAst(code,null,'computed-template.js')));
+ function js(name:string,text:string){for(const raw of collectJsReferences(parseAst(text,null,name),name))reference(name,raw);}
  function css(name:string,text:string){const result=transform({filename:name,code:Buffer.from(text),analyzeDependencies:true,minify:false,sourceMap:false,errorRecovery:false,visitor:{StyleSheet:sheet=>{assertParserTreeBounds(sheet);}}});for(const raw of collectCssReferences(result.dependencies??[]))reference(name,raw);}
  for(const name of names){if(name.endsWith('.html')){const errors:unknown[]=[];const tree=parse(decode(name,256*1024),{sourceCodeLocationInfo:true,onParseError:error=>{errors.push(error);}});if(errors.length)throw new Error('HTML parser errors');const facts=collectHtmlReferences(tree);for(const raw of facts.references)reference(name,raw);for(const text of facts.scripts)js(name,text);for(const text of facts.styles)css(name,text);}else if(name.endsWith('.js')||name.endsWith('.mjs'))js(name,decode(name,16*1024*1024));else if(name.endsWith('.css'))css(name,decode(name,4*1024*1024));else if(name!=='.vite/manifest.json'&&!/\.(?:png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf)$/.test(name))throw new Error('Unsupported emitted asset type');}
  const referenceCharges=projectStaticReferenceCounts({metadataOccurrences:snapshot.metadataOccurrenceCount,manifestOwnerOccurrences:manifest.length,manifestEdgeOccurrences:manifestFacts.references.length,parsedEdgeOccurrences:parsedOccurrences});
  if(referenceCharges.referenceBudgetCharges!==occurrences||referenceCharges.staticGraphReferenceOccurrences!==references.length)throw new Error('Static reference accounting differs');
- return {schemaVersion:3 as const,compilerProfile:snapshot.compilerProfile,compilerRuntimeModules:snapshot.compilerRuntimeModules,files,references,metadataReferences:snapshot.metadataReferences,referenceCharges,staticGraphReferenceOccurrences:references.length,referenceBudgetCharges:occurrences,moduleMappings:hooks.modules,parserMicrocases:{count:6,passed:true as const},parserComplete:true as const,preloadHelperReferencesUnqualified:true as const,runtimeUrlConstructorsUnqualified:true as const,qualification:false as const,scope:'supported emitted AST and manifest resource forms only; Vite preload tables/helper calls, other URL constructors/runtime network/presentation remain unqualified'};
+ return {schemaVersion:3 as const,compilerProfile:snapshot.compilerProfile,compilerRuntimeModules:snapshot.compilerRuntimeModules,files,references,metadataReferences:snapshot.metadataReferences,referenceCharges,staticGraphReferenceOccurrences:references.length,referenceBudgetCharges:occurrences,moduleMappings:hooks.modules,parserMicrocases:{count:16,passed:true as const},parserComplete:true as const,preloadHelperReferencesUnqualified:true as const,runtimeUrlConstructorsUnqualified:true as const,qualification:false as const,scope:'supported emitted AST and manifest resource forms only; Vite preload tables/helper calls, other URL constructors/runtime network/presentation remain unqualified'};
 }
 
 export function assertParserTreeBounds(value:unknown):void {const stack=[{value,depth:1}];let count=0;while(stack.length){const entry=stack.pop()!;if(entry.depth>256||++count>500000)throw new Error('Parser tree bound');if(entry.value&&typeof entry.value==='object'){for(const child of Object.values(entry.value))if(child&&typeof child==='object')stack.push({value:child,depth:entry.depth+1});}}}

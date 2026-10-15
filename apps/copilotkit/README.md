@@ -385,5 +385,32 @@ physical byte-hash, fatal UTF8 decode, actual supported AST reference collection
 and manifest/resource validation as other emitted JavaScript. No hashed filename
 or URL bypass is admitted. Marker ownership supplies no full runtime provenance,
 external classification, preload/helper/runtime-URL completeness or execution
-qualification. The actual v7 build and STATIC outcome remain unknown until new
-hosted evidence; performance and FPS remain unqualified.
+qualification. The original v7 run `38721939849`, at source
+`0e717e04e488fc0d1ad8ad9caafb19eb2f1f1d23`, built successfully: the original npm
+process took 4045.332059ms (the Vite message reported 3.44s). Its 525 retained
+artifact files include 466 final output files and 9,211 ordinary module mappings
+plus one compiler-runtime owner. Inspection then failed with
+`Computed resource expression`; no complete STATIC report or browser/FPS result
+was produced. These build times are neither rendering measurements nor competitor
+comparisons. The v7 tag, run and artifact remain immutable.
+
+## Constant template resource forms
+
+The fixed identity `hosted-copilot-react-production-build-v8` additionally accepts
+zero-expression, single-quasi template literals in dynamic imports and the
+existing `new URL(specifier, import.meta.url)` resource form. The pinned
+Rolldown/OXC parser's string cooked value supplies the resource; raw text is never
+evaluated or substituted for an invalid cooked value. Ordinary quoted static
+import/export grammar remains strict. Interpolation, tagged templates,
+concatenation, missing/invalid cooked values and dynamic import options still
+refuse admission. Scalar byte limits, reference charges, traversal/output caps,
+final hashes, source ownership and manifest target validation remain unchanged.
+
+The hosted inspector keeps its original six parser microcases and adds ten
+constant-template/escape/refusal cases. They run only under future explicit
+hosted admission; supplied-AST local tests do not prove the actual parser ABI or
+qualify emitted graph completeness. Unsupported computed-resource diagnostics
+retain the original error prefix with a bounded source label, node type and
+parser offsets, without source body contents. Vite preload helper tables and
+other runtime URL construction remain unqualified. The v8 build, STATIC, runtime,
+performance and FPS outcomes remain unknown until fresh original evidence.
