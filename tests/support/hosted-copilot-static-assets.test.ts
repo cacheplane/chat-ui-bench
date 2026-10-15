@@ -41,3 +41,61 @@ describe('production output capacity v3 owned collectors',()=>{
  it('rejects artifact filenames and directories outside existing whitelist',async()=>owned(async root=>{await writeFile(join(root,'unexpected.txt'),'x');await expect(productionAssets.collectProductionArtifact(root)).rejects.toThrow();await rm(join(root,'unexpected.txt'));await mkdir(join(root,'unexpected'));await expect(productionAssets.collectProductionArtifact(root)).rejects.toThrow();}));
  it('refuses an already-present final inventory before publication',async()=>owned(async root=>{await writeFile(join(root,'artifact-inventory.json'),'{}');const collected=await productionAssets.collectProductionArtifact(root);expect(()=>productionContract.assertProductionFinalInventory(collected.files,collected.visitedEntries,10)).toThrow('pre-existing');}));
 });
+
+import {projectHookFacts,type HookFile} from './hosted-copilot-build-plugin.ts';
+import * as metadataPolicy from './hosted-copilot-production-policy.ts';
+describe('supported static graph v5',()=>{
+ const owner='assets/main.js',missing='assets/katex.min-BuSKZrD3.js';
+ const hook:HookFile={fileName:owner,kind:'chunk',contentSha256:'b'.repeat(64),imports:[],dynamicImports:[missing],moduleIds:[],originalNames:[],facadeModuleId:null};
+ const file=(path:string)=>({path,bytes:1,sha256:'b'.repeat(64),regular:true,contained:true,symlink:false});
+ const output=[file(owner),file('.vite/manifest.json')];
+ const facts=()=>projectHookFacts([hook],[]);
+ it('recomputes metadata against hook names rather than final manifest filename',()=>{
+  const h=projectHookFacts([{...hook,imports:['.vite/manifest.json']}],[]),verified=productionAssets.assertHookSnapshot(h,output);
+  expect(verified.metadataReferences[0]).toMatchObject({raw:'.vite/manifest.json',membership:'absent-from-hook-snapshot'});expect(verified.metadataOccurrenceCount).toBe(2);
+ });
+ it('retains metadata-only absence while transformed supplied code has no import',()=>{
+  const h=productionAssets.assertHookSnapshot(facts(),output),ast=program([{type:'ExpressionStatement',expression:{type:'CallExpression',callee:{type:'MemberExpression',object:{type:'Identifier',name:'Promise'},property:{type:'Identifier',name:'resolve'}},arguments:[{type:'ObjectExpression',properties:[]}]}}]);
+  expect(h.metadataOccurrenceCount).toBe(1);expect(collectJsReferences(ast)).toEqual([]);
+ });
+ it.each(['import','dynamic-import'])('still rejects an actual missing %s from the same supplied AST normalizer',kind=>{
+  const ast=program([kind==='import'?{type:'ImportDeclaration',source:literal('./katex.min-BuSKZrD3.js')}:{type:'ImportExpression',source:literal('./katex.min-BuSKZrD3.js')}]);
+  const raw=collectJsReferences(ast);expect(raw).toEqual(['./katex.min-BuSKZrD3.js']);
+  expect(()=>raw.map(value=>metadataPolicy.normalizeProductionReference(owner,value,output.map(f=>f.path)))).toThrow('Unresolved');
+ });
+ it('denies external and computed actual imports without consulting metadata',()=>{
+  expect(()=>collectJsReferences(program([{type:'ImportExpression',source:literal('https://outside.invalid/x.js')}]))).toThrow();
+  expect(()=>collectJsReferences(program([{type:'ImportExpression',source:{type:'Identifier',name:'x'}}]))).toThrow();
+ });
+ it('rejects omitted classifications even when caller also changes declared count',()=>{
+  const h=facts();expect(()=>productionAssets.assertHookSnapshot({...h,metadataReferences:[],metadataOccurrenceCount:0},output)).toThrow();
+ });
+ it('rejects altered membership, raw name, index, owner, kind and extra classification keys',()=>{
+  const h=facts();for(const change of [{membership:'present-in-hook-snapshot'},{raw:'other.js'},{index:1},{from:'other.js'},{kind:'import'},{extra:true}]) {const declared=h.metadataReferences.map(r=>({...r}));for(const [key,value]of Object.entries(change))Object.defineProperty(declared[0]!,key,{value,enumerable:true});expect(()=>productionAssets.assertHookSnapshot({...h,metadataReferences:declared},output)).toThrow();}
+ });
+ it('rejects changed raw arrays, reordered occurrences and wrong declared count',()=>{
+  const h=projectHookFacts([{...hook,imports:['x.js','y.js']}],[]);
+  expect(()=>productionAssets.assertHookSnapshot({...h,files:[{...hook,imports:['changed.js']}]},output)).toThrow();
+  expect(()=>productionAssets.assertHookSnapshot({...h,metadataReferences:[...h.metadataReferences].reverse()},output)).toThrow();
+  expect(()=>productionAssets.assertHookSnapshot({...h,metadataOccurrenceCount:0},output)).toThrow();
+ });
+ it('preserves final physical hash, hook-set, module and facade refusals',()=>{
+  const h=facts();expect(()=>productionAssets.assertHookSnapshot(h,[{...file(owner),sha256:'a'.repeat(64)},file('.vite/manifest.json')])).toThrow('physical bytes');
+  expect(()=>productionAssets.assertHookSnapshot(h,[file('.vite/manifest.json')])).toThrow();
+  expect(()=>productionAssets.assertHookSnapshot(h,[...output,file('extra.js')])).toThrow('hook inventory');
+  expect(()=>productionAssets.assertHookSnapshot({...h,files:[{...hook,moduleIds:['unknown']}]},output)).toThrow();
+  expect(()=>productionAssets.assertHookSnapshot({...h,files:[{...hook,facadeModuleId:'unknown'}]},output)).toThrow();
+ });
+ it('separates graph edges from metadata and manifest-owner budget charges',()=>{
+  expect(metadataPolicy.projectStaticReferenceCounts({metadataOccurrences:1,manifestOwnerOccurrences:1,manifestEdgeOccurrences:1,parsedEdgeOccurrences:4093})).toEqual({metadataOccurrences:1,manifestOwnerOccurrences:1,manifestEdgeOccurrences:1,parsedEdgeOccurrences:4093,referenceBudgetCharges:4096,staticGraphReferenceOccurrences:4094});
+  expect(()=>metadataPolicy.projectStaticReferenceCounts({metadataOccurrences:1,manifestOwnerOccurrences:1,manifestEdgeOccurrences:1,parsedEdgeOccurrences:4094})).toThrow('Reference occurrence overflow');
+ });
+ it('keeps manifest owners and actual targets strict',()=>{
+  const record={key:'entry',file:owner,imports:['absent-key'],dynamicImports:[],css:[],assets:[]};
+  expect(()=>metadataPolicy.assertProductionManifest([record],output.map(f=>f.path))).toThrow('key missing');
+  expect(()=>metadataPolicy.assertProductionManifest([{...record,imports:[],css:['missing.css']}],output.map(f=>f.path))).toThrow('resource missing');
+ });
+ it('does not invent complete preload-helper coverage from arbitrary strings',()=>{
+  expect(collectJsReferences(program([{type:'VariableDeclaration',declarations:[{type:'VariableDeclarator',init:{type:'ArrayExpression',elements:[literal('missing.css')]}}]}]))).toEqual([]);
+ });
+});

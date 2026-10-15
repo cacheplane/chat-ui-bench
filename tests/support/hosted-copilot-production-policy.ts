@@ -68,6 +68,46 @@ export function assertReferenceCount(counts:readonly number[]):number {
  for(const value of counts) {if(!Number.isSafeInteger(value)||value<0) throw new Error('Reference count invalid');count+=value;if(count>LIMITS.references) throw new Error('Reference occurrence overflow');}
  return count;
 }
+export interface HookMetadataFile {fileName:string;imports:readonly string[];dynamicImports:readonly string[]}
+export interface HookMetadataReference {from:string;kind:'import'|'dynamic-import';index:number;raw:string;membership:'present-in-hook-snapshot'|'absent-from-hook-snapshot'}
+function unsupportedHookMetadata(from:string,kind:'import'|'dynamic-import',index:number,value:unknown,hookFilesObserved:number):Error {
+ const utf8Bytes=typeof value==='string'?Buffer.byteLength(value):null,truncated=utf8Bytes!==null&&utf8Bytes>4096;
+ const reference=typeof value==='string'?{type:'string',value:truncated?value.slice(0,1024):value,utf8Bytes,truncated}:{type:value===null?'null':typeof value,value:null,utf8Bytes:null,truncated:false};
+ // Validated owner<=1024ASCII; escaped reference<=24576bytes; complete error<32KiB.
+ return new Error('Unsupported hook metadata reference '+JSON.stringify({from,kind,index,reference,hookFilesObserved}));
+}
+/** Snapshot membership only. An absent metadata name is not a resolved static resource. */
+export function classifyHookMetadata(input:readonly HookMetadataFile[]):readonly Readonly<HookMetadataReference>[] {
+ if(Array.isArray(input))assertProductionCount('hook-files',input.length);
+ assertDenseEntries(input,PRODUCTION_FILE_LIMITS.hookFiles);const names=new Set<string>();let count=0;
+ for(const file of input) {
+  if(!ordinaryPath(file.fileName)||names.has(file.fileName))throw new Error('Hook metadata owner unavailable/duplicate');names.add(file.fileName);
+  assertDenseEntries(file.imports,LIMITS.references,true);assertDenseEntries(file.dynamicImports,LIMITS.references,true);
+  count=assertReferenceCount([count,file.imports.length,file.dynamicImports.length]);
+ }
+ const references:Readonly<HookMetadataReference>[]=[];
+ for(const file of input)for(const [kind,entries]of [['import',file.imports],['dynamic-import',file.dynamicImports]]as const)
+  for(let index=0;index<entries.length;index++) {
+   const raw=entries[index];if(typeof raw!=='string'||!ordinaryPath(raw))throw unsupportedHookMetadata(file.fileName,kind,index,raw,input.length);
+   references.push(Object.freeze({from:file.fileName,kind,index,raw,membership:names.has(raw)?'present-in-hook-snapshot':'absent-from-hook-snapshot'}));
+  }
+ return Object.freeze(references);
+}
+/** Recompute independently from retained raw arrays; never trust a declared classification/count. */
+export function assertHookMetadataIntegrity(input:readonly HookMetadataFile[],declared:readonly HookMetadataReference[],declaredCount:number) {
+ const actual=classifyHookMetadata(input);assertDenseEntries(declared,LIMITS.references,true);
+ if(declaredCount!==actual.length||declared.length!==actual.length)throw new Error('Hook metadata classification count differs');
+ const keys=['from','kind','index','raw','membership']as const;
+ for(let index=0;index<actual.length;index++) {
+  const row=declared[index],expected=actual[index]!;
+  if(!row||typeof row!=='object'||Object.keys(row).length!==keys.length||keys.some(key=>!Object.hasOwn(row,key)||row[key]!==expected[key]))throw new Error('Hook metadata classification differs');
+ }
+ return actual;
+}
+export function projectStaticReferenceCounts(input:{metadataOccurrences:number;manifestOwnerOccurrences:number;manifestEdgeOccurrences:number;parsedEdgeOccurrences:number}) {
+ const referenceBudgetCharges=assertReferenceCount([input.metadataOccurrences,input.manifestOwnerOccurrences,input.manifestEdgeOccurrences,input.parsedEdgeOccurrences]);
+ return Object.freeze({...input,referenceBudgetCharges,staticGraphReferenceOccurrences:input.manifestEdgeOccurrences+input.parsedEdgeOccurrences});
+}
 export function classifyJsReference(node:{kind:string;specifier:string|null;base:string|null}):string|null {
  if(node.kind==='endpoint') return null;
  if(!['import','export','dynamic-import','new-url'].includes(node.kind)||node.specifier===null||!scalar(node.specifier,4096)||node.kind==='new-url'&&node.base!=='import-meta-url') throw new Error('Ambiguous supplied JavaScript resource form');
