@@ -7,6 +7,14 @@ import {assertDenseEntries,ordinaryPath,PRODUCTION_FILE_LIMITS,assertProductionC
 import {assertMappings,assertModuleOwnershipId,assertReferenceCount,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {readIntegratedAdmission} from './hosted-copilot-context.ts';
 export interface HookFile {contentSha256?:string|undefined;fileName:string;kind:'chunk'|'asset';imports:readonly string[];dynamicImports:readonly string[];moduleIds:readonly string[];originalNames:readonly string[];facadeModuleId:string|null}
+/** Bounded error text only; a truncated prefix does not identify the full reference. */
+function unknownHookReference(from:string,kind:'import'|'dynamic-import',index:number,value:unknown,hookFilesObserved:number):Error {
+ const utf8Bytes=typeof value==='string'?Buffer.byteLength(value):null;
+ const truncated=utf8Bytes!==null&&utf8Bytes>4096;
+ const reference=typeof value==='string'?{type:'string',value:truncated?value.slice(0,1024):value,utf8Bytes,truncated}:{type:value===null?'null':typeof value,value:null,utf8Bytes:null,truncated:false};
+ // Ordinary from<=1024ASCII and escaped reference<=24576bytes keep this below32KiB.
+ return new Error('Unknown emitted hook reference '+JSON.stringify({from,kind,index,reference,hookFilesObserved}));
+}
 export function projectHookFacts(input:readonly HookFile[],modules:readonly ModuleMapping[]) {
  if(Array.isArray(input)) assertProductionCount('hook-files',input.length);
  assertDenseEntries(input,PRODUCTION_FILE_LIMITS.hookFiles);assertMappings(modules);const names=new Set<string>(),ids=new Set(modules.map(module=>module.id));let referenceCount=0;
@@ -18,7 +26,8 @@ export function projectHookFacts(input:readonly HookFile[],modules:readonly Modu
   referenceCount=assertReferenceCount([referenceCount,file.imports.length,file.dynamicImports.length]);
  }
  const files=input.map(file=> {
-  for(const name of [...file.imports,...file.dynamicImports]) if(!names.has(name)) throw new Error('Unknown emitted hook reference');
+  for(const [kind,entries] of [['import',file.imports],['dynamic-import',file.dynamicImports]] as const)
+   for(let index=0;index<entries.length;index++) {const name=entries[index];if(!names.has(name!)) throw unknownHookReference(file.fileName,kind,index,name,input.length);}
   for(const id of file.moduleIds) if(!ids.has(id)) throw new Error('Unknown emitted module ownership');
   if(file.facadeModuleId!==null&&!ids.has(file.facadeModuleId)) throw new Error('Unknown facade module ownership');
   return Object.freeze({...file,imports:Object.freeze([...file.imports]),dynamicImports:Object.freeze([...file.dynamicImports]),moduleIds:Object.freeze([...file.moduleIds]),originalNames:Object.freeze([...file.originalNames])});

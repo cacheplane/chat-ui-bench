@@ -230,9 +230,33 @@ filesystem concurrency. Collectors preserve ordinary containment, artifact
 names, log bounds and original capture outcomes. Only admitted hosted inspection
 loads installed parsers.
 
-A future v3 ZIP qualification must separately admit at most 1,152 regular files
+The v3 ZIP qualification profile separately admits at most 1,152 regular files
 and 4,096 entries, with unchanged compressed/expanded 32 MiB, containment, CRC
 and exclusive extraction rules. Existing v2 archive limits and evidence remain
-unchanged. Future v3 source, run, output counts and success are unknown. Actual
-STATIC success and separate mounted/runtime/frame/FPS qualification are required
-before publishing performance or competitive results.
+unchanged.
+
+The original v3 run `38678632204` at source
+`a0fdaab748069aa1dd185a2fbe409aa227b422e1` failed in the build hook with
+`Unknown emitted hook reference` after Vite reported 9,212 transformed modules.
+The original error does not identify the missing reference, its owner or its
+import kind. Inspection did not run; this does not qualify a static output graph.
+The original v3 identity and failure remain unchanged.
+
+## Bounded hook-reference diagnostics
+
+The new fixed experiment identity `hosted-copilot-react-production-build-v4`
+preserves the exact missing-reference rejection and adds JSON identifying the
+first offending owner filename, import or dynamic-import kind, zero-based index
+within that array, and observed hook-file count. References of at most 4,096 UTF8
+bytes are retained in full. Larger strings retain only their first 1,024 UTF16
+code units, with explicit truncation and the full original UTF8-byte count.
+A truncated prefix is incomplete and does not uniquely identify the full string.
+Malformed nonstring references retain only their type; diagnostics never coerce
+or serialize the supplied value. The complete error text stays below 32 KiB.
+
+This changes diagnostic detail, not accepted references, normalization or any
+build/asset capacity. Counting original UTF8 bytes scans the input string; the
+output bound is not a constant-time processing guarantee. Future actual v4
+source, run and outcome remain unknown. Actual STATIC success and separate
+mounted/runtime/frame/FPS qualification are required before publishing
+performance or competitive results.
