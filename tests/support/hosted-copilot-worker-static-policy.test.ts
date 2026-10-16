@@ -3,6 +3,47 @@ import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,classifyWork
 import {assertCompilerRuntimeOwnership} from './hosted-copilot-production-policy.ts';
 import {createHash} from 'node:crypto';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS} from './hosted-copilot-mounted-policy.ts';
+import * as outputPolicy from './hosted-copilot-worker-static-policy.ts';
+describe('worker loader-free ES output profile',()=>{
+ it('retains the fixed generation profile and explicitly disables the require polyfill',()=>{
+  expect(typeof outputPolicy.workerStaticOutputOptions).toBe('function');
+  const options=outputPolicy.workerStaticOutputOptions();
+  expect(options).toEqual({format:'es',codeSplitting:false,entryFileNames:'worker.mjs',sourcemap:false,minify:false,strictExecutionOrder:true,polyfillRequire:false});
+  expect(Object.isFrozen(options)).toBe(true);
+  expect(Reflect.set(options,'polyfillRequire',true)).toBe(false);
+  expect(Reflect.apply(outputPolicy.workerStaticOutputOptions,null,[{polyfillRequire:true}])).toEqual(options);
+ });
+ it('retains only accepted normalized scalar metadata',()=>{
+  expect(typeof outputPolicy.observeWorkerOutputPolicy).toBe('function');
+  const observed=outputPolicy.observeWorkerOutputPolicy('es',false);
+  expect(observed).toEqual({format:'es',polyfillRequire:false});expect(Object.isFrozen(observed)).toBe(true);
+ });
+ it.each([['es',true],['es',undefined],['es',null],['esm',false],['cjs',false],[undefined,false]])('refuses normalized scalar mismatch %#',(format,polyfill)=>{
+  expect(typeof outputPolicy.observeWorkerOutputPolicy).toBe('function');
+  expect(()=>outputPolicy.observeWorkerOutputPolicy(format,polyfill)).toThrow('Worker output policy denied');
+ });
+ it('never coerces hostile scalar arguments or echoes their values',()=>{
+  expect(typeof outputPolicy.observeWorkerOutputPolicy).toBe('function');
+  let calls=0;const hostile={toString(){calls++;throw Error('secret');},get toJSON(){calls++;throw Error('secret');}};
+  expect(()=>outputPolicy.observeWorkerOutputPolicy(hostile,false)).toThrow(/^Worker output policy denied$/);
+  expect(()=>outputPolicy.observeWorkerOutputPolicy('es',hostile)).toThrow(/^Worker output policy denied$/);expect(calls).toBe(0);
+ });
+ it('accepts only the two own-data report fields and returns a fresh frozen projection',()=>{
+  expect(typeof outputPolicy.readWorkerOutputPolicy).toBe('function');
+  const source={format:'es',polyfillRequire:false};const result=outputPolicy.readWorkerOutputPolicy(source);
+  expect(result).toEqual(source);expect(result).not.toBe(source);expect(Object.isFrozen(result)).toBe(true);
+  source.polyfillRequire=true;expect(result.polyfillRequire).toBe(false);
+ });
+ it.each([{}, {format:'es'}, {format:'es',polyfillRequire:false,extra:1}, {format:'es',polyfillRequire:true}, {format:'cjs',polyfillRequire:false}, null, []])('refuses malformed report policy %#',value=>{
+  expect(typeof outputPolicy.readWorkerOutputPolicy).toBe('function');expect(()=>outputPolicy.readWorkerOutputPolicy(value)).toThrow();
+ });
+ it('refuses accessor, inherited and symbol report members without invoking getters',()=>{
+  expect(typeof outputPolicy.readWorkerOutputPolicy).toBe('function');let calls=0;
+  const accessor={get format(){calls++;return 'es';},polyfillRequire:false};
+  for(const value of [accessor,Object.create({format:'es',polyfillRequire:false}),{format:'es',polyfillRequire:false,[Symbol('extra')]:1}])expect(()=>outputPolicy.readWorkerOutputPolicy(value)).toThrow();
+  expect(calls).toBe(0);
+ });
+});
 const id=(name:string)=>({type:'Identifier',name});
 const lit=(value:unknown)=>({type:'Literal',value});
 const program=(body:unknown[])=>({type:'Program',body});

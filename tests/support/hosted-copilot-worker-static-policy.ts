@@ -7,6 +7,21 @@ import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_POLICY
 type Row=Record<string,unknown>;
 type WorkerImport=Readonly<Pick<NativeImport,'specifier'>&{kind:'static'|'dynamic-literal'}>;
 function deny(message:string):never {throw new Error(message);}
+/** Fixed loader-free ES generation profile; callers cannot supply overrides. */
+export function workerStaticOutputOptions(){
+ return Object.freeze({format:'es' as const,codeSplitting:false as const,entryFileNames:'worker.mjs',sourcemap:false as const,minify:false as const,strictExecutionOrder:true as const,polyfillRequire:false as const});
+}
+/** Observe normalized public compiler scalars, without coercion or value echo. */
+export function observeWorkerOutputPolicy(format:unknown,polyfillRequire:unknown){
+ if(format!=='es'||polyfillRequire!==false)return deny('Worker output policy denied');
+ return Object.freeze({format:'es' as const,polyfillRequire:false as const});
+}
+/** Fixed successful-report projection; accessors and additional keys are denied. */
+export function readWorkerOutputPolicy(value:unknown){
+ const row=data(value,'Worker output policy denied');
+ if(Reflect.ownKeys(row).length!==2)return deny('Worker output policy denied');
+ return observeWorkerOutputPolicy(own(row,'format','Worker output policy denied'),own(row,'polyfillRequire','Worker output policy denied'));
+}
 /** Exact configured externals are identified by this build's prior callback
  * decision, never by a code-null sentinel. An external code getter is not read.
  * Other modules still require one string-code observation, then the caller's
