@@ -19,6 +19,26 @@ function denied(hex: string, kind: 'reporter2' | 'graphics' = 'reporter2') {
   return result;
 }
 
+// Literal source-reference expectations; no decoder constant supplies this oracle.
+function expectWholeSchemaSource(source: object): void {
+  expect(source).toStrictEqual({
+    chromiumPin: 'f842f52ef39fd97b449eb27cff414bf05a98ddce',
+    perfettoPin: '403906f4adfbf287a02e5546f8430dcc9d56b649',
+    provenanceVersion: 'whole-schema-files-v1',
+    hashPreimage: 'complete-raw-file-bytes',
+    chromiumSchemaPath: 'base/tracing/protos/chrome_track_event.proto',
+    perfettoSchemaPath: 'protos/third_party/chromium/chrome_track_event.proto',
+    wholeSchemaBytes: 126011,
+    wholeSchemaSha256: '2a26c01cd9b70dc95fd3ba2630ea918ea57012295225b0d1626e57a105974e03',
+  });
+  expect(Object.keys(source).sort()).toStrictEqual([
+    'chromiumPin', 'chromiumSchemaPath', 'hashPreimage', 'perfettoPin', 'perfettoSchemaPath',
+    'provenanceVersion', 'wholeSchemaBytes', 'wholeSchemaSha256',
+  ]);
+  for (const key of ['graphicsBlockSha256', 'reporterBlockSha256', 'frameSinkBlockSha256']) expect(source).not.toHaveProperty(key);
+  expect(Object.isFrozen(source)).toBe(true);
+}
+
 describe('pinned payload fields and exact body provenance', () => {
   it('decodes independently written Reporter2 values and relative spans', () => {
     const r = decoded('08 01 18 01 20 02 58 01 88 01 01 90 01 02');
@@ -33,6 +53,8 @@ describe('pinned payload fields and exact body provenance', () => {
       { scope: 'root', fieldNumber: 18, wireType: 0, start: 11, valueStart: 13, end: 14 },
     ]);
     expect(r.consumedBytes).toBe(14);
+    expectWholeSchemaSource(r.source);
+    expect(r).toMatchObject({ runtimeQualification: 'unestablished', sourceCoverage: 'unestablished', evaluationEligibility: false, scoringEligibility: false, rankingEligibility: false });
   });
   it('retains absent versus explicit zero enums and bools', () => {
     expect(decoded('').fields).toEqual({});
@@ -62,6 +84,9 @@ describe('pinned payload fields and exact body provenance', () => {
       { scope: 'frame_sink', fieldNumber: 2, wireType: 0, start: 6, valueStart: 7, end: 8 },
     ]);
     expect(r).not.toHaveProperty('rejected'); expect(r).not.toHaveProperty('reportedSuccessEndNs');
+    expect(r.presentFieldNumbers).toEqual([1, 2, 10]);
+    expectWholeSchemaSource(r.source);
+    expect(r).toMatchObject({ runtimeQualification: 'unestablished', sourceCoverage: 'unestablished', evaluationEligibility: false, scoringEligibility: false, rankingEligibility: false });
   });
   it.each([
     ['08 00', 0, 'unknown'], ['08 01', 1, 'did_not_produce_frame'], ['08 02', 2, 'generate_compositor_frame'],
