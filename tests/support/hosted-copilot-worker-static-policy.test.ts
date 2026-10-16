@@ -4,6 +4,50 @@ import {assertCompilerRuntimeOwnership} from './hosted-copilot-production-policy
 import {createHash} from 'node:crypto';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS} from './hosted-copilot-mounted-policy.ts';
 import * as outputPolicy from './hosted-copilot-worker-static-policy.ts';
+const zodAlias='../../../../node_modules/zod/index.js';
+const bindingProfile={logicalZodSpecifier:'zod',emittedZodSpecifier:zodAlias,zodPublicSourceParent:'packages/contract/src/fixture.ts'};
+describe('fixed public-root paths and original Zod importer cohort',()=>{
+ const paths=()=>({zod:zodAlias});
+ it.each([undefined,null,{},[],()=>zodAlias,{zod:'zod'},{zod:zodAlias,rxjs:'other'},{zod:zodAlias,[Symbol('extra')]:1},Object.create({zod:zodAlias})])('refuses a nonexact actual hook mapping %#',value=>{
+  expect(()=>outputPolicy.observeWorkerOutputPolicy('es',false,value)).toThrow();
+ });
+ it('reads only own data once and owns immutable hook paths, including later mutation',()=>{
+  let reads=0;expect(()=>outputPolicy.observeWorkerOutputPolicy('es',false,{get zod(){reads++;return zodAlias;}})).toThrow();expect(reads).toBe(0);
+  const input=paths(),value=outputPolicy.observeWorkerOutputPolicy('es',false,input);input.zod='wrong';expect(value.paths).toEqual(paths());expect(Object.isFrozen(value.paths)).toBe(true);
+  expect(()=>outputPolicy.readWorkerOutputPolicy({format:'es',polyfillRequire:false,paths:input})).toThrow();
+ });
+ it('retains a static raw alias and denies bare/dynamic/near alias without broadening relative imports',()=>{
+  expect(collectWorkerModuleImports(program([imp(lit(zodAlias))]))).toEqual([{specifier:zodAlias,kind:'static'}]);
+  for(const raw of ['zod','../../../node_modules/zod/index.js',zodAlias+'?x','../../../../node_modules/zod/v4/index.js'])expect(()=>collectWorkerModuleImports(program([imp(lit(raw))]))).toThrow();
+  expect(()=>collectWorkerModuleImports(program([{type:'ImportExpression',source:lit(zodAlias)}]))).toThrow();
+ });
+ const physical=(path:string,index:number)=>{const id='/repo/'+path;return {index,id,role:'normal-source',codeKind:'string',allowed:false,requested:false,source:{id,kind:'physical',external:false,path,sha256:'b'.repeat(64)},importedIds:['zod'],dynamicallyImportedIds:[]};};
+ const fixture=():any=>({compilerProfile:{provider:'rolldown',version:'1.2.13',runtimeModuleId:'\0rolldown/runtime.js'},
+  buildProfile:{entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false,...bindingProfile},workerOutputPolicy:{format:'es',polyfillRequire:false,paths:paths()},
+  rows:[physical('packages/contract/src/fixture.ts',0),{index:1,id:'zod',role:'configured-external',codeKind:'not-read',allowed:true,requested:true}],
+  callbacks:{target:'node:module',scope:'original external callback observations only',observations:[],omitted:false,callbackCountKnown:true,retainedCallbackCount:0,complete:true},
+  chunks:[{kind:'chunk',fileName:'worker.mjs',format:'es',isEntry:true,moduleIds:['/repo/packages/contract/src/fixture.ts'],facadeModuleId:'/repo/packages/contract/src/fixture.ts',bytes:10,sha256:'a'.repeat(64)}],
+  counts:{registeredRows:2,normalSources:1,configuredExternals:1,compilerRegisteredDependencies:0,relations:1,work:3}});
+ const recount=(f:any)=>{const normal=f.rows.filter((r:any)=>r.role==='normal-source');const relations=normal.reduce((n:number,r:any)=>n+r.importedIds.length+r.dynamicallyImportedIds.length,0);f.rows.forEach((r:any,i:number)=>r.index=i);f.counts={registeredRows:f.rows.length,normalSources:normal.length,configuredExternals:f.rows.length-normal.length,compilerRegisteredDependencies:0,relations,work:f.rows.length+relations};return f;};
+ const validate=(value:unknown)=>outputPolicy.validateWorkerRegisteredGraph(value);
+ it.each(['fixture','artifact','long-thread','capture-bridge','comparison-presentation','comparison-artifact','comparison-installer-options','presentation','comparison'])('admits real static incoming source %s without requiring unused sources to exist',name=>{
+  const f=fixture();if(name!=='fixture')f.rows.push(physical('packages/contract/src/'+name+'.ts',2));expect(validate(recount(f)).counts.configuredExternals).toBe(1);
+ });
+ it.each(['node_modules/sdk/src/agent.js','apps/copilotkit/node_modules/zod/index.js','packages/contract/src/other.ts','packages/contract/dist/fixture.js'])('rejects foreign or unreviewed unrendered original importer %s',path=>{
+  const f=fixture();f.rows.push(physical(path,2));expect(()=>validate(recount(f))).toThrow();
+ });
+ it('rejects virtual/dynamic/omitted-known-edge/orphan Zod regardless of chunk rendering',()=>{
+  for(const mutate of [(f:any)=>{const r=f.rows[0];r.id='virtual:fixture';r.source={id:r.id,kind:'virtual',external:false};},
+   (f:any)=>{f.rows[0].importedIds=[];f.rows[0].dynamicallyImportedIds=['zod'];},(f:any)=>f.rows[0].importedIds=[],
+   (f:any)=>f.rows.pop(),(f:any)=>{f.rows[0]=physical('packages/contract/src/artifact.ts',0);},
+   (f:any)=>f.rows[0].source.id='/other/fixture.ts',(f:any)=>f.rows[0].source.path='packages/contract/src/artifact.ts']){
+   const f=fixture();mutate(f);f.chunks[0].moduleIds=[];f.chunks[0].facadeModuleId=null;expect(()=>validate(recount(f))).toThrow();
+  }
+ });
+ it.each(['logicalZodSpecifier','emittedZodSpecifier','zodPublicSourceParent'])('rejects missing or changed fixed profile fact %s',key=>{
+  const f=fixture();delete f.buildProfile[key];expect(()=>validate(f)).toThrow();f.buildProfile[key]='wrong';expect(()=>validate(f)).toThrow();
+ });
+});
 describe('bounded public-resolution refusal diagnostic',()=>{
  const unavailable='{"workerPublicResolutionDiagnostic":{"status":"unavailable","reason":"invalid-or-oversized-input"}}';
  const format=outputPolicy.formatWorkerPublicResolutionDiagnostic;
@@ -54,10 +98,10 @@ describe('bounded public-resolution refusal diagnostic',()=>{
 });
 describe('complete worker registered graph',()=>{
  const profile={provider:'rolldown',version:'1.2.13',runtimeModuleId:'\0rolldown/runtime.js'};
- const build={entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false};
+ const build={entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false,...bindingProfile};
  const normal=(index=0,id='virtual:entry')=>({index,id,role:'normal-source',codeKind:'string',allowed:false,requested:false,
   source:{id,kind:'virtual',external:false},importedIds:[],dynamicallyImportedIds:[]});
- const fixture=():any=>({compilerProfile:{...profile},buildProfile:{...build},workerOutputPolicy:{format:'es',polyfillRequire:false},
+ const fixture=():any=>({compilerProfile:{...profile},buildProfile:{...build},workerOutputPolicy:{format:'es',polyfillRequire:false,paths:{zod:zodAlias}},
   rows:[normal(),{index:1,id:'node:module',role:'compiler-registered-dependency',codeKind:'null',allowed:false,requested:false,isEntry:false,inputFormat:'unknown'}],
   callbacks:{target:'node:module',scope:'original external callback observations only',observations:[{parent:'\0rolldown/runtime.js',parentStatus:'valid',isResolved:false,returnedAllowed:false}],omitted:false,callbackCountKnown:true,retainedCallbackCount:1,complete:true},
   chunks:[{kind:'chunk',fileName:'worker.mjs',format:'es',isEntry:true,moduleIds:['virtual:entry'],facadeModuleId:'virtual:entry',bytes:10,sha256:'a'.repeat(64)}],
@@ -174,7 +218,9 @@ describe('complete worker registered graph',()=>{
  it('accepts every configured external role without extending the16-specifier universe',()=>{
   const f=fixture(),configured=[...Object.keys(MOUNTED_MODULE_PACKAGE_SPECIFIERS),...MOUNTED_MODULE_BUILTINS];
   for(const id of configured)f.rows.push({id,index:f.rows.length,role:'configured-external',codeKind:'not-read',allowed:true,requested:true});
-  f.counts.registeredRows+=16;f.counts.configuredExternals=16;f.counts.work+=16;expect(validate(f).counts.configuredExternals).toBe(16);
+  const id='/repo/packages/contract/src/fixture.ts';f.rows.push({id,index:f.rows.length,role:'normal-source',codeKind:'string',allowed:false,requested:false,
+   source:{id,kind:'physical',external:false,path:'packages/contract/src/fixture.ts',sha256:'a'.repeat(64)},importedIds:['zod'],dynamicallyImportedIds:[]});
+  f.counts.registeredRows+=17;f.counts.normalSources++;f.counts.configuredExternals=16;f.counts.relations=1;f.counts.work+=18;expect(validate(f).counts.configuredExternals).toBe(16);
   const ordinary=fixture();ordinary.rows.pop();ordinary.callbacks.observations=[];ordinary.callbacks.retainedCallbackCount=0;
   ordinary.counts={registeredRows:1,normalSources:1,configuredExternals:0,compilerRegisteredDependencies:0,relations:0,work:1};expect(validate(ordinary).counts.compilerRegisteredDependencies).toBe(0);
  });
@@ -321,15 +367,15 @@ describe('worker loader-free ES output profile',()=>{
  it('retains the fixed generation profile and explicitly disables the require polyfill',()=>{
   expect(typeof outputPolicy.workerStaticOutputOptions).toBe('function');
   const options=outputPolicy.workerStaticOutputOptions();
-  expect(options).toEqual({format:'es',codeSplitting:false,entryFileNames:'worker.mjs',sourcemap:false,minify:false,strictExecutionOrder:true,polyfillRequire:false});
+  expect(options).toEqual({format:'es',codeSplitting:false,entryFileNames:'worker.mjs',sourcemap:false,minify:false,strictExecutionOrder:true,polyfillRequire:false,paths:{zod:zodAlias}});
   expect(Object.isFrozen(options)).toBe(true);
   expect(Reflect.set(options,'polyfillRequire',true)).toBe(false);
   expect(Reflect.apply(outputPolicy.workerStaticOutputOptions,null,[{polyfillRequire:true}])).toEqual(options);
  });
  it('retains only accepted normalized scalar metadata',()=>{
   expect(typeof outputPolicy.observeWorkerOutputPolicy).toBe('function');
-  const observed=outputPolicy.observeWorkerOutputPolicy('es',false);
-  expect(observed).toEqual({format:'es',polyfillRequire:false});expect(Object.isFrozen(observed)).toBe(true);
+  const observed=outputPolicy.observeWorkerOutputPolicy('es',false,{zod:zodAlias});
+  expect(observed).toEqual({format:'es',polyfillRequire:false,paths:{zod:zodAlias}});expect(Object.isFrozen(observed)).toBe(true);expect(Object.isFrozen(observed.paths)).toBe(true);
  });
  it.each([['es',true],['es',undefined],['es',null],['esm',false],['cjs',false],[undefined,false]])('refuses normalized scalar mismatch %#',(format,polyfill)=>{
   expect(typeof outputPolicy.observeWorkerOutputPolicy).toBe('function');
@@ -341,9 +387,9 @@ describe('worker loader-free ES output profile',()=>{
   expect(()=>outputPolicy.observeWorkerOutputPolicy(hostile,false)).toThrow(/^Worker output policy denied$/);
   expect(()=>outputPolicy.observeWorkerOutputPolicy('es',hostile)).toThrow(/^Worker output policy denied$/);expect(calls).toBe(0);
  });
- it('accepts only the two own-data report fields and returns a fresh frozen projection',()=>{
+ it('accepts only the three own-data report fields and returns a fresh frozen projection',()=>{
   expect(typeof outputPolicy.readWorkerOutputPolicy).toBe('function');
-  const source={format:'es',polyfillRequire:false};const result=outputPolicy.readWorkerOutputPolicy(source);
+  const source={format:'es',polyfillRequire:false,paths:{zod:zodAlias}};const result=outputPolicy.readWorkerOutputPolicy(source);
   expect(result).toEqual(source);expect(result).not.toBe(source);expect(Object.isFrozen(result)).toBe(true);
   source.polyfillRequire=true;expect(result.polyfillRequire).toBe(false);
  });
@@ -418,11 +464,11 @@ describe('worker configured external classification',()=>{
 describe('worker STATIC supplied AST only',()=>{
  it('retains static, export-from and dynamic occurrences in original order',()=>{
   expect(collectWorkerModuleImports(program([imp(lit('rxjs')),{type:'ExportNamedDeclaration',source:lit('rxjs'),specifiers:[]},
-   {type:'ExportAllDeclaration',source:lit('node:http')},{type:'ImportExpression',source:lit('zod'),options:null}]))).toEqual([
-   {specifier:'rxjs',kind:'static'},{specifier:'rxjs',kind:'static'},{specifier:'node:http',kind:'static'},{specifier:'zod',kind:'dynamic-literal'}]);
+   {type:'ExportAllDeclaration',source:lit('node:http')},{type:'ImportExpression',source:lit('@ag-ui/client'),options:null}]))).toEqual([
+   {specifier:'rxjs',kind:'static'},{specifier:'rxjs',kind:'static'},{specifier:'node:http',kind:'static'},{specifier:'@ag-ui/client',kind:'dynamic-literal'}]);
  });
  it.each([...Object.keys(MOUNTED_MODULE_PACKAGE_SPECIFIERS),...MOUNTED_MODULE_BUILTINS])('admits existing public specifier %s',specifier=>{
-  expect(collectWorkerModuleImports(program([imp(lit(specifier))]))).toEqual([{specifier,kind:'static'}]);
+  const raw=specifier==='zod'?zodAlias:specifier;expect(collectWorkerModuleImports(program([imp(lit(raw))]))).toEqual([{specifier:raw,kind:'static'}]);
  });
  it.each(['./x.js','/x.js','file:///x.js','data:text/javascript,x','https://outside/x','@ag-ui/encoder','node:module','node:vm','node:worker_threads','@copilotkit/runtime/private'])('refuses unsupported import %s',s=>{
   expect(()=>collectWorkerModuleImports(program([imp(lit(s))]))).toThrow('Worker module import denied');
@@ -433,8 +479,8 @@ describe('worker STATIC supplied AST only',()=>{
  });
  it('permits empty attributes/assertions and null default phase/options',()=>{
   expect(collectWorkerModuleImports(program([{...imp(lit('rxjs')),attributes:[],assertions:[],phase:null},
-   {type:'ImportExpression',source:lit('zod'),attributes:[],phase:null,options:null}]))).toEqual([
-   {specifier:'rxjs',kind:'static'},{specifier:'zod',kind:'dynamic-literal'}]);
+   {type:'ImportExpression',source:lit('@ag-ui/client'),attributes:[],phase:null,options:null}]))).toEqual([
+   {specifier:'rxjs',kind:'static'},{specifier:'@ag-ui/client',kind:'dynamic-literal'}]);
  });
  it.each([id('source'),{type:'TemplateLiteral',expressions:[],quasis:[]}])('refuses nonliteral dynamic source %#',source=>{
   expect(()=>collectWorkerModuleImports(program([{type:'ImportExpression',source}]))).toThrow('Worker module import denied');

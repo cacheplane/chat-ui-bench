@@ -107,7 +107,7 @@ export type PostInstallAdmission = Readonly<{ schemaVersion: 1; kind: 'post-inst
 export type AdmissionFacts = Readonly<{ phase: 'pre-install' | 'post-install'; sourceSha: string; treeSha: string; sourceFiles: number;
   sourceBytes: number; lockSha256: string; installedPackages?: 19; checkedInstalledRecords?: number }>;
 export type NativeImport = Readonly<{ specifier: string; kind: 'static' | 'dynamic-literal' | 'dynamic-computed'; resolutionIndex: number | null }>;
-export type NativeResolution = Readonly<{ specifier: string; packagePath: string; version: string; integrity: string; entryPath: string;
+export type NativeResolution = Readonly<{ specifier: string; publicSpecifier: string; publicEntryPath: string; packagePath: string; version: string; integrity: string; entryPath: string;
   regular: boolean; contained: boolean; symlink: boolean }>;
 export type MountedModuleInput = Readonly<{ schemaVersion: 1; sourceSha: string; runId: string; workerPath: string;
   emitted: readonly Readonly<{ path: string; kind: 'chunk' | 'asset'; format: 'es' | 'cjs'; entry: boolean; bytes: number; sha256: string }>[];
@@ -268,21 +268,47 @@ export const MOUNTED_MODULE_PACKAGE_SPECIFIERS: Readonly<Record<string,string>>=
   '@ag-ui/client':'node_modules/@ag-ui/client','@ag-ui/core':'node_modules/@ag-ui/core','@ag-ui/core/schemas':'node_modules/@ag-ui/core','@hono/node-server':'node_modules/@hono/node-server',
   'rxjs':'node_modules/rxjs','@copilotkit/aimock/agui':'node_modules/@copilotkit/aimock','playwright':'node_modules/playwright','zod':'node_modules/zod'});
 export const MOUNTED_MODULE_BUILTINS: readonly string[]=Object.freeze(['node:http','node:crypto','node:fs/promises','node:path','node:url','node:perf_hooks']);
+/** One reviewed external rewrite; compiler IDs retain the original logical map. */
+export const WORKER_ZOD_PUBLIC_BINDING = Object.freeze({publicSpecifier:'zod',rawSpecifier:'../../../../node_modules/zod/index.js',packagePath:'node_modules/zod',sourceParent:'packages/contract/src/fixture.ts'} as const);
+export interface WorkerPublicPackage {readonly publicSpecifier:string;readonly packagePath:string}
+export interface WorkerPublicEntry {readonly publicSpecifier:string;readonly rawUrl:string;readonly publicUrl:string}
+export function lookupWorkerPublicPackage(raw:unknown):Readonly<WorkerPublicPackage>|null {
+  if(typeof raw!=='string'||raw.length===0||raw.length>128)return null;
+  if(raw===WORKER_ZOD_PUBLIC_BINDING.rawSpecifier)return Object.freeze({publicSpecifier:'zod',packagePath:'node_modules/zod'});
+  if(raw==='zod'||!Object.hasOwn(MOUNTED_MODULE_PACKAGE_SPECIFIERS,raw))return null;
+  return Object.freeze({publicSpecifier:raw,packagePath:MOUNTED_MODULE_PACKAGE_SPECIFIERS[raw]!});
+}
+/** Explicit resolver port only: URL/profile checks are not filesystem authority. */
+export function resolveMountedPublicEntry(raw:unknown,workerParentUrl:unknown,sourceRootUrl:unknown,resolvePublic:(specifier:string,parent:string)=>string):Readonly<WorkerPublicEntry> {
+  const failure=():never=>{throw new Error('Worker public binding denied');};
+  const canonicalFile=(value:unknown):value is string=>{
+    if(typeof value!=='string'||value.length===0||value.length>4096||/[\x00-\x20\x7f]/.test(value)||/%(?:2e|2f|5c)/i.test(value))return false;
+    try{const url=new URL(value);return url.href===value&&url.protocol==='file:'&&url.host===''&&!url.search&&!url.hash&&!url.pathname.includes('//');}catch{return false;}
+  };
+  const binding=lookupWorkerPublicPackage(raw);
+  if(!binding||typeof raw!=='string'||!canonicalFile(sourceRootUrl)||!sourceRootUrl.endsWith('/')||!canonicalFile(workerParentUrl)||!workerParentUrl.startsWith(sourceRootUrl)||typeof resolvePublic!=='function')return failure();
+  if(!/^apps\/copilotkit\/\.hosted-mounted\/[1-9][0-9]{0,19}-1\/worker\.mjs$/.test(workerParentUrl.slice(sourceRootUrl.length)))return failure();
+  const rawUrl=resolvePublic(raw,workerParentUrl);
+  const publicUrl=raw===WORKER_ZOD_PUBLIC_BINDING.rawSpecifier?resolvePublic(binding.publicSpecifier,new URL(WORKER_ZOD_PUBLIC_BINDING.sourceParent,sourceRootUrl).href):rawUrl;
+  const packageUrl=new URL(binding.packagePath+'/',sourceRootUrl).href;
+  if(!canonicalFile(rawUrl)||!canonicalFile(publicUrl)||rawUrl!==publicUrl||!rawUrl.startsWith(packageUrl))return failure();
+  return Object.freeze({publicSpecifier:binding.publicSpecifier,rawUrl,publicUrl});
+}
 const moduleShape=shape({schemaVersion:value(),sourceSha:value(40),runId:value(20),workerPath:value(1024),executedCopySha256:value(64),
   emitted:list(shape({path:value(1024),kind:value(),format:value(),entry:value(),bytes:value(),sha256:value(64)}),1,1),
   imports:list(shape({specifier:value(),kind:value(),resolutionIndex:value()}),64),
-  resolutions:list(shape({specifier:value(),packagePath:value(1024),version:value(),integrity:value(256),entryPath:value(1024),regular:value(),contained:value(),symlink:value()}),10)});
+  resolutions:list(shape({specifier:value(),publicSpecifier:value(),publicEntryPath:value(1024),packagePath:value(1024),version:value(),integrity:value(256),entryPath:value(1024),regular:value(),contained:value(),symlink:value()}),10)});
 export function evaluateMountedModulePolicy(input: unknown): PolicyResult<ModuleFacts> {return evaluate(()=> {
   const r=R(copy(input,moduleShape));V(r.schemaVersion);const sourceSha=H(r.sourceSha,40),runId=numericID(r.runId),workerPath=P(r.workerPath),copyHash=H(r.executedCopySha256);
   const output=A(r.emitted).map(x=>{const q=R(x);return {path:P(q.path),kind:E(q.kind,['chunk','asset']),format:E(q.format,['es','cjs']),entry:B(q.entry),bytes:N(q.bytes),sha256:H(q.sha256)};})[0]!;
   const imports=A(r.imports).map(x=>{const q=R(x);return {specifier:S(q.specifier),kind:E(q.kind,['static','dynamic-literal','dynamic-computed']),resolutionIndex:q.resolutionIndex===null?null:N(q.resolutionIndex)};});
-  const resolutions=A(r.resolutions).map(x=>{const q=R(x);return {specifier:S(q.specifier),packagePath:P(q.packagePath),version:S(q.version),integrity:S(q.integrity,256),entryPath:P(q.entryPath),regular:B(q.regular),contained:B(q.contained),symlink:B(q.symlink)};});
+  const resolutions=A(r.resolutions).map(x=>{const q=R(x);return {specifier:S(q.specifier),publicSpecifier:S(q.publicSpecifier),publicEntryPath:P(q.publicEntryPath),packagePath:P(q.packagePath),version:S(q.version),integrity:S(q.integrity,256),entryPath:P(q.entryPath),regular:B(q.regular),contained:B(q.contained),symlink:B(q.symlink)};});
   if(workerPath!==`apps/copilotkit/.hosted-mounted/${runId}-1/worker.mjs`) return deny('native-output-path');
   if(output.path!==workerPath||output.kind!=='chunk'||output.format!=='es'||!output.entry||output.bytes<1||output.bytes>16777216||output.sha256!==copyHash) return deny('native-output');
   if(imports.length===0) return deny('native-imports-missing');
-  if(imports.some(i=>i.kind==='dynamic-computed'||!MOUNTED_MODULE_BUILTINS.includes(i.specifier)&&!Object.hasOwn(MOUNTED_MODULE_PACKAGE_SPECIFIERS,i.specifier))) return deny('native-import');
-  const seen=new Set<string>(),used=new Set<number>();for(const q of resolutions) {const expectedPath=MOUNTED_MODULE_PACKAGE_SPECIFIERS[q.specifier],expected=expectedPath?pin(expectedPath):undefined;
-    if(!expected||seen.has(q.specifier)||q.packagePath!==expectedPath||q.version!==expected.version||q.integrity!==expected.integrity||!q.entryPath.startsWith(q.packagePath+'/')||!q.regular||!q.contained||q.symlink) return deny('native-resolution');seen.add(q.specifier);}
+  if(imports.some(i=>i.kind==='dynamic-computed'||i.specifier===WORKER_ZOD_PUBLIC_BINDING.rawSpecifier&&i.kind!=='static'||!MOUNTED_MODULE_BUILTINS.includes(i.specifier)&&lookupWorkerPublicPackage(i.specifier)===null)) return deny('native-import');
+  const seen=new Set<string>(),used=new Set<number>();for(const q of resolutions) {const binding=lookupWorkerPublicPackage(q.specifier),expected=binding?pin(binding.packagePath):undefined;
+    if(!binding||!expected||seen.has(q.specifier)||q.publicSpecifier!==binding.publicSpecifier||q.publicEntryPath!==q.entryPath||q.packagePath!==binding.packagePath||q.version!==expected.version||q.integrity!==expected.integrity||!q.entryPath.startsWith(q.packagePath+'/')||!q.regular||!q.contained||q.symlink) return deny('native-resolution');seen.add(q.specifier);}
   for(const i of imports) {if(MOUNTED_MODULE_BUILTINS.includes(i.specifier)) {if(i.resolutionIndex!==null) return deny('native-resolution');}
     else {if(i.resolutionIndex===null||resolutions[i.resolutionIndex]?.specifier!==i.specifier) return deny('native-resolution');used.add(i.resolutionIndex);}}
   if(used.size!==resolutions.length) return deny('native-resolution');

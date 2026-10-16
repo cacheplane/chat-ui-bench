@@ -7,7 +7,8 @@ import {join,relative,resolve} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {readSourceSnapshot,COPILOT_PRODUCTION_SOURCES} from '../tests/support/hosted-copilot-context.ts';
 import {ordinaryPath,assertInventory,assertProductionOutputInventory,assertOriginalCommand} from '../tests/support/hosted-copilot-contract.ts';
-import {MOUNTED_PACKAGE_PINS,evaluateMountedAdmissionPolicy,evaluateMountedModulePolicy,evaluateMountedClosurePolicy} from '../tests/support/hosted-copilot-mounted-policy.ts';
+import {MOUNTED_PACKAGE_PINS,evaluateMountedAdmissionPolicy,evaluateMountedModulePolicy,evaluateMountedClosurePolicy,WORKER_ZOD_PUBLIC_BINDING,resolveMountedPublicEntry} from '../tests/support/hosted-copilot-mounted-policy.ts';
+import {validateWorkerRegisteredGraph,assertWorkerComponentPins,WORKER_STATIC_COMPONENT_PATHS} from '../tests/support/hosted-copilot-worker-static-policy.ts';
 
 const RELEASE='hosted-copilot-react-h100-r6400-v1',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
@@ -182,9 +183,19 @@ async function verifyGraph(directory,scratch,prerequisites){
   need(actual.sha256===item.manifestSha256&&metadata.name===item.path.split('node_modules/').at(-1)&&metadata.version===pin.version&&lock.packages?.[item.path]?.integrity===pin.integrity&&hidden.packages?.[item.path]?.integrity===pin.integrity&&hidden.packages?.[item.path]?.version===pin.version);
  }
  const worker=join(process.cwd(),prerequisites.module.workerPath);
+ const compiler=await jsonFile(join(scratch,'worker-compiler-profile.json')),owned=await jsonFile(join(scratch,'worker-owned-modules.json'));
+ const graph=validateWorkerRegisteredGraph(compiler.registeredGraph);
+ need(JSON.stringify(graph.rows.filter(row=>row.role==='normal-source').map(row=>row.source))===JSON.stringify(owned)&&graph.chunks[0].sha256===prerequisites.module.executedCopySha256&&graph.chunks[0].bytes===prerequisites.module.emitted[0].bytes,'Original worker graph binding differs');
+ const components=[];for(const path of WORKER_STATIC_COMPONENT_PATHS){const file=await physical(join(process.cwd(),path),4*MiB);components.push({path,bytes:file.bytes,sha256:file.sha256});}
+ assertWorkerComponentPins(components,compiler.componentPins);
+ const parents=owned.filter(row=>row.kind==='physical'&&row.path===WORKER_ZOD_PUBLIC_BINDING.sourceParent);
+ const parent=await physical(join(process.cwd(),WORKER_ZOD_PUBLIC_BINDING.sourceParent),16*MiB);
+ need(parents.length===1&&parents[0].id===join(process.cwd(),WORKER_ZOD_PUBLIC_BINDING.sourceParent)&&parents[0].sha256===parent.sha256&&graph.rows.some(row=>row.id==='zod'&&row.role==='configured-external'),'Original public source parent differs');
+ need(prerequisites.module.imports.some(row=>row.specifier===WORKER_ZOD_PUBLIC_BINDING.rawSpecifier&&row.kind==='static'),'Static Zod alias missing');
  need(process.execArgv.length===1&&process.execArgv[0]==='--experimental-import-meta-resolve','Explicit parent-aware resolver flag required');
  for(const resolution of prerequisites.module.resolutions){
-  const url=new URL(import.meta.resolve(resolution.specifier,pathToFileURL(worker).href));need(url.protocol==='file:'&&!url.search&&!url.hash&&relative(process.cwd(),fileURLToPath(url))===resolution.entryPath);
+  const observed=resolveMountedPublicEntry(resolution.specifier,pathToFileURL(worker).href,pathToFileURL(process.cwd()+'/').href,(specifier,parent)=>import.meta.resolve(specifier,parent));
+  const url=new URL(observed.rawUrl),publicUrl=new URL(observed.publicUrl);need(observed.publicSpecifier===resolution.publicSpecifier&&relative(process.cwd(),fileURLToPath(url))===resolution.entryPath&&relative(process.cwd(),fileURLToPath(publicUrl))===resolution.publicEntryPath);
   const matching=files.filter(f=>f.path===resolution.entryPath);need(matching.length===1);const current=await physical(fileURLToPath(url),16*MiB);need(current.sha256===matching[0].sha256&&current.bytes===matching[0].bytes);
  }
  const current=await physical(worker,16*MiB);need(current.sha256===prerequisites.module.executedCopySha256&&current.bytes===prerequisites.module.emitted[0].bytes);
