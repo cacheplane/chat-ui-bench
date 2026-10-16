@@ -666,3 +666,15 @@ CI includes 23 supplied-data bootstrap regressions and nine tiny synthetic ZIP
 cases using the exact embedded stdlib extractor. These tests run no bootstrap
 action or SDK/browser effects. Strict mounted conformance and bootstrap test
 typing run through the repository typecheck commands.
+
+The V18 worker profile explicitly sets Rolldown `polyfillRequire: false` for
+its fixed ES output. The normalized public `format` and `polyfillRequire`
+observations must be exactly `es` and `false` before module enumeration. That
+accepted two-field observation is retained in original worker-build stdout and,
+on successful emission, `worker-compiler-profile.json`; inspection requires its
+exact own-data shape. All existing loader denials (including `require`,
+`createRequire`, and `node:module`), ownership checks, externals and caps remain
+unchanged. V16 refused a `node:module` enumeration, but its precise insertion
+provenance remains unknown. This explicit profile tests the documented compiler
+default hypothesis; pure checks do not establish successful hosted emission or
+native conformance.

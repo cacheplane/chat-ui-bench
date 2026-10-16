@@ -8,7 +8,7 @@ import {ordinaryPath,assertDenseEntries} from '../tests/support/hosted-copilot-c
 import {readPhysicalSource,observeCompilerRuntimeModule} from '../tests/support/hosted-copilot-build-plugin.ts';
 import {assertCompilerProfile,assertCompilerRuntimeOwnership,assertMappings,assertModuleOwnershipId,projectCompilerRuntimeModules} from '../tests/support/hosted-copilot-production-policy.ts';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_PACKAGE_PINS,evaluateMountedModulePolicy} from '../tests/support/hosted-copilot-mounted-policy.ts';
-import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,classifyWorkerModuleSource} from '../tests/support/hosted-copilot-worker-static-policy.ts';
+import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,classifyWorkerModuleSource,workerStaticOutputOptions,observeWorkerOutputPolicy,readWorkerOutputPolicy} from '../tests/support/hosted-copilot-worker-static-policy.ts';
 
 const action=process.argv[2];
 if(process.argv.length!==3||!['emit','inspect'].includes(action))throw new Error('Fixed worker STATIC action required');
@@ -48,12 +48,15 @@ if(action==='emit') {
  // Public compiler imports occur only after the actual same-source prerequisite.
  const {rolldown,VERSION,RUNTIME_MODULE_ID}=await import('rolldown');
  const compilerProfile=assertCompilerProfile({provider:'rolldown',version:VERSION,runtimeModuleId:RUNTIME_MODULE_ID});
- const owned=[],files=[],requestedExternals=new Set(),enumeratedExternals=new Set();let runtimeModules,observed=false;
+ const owned=[],files=[],requestedExternals=new Set(),enumeratedExternals=new Set();let runtimeModules,workerOutputPolicy,observed=false;
  const allowed=id=>MOUNTED_MODULE_BUILTINS.includes(id)||Object.hasOwn(MOUNTED_MODULE_PACKAGE_SPECIFIERS,id);
  const external=id=>{if(!allowed(id))return false;requestedExternals.add(id);return true;};
  const bundle=await rolldown({input:join(root,'apps/copilotkit/hosted-native-entry.ts'),cwd:root,platform:'node',tsconfig:false,preserveEntrySignatures:'strict',external,
-  plugins:[{name:'worker-static-owned-modules',generateBundle(_options,outputs){
+  plugins:[{name:'worker-static-owned-modules',generateBundle(options,outputs){
    if(observed)throw new Error('Worker mapping hook repeated');observed=true;
+   const format=options.format,polyfillRequire=options.polyfillRequire;
+   workerOutputPolicy=observeWorkerOutputPolicy(format,polyfillRequire);
+   console.log(JSON.stringify({workerOutputPolicy}));
    let index=0;
    for(const id of this.getModuleIds()) {
     assertModuleOwnershipId(id,index++);
@@ -74,10 +77,10 @@ if(action==='emit') {
    runtimeModules=assertCompilerRuntimeOwnership(files,owned,compilerProfile,projectCompilerRuntimeModules(compilerProfile,runtimeModules)).compilerRuntimeModules;
   }}]});
  let generated,primaryFailure;
- try{generated=await bundle.generate({format:'es',codeSplitting:false,entryFileNames:'worker.mjs',sourcemap:false,minify:false,strictExecutionOrder:true});}
+ try{generated=await bundle.generate({...workerStaticOutputOptions()});}
  catch(error){primaryFailure=error;throw error;}
  finally{try{await bundle.close();}catch(error){if(primaryFailure)console.error('Compiler close also failed after original failure',error);else throw error;}}
- if(!observed||!runtimeModules||generated.output.length!==1)throw new Error('Original worker compiler output absent');
+ if(!observed||!runtimeModules||!workerOutputPolicy||generated.output.length!==1)throw new Error('Original worker compiler output absent');
  const output=generated.output[0];
  if(output.type!=='chunk'||output.fileName!=='worker.mjs'||!output.isEntry||Buffer.byteLength(output.code)<1||Buffer.byteLength(output.code)>16*1024*1024)throw new Error('Worker emitted output bound');
  await mkdir(workerDirectory,{recursive:true});
@@ -87,7 +90,7 @@ if(action==='emit') {
  await mkdir(join(artifacts,'worker'));
  await writeFile(join(artifacts,'worker/worker.mjs'),original.raw,{flag:'wx'});
  await report('worker-owned-modules.json',owned);
- await report('worker-compiler-profile.json',{compilerProfile,compilerRuntimeModules:runtimeModules,files,requestedExternals:[...requestedExternals],enumeratedExternals:[...enumeratedExternals]});
+ await report('worker-compiler-profile.json',{compilerProfile,compilerRuntimeModules:runtimeModules,workerOutputPolicy,files,requestedExternals:[...requestedExternals],enumeratedExternals:[...enumeratedExternals]});
  readIntegratedAdmission();
  console.log(JSON.stringify({workerPath,bytes:original.fact.bytes,sha256:original.fact.sha256,ownedModules:owned.length,qualification:false,scope:'emitted STATIC bytes only; worker never imported'}));
 } else {
@@ -97,7 +100,8 @@ if(action==='emit') {
  const copy=await artifactBytes('worker/worker.mjs',16*1024*1024);
  if(copy.length!==original.raw.length||hash(copy)!==original.fact.sha256)throw new Error('Worker artifact copy differs');
  const owned=await artifactJson('worker-owned-modules.json',4*1024*1024),compiler=await artifactJson('worker-compiler-profile.json',4*1024*1024);
- if(Object.keys(compiler).sort().join(',')!=='compilerProfile,compilerRuntimeModules,enumeratedExternals,files,requestedExternals'||!Array.isArray(compiler.files)||compiler.files.length!==1||compiler.files[0].kind!=='chunk')throw new Error('Worker compiler report shape differs');
+ if(Object.keys(compiler).sort().join(',')!=='compilerProfile,compilerRuntimeModules,enumeratedExternals,files,requestedExternals,workerOutputPolicy'||!Array.isArray(compiler.files)||compiler.files.length!==1||compiler.files[0].kind!=='chunk')throw new Error('Worker compiler report shape differs');
+ readWorkerOutputPolicy(compiler.workerOutputPolicy);
  for(const names of [compiler.requestedExternals,compiler.enumeratedExternals]){assertDenseEntries(names,16,true);if(new Set(names).size!==names.length||names.some(id=>!MOUNTED_MODULE_BUILTINS.includes(id)&&!Object.hasOwn(MOUNTED_MODULE_PACKAGE_SPECIFIERS,id)))throw new Error('Worker compiler external observations differ');}
  if(compiler.enumeratedExternals.some(id=>!compiler.requestedExternals.includes(id)))throw new Error('Unrequested worker external observation');
  assertCompilerRuntimeOwnership(compiler.files,owned,compiler.compilerProfile,compiler.compilerRuntimeModules);
