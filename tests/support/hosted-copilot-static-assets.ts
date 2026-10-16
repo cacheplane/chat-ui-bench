@@ -159,7 +159,9 @@ export async function inspectStaticAssets(input:{outputRoot:string;hookFiles:Hoo
  const manifestValue:unknown=JSON.parse(decode('.vite/manifest.json',256*1024)),manifest:ManifestRecord[]=[];
  const manifestObject=row(manifestValue);assertProductionCount('manifest-records',Object.keys(manifestObject).length);const manifestEntries=Object.entries(manifestObject);
  for(const [key,value] of manifestEntries){const n=row(value);const list=(k:string)=>n[k]===undefined?[]:array(n[k]).map(string);manifest.push({key,file:string(n.file),imports:list('imports'),dynamicImports:list('dynamicImports'),css:list('css'),assets:list('assets')});}
- const manifestFacts=assertProductionManifest(manifest,names);occurrences=assertReferenceCount([occurrences,manifestFacts.referenceCount]);for(const ref of manifestFacts.references)references.push({from:ref.from,raw:`/${ref.target}`,target:ref.target,embedded:false,fragment:null,sameDocument:false,embeddedData:null});
+ const manifestFacts=assertProductionManifest(manifest,names);
+ occurrences=projectStaticReferenceCounts({metadataOccurrences:snapshot.metadataOccurrenceCount,manifestOwnerOccurrences:manifest.length,manifestEdgeOccurrences:manifestFacts.references.length,parsedEdgeOccurrences:0,unqualifiedRuntimeUrlOccurrences:0}).referenceBudgetCharges;
+ for(const ref of manifestFacts.references)references.push({from:ref.from,raw:`/${ref.target}`,target:ref.target,embedded:false,fragment:null,sameDocument:false,embeddedData:null});
  const {parse}=await import('parse5');const {parseAst}=await import('rolldown/parseAst');const {transform}=await import('lightningcss');
  function expectDenied(action:()=>unknown){let denied=false;try{action();}catch{denied=true;}if(!denied)throw new Error('Actual parser ambiguity microcase accepted');}
  const microJs=collectJsReferences(parseAst('import "./a.js";export * from "./a.js";import("./b.js");new URL("./x.png",import.meta.url)',null,'microcase.js'));
