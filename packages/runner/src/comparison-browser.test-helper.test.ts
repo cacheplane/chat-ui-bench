@@ -213,9 +213,10 @@ async function fixture() {
   const assets = Object.keys(build.assetHashes).map(key => 'apps/threadplane/dist/' + key);
   const raw2 = ['apps/threadplane/.build-evidence.json', 'packages/runner/.comparison-build-evidence.json'];
   const union = [...new Set([...source53, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output135, ...analyzerSelected9, ...metadata52, ...assets, ...raw2])].sort();
-  for (const key of union) {
-    if (raw2.includes(key) || key === nativePath + '/package.json') continue;
-    await mkdir(dirname(join(workspace, key)), {recursive: true});
+  const copyKeys = union.filter(key => !raw2.includes(key) && key !== nativePath + '/package.json');
+  const copyParents = [...new Set(copyKeys.map(key => dirname(join(workspace, key))))];
+  for (const parent of copyParents) await mkdir(parent, {recursive: true});
+  for (const key of copyKeys) {
     // The new maintained test supplies its own bytes in the defect-baseline projection too.
     await copyFile(key === 'packages/runner/src/comparison-browser.test-helper.test.ts' ? fileURLToPath(import.meta.url) : join(repository, key), join(workspace, key));
   }
