@@ -76,6 +76,7 @@ export const COPILOT_PRODUCTION_SOURCES=Object.freeze([
  'tests/fixtures/aimock.ts','packages/contract/src/long-thread.ts',
  'apps/copilotkit/hosted-native-entry.ts','tools/hosted-copilot-worker-static.mjs',
  'apps/copilotkit/src/geometry.ts','apps/copilotkit/src/geometry-policy.ts','tests/copilotkit-geometry.test.ts',
+ 'apps/copilotkit/runtime/fixture-selection.ts','tests/copilotkit-fixture-selection.test.ts','tests/tsconfig.types.json',
  'tests/tsconfig.copilot-geometry.json',
  'tests/support/hosted-copilot-mounted-policy.ts','tests/support/hosted-copilot-worker-static-policy.ts',
  'apps/threadplane/src/sse.ts','packages/producer/src/replay.ts',

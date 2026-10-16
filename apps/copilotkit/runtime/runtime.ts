@@ -8,7 +8,7 @@ import { createStoreDomain, ownHistory, validateResponse, type CaseIds } from '.
 import { AGENT_ID, RUNTIME_URL, CONTEXT_URL, MOUNTED_URL, COMPLETED_URL, CONTINUATION_URL, dataRecord, parseCaseContext, type CaseContext } from '../src/context.js';
 import { ProducerAgent, type BridgeSpec } from './producer-agent.js';
 import { OwnedOperations, claimApplicationDomain, SettlementBudget } from './ownership.js';
-import { readBoundedJson, consumeNativeSeed, isSuccessfulTerminal, MAX_NATIVE_BYTES } from './wire.js';
+import { readBoundedJson, consumeNativeSeed, isSuccessfulTerminal, MAX_NATIVE_BYTES, createNativeFixtureSelection } from './wire.js';
 
 interface PublicRunOutcome { readonly runId:string; eventCount:number;terminalSuccess:boolean;settled:boolean }
 export interface MountedOwner { closeAdmission():void;dispose():Promise<void> }
@@ -112,8 +112,9 @@ export function createCaseRuntime(input:unknown,ids:CaseIds,repetition:string) {
   ids=admittedContext.ids;const response=admittedContext.response;
   if(fixture.events[0]?.messageId!==ids.responseId) throw new Error('Canonical response ID differs');
   validateResponse(response,response);
+  const fixtureSelection=createNativeFixtureSelection(fixture,ids);
   const releaseDomain=claimApplicationDomain();
-  const spec:BridgeSpec={fixture,ids,history,response,repetition};
+  const spec:BridgeSpec={fixture,ids,history,response,repetition,fixtureSelection};
   const runner=new OwnedRunner(spec);
   const bridge=new ProducerAgent(spec,runner.operations,input=>runner.requireAdmitted(input));
   const runtime=new CopilotRuntime({agents:{[AGENT_ID]:bridge},runner});

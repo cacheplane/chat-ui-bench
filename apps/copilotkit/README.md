@@ -129,6 +129,19 @@ producer, validates its 202 original SSE events and 200 ASCII deltas, and transl
 them into 204 AG-UI events. Producer and bridge receipt clocks remain distinct.
 The bridge does not override connect.
 
+The owned seed and continuation payloads come from `@copilotkit/aimock/agui`
+fixture data. The native binding compiles the canonical fixtures and calls the
+public `findFixture` and `matchesFixture` functions; it consumes the selected
+event arrays rather than registering unused mocks or starting another HTTP
+server. Selection validates exact history, identities and all future events
+before returning a slice. Only a validated successful terminal gains the native
+success outcome. The continuation reader maps the independent producer's 202
+records to 204 selected events and closes after completion or failure.
+Synthetic fixture timestamps describe provenance, not producer pacing or
+transport latency. The producer retains its original schedule, backpressure and
+EOF checks. Pure supplied-port tests verify this selection logic; actual SDK
+execution and mounted behavior still require separately qualified hosted output.
+
 Original handler, response-reader, public Observable, bridge task, producer finish,
 producer close, page run/detach and server close outcomes are retained separately.
 Stop and idle alone cannot settle them. Disposal closes admission first, uses a

@@ -9,6 +9,7 @@ import type { ComparisonObservation } from '../../../packages/contract/src/compa
 import type { HistoryMessage, CaseIds } from '../src/controls.js';
 import { AGENT_ID } from '../src/context.js';
 import { boundedChunks, producerEvents, seedEvents, translateReplay } from './wire.js';
+import type { FixtureSelection } from './fixture-selection.js';
 import { OwnedOperations, boundedWait, diagnostic } from './ownership.js';
 
 export interface BridgeSpec {
@@ -17,6 +18,7 @@ export interface BridgeSpec {
   readonly history: readonly HistoryMessage[];
   readonly response: HistoryMessage;
   readonly repetition: string;
+  readonly fixtureSelection: FixtureSelection;
 }
 interface ProducerCompletion { readonly complete: boolean;readonly error: string|null }
 interface OwnedProducer {
@@ -101,9 +103,10 @@ export class ProducerAgent extends AbstractAgent {
         const emit=(event:BaseEvent)=> {if(++eventCount>204) throw new Error('Translated event bound exceeded');subscriber.next(event);};
         try {
           if(input.runId===this.spec.ids.seedRunId) {
-            for(const event of seedEvents(input,this.spec.history)) emit(event);
+            for(const event of seedEvents(this.spec.fixtureSelection,input)) emit(event);
             eof=true;producerSettled=true;readerSettled=true;
           } else {
+            const selected=this.spec.fixtureSelection.continuation(input);
             // Allocation occurs only after the runner admitted unchanged full H.
             producer=await createOwnedProducer(this.spec);
             const producerOperation=this.operations.start('producer','original-producer',()=>producer?.close()??Promise.resolve());
@@ -119,8 +122,9 @@ export class ProducerAgent extends AbstractAgent {
                 const expected=this.spec.fixture.events[event.sequence];
                 if(!expected || event.sequence!==expected.sequence || event.type!==expected.type || event.messageId!==expected.messageId || event.scheduledMs!==expected.scheduledMs || event.text!==expected.text) throw new Error('Original producer differs from canonical event');
                 if(event.type==='text-delta') {deltaCount++;responseBytes+=new TextEncoder().encode(event.text).byteLength;}
-                for(const translated of translateReplay(input,event)) emit(translated);
+                for(const translated of translateReplay(selected,event)) emit(translated);
               }
+              selected.complete();
               const writes=await boundedWait(producer.writes,10000,'Original producer finish');
               if(!writes.complete || producer.state!=='complete' || !eof || deltaCount!==200 || responseBytes!==6400 || eventCount!==204) throw new Error(writes.error??'Incomplete canonical producer receipt');
               await reader.cancel();reader.releaseLock();reader=undefined;readerSettled=true;readerOperation.succeed();

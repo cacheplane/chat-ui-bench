@@ -11,5 +11,5 @@
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["fixtures/aimock.ts", "fixtures/aimock.test.ts", "fixtures/copilotkit-httpagent.ts", "fixtures/copilotkit-httpagent.test.ts", "type-tests/**/*.ts", "support/**/*.ts", "hosted/**/*.ts", "../vitest.hosted-httpagent.config.ts"]
+  "include": ["copilotkit-fixture-selection.test.ts", "fixtures/aimock.ts", "fixtures/aimock.test.ts", "fixtures/copilotkit-httpagent.ts", "fixtures/copilotkit-httpagent.test.ts", "type-tests/**/*.ts", "support/**/*.ts", "hosted/**/*.ts", "../vitest.hosted-httpagent.config.ts"]
 }
