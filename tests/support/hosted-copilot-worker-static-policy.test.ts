@@ -4,6 +4,54 @@ import {assertCompilerRuntimeOwnership} from './hosted-copilot-production-policy
 import {createHash} from 'node:crypto';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS} from './hosted-copilot-mounted-policy.ts';
 import * as outputPolicy from './hosted-copilot-worker-static-policy.ts';
+describe('bounded public-resolution refusal diagnostic',()=>{
+ const unavailable='{"workerPublicResolutionDiagnostic":{"status":"unavailable","reason":"invalid-or-oversized-input"}}';
+ const format=outputPolicy.formatWorkerPublicResolutionDiagnostic;
+ it('retains all four exact supplied primitive bindings without claiming the failing import identity',()=>{
+  const specifier='zod',expectedPackagePath='node_modules/zod',workerParentUrl='file:///repo/apps/copilotkit/.hosted-mounted/123-1/worker.mjs',resolvedEntryPath='apps/copilotkit/node_modules/zod/index.js';
+  expect(outputPolicy.formatWorkerPublicResolutionDiagnostic(specifier,expectedPackagePath,workerParentUrl,resolvedEntryPath)).toBe(JSON.stringify({workerPublicResolutionDiagnostic:{status:'observed',specifier,expectedPackagePath,workerParentUrl,resolvedEntryPath}}));
+ });
+ it.each([0,1,2,3])('admits exact independent boundary and refuses plusone without a partial record at position%i',index=>{
+  const limits=[128,256,1024,4096],values=['zod','node_modules/zod','file:///worker.mjs','node_modules/zod/index.js'];
+  values[index]='x'.repeat(limits[index]!);
+  const parsed=JSON.parse(format(values[0],values[1],values[2],values[3]));
+  expect(parsed).toEqual({workerPublicResolutionDiagnostic:{status:'observed',specifier:values[0],expectedPackagePath:values[1],workerParentUrl:values[2],resolvedEntryPath:values[3]}});
+  values[index]+='x';expect(format(values[0],values[1],values[2],values[3])).toBe(unavailable);
+ });
+ it('retains all maximum primitive values including JSON quotes and backslashes within the complete output bound',()=>{
+  const values=['"'.repeat(128),'\\'.repeat(256),'"'.repeat(1024),'\\'.repeat(4096)];
+  const line=format(values[0],values[1],values[2],values[3]);
+  expect(Buffer.byteLength(line,'utf8')).toBeLessThanOrEqual(16384);expect(line).not.toContain('\n');
+  expect(JSON.parse(line)).toEqual({workerPublicResolutionDiagnostic:{status:'observed',specifier:values[0],expectedPackagePath:values[1],workerParentUrl:values[2],resolvedEntryPath:values[3]}});
+  expect(JSON.parse(format(' ',' ',' ',' ')).workerPublicResolutionDiagnostic.status).toBe('observed');
+ });
+ it('refuses empty, control, nonASCII and nonstring inputs at every position without arbitrary stringification',()=>{
+  let calls=0;
+  const object={get toJSON(){calls++;throw Error('secret');},toString(){calls++;throw Error('secret');},valueOf(){calls++;throw Error('secret');},get message(){calls++;throw Error('secret');}};
+  const invalid:unknown[]=['','\0','a\nb','\t','\x1f','\x7f','é','😀','\ud800',undefined,null,false,true,0,NaN,Infinity,1n,Symbol('secret'),()=>{calls++;},object,new String('zod'),[],new Map()];
+  for(const value of invalid)for(let index=0;index<4;index++){
+   const values:unknown[]=['zod','node_modules/zod','file:///worker.mjs','node_modules/zod/index.js'];values[index]=value;
+   expect(format(values[0],values[1],values[2],values[3])).toBe(unavailable);
+  }
+  expect(calls).toBe(0);
+ });
+ it('does not inspect hostile proxy getters, descriptors, keys or prototypes, including revoked proxies',()=>{
+  let calls=0;const trap=():never=>{calls++;throw Error('secret');};
+  const proxy=new Proxy({}, {get:trap,getPrototypeOf:trap,getOwnPropertyDescriptor:trap,ownKeys:trap,has:trap});
+  const revoked=Proxy.revocable({},{});revoked.revoke();
+  for(const input of [proxy,revoked.proxy])for(let index=0;index<4;index++){
+   const values:unknown[]=['zod','node_modules/zod','file:///worker.mjs','node_modules/zod/index.js'];values[index]=input;
+   expect(format(values[0],values[1],values[2],values[3])).toBe(unavailable);
+  }
+  expect(calls).toBe(0);
+ });
+ it('checks primitive character and byte bounds before any JSON serialization',()=>{
+  const spy=vi.spyOn(JSON,'stringify');let calls:number;
+  let line:string;
+  try{line=format('zod','node_modules/zod','file:///worker.mjs','x'.repeat(4097));calls=spy.mock.calls.length;}finally{spy.mockRestore();}
+  expect(calls!).toBe(0);expect(line!).toBe(unavailable);
+ });
+});
 describe('complete worker registered graph',()=>{
  const profile={provider:'rolldown',version:'1.2.13',runtimeModuleId:'\0rolldown/runtime.js'};
  const build={entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false};

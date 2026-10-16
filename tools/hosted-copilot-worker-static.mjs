@@ -8,7 +8,7 @@ import {ordinaryPath,assertDenseEntries} from '../tests/support/hosted-copilot-c
 import {readPhysicalSource,observeCompilerRuntimeModule} from '../tests/support/hosted-copilot-build-plugin.ts';
 import {assertCompilerProfile,assertCompilerRuntimeOwnership,assertMappings,assertModuleOwnershipId,projectCompilerRuntimeModules} from '../tests/support/hosted-copilot-production-policy.ts';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_PACKAGE_PINS,evaluateMountedModulePolicy} from '../tests/support/hosted-copilot-mounted-policy.ts';
-import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,observeWorkerRegisteredModule,observeWorkerResolvedRelations,validateWorkerRegisteredGraph,readWorkerChunkMetadata,assertWorkerChunkMetadataStable,assertWorkerCallbackSnapshotStable,settleWorkerStaticGeneration,assertWorkerComponentPins,WORKER_STATIC_COMPONENT_PATHS,workerStaticOutputOptions,observeWorkerOutputPolicy,readWorkerOutputPolicy,createWorkerImporterDiagnostic} from '../tests/support/hosted-copilot-worker-static-policy.ts';
+import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,observeWorkerRegisteredModule,observeWorkerResolvedRelations,validateWorkerRegisteredGraph,readWorkerChunkMetadata,assertWorkerChunkMetadataStable,assertWorkerCallbackSnapshotStable,settleWorkerStaticGeneration,assertWorkerComponentPins,WORKER_STATIC_COMPONENT_PATHS,workerStaticOutputOptions,observeWorkerOutputPolicy,readWorkerOutputPolicy,createWorkerImporterDiagnostic,formatWorkerPublicResolutionDiagnostic} from '../tests/support/hosted-copilot-worker-static-policy.ts';
 
 const action=process.argv[2];
 if(process.argv.length!==3||!['emit','inspect'].includes(action))throw new Error('Fixed worker STATIC action required');
@@ -171,9 +171,15 @@ if(action==='emit') {
   if(index<0) {
    if(resolutions.length>=10)throw new Error('Worker resolution count bound');
    const packagePath=MOUNTED_MODULE_PACKAGE_SPECIFIERS[item.specifier];if(!packagePath)throw new Error('Worker public import denied');
-   const url=new URL(import.meta.resolve(item.specifier,pathToFileURL(worker).href));
+   const workerParentUrl=pathToFileURL(worker).href;
+   const url=new URL(import.meta.resolve(item.specifier,workerParentUrl));
    if(url.protocol!=='file:'||url.search||url.hash)throw new Error('Worker public resolution URL denied');
-   const entryPath=relative(root,fileURLToPath(url));if(!entryPath.startsWith(packagePath+'/'))throw new Error('Worker public resolution package differs');
+   const entryPath=relative(root,fileURLToPath(url));
+   if(!entryPath.startsWith(packagePath+'/')){
+    const refusal=new Error('Worker public resolution package differs');
+    try{process.stderr.write(formatWorkerPublicResolutionDiagnostic(item.specifier,packagePath,workerParentUrl,entryPath)+'\n');}catch{/* Diagnostic failure must not replace the original refusal. */}
+    throw refusal;
+   }
    const actual=await physical(entryPath,16*1024*1024),pin=MOUNTED_PACKAGE_PINS[packagePath];
    resolutions.push({specifier:item.specifier,packagePath,version:pin.version,integrity:pin.integrity,entryPath,regular:true,contained:true,symlink:false});
    resolutionFiles.push(actual.fact);index=resolutions.length-1;
