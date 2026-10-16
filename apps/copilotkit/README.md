@@ -516,6 +516,21 @@ that comparison. The new profile still requires a separately admitted hosted
 build and full frontend and worker STATIC qualification before mounted runtime
 or FPS work. The policy alone establishes no speedup or performance ranking.
 
+The proposed V14 profile adds `external-assets-no-inline-v1` alongside the
+manual initial/syntax/diagram grouping. The pure `productionAssetOptions()`
+helper supplies `build.assetsInlineLimit:0`: imported fonts and other assets
+are emitted as separate resources instead of automatic small-asset data URLs.
+Vite's raw-asset size threshold can otherwise produce a larger base64 resource
+string than the unchanged 4096-byte resource limit. Explicit source data URLs
+and forced-inline imports still undergo the same inspection; this setting is
+not a whitelist.
+All fonts and features remain included. Separate files can add requests and
+change caching, CSS/output sizes and startup behavior; they also consume the
+unchanged output-file and artifact-byte budgets. Fresh hosted output must
+establish actual fit and behavior. This is a custom build profile, with no
+performance or default-profile equivalence claim. V12/V13 results remain
+preserved; their outputs are not rewritten by this source change.
+
 The proposed V14 STATIC stage adds an export-only `hosted-native-entry.ts` for
 the existing `createCaseServer` factory. In the same hosted job, successful
 frontend inspection precedes worker emission and inspection; both worker actions
