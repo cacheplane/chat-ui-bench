@@ -4,6 +4,7 @@ import type { LongThreadAdapterHost, RuntimeProgress, RuntimeTranscriptSnapshot 
 import type { Message } from '../../../packages/contract/src/fixture.js';
 import { COMPLETED_URL, CONTINUATION_URL, MOUNTED_URL, type CaseContext } from './context.js';
 import { ownHistory, validateResponse } from './controls.js';
+import {createGeometryCollector,createNativeGeometryPorts,type GeometrySnapshot} from './geometry.js';
 
 const SETUP_TIMEOUT_MS = 60_000;
 export const geometryQualification = Object.freeze({
@@ -50,6 +51,8 @@ export interface OwnedFrontendHost extends LongThreadAdapterHost {
   waitForReplay(): Promise<void>;
   /** Call after ending the streaming phase; full H/R validation and commitment ACK. */
   validateCompletion(): Promise<void>;
+  /** Full H100 DOM scan for unscored conformance and anchor observations only. */
+  readGeometrySnapshot(): GeometrySnapshot;
   readonly geometryQualification: typeof geometryQualification;
 }
 
@@ -68,6 +71,22 @@ export function createFrontendHost(context: CaseContext, agent: AbstractAgent, c
   let runPromise: Promise<RunAgentResult> | undefined;
   let detachPromise: Promise<void> | undefined;
   let disposePromise: Promise<void> | undefined;
+  const locators = {
+    scroller: '[class~="cpk:overflow-y-auto"]:has(> div > [data-testid="copilot-scroll-content"])',
+    composer: '[data-testid="copilot-chat-textarea"]',
+    returnToResponse: '[data-testid="copilot-scroll-to-bottom"]',
+    messageHost(messageId: string): string {
+      if(messageId!==context.response.id&&!context.history.some(message=>message.id===messageId))throw new Error('Unknown message locator identity');
+      return `[data-message-id="${CSS.escape(messageId)}"]`;
+    },
+    messageContent(messageId: string): string {
+      const expected = messageId === context.response.id ? context.response : context.history.find(message => message.id === messageId);
+      if (!expected) throw new Error('Unknown message locator identity');
+      const role = expected.role === 'assistant' ? 'copilot-assistant-message' : 'copilot-user-message';
+      return `[data-testid="${role}"][data-message-id="${CSS.escape(messageId)}"] > div:first-child`;
+    },
+  };
+  const geometry = createGeometryCollector(context,locators,createNativeGeometryPorts(document,window));
   const acknowledgements = new Set<Promise<void>>();
   function observeError(reason: unknown): void { error = boundedDiagnostic(reason); }
   const agentSubscription = agent.subscribe({
@@ -209,7 +228,14 @@ export function createFrontendHost(context: CaseContext, agent: AbstractAgent, c
   function closeAdmission(reason?: unknown): void {
     const unexpected = !closed;
     closed = true;
+    geometry.dispose();
     if (unexpected && reason !== undefined) observeError(reason);
+  }
+  function readGeometrySnapshot(): GeometrySnapshot {
+    open();
+    const progress=readProgress(),phase=!continuation?'restored-history':successful?'completed':'streaming';
+    return geometry.read(phase,{active:progress.loading&&progress.delivery==='streaming'&&progress.activeMessage!==null,
+      prefix:phase==='completed'?context.response.content:progress.activeMessage?.text??''});
   }
   function dispose(): Promise<void> {
     if (disposePromise) return disposePromise;
@@ -254,20 +280,16 @@ export function createFrontendHost(context: CaseContext, agent: AbstractAgent, c
     // Source default configuration only; no hosted geometry qualification.
     capabilities: { rendering: 'virtualized', scrollPolicy: 'bottom-follow', returnToResponse: 'native-control' },
     geometryQualification,
-    locators: {
-      scroller: '[class~="cpk:overflow-y-auto"]:has(> div > [data-testid="copilot-scroll-content"])',
-      composer: '[data-testid="copilot-chat-textarea"]',
-      returnToResponse: '[data-testid="copilot-scroll-to-bottom"]',
-      messageContent(messageId: string): string {
-        const expected = messageId === context.response.id ? context.response : context.history.find(message => message.id === messageId);
-        if (!expected) throw new Error('Unknown message locator identity');
-        const role = expected.role === 'assistant' ? 'copilot-assistant-message' : 'copilot-user-message';
-        return `[data-testid="${role}"][data-message-id="${CSS.escape(messageId)}"] > div:first-child`;
-      },
-    },
+    locators,
     loadHistory, connectReplay, readProgress, readTranscript, closeAdmission, observeError,
     waitForReplay() {if(!replayPromise) throw new Error('Original continuation is absent');return replayPromise;},validateCompletion,
-    readVisibleMessages() { throw new Error(geometryQualification.reason); },
+    readGeometrySnapshot,
+    // This first full H100 scan is unscored; geometryQualification stays false.
+    readVisibleMessages() {
+      const snapshot=readGeometrySnapshot();
+      if(snapshot.status!=='available')throw new Error(`Native geometry unavailable: ${snapshot.reason}`);
+      return snapshot.visibleMessages;
+    },
     resetThread() { throw new Error('Reset/retry/reuse is not admitted; await original dispose()'); },
     dispose,
   };

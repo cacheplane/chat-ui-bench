@@ -75,6 +75,8 @@ export const COPILOT_PRODUCTION_SOURCES=Object.freeze([
  'apps/copilotkit/runtime/server.ts','apps/copilotkit/runtime/runtime.ts','apps/copilotkit/runtime/ownership.ts','apps/copilotkit/runtime/producer-agent.ts','apps/copilotkit/runtime/wire.ts',
  'tests/fixtures/aimock.ts','packages/contract/src/long-thread.ts',
  'apps/copilotkit/hosted-native-entry.ts','tools/hosted-copilot-worker-static.mjs',
+ 'apps/copilotkit/src/geometry.ts','apps/copilotkit/src/geometry-policy.ts','tests/copilotkit-geometry.test.ts',
+ 'tests/tsconfig.copilot-geometry.json',
  'tests/support/hosted-copilot-mounted-policy.ts','tests/support/hosted-copilot-worker-static-policy.ts',
  'apps/threadplane/src/sse.ts','packages/producer/src/replay.ts',
  'tsconfig.base.json','packages/producer/package.json','packages/producer/tsconfig.json',
@@ -95,7 +97,7 @@ export function productionArtifactPaths() {
 }
 export function readIntegratedAdmission() {
  const context=readHostedCopilotContext();
- if(context.releaseId!=='hosted-copilot-react-production-build-v14'||process.version!=='v24.20.0') throw new Error('Fixed production release/tool profile required');
+ if(context.releaseId!=='hosted-copilot-react-production-build-v15'||process.version!=='v24.20.0') throw new Error('Fixed production release/tool profile required');
  const paths=productionArtifactPaths();
  const directory=lstatSync(paths.artifactDirectory);if(!directory.isDirectory()||directory.isSymbolicLink()) throw new Error('Artifact owner differs');
  const stateFile=join(paths.artifactDirectory,'admission.json'),stateStat=lstatSync(stateFile);

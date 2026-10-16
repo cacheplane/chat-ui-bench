@@ -558,3 +558,31 @@ Unsupported syntax and unknown closure fail inspection. Generated contract
 modules and their related tracked sources retain distinct ownership identities.
 This stage has no measured output-fit, runtime or FPS outcome until its original
 hosted artifacts receive independent review.
+
+The proposed V15 geometry integration adds an explicitly unscored full H100
+DOM collector to the original frontend host. Canonical ID host uniqueness and
+role-specific content ownership are checked before text-node ranges are read.
+Eligible text determines membership; returned message bounds come from the row
+host, while historical anchors retain the pure policy's raw text-top semantics.
+Unmounted or fully clipped rows can yield valid empty visibility. Unsupported,
+inconsistent or incomplete mounted observations return unavailable instead of
+successful empty or partial results.
+
+This first collector retains common ancestor clip chains, the existing geometry
+limits and a 4096 node-visit work refusal. It supports unscaled CSS coordinates
+and pure 2D translation used by virtualized rows; other transforms, zoom domains,
+heterogeneous text clipping and unsupported CSS fail collection. Native DOM list
+creation is not claimed to have an allocation bound. Raw scroll metrics remain
+separate from following intent; no DOM mutation, scroll write, observer, timer or
+additional SDK subscription is introduced. One collector belongs to the original
+host and releases its mutable ownership on admission close. The frontend's
+geometry qualification remains unqualified. A future scored candidate index and
+actual hosted frontend/worker/runtime conformance remain necessary before FPS
+or competitor comparisons.
+
+Source inspection of the pinned `@copilotkit/react-core 1.78.0` message view shows virtualization
+above 50 rendered messages when a scroll container is available and no children
+override is supplied, with an overscan setting of five and translated wrappers.
+H100 exceeds that source threshold; actual mounted behavior remains to be observed.
+`npm run typecheck:copilot-geometry` checks the collector and its supplied tests
+with the strict browser-source type profile and `skipLibCheck:false` as part of CI.
