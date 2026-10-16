@@ -473,18 +473,31 @@ at `assets/index-FC4hQth_.js`: resource-walk, visits, depth 7, visited 500001,
 resourcePops 499943, probePops 58 and probeCalls 28. The full resource walk accounts
 for most charged work. No STATIC, runtime or FPS outcome is qualified.
 
-The prospective `hosted-copilot-react-production-build-v12` uses the custom
-bundler policy `manual-initial-esm-256k-order-v1`. The pure
+The next proposed custom bundler policy is
+`manual-initial-and-bounded-syntax-diagram-v1`. The pure
 `productionEsmOutputOptions()` helper supplies `build.rolldownOptions.output`
-with `strictExecutionOrder:true` and one `production-initial` group tagged
-`$initial`, minSize 0, maxSize 262144 bytes and recursive dependency inclusion.
-This explicitly customized Vite/Rolldown output policy targets smaller initial
-ESM parse units and requests execution-order preservation; it is not default
-bundler output. The group size is an engineering target, not a hard maximum or an AST
-visit guarantee: indivisible modules and dependency constraints can exceed it.
+with `strictExecutionOrder:true` and three groups in priority order:
+`production-initial` uses the `$initial` tag at priority 30;
+`production-syntax-data` matches `node_modules/@shikijs/langs/` and
+`node_modules/@shikijs/themes/` package boundaries at priority 20;
+`production-diagrams` matches `node_modules/mermaid/` and
+`node_modules/@mermaid-js/parser/` package boundaries at priority 10.
+The selectors accept POSIX and backslash separators. Higher priority reserves
+initial modules first; unmatched modules retain automatic chunking. Both dynamic
+groups explicitly set `entriesAware:false`. All three use minSize 0, maxSize
+262144 bytes and recursive dependency inclusion. This size is a grouping target,
+not a physical chunk cap or AST visit guarantee: indivisible modules, dependency
+constraints and emitted wrappers can exceed it.
+
+The original V12 used the earlier `manual-initial-esm-256k-order-v1` policy.
+Its STATIC inspection failed with `Reference occurrence overflow`; the original
+release and failure remain preserved. The proposed treatment has no measured
+graph-fit or performance outcome.
 
 The SDK entry/API, dependency inputs and full emitted resource/ownership checks
-remain unchanged. Each parsed unit still shares 500000 visits across resource
+remain unchanged. All features, languages, themes and diagrams are retained;
+the treatment removes no imports and adds no aliases or externals.
+Each parsed unit still shares 500000 visits across resource
 walk and probes, with depth 256; the graph retains 4096 reference occurrences,
 1024 hook files, 1025 output files, 1024 manifest records, 16384 module owners and
 32 MiB total bytes. All emitted units and compiler runtime owners still require
@@ -492,8 +505,13 @@ validation. Existing source/build mappings bind the exact config/helper source
 digests; the compiler profile records compiler provenance rather than default
 output settings.
 
-Manual grouping changes request/cache topology, wrapper bytes and initialization
-costs. Any future competitor comparison must predeclare matched build policies
+Manual grouping can co-load other family members when one language, theme or
+diagram is requested. It changes lazy-loading granularity, request/cache topology,
+wrapper bytes and fetch, parse, compile and initialization costs. Recursive
+inclusion can also move shared dependencies. The execution-order guard alone
+does not establish identical application behavior. Any future competitor
+comparison must predeclare matched build policies
 and actual compiler/version/options provenance; unmatched controls cannot support
-that comparison. The V12 hosted build, STATIC, mounted runtime and FPS outcomes
-remain unknown. The policy alone establishes no speedup or performance ranking.
+that comparison. The new profile still requires a separately admitted hosted
+build and full frontend and worker STATIC qualification before mounted runtime
+or FPS work. The policy alone establishes no speedup or performance ranking.
