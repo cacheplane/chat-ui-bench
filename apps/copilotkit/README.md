@@ -679,15 +679,15 @@ provenance remains unknown. This explicit profile tests the documented compiler
 default hypothesis; pure checks do not establish successful hosted emission or
 native conformance.
 
-## Prepared V26 public-root worker binding
+## Prepared V28 origin-refusal diagnostic
 
-`hosted-copilot-react-production-build-v26` gives the worker's external Zod import
-an explicit output path. The original contract imports Zod in root package scope;
+`hosted-copilot-react-production-build-v28` retains an explicit output path for the
+worker's external Zod import. The original contract imports Zod in root package scope;
 flattening that import into the app-local worker changes its package lookup scope.
 V24's original inspection refused the captured app-local entry instead of the
 required root entry. Its failed original remains preserved.
 
-The new Rolldown output profile sets exactly
+The unchanged Rolldown output profile sets exactly
 `paths: {zod: '../../../../node_modules/zod/index.js'}`. The actual normalized
 hook mapping and final parser-observed static import must agree. The filename is
 accepted only when resolving that literal from the actual worker URL equals
@@ -709,3 +709,16 @@ All 19 installed package pins, the existing lock commitment and loader denials
 remain required. The profile permits only the exact static Zod literal, and the
 actual worker must contain it. Source tests establish no hosted inspection,
 native conformance, frame rate or performance outcome.
+
+Original V26 emission failed at the normal-row Zod-origin predicate before worker
+inspection. The refused row was not retained, so the exact failing subpredicate
+and whether its source was SRC, dist, SDK or query-related remain unknown.
+V28 passes a synchronous diagnostic sink only at the original generation hook.
+That one refusal can publish the already-normalized row index/ID, source kind,
+path/hash and predicate booleans. Strings are exact when bounded or explicitly
+labelled previews with full UTF8 lengths and hashes; the complete line including
+its newline must fit 16 KiB before publication. Best-effort diagnostic failures
+throw the same owned refusal. Default policy/replay callers, successful graphs
+and other denial branches remain silent. The nine-origin gate, public maps,
+19 pins, lock, loader denials, AST coverage and resource caps are unchanged.
+Fresh same-source full frontend and worker STATIC qualification is still required.

@@ -110,7 +110,7 @@ if(action==='emit') {
    }
    assertMappings(owned);
    registeredGraph=validateWorkerRegisteredGraph({compilerProfile,buildProfile,workerOutputPolicy,rows,callbacks:importerDiagnostic.snapshot(),chunks:[chunk],
-    counts:{registeredRows:registeredIds.length,normalSources,configuredExternals,compilerRegisteredDependencies,relations:work-registeredIds.length,work}});
+    counts:{registeredRows:registeredIds.length,normalSources,configuredExternals,compilerRegisteredDependencies,relations:work-registeredIds.length,work}},line=>process.stderr.write(line));
    files.push({kind:'chunk',moduleIds:chunk.moduleIds,facadeModuleId:chunk.facadeModuleId});
    bindRegisteredGraph(registeredGraph,owned,compilerProfile,workerOutputPolicy,files,[...requestedExternals],[...enumeratedExternals]);
    runtimeModules=observeCompilerRuntimeModule(compilerProfile,chunk.moduleIds.includes(RUNTIME_MODULE_ID),id=>this.getModuleInfo(id));

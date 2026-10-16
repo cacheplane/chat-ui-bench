@@ -178,12 +178,12 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v26`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v28`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
 membership. Report replay also checks the current policy component hashes.
-V26 explicitly binds the contract's emitted Zod import to the root public entry.
+The profile explicitly binds the contract's emitted Zod import to the root public entry.
 The inspector and native bootstrap must resolve the emitted literal from the
 actual worker and the public package from the original contract source parent,
 and require the same entry bytes and pinned package. Reports retain the emitted
@@ -192,7 +192,13 @@ Every original Zod importer must belong to the reviewed contract source family;
 the complete registered graph also covers unrendered modules.
 The original V24 inspection failed: its bounded diagnostic recorded
 `apps/copilotkit/node_modules/zod/index.js` where the root package was required.
-V26 requires fresh full frontend and worker inspection under its explicit profile.
+The original V26 worker emission failed at the normal-row Zod-origin predicate.
+It did not retain the refused row, so its exact subpredicate and importer cause
+remain unknown. V28 adds one bounded diagnostic at that original refusal only:
+normalized row identity, source path/hash and predicate facts, with exact or
+explicit preview string values. Diagnostic failure preserves the same refusal;
+successful graphs and other denial branches stay silent. No origin is newly
+admitted. V28 requires fresh full frontend and worker inspection under this profile.
 Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
 
