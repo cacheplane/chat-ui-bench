@@ -8,7 +8,7 @@ import {ordinaryPath,assertDenseEntries} from '../tests/support/hosted-copilot-c
 import {readPhysicalSource,observeCompilerRuntimeModule} from '../tests/support/hosted-copilot-build-plugin.ts';
 import {assertCompilerProfile,assertCompilerRuntimeOwnership,assertMappings,assertModuleOwnershipId,projectCompilerRuntimeModules} from '../tests/support/hosted-copilot-production-policy.ts';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_PACKAGE_PINS,evaluateMountedModulePolicy} from '../tests/support/hosted-copilot-mounted-policy.ts';
-import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,classifyWorkerModuleSource,workerStaticOutputOptions,observeWorkerOutputPolicy,readWorkerOutputPolicy} from '../tests/support/hosted-copilot-worker-static-policy.ts';
+import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,classifyWorkerModuleSource,workerStaticOutputOptions,observeWorkerOutputPolicy,readWorkerOutputPolicy,createWorkerImporterDiagnostic} from '../tests/support/hosted-copilot-worker-static-policy.ts';
 
 const action=process.argv[2];
 if(process.argv.length!==3||!['emit','inspect'].includes(action))throw new Error('Fixed worker STATIC action required');
@@ -49,8 +49,13 @@ if(action==='emit') {
  const {rolldown,VERSION,RUNTIME_MODULE_ID}=await import('rolldown');
  const compilerProfile=assertCompilerProfile({provider:'rolldown',version:VERSION,runtimeModuleId:RUNTIME_MODULE_ID});
  const owned=[],files=[],requestedExternals=new Set(),enumeratedExternals=new Set();let runtimeModules,workerOutputPolicy,observed=false;
+ const importerDiagnostic=createWorkerImporterDiagnostic();
  const allowed=id=>MOUNTED_MODULE_BUILTINS.includes(id)||Object.hasOwn(MOUNTED_MODULE_PACKAGE_SPECIFIERS,id);
- const external=id=>{if(!allowed(id))return false;requestedExternals.add(id);return true;};
+ const external=(id,parentId,isResolved)=>{
+  const result=allowed(id);if(result)requestedExternals.add(id);
+  try{importerDiagnostic.observe(id,parentId,isResolved,result);}catch{/* Diagnostics cannot change this callback's decision. */}
+  return result;
+ };
  const bundle=await rolldown({input:join(root,'apps/copilotkit/hosted-native-entry.ts'),cwd:root,platform:'node',tsconfig:false,preserveEntrySignatures:'strict',external,
   plugins:[{name:'worker-static-owned-modules',generateBundle(options,outputs){
    if(observed)throw new Error('Worker mapping hook repeated');observed=true;
@@ -64,7 +69,10 @@ if(action==='emit') {
     const info=this.getModuleInfo(id);
     // Configuration-first classification after exact info/id checks. A prior
     // true external callback is distinct from any null/undefined code sentinel.
-    if(classifyWorkerModuleSource(id,index-1,info,requestedExternals.has(id))==='configured-external'){enumeratedExternals.add(id);continue;}
+    let classification;
+    try{classification=classifyWorkerModuleSource(id,index-1,info,requestedExternals.has(id));}
+    catch(error){importerDiagnostic.rethrow(error,id,line=>process.stderr.write(line));}
+    if(classification==='configured-external'){enumeratedExternals.add(id);continue;}
     owned.push(id.startsWith('\0')||id.startsWith('virtual:')?{id,kind:'virtual',external:false}:{id,kind:'physical',...readPhysicalSource(id,root),external:false});
    }
    assertMappings(owned);

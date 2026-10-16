@@ -4,6 +4,38 @@ import {createHash} from 'node:crypto';
 import {assertProductionOutputInventory,PRODUCTION_FILE_LIMITS,type FileFact} from './hosted-copilot-contract.ts';
 import {assertModuleOwnershipId,MODULE_OWNERSHIP_LIMIT} from './hosted-copilot-production-policy.ts';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_POLICY_LIMITS,type NativeImport} from './hosted-copilot-mounted-policy.ts';
+export function createWorkerImporterDiagnostic(): {
+ observe(id:unknown,parent:unknown,resolved:unknown,allowed:unknown):void;
+ rethrow(error:unknown,id:unknown,emit:(line:string)=>void):never;
+} {
+ // Diagnostic transport only. These are original callback observations, not
+ // emitted ownership or a complete importer graph. No compiler API is called.
+ const observations: {parent: {status:string;sha256?:string;preview?:string;byteLength?:number;exactRuntimeMarkerMatch?:boolean};isResolved:boolean|'invalid';returnedAllowed:boolean|'invalid'}[]=[];
+ let omitted=false;
+ return Object.freeze({
+  observe(id:unknown,parent:unknown,resolved:unknown,allowed:unknown):void {
+   if(id!=='node:module')return;
+   if(observations.length===8){omitted=true;return;}
+   try {
+    let fact:{status:string;sha256?:string;preview?:string;byteLength?:number;exactRuntimeMarkerMatch?:boolean};
+    if(parent===undefined)fact={status:'absent'};
+    else if(parent===null)fact={status:'null'};
+    else if(typeof parent!=='string')fact={status:'invalid'};
+    else if(parent.length>4096||Buffer.byteLength(parent,'utf8')>4096)fact={status:'bound'};
+    else fact={status:'valid',sha256:createHash('sha256').update(parent).digest('hex'),preview:parent.slice(0,96),byteLength:Buffer.byteLength(parent,'utf8'),exactRuntimeMarkerMatch:parent==='\0rolldown/runtime.js'};
+    observations.push(Object.freeze({parent:Object.freeze(fact),isResolved:typeof resolved==='boolean'?resolved:'invalid',returnedAllowed:typeof allowed==='boolean'?allowed:'invalid'}));
+   } catch {omitted=true;} // Observation failure cannot change externalization.
+  },
+  rethrow(error:unknown,id:unknown,emit:(line:string)=>void):never {
+   if(id==='node:module')try {
+    // Never inspect the thrown value, code, ast, or arbitrary module members.
+    const line=JSON.stringify({workerImporterDiagnostic:{target:'node:module',scope:'original external callback observations only',codeObservation:'see original refusal',observations,omitted,callbackCountKnown:!omitted,retainedCallbackCount:observations.length,complete:!omitted}})+'\n';
+    if(Buffer.byteLength(line,'utf8')<=16384)emit(line);
+   } catch {/* Best effort only; retain the exact original failure below. */}
+   throw error;
+  }
+ });
+}
 type Row=Record<string,unknown>;
 type WorkerImport=Readonly<Pick<NativeImport,'specifier'>&{kind:'static'|'dynamic-literal'}>;
 function deny(message:string):never {throw new Error(message);}

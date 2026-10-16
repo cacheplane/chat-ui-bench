@@ -61,7 +61,26 @@ const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest(
 const versions = {schemaVersion: 2, suite: 'long-thread-prose-v1', suiteVersion: '1.0.0', collectorVersion: '2.0.0', analyzerVersion: '2.0.0'} as const;
 const reason = 'Synthetic filesystem fixture; no browser collection was attempted';
 // Explicit maintained audit scope. Product/probe/output/package inventories below come from current inputs.
-const source45 = [
+const foundationSources = ['packages/analyzer/src/browser-frame-ordered-state-v2.test.ts',
+  'packages/analyzer/src/browser-frame-ordered-state.ts',
+  'packages/analyzer/src/browser-frame-trace-evidence.test.ts',
+  'packages/analyzer/src/browser-frame-trace-evidence.ts',
+  'packages/analyzer/src/browser-frame-track-descriptor-fragments.test.ts',
+  'packages/analyzer/src/browser-frame-track-descriptor-fragments.ts',
+  'packages/runner/src/comparison-proto-public-ports.test.ts',
+  'packages/runner/src/comparison-proto-public-ports.ts'];
+const analyzerSelected9 = ['packages/analyzer/dist/browser-frame-ordered-state.d.ts',
+  'packages/analyzer/dist/browser-frame-ordered-state.js',
+  'packages/analyzer/dist/browser-frame-ordered-state.js.map',
+  'packages/analyzer/dist/browser-frame-trace-evidence.d.ts',
+  'packages/analyzer/dist/browser-frame-trace-evidence.js',
+  'packages/analyzer/dist/browser-frame-trace-evidence.js.map',
+  'packages/analyzer/dist/browser-frame-track-descriptor-fragments.d.ts',
+  'packages/analyzer/dist/browser-frame-track-descriptor-fragments.js',
+  'packages/analyzer/dist/browser-frame-track-descriptor-fragments.js.map'];
+const foundationOutputs = [...analyzerSelected9, ...['.d.ts','.js','.js.map'].map(ext=>'packages/runner/dist/comparison-proto-public-ports'+ext)];
+const source53 = [
+  ...foundationSources,
   '.github/workflows/ci.yml', 'apps/threadplane/probe-provenance.mjs', 'apps/threadplane/probe-provenance.test.ts', 'package.json',
   'packages/runner/src/comparison-assembly-worker.test.ts', 'packages/runner/src/comparison-assembly-worker.ts',
   'packages/runner/src/comparison-browser.test-helper.test.ts', 'packages/runner/src/comparison-browser.test-helper.ts', 'packages/runner/src/comparison-browser.test.ts',
@@ -84,7 +103,8 @@ const source45 = [
   'packages/contract/tsconfig.types.json', 'packages/contract/type-tests/comparison-families.ts',
   'vitest.comparison.browser.config.ts', 'vitest.config.ts',
 ].sort();
-const source15 = [
+const source23 = [
+  ...foundationSources,
   '.github/workflows/ci.yml', 'package.json',
   'packages/runner/src/comparison-browser.test-helper.test.ts', 'packages/runner/src/comparison-browser.test-helper.ts', 'packages/runner/src/comparison-browser.test.ts',
   'packages/runner/src/comparison-lifecycle-oracle.test.ts', 'packages/runner/src/comparison-lifecycle-oracle.ts',
@@ -183,16 +203,16 @@ async function fixture() {
   expect(nativeLock).toBeDefined();
   // This is controlled Linux metadata emulation, not a claim about this decoder's OS or an actual Linux capture.
   probe.nativeCompiler = {...probe.nativeCompiler, name: '@typescript/typescript-linux-x64', resolutionPath: nativePath, executablePath: nativePath + '/lib/tsc', platform: 'linux', architecture: 'x64', integrity: nativeLock.integrity, version: nativeLock.version};
-  const output132 = [...await physicalFiles(repository, 'packages/contract/dist'), ...await physicalFiles(repository, 'packages/runner/dist')].sort();
-  expect(output132).toHaveLength(132);
-  expect(output132.filter(key => key.includes('/comparison-lifecycle-oracle.'))).toEqual(oracleMembers.slice(2));
+  const output135 = [...await physicalFiles(repository, 'packages/contract/dist'), ...await physicalFiles(repository, 'packages/runner/dist')].sort();
+  expect(output135).toHaveLength(135);
+  expect(output135.filter(key => key.includes('/comparison-lifecycle-oracle.'))).toEqual(oracleMembers.slice(2));
   expect(build.packages.map(pkg => pkg.resolutionPath).sort()).toEqual(expectedProductMetadata50);
   expect(Object.keys(build.assetHashes)).toHaveLength(12);
   const metadata52 = [...new Set([...build.packages, probe.compiler, probe.nativeCompiler].map(pkg => pkg.resolutionPath + '/package.json'))].sort();
   expect(metadata52).toEqual(expectedMetadata52);
   const assets = Object.keys(build.assetHashes).map(key => 'apps/threadplane/dist/' + key);
   const raw2 = ['apps/threadplane/.build-evidence.json', 'packages/runner/.comparison-build-evidence.json'];
-  const union = [...new Set([...source45, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output132, ...metadata52, ...assets, ...raw2])].sort();
+  const union = [...new Set([...source53, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output135, ...analyzerSelected9, ...metadata52, ...assets, ...raw2])].sort();
   for (const key of union) {
     if (raw2.includes(key) || key === nativePath + '/package.json') continue;
     await mkdir(dirname(join(workspace, key)), {recursive: true});
@@ -240,7 +260,7 @@ async function fixture() {
   const seal = comparisonDatasetInventorySchema.parse({...versions, invocationId, status: 'sealed', configuration: config.configuration, invocationClaim: claim, invocationLedger: terminalLedger, root: '.', ledger: ledgerMember, members: members.sort((a, b) => a.path.localeCompare(b.path)), absentMembers: [], directories: [...datasetDirectories].sort(), slots, ownershipSettled: true, finalizationSucceeded: true});
   await writeFile(join(root, 'dataset-seal.json'), canonicalSerialize(seal) + '\n');
   const hashed = new Set([...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...Object.keys(probe.compiledHashes), ...assets]);
-  const paddingKeys = source45.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
+  const paddingKeys = source53.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
   return {root, workspace, evidenceRoot, context, union, paddingKeys};
 }
 const writer = () => helper.writeComparisonCiSnapshot;
@@ -294,11 +314,11 @@ test('closed original snapshot retains actual copy bytes and controlled Linux me
   const f = await fixture(), receipt = await writer()(f.root, f); expect(receipt).not.toBeNull();
   const bytes = await readFile(receipt!.path), manifest = JSON.parse(bytes.toString());
   expect(bytes.length).toBe(receipt!.byteLength); expect(sha256(bytes)).toBe(receipt!.sha256);
-  expect(manifest.format).toBe('comparison-ci-original-snapshot-v5');
-  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source45).toEqual(source45); expect(manifest.inventories.output132).toHaveLength(132); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata52).toEqual(expectedMetadata52);
-  expect(Object.keys(manifest.inventories).sort()).toEqual(['source45','source15','product47','probe31','compiled16','output132','contract42','raw2','assets','metadata52'].sort());
-  expect(manifest.inventories.source15).toEqual(source15);
-  expect(source45).toHaveLength(45); expect(source15).toHaveLength(15);
+  expect(manifest.format).toBe('comparison-ci-original-snapshot-v6');
+  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source53).toEqual(source53); expect(manifest.inventories.output135).toHaveLength(135); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata52).toEqual(expectedMetadata52);
+  expect(Object.keys(manifest.inventories).sort()).toEqual(['source53','source23','product47','probe31','compiled16','output135','analyzerSelected9','contract42','raw2','assets','metadata52'].sort());
+  expect(manifest.inventories.source23).toEqual(source23); expect(manifest.inventories.analyzerSelected9).toEqual([...analyzerSelected9].sort());
+  expect(source53).toHaveLength(53); expect(source23).toHaveLength(23);
   const protoMembers = [
     'packages/runner/src/comparison-proto-trace.ts',
     'packages/runner/src/comparison-proto-trace.test.ts',
@@ -307,8 +327,8 @@ test('closed original snapshot retains actual copy bytes and controlled Linux me
     'packages/runner/dist/comparison-proto-trace.js.map',
   ];
   expect((await physicalFiles(repository, 'packages/runner/dist')).filter(key => key.includes('/comparison-proto-trace.')).sort()).toEqual(protoMembers.slice(2));
-  expect(manifest.inventories.output132.filter((key: string) => key.includes('/comparison-proto-trace.'))).toEqual(protoMembers.slice(2));
-  for (const key of protoMembers) {
+  expect(manifest.inventories.output135.filter((key: string) => key.includes('/comparison-proto-trace.'))).toEqual(protoMembers.slice(2));
+  for (const key of [...protoMembers, ...foundationSources, ...foundationOutputs]) {
     const record = manifest.records.find((row: {key:string}) => row.key === key);
     expect(record).toBeDefined();
     const original = await readFile(join(f.workspace, key)), copied = await readFile(join(receipt!.directory, record.copied.path));
@@ -429,11 +449,11 @@ test('scoped unselected output bytes changed after copy fail original lifetime i
 });
 test('original ancestor symlink fails without resolving to a convenient copy', async () => {const f = await fixture(), alias = join(dirname(f.workspace), 'alias'); await symlink(f.workspace, alias); await expect(writer()(f.root, {...f, workspace: alias})).rejects.toThrow('symlink');});
 test('nonregular original fails the genuine pre-read type check', async () => {const f = await fixture(), path = join(f.workspace, f.paddingKeys[0]!); await unlink(path); await mkdir(path); await expect(writer()(f.root, f)).rejects.toThrow('pre-read file cap');});
-test.each(oracleMembers)('snapshot-v5 rejects missing oracle member %s', async key => {
+test.each(oracleMembers)('snapshot-v6 rejects missing oracle member %s', async key => {
   const f = await fixture(); await unlink(join(f.workspace,key));
   await expect(writer()(f.root,f)).rejects.toThrow();
 });
-test('snapshot-v5 rejects an unexpected compiled oracle member', async () => {
+test('snapshot-v6 rejects an unexpected compiled oracle member', async () => {
   const f = await fixture();
   await writeFile(join(f.workspace,'packages/runner/dist/comparison-lifecycle-oracle.extra.js'),'extra');
   await expect(writer()(f.root,f)).rejects.toThrow();
@@ -533,3 +553,6 @@ test('metadata finite overflow fails its numeric bound with valid lock packages'
   await expect(writer()(f.root, f)).rejects.toThrow('finite scalar');
 });
 test('invalid UTF8 metadata fails closed', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'package-lock.json'), Buffer.from([0x7b, 0xff, 0x7d])); await expect(writer()(f.root, f)).rejects.toThrow();});
+
+test.each([...foundationSources,...foundationOutputs])('snapshot-v6 rejects missing selected foundation member %s',async key=>{const f=await fixture();await unlink(join(f.workspace,key));await expect(writer()(f.root,f)).rejects.toThrow();});
+test('snapshot-v6 selected analyzer bytes retain original lifetime closure',async()=>{const f=await fixture(),key=analyzerSelected9[0]!,injected=duringLastCopy(f,async()=>{const path=join(f.workspace,key),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');});
