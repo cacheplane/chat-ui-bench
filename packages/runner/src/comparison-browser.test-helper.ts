@@ -1,3 +1,5 @@
+import type {OriginalCaptureReceipt, OriginalCaptureBucket} from './comparison-lifecycle-oracle.js';
+export {deriveAdmittedLifecycle, type OriginalCaptureReceipt, type OriginalCaptureBucket} from './comparison-lifecycle-oracle.js';
 import type {ComparisonRuntimeIdentity as ComparisonIdentity} from './comparison-runtime-family.js';
 import {createHash} from 'node:crypto';
 import {createServer, get, type ClientRequest, type ServerResponse} from 'node:http';
@@ -17,7 +19,7 @@ import {
   comparisonManifestSchema, comparisonValidationSchema,
   comparisonDatasetInventorySchema, comparisonCaptureInvocationSchema,
   adapterBuildSchema, comparisonInstrumentationBuildSchema,
-  type LongThreadCaptureHost,type ComparisonCheckpoints,
+  type LongThreadCaptureHost,
 } from '@chat-ui-bench/contract';
 import {ComparisonArtifactWriter, type ComparisonScopedWriter} from './comparison-artifacts.js';
 import {ComparisonOwnership, type ComparisonStageResult} from './comparison-ownership.js';
@@ -466,12 +468,6 @@ export async function checkedDataset(directory: string) {
   return inventory;
 }
 
-export interface OriginalCaptureReceipt {
-  identity:Readonly<ComparisonIdentity>;stage:string;pageAssociation:number;kind:'scroll'|'full'|'return-visible';
-  args:unknown[];selector?:unknown;admittedAtHostMs:number;settledAtHostMs:number|null;clockDomain:'host-performance-ms';
-  status:'pending'|'fulfilled'|'rejected';result?:unknown;error?:unknown;
-}
-export interface OriginalCaptureBucket {identity:Readonly<ComparisonIdentity>;receipts:OriginalCaptureReceipt[];counts:{scroll:number;full:number;'return-visible':number};}
 /** Retains only original operations, with admission-time identity/stage/page binding. */
 export function retainOriginalCapture(control:BrowserControl,resources:Resources){
   const buckets=new Map<string,OriginalCaptureBucket>(),pages=new Map<Page,number>();let violations=0;
@@ -505,34 +501,6 @@ export function retainOriginalCapture(control:BrowserControl,resources:Resources
     return intercept<Page>(page,{locator:(args,call)=>intercept<Locator>(call() as Locator,{isVisible:(options,visible)=>observe(association,'return-visible',options,visible,args[0])})});
   }});
   return {buckets,pages,violations:()=>violations};
-}
-
-/** Independent finite lifecycle oracle: no production collector/analyzer is imported. */
-export function deriveAdmittedLifecycle(bucket:OriginalCaptureBucket,history:boolean,pinThresholdCssPx:number|null){
-  const reads=bucket.receipts.filter(row=>row.kind==='scroll'),visibility=bucket.receipts.filter(row=>row.kind==='return-visible');
-  const require=(condition:boolean,message:string)=>{if(!condition)throw new Error(message);};
-  require(bucket.counts.scroll===(history?5:0)&&reads.length===(history?5:0),'Original scroll count differs');
-  require(bucket.counts['return-visible']===(history?1:0)&&visibility.length===(history?1:0),'Original return visibility count differs');
-  const rows:ComparisonCheckpoints['scroll']=[],reasons:string[]=[],values:(ComparisonCheckpoints['scroll'][number]|undefined)[]=[];
-  const rectangleReason='Prose rectangle budget exhausted before range query';
-  let windowAvailable=!history;
-  for(let index=0;index<reads.length;index++){
-    const receipt=reads[index]!;require(receipt.status==='fulfilled'&&receipt.stage==='replay','Original scroll operation did not fulfill in replay');
-    const result=receipt.result as {status?:unknown;value?:unknown;reason?:unknown};require(!!result&&typeof result==='object','Original scroll result missing');
-    if(result.status==='available'){
-      const value=comparisonCheckpointsSchema.shape.scroll.element.parse({...result.value as object,pinThresholdCssPx,followArmed:null});rows.push(value);values.push(value);
-      if(value.geometry.status==='unavailable'||history&&value.anchorGeometry.status==='unavailable'){
-        if(value.geometry.status==='unavailable')require(value.geometry.reason===rectangleReason,'Unadmitted active geometry reason');
-        if(history&&value.anchorGeometry.status==='unavailable')require(value.anchorGeometry.reason===rectangleReason||value.anchorGeometry.reason==='Historical anchor unavailable','Unadmitted historical anchor geometry reason');
-        reasons.push('Scored scroll geometry unavailable');
-      }
-    }else{require(result.status==='unavailable'&&(result.reason==='Active visibility not established: '+rectangleReason||result.reason==='Active prose unavailable for visibility'),'Unadmitted original geometry reason');values.push(undefined);reasons.push(result.reason as string);}
-    if(index===2){const [before,post,later]=values;windowAvailable=!!before&&!!post&&!!later&&before.clockDomain===post.clockDomain&&post.clockDomain===later.clockDomain&&post.timestampMs>before.timestampMs&&later.timestampMs-post.timestampMs>=800;if(!windowAvailable)reasons.push('Actual cached samples do not cover the required 800ms window');}
-  }
-  let visible:boolean|undefined;
-  if(history){const query=visibility[0]!;require(query.stage==='replay'&&query.status==='fulfilled'&&typeof query.result==='boolean','Original visibility did not fulfill');require(query.selector==='chat chat-scroll-bubble button.chat-scroll-bubble','Original declared canonical return locator differs');visible=query.result as boolean;if(!visible)reasons.push('Declared return control did not dispatch');}
-  require(reasons.length<=32&&reasons.every(reason=>reason.length<=4096)&&reasons.join('; ').length<=4096,'Derived lifecycle exceeds original reason capacities');
-  return {rows,reasons,uniqueReasons:[...new Set(reasons)],windowAvailable,visible};
 }
 
 export async function writeRootControl(root:string,caseName:'h05'|'h07',value:unknown){
@@ -683,7 +651,7 @@ const CI_SNAPSHOT_NAMES={
     "packages/runner/dist/comparison-installer.js",
     "packages/runner/dist/comparison-observations.js"
   ],
-  "output126": [
+  "output129": [
     "packages/contract/dist/adapter.d.ts",
     "packages/contract/dist/adapter.js",
     "packages/contract/dist/adapter.js.map",
@@ -756,6 +724,9 @@ const CI_SNAPSHOT_NAMES={
     "packages/runner/dist/comparison-installer.d.ts",
     "packages/runner/dist/comparison-installer.js",
     "packages/runner/dist/comparison-installer.js.map",
+    "packages/runner/dist/comparison-lifecycle-oracle.d.ts",
+    "packages/runner/dist/comparison-lifecycle-oracle.js",
+    "packages/runner/dist/comparison-lifecycle-oracle.js.map",
     "packages/runner/dist/comparison-native-input.d.ts",
     "packages/runner/dist/comparison-native-input.js",
     "packages/runner/dist/comparison-native-input.js.map",
@@ -780,15 +751,15 @@ const CI_SNAPSHOT_NAMES={
     "packages/runner/dist/environment.d.ts",
     "packages/runner/dist/environment.js",
     "packages/runner/dist/environment.js.map",
-    "packages/runner/dist/index.d.ts",
-    "packages/runner/dist/index.js",
-    "packages/runner/dist/index.js.map",
     "packages/runner/dist/history-window-diagnostic.d.ts",
     "packages/runner/dist/history-window-diagnostic.js",
     "packages/runner/dist/history-window-diagnostic.js.map",
     "packages/runner/dist/history-window-experiment.d.ts",
     "packages/runner/dist/history-window-experiment.js",
     "packages/runner/dist/history-window-experiment.js.map",
+    "packages/runner/dist/index.d.ts",
+    "packages/runner/dist/index.js",
+    "packages/runner/dist/index.js.map",
     "packages/runner/dist/long-thread-capture.d.ts",
     "packages/runner/dist/long-thread-capture.js",
     "packages/runner/dist/long-thread-capture.js.map",
@@ -907,7 +878,7 @@ const CI_SNAPSHOT_NAMES={
     "node_modules/ws",
     "node_modules/zod"
   ],
-  "source41": [
+  "source43": [
     ".github/workflows/ci.yml",
     "apps/threadplane/probe-provenance.mjs",
     "apps/threadplane/probe-provenance.test.ts",
@@ -923,6 +894,8 @@ const CI_SNAPSHOT_NAMES={
     "packages/runner/src/comparison-capture-journal.ts",
     "packages/runner/src/comparison-counters.test.ts",
     "packages/runner/src/comparison-counters.ts",
+    "packages/runner/src/comparison-lifecycle-oracle.test.ts",
+    "packages/runner/src/comparison-lifecycle-oracle.ts",
     "packages/runner/src/comparison-native-input.test.ts",
     "packages/runner/src/comparison-native-input.ts",
     "packages/runner/src/comparison-observations.test.ts",
@@ -950,12 +923,14 @@ const CI_SNAPSHOT_NAMES={
     "vitest.comparison.browser.config.ts",
     "vitest.config.ts"
   ],
-  "source11": [
+  "source13": [
     ".github/workflows/ci.yml",
     "package.json",
     "packages/runner/src/comparison-browser.test-helper.test.ts",
     "packages/runner/src/comparison-browser.test-helper.ts",
     "packages/runner/src/comparison-browser.test.ts",
+    "packages/runner/src/comparison-lifecycle-oracle.test.ts",
+    "packages/runner/src/comparison-lifecycle-oracle.ts",
     "packages/runner/src/comparison-observations.test.ts",
     "packages/runner/src/comparison-observations.ts",
     "packages/runner/src/long-thread-capture.test.ts",
@@ -972,11 +947,12 @@ const CI_SNAPSHOT_METADATA_FILE_CAP=1024*1024;
 const CI_SNAPSHOT_LOCK_FILE_CAP=2*1024*1024;
 const CI_SNAPSHOT_JSON_FILES_CAP=69; // 16 original records + 52 package records, with one bounded spare.
 const CI_SNAPSHOT_UNION_BYTES_CAP=8*1024*1024;
-const CI_SNAPSHOT_MAX_FILES=41+47+31+126+52+12+2;
+// Fixed aggregate ceilings remain unchanged for snapshot-v4.
+const CI_SNAPSHOT_MAX_FILES=311;
 const CI_SNAPSHOT_MAX_ANCESTORS=CI_SNAPSHOT_MAX_FILES*32;
 const CI_SNAPSHOT_MAX_OWN_DIRECTORIES=85+12*32;
 const CI_SNAPSHOT_RECEIPT_CAP=CI_SNAPSHOT_MAX_OWN_DIRECTORIES*1536+(CI_SNAPSHOT_MAX_OWN_DIRECTORIES+CI_SNAPSHOT_MAX_FILES+2)*1056+16384;
-const CI_SNAPSHOT_MANIFEST_CAP=CI_SNAPSHOT_MAX_FILES*8192+CI_SNAPSHOT_MAX_ANCESTORS*2048+(41+12+47+31+16+126+42+2+12+52)*1056+16384;
+const CI_SNAPSHOT_MANIFEST_CAP=23_348_128;
 function ciSnapshotRequire(condition:unknown,message:string):asserts condition{if(!condition)throw new Error(message);}
 export function comparisonCiSnapshotBudget(current:number,addition:number,maximum:number,label:string){ciSnapshotRequire(Number.isSafeInteger(current)&&current>=0&&Number.isSafeInteger(addition)&&addition>=0&&Number.isSafeInteger(maximum)&&maximum>=0&&current<=maximum&&addition<=maximum-current,label);return current+addition;}
 function ciSnapshotEqual(a:unknown,b:unknown,message:string){ciSnapshotRequire(canonicalSerialize(a)===canonicalSerialize(b),message);}
@@ -1007,8 +983,8 @@ export async function writeComparisonCiSnapshot(root:string,ports:CiSnapshotPort
  same(build.packages.map(p=>{ciSnapshotRequire(typeof p.resolutionPath==='string','CI product metadata original path');return p.resolutionPath;}).sort(),CI_SNAPSHOT_NAMES.productMetadata50,'CI product metadata membership');ciSnapshotRequire(probe.compiler.name==='typescript'&&probe.compiler.resolutionPath==='node_modules/typescript'&&probe.nativeCompiler.name==='@typescript/typescript-linux-x64'&&probe.nativeCompiler.resolutionPath==='node_modules/@typescript/typescript-linux-x64'&&probe.nativeCompiler.executablePath==='node_modules/@typescript/typescript-linux-x64/lib/tsc'&&probe.nativeCompiler.platform==='linux'&&probe.nativeCompiler.architecture==='x64','CI compiler platform/resolution');
  const lock=await data(join(workspace,'package-lock.json'),comparisonCiSnapshotFileCap('package-lock.json'));ciSnapshotRequire(lock.value&&typeof lock.value==='object'&&!Array.isArray(lock.value),'CI original lock object');const packages=Reflect.get(lock.value,'packages') as Record<string,{version?:unknown;integrity?:unknown}>;ciSnapshotRequire(packages&&typeof packages==='object'&&!Array.isArray(packages),'CI locked package map');const packageRows=[...build.packages,probe.compiler,probe.nativeCompiler].map(pkg=>{ciSnapshotRequire(typeof pkg.resolutionPath==='string'&&typeof pkg.name==='string'&&typeof pkg.version==='string'&&typeof pkg.integrity==='string','CI locked package complete facts');return {name:pkg.name,version:pkg.version,integrity:pkg.integrity,resolutionPath:pkg.resolutionPath};});for(const pkg of packageRows){const locked=packages[pkg.resolutionPath];ciSnapshotRequire(locked&&locked.version===pkg.version&&locked.integrity===pkg.integrity,'CI locked package version/integrity');}
  for(const slot of seal.slots){const manifest=comparisonManifestSchema.parse((await data(join(root,slot.artifactDirectory,'manifest.json'))).value);ciSnapshotRequire(manifest.git.revision===context.sha&&manifest.git.dirty===false,'CI original tested checkout identity');ciSnapshotEqual(manifest.adapter.build,build,'CI H07 build agrees with original record');}
- const outputs:string[]=[];async function physical(relative:string){const dir=join(workspace,relative);await chain(dir);const entries=await readdir(dir,{withFileTypes:true});ciSnapshotRequire(entries.length<=126,'CI output directory entry cap');for(const entry of entries){const key=ciSnapshotKey(relative+'/'+entry.name);ciSnapshotRequire(!entry.isSymbolicLink(),'CI output symlink');if(entry.isDirectory()){ciSnapshotRequire(CI_SNAPSHOT_NAMES.output126.some(p=>p.startsWith(key+'/')),'CI unexpected output directory');await physical(key);}else{ciSnapshotRequire(entry.isFile(),'CI output regular file');outputs.push(key);ciSnapshotRequire(outputs.length<=126,'CI output entry cap');}}}await physical('packages/contract/dist');await physical('packages/runner/dist');same(outputs.sort(),CI_SNAPSHOT_NAMES.output126,'CI full physical126 closure');same(outputs.filter(p=>p.startsWith('packages/contract/dist/')).sort(),CI_SNAPSHOT_NAMES.contract42,'CI contract42 closure');
- const metadata=[...new Set(packageRows.map(p=>p.resolutionPath+'/package.json'))].sort();ciSnapshotRequire(metadata.length===52,'CI platform metadata52');const names={source41:[...CI_SNAPSHOT_NAMES.source41],source11:[...CI_SNAPSHOT_NAMES.source11],product47:keys(build.sourceHashes),probe31:keys(probe.sourceHashes),compiled16:keys(probe.compiledHashes),output126:[...outputs],contract42:[...CI_SNAPSHOT_NAMES.contract42],raw2:['apps/threadplane/.build-evidence.json','packages/runner/.comparison-build-evidence.json'],assets:keys(build.assetHashes).map(key=>'apps/threadplane/dist/'+key),metadata52:metadata};const union=[...new Set([...names.source41,...names.product47,...names.probe31,...names.output126,...names.raw2,...names.assets,...names.metadata52])].sort();ciSnapshotRequire(union.length<=CI_SNAPSHOT_MAX_FILES,'CI named union file cap');union.forEach(ciSnapshotKey);let declaredOriginalBytes=0;for(const key of union){const value=await stat(join(workspace,key),{bigint:true});ciSnapshotRequire(value.isFile()&&!value.isSymbolicLink()&&value.size>=0n&&value.size<=BigInt(comparisonCiSnapshotFileCap(key)),'CI union pre-read file cap');declaredOriginalBytes=comparisonCiSnapshotBudget(declaredOriginalBytes,Number(value.size),CI_SNAPSHOT_UNION_BYTES_CAP,'CI union pre-read aggregate cap');}comparisonCiSnapshotBudget(0,declaredOriginalBytes,CI_SNAPSHOT_UNION_BYTES_CAP,'CI union pre-read aggregate cap');
+ const outputs:string[]=[];async function physical(relative:string){const dir=join(workspace,relative);await chain(dir);const entries=await readdir(dir,{withFileTypes:true});ciSnapshotRequire(entries.length<=129,'CI output directory entry cap');for(const entry of entries){const key=ciSnapshotKey(relative+'/'+entry.name);ciSnapshotRequire(!entry.isSymbolicLink(),'CI output symlink');if(entry.isDirectory()){ciSnapshotRequire(CI_SNAPSHOT_NAMES.output129.some(p=>p.startsWith(key+'/')),'CI unexpected output directory');await physical(key);}else{ciSnapshotRequire(entry.isFile(),'CI output regular file');outputs.push(key);ciSnapshotRequire(outputs.length<=129,'CI output entry cap');}}}await physical('packages/contract/dist');await physical('packages/runner/dist');same(outputs.sort(),CI_SNAPSHOT_NAMES.output129,'CI full physical129 closure');same(outputs.filter(p=>p.startsWith('packages/contract/dist/')).sort(),CI_SNAPSHOT_NAMES.contract42,'CI contract42 closure');
+ const metadata=[...new Set(packageRows.map(p=>p.resolutionPath+'/package.json'))].sort();ciSnapshotRequire(metadata.length===52,'CI platform metadata52');const names={source43:[...CI_SNAPSHOT_NAMES.source43],source13:[...CI_SNAPSHOT_NAMES.source13],product47:keys(build.sourceHashes),probe31:keys(probe.sourceHashes),compiled16:keys(probe.compiledHashes),output129:[...outputs],contract42:[...CI_SNAPSHOT_NAMES.contract42],raw2:['apps/threadplane/.build-evidence.json','packages/runner/.comparison-build-evidence.json'],assets:keys(build.assetHashes).map(key=>'apps/threadplane/dist/'+key),metadata52:metadata};const union=[...new Set([...names.source43,...names.product47,...names.probe31,...names.output129,...names.raw2,...names.assets,...names.metadata52])].sort();ciSnapshotRequire(union.length<=CI_SNAPSHOT_MAX_FILES,'CI named union file cap');union.forEach(ciSnapshotKey);let declaredOriginalBytes=0;for(const key of union){const value=await stat(join(workspace,key),{bigint:true});ciSnapshotRequire(value.isFile()&&!value.isSymbolicLink()&&value.size>=0n&&value.size<=BigInt(comparisonCiSnapshotFileCap(key)),'CI union pre-read file cap');declaredOriginalBytes=comparisonCiSnapshotBudget(declaredOriginalBytes,Number(value.size),CI_SNAPSHOT_UNION_BYTES_CAP,'CI union pre-read aggregate cap');}comparisonCiSnapshotBudget(0,declaredOriginalBytes,CI_SNAPSHOT_UNION_BYTES_CAP,'CI union pre-read aggregate cap');
  const physicalAssets=async()=>{const found:string[]=[];async function walk(relative:string){const dir=join(workspace,relative);await chain(dir);const entries=await readdir(dir,{withFileTypes:true});ciSnapshotRequire(entries.length<=12,'CI asset directory entry cap');for(const entry of entries){const key=ciSnapshotKey(relative+'/'+entry.name);ciSnapshotRequire(!entry.isSymbolicLink(),'CI asset symlink');if(entry.isDirectory()){ciSnapshotRequire(names.assets.some(p=>p.startsWith(key+'/')),'CI unexpected asset directory');await walk(key);}else{ciSnapshotRequire(entry.isFile(),'CI asset regular');found.push(key);ciSnapshotRequire(found.length<=12,'CI asset physical count');}}}await walk('apps/threadplane/dist');same(found.sort(),names.assets,'CI served asset physical closure');};await physicalAssets();
  const expectedHashes:Record<string,string>={...build.sourceHashes,...probe.sourceHashes,...probe.compiledHashes,...Object.fromEntries(Object.entries(build.assetHashes).map(([key,hash])=>['apps/threadplane/dist/'+key,hash]))};for(const [key,hash] of Object.entries(probe.sourceHashes))if(build.sourceHashes[key]!==undefined)ciSnapshotRequire(build.sourceHashes[key]===hash,'CI shared source digest');for(const [key,hash] of Object.entries(probe.compiledHashes))if(build.sourceHashes[key]!==undefined)ciSnapshotRequire(build.sourceHashes[key]===hash,'CI shared compiled digest');
  const originals=new Map<string,Awaited<ReturnType<typeof read>>>();let originalBytes=0;for(const key of union){const row=await read(join(workspace,key),undefined,undefined,false,comparisonCiSnapshotFileCap(key));if(expectedHashes[key]!==undefined)ciSnapshotRequire(row.fact.sha256===expectedHashes[key],'CI source/build original digest');const inode=row.identity.dev+':'+row.identity.ino;ciSnapshotRequire(!originalInodes.has(inode),'CI distinct original hardlink');originalInodes.set(inode,key);for(const a of row.ancestors){const old=originalAncestors.get(a.path);if(old)ciSnapshotEqual({dev:old.dev,ino:old.ino},{dev:a.identity.dev,ino:a.identity.ino},'CI ancestor inconsistent');else originalAncestors.set(a.path,a.identity);}originals.set(key,row);originalBytes=comparisonCiSnapshotBudget(originalBytes,row.fact.byteLength,CI_SNAPSHOT_UNION_BYTES_CAP,'CI aggregate original byte cap');}ciSnapshotRequire(originalAncestors.size<=CI_SNAPSHOT_MAX_ANCESTORS,'CI ancestor entry cap');
@@ -1017,10 +993,10 @@ export async function writeComparisonCiSnapshot(root:string,ports:CiSnapshotPort
  const directory=await mkdtemp(join(evidenceRoot,`comparison-browser-ci-context-${context.runId}-${context.runAttempt}-`));await chain(directory);const createdOwnDirectories=new Map<string,CiSnapshotIdentity>();async function rememberOwnDirectory(path:string){const actual=await stat(path,{bigint:true});ciSnapshotRequire(actual.isDirectory()&&!actual.isSymbolicLink(),'CI created own directory kind');const identity=ciSnapshotIdentity(actual),old=createdOwnDirectories.get(path);if(old)ciSnapshotRequire(identity.dev===old.dev&&identity.ino===old.ino,'CI created own directory replaced');else createdOwnDirectories.set(path,identity);ciSnapshotRequire(createdOwnDirectories.size<=CI_SNAPSHOT_MAX_OWN_DIRECTORIES,'CI created own directory cap');}await rememberOwnDirectory(directory);const records:{key:string;originalPath:string;before:{identity:CiSnapshotIdentity;fact:CiSnapshotFact};copied:{path:string;identity:CiSnapshotIdentity;fact:CiSnapshotFact};after:{identity:CiSnapshotIdentity;fact:CiSnapshotFact}}[]=[];const copiedInodes=new Set<string>();
  for(const key of union){const before=originals.get(key)!;const relative=ciSnapshotKey('workspace/'+key),destination=join(directory,relative);await mkdir(dirname(destination),{recursive:true});const createdChain=await chain(dirname(destination));for(const row of createdChain)if(row.path===directory||row.path.startsWith(directory+'/'))await rememberOwnDirectory(row.path);await rememberOwnDirectory(dirname(destination));const source=join(workspace,key);const copied=await owned(destination,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,async output=>{const row=await read(source,before.identity,output,false,comparisonCiSnapshotFileCap(key));ciSnapshotEqual(row.fact,before.fact,'CI source changed while copying');const identity=ciSnapshotIdentity(await output.stat({bigint:true}));ciSnapshotRequire(identity.size===String(before.fact.byteLength),'CI own copy size');return {identity,fact:row.fact};});const verified=await read(destination,copied.identity,undefined,false,comparisonCiSnapshotFileCap(key));ciSnapshotEqual(verified.fact,copied.fact,'CI own copy verification');const inode=copied.identity.dev+':'+copied.identity.ino;ciSnapshotRequire(!copiedInodes.has(inode)&&!originalInodes.has(inode),'CI copy hardlink identity');copiedInodes.add(inode);const after=await read(source,before.identity,undefined,false,comparisonCiSnapshotFileCap(key));ciSnapshotEqual(after.fact,before.fact,'CI original changed after copy');const record={key,originalPath:source,before:{identity:before.identity,fact:before.fact},copied:{path:relative,...copied},after:{identity:after.identity,fact:after.fact}};ciSnapshotRequire(Buffer.byteLength(JSON.stringify(record))<=8192,'CI per-record serialization cap');records.push(record);}
  const ancestors:{path:string;before:CiSnapshotIdentity;after:CiSnapshotIdentity}[]=[];for(const [path,before] of originalAncestors){const actual=await stat(path,{bigint:true});ciSnapshotRequire(actual.isDirectory()&&!actual.isSymbolicLink(),'CI original ancestor kind');const after=ciSnapshotIdentity(actual);ciSnapshotRequire(after.dev===before.dev&&after.ino===before.ino,'CI original ancestor replaced after snapshot');const row={path,before,after};ciSnapshotRequire(Buffer.byteLength(JSON.stringify(row))<=2048,'CI ancestor serialization cap');ancestors.push(row);}
- ciSnapshotEqual((await read(join(root,'dataset-seal.json'))).fact,sealFile.row.fact,'CI settled seal changed');const manifest={format:'comparison-ci-original-snapshot-v3',context,originalWorkspacePrefix:workspace,originalTmpdirPrefix:evidenceRoot,originalRoot:root,rootSeal:sealFile.row.fact,inventories:names,originalBytes,limits:{fileBytes:CI_SNAPSHOT_METADATA_FILE_CAP,lockBytes:CI_SNAPSHOT_LOCK_FILE_CAP,originalBytes:CI_SNAPSHOT_UNION_BYTES_CAP,files:CI_SNAPSHOT_MAX_FILES,ancestors:CI_SNAPSHOT_MAX_ANCESTORS,manifestBytes:CI_SNAPSHOT_MANIFEST_CAP,readBytes:readLimit,writeBytes:writeLimit,jsonFiles:CI_SNAPSHOT_JSON_FILES_CAP,ownDirectories:CI_SNAPSHOT_MAX_OWN_DIRECTORIES,receiptBytes:CI_SNAPSHOT_RECEIPT_CAP},work:{beforeManifestReadBytes:readBytes,copiedFileBytes:writtenBytes,jsonFiles:jsonFiles},records,ancestors};ciSnapshotRequire(originalBytes===declaredOriginalBytes,'CI union preflight bytes changed');const bytes=Buffer.from(JSON.stringify(manifest)+'\n');comparisonCiSnapshotBudget(0,bytes.length,CI_SNAPSHOT_MANIFEST_CAP,'CI snapshot manifest cap');const path=join(directory,'snapshot.json');const manifestIdentity=await owned(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,async fd=>{let offset=0;while(offset<bytes.length){const result=await fd.write(bytes,offset,bytes.length-offset,null);ciSnapshotRequire(Number.isSafeInteger(result.bytesWritten)&&result.bytesWritten>0&&result.bytesWritten<=bytes.length-offset,'CI manifest write stalled');offset+=result.bytesWritten;writtenBytes=comparisonCiSnapshotBudget(writtenBytes,result.bytesWritten,writeLimit,'CI manifest write byte cap');}const identity=ciSnapshotIdentity(await fd.stat({bigint:true}));ciSnapshotRequire(identity.size===String(bytes.length),'CI manifest own size');return identity;});const final=await read(path,manifestIdentity,undefined,true,CI_SNAPSHOT_MANIFEST_CAP);ciSnapshotRequire(final.bytes!==undefined&&final.bytes.equals(bytes),'CI snapshot manifest readback');
+ ciSnapshotEqual((await read(join(root,'dataset-seal.json'))).fact,sealFile.row.fact,'CI settled seal changed');const manifest={format:'comparison-ci-original-snapshot-v4',context,originalWorkspacePrefix:workspace,originalTmpdirPrefix:evidenceRoot,originalRoot:root,rootSeal:sealFile.row.fact,inventories:names,originalBytes,limits:{fileBytes:CI_SNAPSHOT_METADATA_FILE_CAP,lockBytes:CI_SNAPSHOT_LOCK_FILE_CAP,originalBytes:CI_SNAPSHOT_UNION_BYTES_CAP,files:CI_SNAPSHOT_MAX_FILES,ancestors:CI_SNAPSHOT_MAX_ANCESTORS,manifestBytes:CI_SNAPSHOT_MANIFEST_CAP,readBytes:readLimit,writeBytes:writeLimit,jsonFiles:CI_SNAPSHOT_JSON_FILES_CAP,ownDirectories:CI_SNAPSHOT_MAX_OWN_DIRECTORIES,receiptBytes:CI_SNAPSHOT_RECEIPT_CAP},work:{beforeManifestReadBytes:readBytes,copiedFileBytes:writtenBytes,jsonFiles:jsonFiles},records,ancestors};ciSnapshotRequire(originalBytes===declaredOriginalBytes,'CI union preflight bytes changed');const bytes=Buffer.from(JSON.stringify(manifest)+'\n');comparisonCiSnapshotBudget(0,bytes.length,CI_SNAPSHOT_MANIFEST_CAP,'CI snapshot manifest cap');const path=join(directory,'snapshot.json');const manifestIdentity=await owned(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,async fd=>{let offset=0;while(offset<bytes.length){const result=await fd.write(bytes,offset,bytes.length-offset,null);ciSnapshotRequire(Number.isSafeInteger(result.bytesWritten)&&result.bytesWritten>0&&result.bytesWritten<=bytes.length-offset,'CI manifest write stalled');offset+=result.bytesWritten;writtenBytes=comparisonCiSnapshotBudget(writtenBytes,result.bytesWritten,writeLimit,'CI manifest write byte cap');}const identity=ciSnapshotIdentity(await fd.stat({bigint:true}));ciSnapshotRequire(identity.size===String(bytes.length),'CI manifest own size');return identity;});const final=await read(path,manifestIdentity,undefined,true,CI_SNAPSHOT_MANIFEST_CAP);ciSnapshotRequire(final.bytes!==undefined&&final.bytes.equals(bytes),'CI snapshot manifest readback');
  const ownTree=async()=>{const files:string[]=[],directories:{path:string;created:CiSnapshotIdentity;identity:CiSnapshotIdentity;members:string[]}[]=[];async function walk(relative=''){const dir=relative?join(directory,relative):directory;await chain(dir);const before=await stat(dir,{bigint:true});ciSnapshotRequire(before.isDirectory()&&!before.isSymbolicLink(),'CI own directory kind');const identity=ciSnapshotIdentity(before),created=createdOwnDirectories.get(dir);ciSnapshotRequire(created&&identity.dev===created.dev&&identity.ino===created.ino,'CI own directory creation identity');const entries=await readdir(dir,{withFileTypes:true});ciSnapshotRequire(entries.length<=CI_SNAPSHOT_MAX_FILES+1,'CI own directory entry cap');const members=entries.map(entry=>entry.name).sort();for(const entry of entries){const key=relative?relative+'/'+entry.name:entry.name;ciSnapshotKey(key);const actual=await stat(join(directory,key),{bigint:true});ciSnapshotRequire(!actual.isSymbolicLink()&&!entry.isSymbolicLink(),'CI copied tree symlink');if(actual.isDirectory()){ciSnapshotRequire(records.some(r=>r.copied.path.startsWith(key+'/')),'CI extra copied directory');await walk(key);}else{ciSnapshotRequire(actual.isFile()&&entry.isFile(),'CI copied tree regular');const expected=key==='snapshot.json'?manifestIdentity:records.find(r=>r.copied.path===key)?.copied.identity;ciSnapshotRequire(expected,'CI unexpected own member');ciSnapshotEqual(ciSnapshotIdentity(actual),expected,'CI own physical member identity');files.push(key);ciSnapshotRequire(files.length<=CI_SNAPSHOT_MAX_FILES+1,'CI copied tree entry cap');}}ciSnapshotEqual(ciSnapshotIdentity(await stat(dir,{bigint:true})),identity,'CI own directory changed during enumeration');const row={path:relative,created,identity,members};ciSnapshotRequire(Buffer.byteLength(JSON.stringify(row))<=8192,'CI own directory row cap');directories.push(row);ciSnapshotRequire(directories.length<=CI_SNAPSHOT_MAX_OWN_DIRECTORIES,'CI own directory count cap');}await walk();same(files.sort(),[...records.map(r=>r.copied.path),'snapshot.json'],'CI own physical closed membership');same(directories.map(row=>row.path).sort(),[...createdOwnDirectories.keys()].map(path=>path===directory?'':path.slice(directory.length+1)).sort(),'CI own directory closed identities');return directories.sort((a,b)=>a.path.localeCompare(b.path));};
  const ownBefore=await ownTree();for(const record of records){const current=await read(join(directory,record.copied.path),record.copied.identity,undefined,false,comparisonCiSnapshotFileCap(record.key));ciSnapshotEqual(current.fact,record.copied.fact,'CI final own copy bytes');}
- for(const [key,before] of originals){const after=await read(join(workspace,key),before.identity,undefined,false,comparisonCiSnapshotFileCap(key));ciSnapshotEqual(after.fact,before.fact,'CI original changed during whole snapshot');}outputs.length=0;await physical('packages/contract/dist');await physical('packages/runner/dist');same(outputs.sort(),names.output126,'CI final original physical126 closure');await physicalAssets();
+ for(const [key,before] of originals){const after=await read(join(workspace,key),before.identity,undefined,false,comparisonCiSnapshotFileCap(key));ciSnapshotEqual(after.fact,before.fact,'CI original changed during whole snapshot');}outputs.length=0;await physical('packages/contract/dist');await physical('packages/runner/dist');same(outputs.sort(),names.output129,'CI final original physical129 closure');await physicalAssets();
  for(const [path,before] of originalAncestors){const actual=await stat(path,{bigint:true});ciSnapshotRequire(actual.isDirectory()&&!actual.isSymbolicLink(),'CI final original ancestor kind');const identity=ciSnapshotIdentity(actual);ciSnapshotRequire(identity.dev===before.dev&&identity.ino===before.ino,'CI final original ancestor identity');}
  const manifestAfter=await read(path,manifestIdentity,undefined,true,CI_SNAPSHOT_MANIFEST_CAP);ciSnapshotRequire(manifestAfter.bytes!==undefined&&manifestAfter.bytes.equals(bytes),'CI final manifest bytes');ciSnapshotEqual(manifestAfter.fact,final.fact,'CI manifest lifetime fact');const ownAfter=await ownTree();ciSnapshotEqual(ownAfter,ownBefore,'CI own directory lifetime closure');
  const lifetime={manifest:{identity:manifestIdentity,fact:manifestAfter.fact},directories:ownAfter};const receipt={directory,path,byteLength:bytes.length,sha256:digest(bytes),lifetime,work:{readBytes,writtenBytes,jsonFiles}};comparisonCiSnapshotBudget(0,Buffer.byteLength(JSON.stringify(receipt)),CI_SNAPSHOT_RECEIPT_CAP,'CI own lifetime receipt cap');return receipt;
