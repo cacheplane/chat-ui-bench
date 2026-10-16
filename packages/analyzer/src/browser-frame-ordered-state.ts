@@ -19,7 +19,7 @@ interface InternDefinition { definitionIndex:number;sequenceIndex:number;interva
 type Selection = {status:'selected';source:'packet'|'event'|'defaults';clockId?:string;trackUuid?:string;defaultsVersionIndex?:number} | {status:'unavailable';reason:string};
 interface EventFact { eventIndex: number; packetIndex: number; sequenceIndex: number; intervalVersion: number; defaultsVersionIndex: number|null; location: Location; name?: {kind:'literal';value:string} | {kind:'intern';definitionIndex:number}; literalCategories?: string[]; internedCategoryDefinitionIndexes?:number[]; type?: string; trackSelection: Selection; typedArgumentKinds:string[] }
 interface PacketFact { packetIndex: number; sequenceIndex: number; fields: PacketFields; valid: boolean; intervalVersion: number; stateEffect: 'none' | 'reset' | 'loss'; defaultsVersionIndex: number | null; clockSelection:Selection; eventOutcome:'absent'|'resolved'|'withheld_dependency'|'withheld_intern_invalid';eventIndex?:number;eventLocation?:Location;internLocation?:Location;internUpdateOutcome:'absent'|'applied'|'withheld_invalid';internNewDefinitions:number;internRepeatedDefinitions:number }
-interface RestrictedPacketFact extends Omit<PacketFact,'eventOutcome'> {eventOutcome:PacketFact['eventOutcome']|'withheld_missing_intern_definition'}
+export interface RestrictedPacketFact extends Omit<PacketFact,'eventOutcome'> {eventOutcome:PacketFact['eventOutcome']|'withheld_missing_intern_definition'}
 interface BodyFact {packetIndex:number;bytes:number;sha256:string}
 interface SequenceFact {sequenceIndex:number;sequenceId:string;machineId?:string;valid:boolean;intervalVersion:number}
 export interface OrderedStateProjection extends Readonly<typeof LABELS> {
