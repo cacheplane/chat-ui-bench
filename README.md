@@ -178,11 +178,15 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v22`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v24`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
 membership. Report replay also checks the current policy component hashes.
+V24 adds a bounded diagnostic at the public-package resolution refusal, retaining
+the actual specifier, expected package path, worker-parent URL and resolved entry.
+The original V22 inspection remains failed; this diagnostic preserves the refusal
+and resolver policy rather than admitting a package-layout fix.
 The original loader and emitted-import refusals remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
 

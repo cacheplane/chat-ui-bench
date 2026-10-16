@@ -4,6 +4,14 @@ import {createHash} from 'node:crypto';
 import {assertProductionOutputInventory,PRODUCTION_FILE_LIMITS,type FileFact} from './hosted-copilot-contract.ts';
 import {assertModuleOwnershipId,assertMappings,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_POLICY_LIMITS,type NativeImport} from './hosted-copilot-mounted-policy.ts';
+/** Diagnostic formatting only; no resolution, coercion or policy decision. */
+export function formatWorkerPublicResolutionDiagnostic(specifier:unknown,expectedPackagePath:unknown,workerParentUrl:unknown,resolvedEntryPath:unknown):string {
+ const unavailable='{"workerPublicResolutionDiagnostic":{"status":"unavailable","reason":"invalid-or-oversized-input"}}';
+ const primitive=(value:unknown,maximum:number):value is string=>typeof value==='string'&&value.length>0&&value.length<=maximum&&/^[\x20-\x7e]+$/.test(value)&&Buffer.byteLength(value,'utf8')<=maximum;
+ if(!primitive(specifier,128)||!primitive(expectedPackagePath,256)||!primitive(workerParentUrl,1024)||!primitive(resolvedEntryPath,4096))return unavailable;
+ const line=JSON.stringify({workerPublicResolutionDiagnostic:{status:'observed',specifier,expectedPackagePath,workerParentUrl,resolvedEntryPath}});
+ return Buffer.byteLength(line,'utf8')<=16384?line:unavailable;
+}
 export function createWorkerImporterDiagnostic(): {
  observe(id:unknown,parent:unknown,resolved:unknown,allowed:unknown):void;
  snapshot():WorkerCallbackSnapshot;
