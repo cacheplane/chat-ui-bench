@@ -106,6 +106,26 @@ test('reporter2 and graphics retain separate delegated fragment labels', () => {
   expect(result.event.reporter2).toMatchObject({ status:'decoded_fragment', kind:'reporter2', fields:{state:{value:1,name:'presented_all'},surfaceTraceId:'-1'}, evaluationEligibility:false, scoringEligibility:false, rankingEligibility:false });
   expect(result.event.graphics.fields).toEqual({ step:{value:5,name:'receive_compositor_frame'},frameSinkId:{client:'4294967295',sink:'0'},displayTraceId:'-1' });
   expect(result.event.presentFieldNumbers).toEqual([1052,1075]);
+  // Both typed extensions propagate the whole-file reference through the existing spread.
+  for (const fragment of [result.event.reporter2, result.event.graphics]) {
+    expect(fragment.source).toStrictEqual({
+      chromiumPin: 'f842f52ef39fd97b449eb27cff414bf05a98ddce',
+      perfettoPin: '403906f4adfbf287a02e5546f8430dcc9d56b649',
+      provenanceVersion: 'whole-schema-files-v1',
+      hashPreimage: 'complete-raw-file-bytes',
+      chromiumSchemaPath: 'base/tracing/protos/chrome_track_event.proto',
+      perfettoSchemaPath: 'protos/third_party/chromium/chrome_track_event.proto',
+      wholeSchemaBytes: 126011,
+      wholeSchemaSha256: '2a26c01cd9b70dc95fd3ba2630ea918ea57012295225b0d1626e57a105974e03',
+    });
+    expect(Object.keys(fragment.source).sort()).toStrictEqual([
+      'chromiumPin', 'chromiumSchemaPath', 'hashPreimage', 'perfettoPin', 'perfettoSchemaPath',
+      'provenanceVersion', 'wholeSchemaBytes', 'wholeSchemaSha256',
+    ]);
+    for (const key of ['graphicsBlockSha256', 'reporterBlockSha256', 'frameSinkBlockSha256']) expect(fragment.source).not.toHaveProperty(key);
+    expect(Object.isFrozen(fragment.source)).toBe(true);
+    expect(fragment).toMatchObject({ normalizationCapability: 'typed-payload-fragments-only', runtimeQualification: 'unestablished', sourceCoverage: 'unestablished', evaluationEligibility: false, scoringEligibility: false, rankingEligibility: false });
+  }
 });
 test.each([1052,1075])('duplicate typed extension %i denies', field => denied(eventPacket(body(field,new Uint8Array()),body(field,new Uint8Array())),'duplicate-selected-field'));
 test.each([1052,1075])('typed extension %i wrong wire denies', field => denied(eventPacket(uint(field,0n)),'selected-field-wrong-wire-type'));

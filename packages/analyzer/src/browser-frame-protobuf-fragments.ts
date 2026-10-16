@@ -1,12 +1,23 @@
 import { BodyReader, copyBody, signed64, WireBudget, WireError, type Occurrence, type WireField } from './browser-frame-protobuf-wire.js';
 
 export const PAYLOAD_POLICY = 'pinned-chrome-frame-payload-fragments-v1';
+/**
+ * Pinned whole-schema references; both complete raw files have the same size and SHA256:
+ * https://raw.githubusercontent.com/chromium/chromium/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/tracing/protos/chrome_track_event.proto
+ * https://raw.githubusercontent.com/google/perfetto/403906f4adfbf287a02e5546f8430dcc9d56b649/protos/third_party/chromium/chrome_track_event.proto
+ * Hash preimage: all raw file bytes, before decoding, newline/BOM/whitespace normalization,
+ * extraction or reserialization. This intentionally replaces the three old block-hash metadata
+ * keys with an incompatible source shape, versioned separately from the unchanged decoder policy.
+ * These are source references only: no runtime check, ABI coverage, frame ownership or FPS claim.
+ */
 export const PAYLOAD_SOURCE = Object.freeze({
   chromiumPin: 'f842f52ef39fd97b449eb27cff414bf05a98ddce', perfettoPin: '403906f4adfbf287a02e5546f8430dcc9d56b649',
-  // Pinned protos/third_party/chromium/chrome_track_event.proto; selected blocks equal Chromium's schema.
-  graphicsBlockSha256: 'e87506f7c5bcb60429373a042a3a4fa6b28b14a73c377b46ecda515eec01efe5',
-  reporterBlockSha256: '6c524d82423fcabb31f41975043d94a005c6fccec67dc06235753574c6ea8494',
-  frameSinkBlockSha256: 'ee8cd07a28f5efbfdd3b6f9c607731d4db6d5d180cfddb542098eb642c00ca98',
+  provenanceVersion: 'whole-schema-files-v1',
+  hashPreimage: 'complete-raw-file-bytes',
+  chromiumSchemaPath: 'base/tracing/protos/chrome_track_event.proto',
+  perfettoSchemaPath: 'protos/third_party/chromium/chrome_track_event.proto',
+  wholeSchemaBytes: 126011,
+  wholeSchemaSha256: '2a26c01cd9b70dc95fd3ba2630ea918ea57012295225b0d1626e57a105974e03',
 });
 interface EnumValue { value: number; name: string }
 interface FrameSinkFields { client?: string; sink?: string }
