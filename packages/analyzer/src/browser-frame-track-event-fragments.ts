@@ -1,15 +1,22 @@
 import { BodyReader, WireError, type WireField } from './browser-frame-protobuf-wire.js';
-import { decodeBrowserFramePayload, PAYLOAD_POLICY, type DecodedFragment } from './browser-frame-protobuf-fragments.js';
+import { decodeBrowserFramePayload, decodeBrowserFramePayloadWithMembers, PAYLOAD_POLICY, type DecodedFragment, type DecodedFragmentWithMembers, type PayloadMember } from './browser-frame-protobuf-fragments.js';
 import { canonicalInt32, requireBody, scalar, unique, type ProjectionContext, type PacketOccurrence } from './browser-frame-packet-fragments.js';
 
 export interface EventFields { categoryIids?: string[]; categories?: string[]; nameIid?: string; name?: string; type?: string; trackUuid?: string }
 type ShiftedPayload = Omit<DecodedFragment, 'occurrences' | 'skippedFields'> & { occurrences: PacketOccurrence[]; skippedFields: PacketOccurrence[] };
 export interface EventFragment { fields: EventFields; presentFieldNumbers: number[]; reporter2?: ShiftedPayload; graphics?: ShiftedPayload }
+export interface EventFragmentWithMembers extends EventFragment {reporter2?:ShiftedPayload&{members:PayloadMember[]};graphics?:ShiftedPayload&{members:PayloadMember[]}}
 const SELECTED = new Set([3,22,10,23,9,11,1052,1075]);
 const LEGACY = new Set([1,2,6,8,16,17,20]);
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 export function decodeModernTrackEvent(context: ProjectionContext, start: number, end: number): EventFragment {
+  return decodeTrackEvent(context,start,end,false);
+}
+export function decodeModernTrackEventWithMembers(context:ProjectionContext,start:number,end:number):EventFragmentWithMembers {
+  return decodeTrackEvent(context,start,end,true) as EventFragmentWithMembers;
+}
+function decodeTrackEvent(context:ProjectionContext,start:number,end:number,retainMembers:boolean):EventFragment {
   const reader = new BodyReader(context.bytes, start, end, context.budget);
   const fields: EventFields = {}; const present = new Set<number>();
   let reporter2: ShiftedPayload | undefined; let graphics: ShiftedPayload | undefined;
@@ -26,7 +33,7 @@ export function decodeModernTrackEvent(context: ProjectionContext, start: number
     requireBody(field);
     const o = field.occurrence;
     // Delegate is independently bounded; shared charging limits final admission, not transient allocation.
-    const fragment = decodeBrowserFramePayload(context.bytes.slice(o.valueStart, o.end), kind, PAYLOAD_POLICY);
+    const fragment = retainMembers?decodeBrowserFramePayloadWithMembers(context.bytes.slice(o.valueStart,o.end),kind):decodeBrowserFramePayload(context.bytes.slice(o.valueStart, o.end), kind, PAYLOAD_POLICY);
     if (fragment.status === 'unavailable') throw new WireError(fragment.diagnostics[0]?.code ?? 'unavailable-typed-payload');
     for (const _occurrence of fragment.occurrences) context.budget.chargeOccurrence();
     for (const _member of fragment.fields.surfaceTraceIds ?? []) context.budget.chargeMember();
@@ -35,7 +42,7 @@ export function decodeModernTrackEvent(context: ProjectionContext, start: number
       start: at.start + o.valueStart, valueStart: at.valueStart + o.valueStart, end: at.end + o.valueStart });
     const occurrences = fragment.occurrences.map(shift); const skippedFields = fragment.skippedFields.map(shift);
     context.occurrences.push(...occurrences); context.skippedFields.push(...skippedFields);
-    return { ...fragment, occurrences, skippedFields };
+    return { ...fragment, occurrences, skippedFields,...(retainMembers?{members:(fragment as DecodedFragmentWithMembers).members.map(m=>({...m,start:m.start+o.valueStart,valueStart:m.valueStart+o.valueStart,end:m.end+o.valueStart}))}:{}) };
   }
   while (!reader.complete) {
     const field = reader.next('root'); const o: PacketOccurrence = { ...field.occurrence, scope: 'track_event' };
