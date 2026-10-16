@@ -8,7 +8,7 @@ import {ordinaryPath,assertDenseEntries} from '../tests/support/hosted-copilot-c
 import {readPhysicalSource,observeCompilerRuntimeModule} from '../tests/support/hosted-copilot-build-plugin.ts';
 import {assertCompilerProfile,assertCompilerRuntimeOwnership,assertMappings,assertModuleOwnershipId,projectCompilerRuntimeModules} from '../tests/support/hosted-copilot-production-policy.ts';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_PACKAGE_PINS,evaluateMountedModulePolicy,WORKER_ZOD_PUBLIC_BINDING,lookupWorkerPublicPackage,resolveMountedPublicEntry} from '../tests/support/hosted-copilot-mounted-policy.ts';
-import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,observeWorkerRegisteredModule,observeWorkerResolvedRelations,validateWorkerRegisteredGraph,readWorkerChunkMetadata,assertWorkerChunkMetadataStable,assertWorkerCallbackSnapshotStable,settleWorkerStaticGeneration,assertWorkerComponentPins,WORKER_STATIC_COMPONENT_PATHS,workerStaticOutputOptions,observeWorkerOutputPolicy,readWorkerOutputPolicy,createWorkerImporterDiagnostic,formatWorkerPublicResolutionDiagnostic} from '../tests/support/hosted-copilot-worker-static-policy.ts';
+import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,observeWorkerRegisteredModule,observeWorkerResolvedRelations,validateWorkerContractSourceGraph,workerStaticResolveOptions,readWorkerChunkMetadata,assertWorkerChunkMetadataStable,assertWorkerCallbackSnapshotStable,settleWorkerStaticGeneration,assertWorkerComponentPins,WORKER_STATIC_COMPONENT_PATHS,workerStaticOutputOptions,observeWorkerOutputPolicy,readWorkerOutputPolicy,createWorkerImporterDiagnostic,formatWorkerPublicResolutionDiagnostic} from '../tests/support/hosted-copilot-worker-static-policy.ts';
 
 const action=process.argv[2];
 if(process.argv.length!==3||!['emit','inspect'].includes(action))throw new Error('Fixed worker STATIC action required');
@@ -18,7 +18,8 @@ if(!/^[1-9][0-9]{0,19}$/.test(runId??''))throw new Error('Fixed worker run ident
 const worker=join(root,workerPath),workerDirectory=join(worker,'..');
 const hash=raw=>createHash('sha256').update(raw).digest('hex');
 const buildProfile=Object.freeze({entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false,
- logicalZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.publicSpecifier,emittedZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.rawSpecifier,zodPublicSourceParent:WORKER_ZOD_PUBLIC_BINDING.sourceParent});
+ logicalZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.publicSpecifier,emittedZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.rawSpecifier,zodPublicSourceParent:WORKER_ZOD_PUBLIC_BINDING.sourceParent,
+ contractAliasFind:'@chat-ui-bench/contract$',contractAliasTarget:'packages/contract/src/index.ts'});
 async function physical(path,cap) {
  if(!ordinaryPath(path))throw new Error('Worker physical path denied');
  let ancestor=root;
@@ -78,7 +79,7 @@ if(action==='emit') {
   try{importerDiagnostic.observe(id,parentId,isResolved,result);}catch{/* Diagnostics cannot change this callback's decision. */}
   return result;
  };
- const bundle=await rolldown({input:join(root,'apps/copilotkit/hosted-native-entry.ts'),cwd:root,platform:'node',tsconfig:false,preserveEntrySignatures:'strict',external,
+ const bundle=await rolldown({input:join(root,'apps/copilotkit/hosted-native-entry.ts'),cwd:root,platform:'node',tsconfig:false,resolve:workerStaticResolveOptions(root),preserveEntrySignatures:'strict',external,
   plugins:[{name:'worker-static-owned-modules',generateBundle(options,outputs){
    if(observed)throw new Error('Worker mapping hook repeated');observed=true;
    const format=options.format,polyfillRequire=options.polyfillRequire,paths=options.paths;
@@ -109,8 +110,8 @@ if(action==='emit') {
     owned.push(source);normalSources++;rows.push({...observation,source,importedIds:resolved.importedIds,dynamicallyImportedIds:resolved.dynamicallyImportedIds});
    }
    assertMappings(owned);
-   registeredGraph=validateWorkerRegisteredGraph({compilerProfile,buildProfile,workerOutputPolicy,rows,callbacks:importerDiagnostic.snapshot(),chunks:[chunk],
-    counts:{registeredRows:registeredIds.length,normalSources,configuredExternals,compilerRegisteredDependencies,relations:work-registeredIds.length,work}},line=>process.stderr.write(line));
+   registeredGraph=validateWorkerContractSourceGraph({compilerProfile,buildProfile,workerOutputPolicy,rows,callbacks:importerDiagnostic.snapshot(),chunks:[chunk],
+    counts:{registeredRows:registeredIds.length,normalSources,configuredExternals,compilerRegisteredDependencies,relations:work-registeredIds.length,work}},root,admission.source.files,line=>process.stderr.write(line));
    files.push({kind:'chunk',moduleIds:chunk.moduleIds,facadeModuleId:chunk.facadeModuleId});
    bindRegisteredGraph(registeredGraph,owned,compilerProfile,workerOutputPolicy,files,[...requestedExternals],[...enumeratedExternals]);
    runtimeModules=observeCompilerRuntimeModule(compilerProfile,chunk.moduleIds.includes(RUNTIME_MODULE_ID),id=>this.getModuleInfo(id));
@@ -125,7 +126,7 @@ if(action==='emit') {
  const output=generated.output[0];
  const finalChunk=chunkMetadata(output,workerOutputPolicy.format);
  assertWorkerChunkMetadataStable(registeredGraph.chunks[0],finalChunk);
- validateWorkerRegisteredGraph({...registeredGraph,chunks:[finalChunk],callbacks:importerDiagnostic.snapshot()});
+ validateWorkerContractSourceGraph({...registeredGraph,chunks:[finalChunk],callbacks:importerDiagnostic.snapshot()},root,admission.source.files);
  if(output.type!=='chunk'||output.fileName!=='worker.mjs'||!output.isEntry||Buffer.byteLength(output.code)<1||Buffer.byteLength(output.code)>16*1024*1024)throw new Error('Worker emitted output bound');
  await mkdir(workerDirectory,{recursive:true});
  if((await readdir(workerDirectory)).length!==0||await realpath(workerDirectory)!==workerDirectory)throw new Error('Fresh worker directory required');
@@ -148,7 +149,7 @@ if(action==='emit') {
  const owned=await artifactJson('worker-owned-modules.json',4*1024*1024),compiler=await artifactJson('worker-compiler-profile.json',4*1024*1024);
  if(Object.keys(compiler).sort().join(',')!=='compilerProfile,compilerRuntimeModules,componentPins,enumeratedExternals,files,registeredGraph,requestedExternals,workerOutputPolicy'||!Array.isArray(compiler.files)||compiler.files.length!==1||compiler.files[0].kind!=='chunk')throw new Error('Worker compiler report shape differs');
  assertWorkerComponentPins(components,compiler.componentPins);
- const registeredGraph=validateWorkerRegisteredGraph(compiler.registeredGraph),workerOutputPolicy=readWorkerOutputPolicy(compiler.workerOutputPolicy);
+ const registeredGraph=validateWorkerContractSourceGraph(compiler.registeredGraph,root,admission.source.files),workerOutputPolicy=readWorkerOutputPolicy(compiler.workerOutputPolicy);
  if(original.fact.bytes!==registeredGraph.chunks[0].bytes||original.fact.sha256!==registeredGraph.chunks[0].sha256)throw new Error('Worker final bytes differ from graph');
  for(const names of [compiler.requestedExternals,compiler.enumeratedExternals]){assertDenseEntries(names,16,true);if(new Set(names).size!==names.length||names.some(id=>!MOUNTED_MODULE_BUILTINS.includes(id)&&!Object.hasOwn(MOUNTED_MODULE_PACKAGE_SPECIFIERS,id)))throw new Error('Worker compiler external observations differ');}
  if(compiler.enumeratedExternals.some(id=>!compiler.requestedExternals.includes(id)))throw new Error('Unrequested worker external observation');

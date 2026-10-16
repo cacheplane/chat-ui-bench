@@ -5,7 +5,81 @@ import {createHash} from 'node:crypto';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS} from './hosted-copilot-mounted-policy.ts';
 import * as outputPolicy from './hosted-copilot-worker-static-policy.ts';
 const zodAlias='../../../../node_modules/zod/index.js';
-const bindingProfile={logicalZodSpecifier:'zod',emittedZodSpecifier:zodAlias,zodPublicSourceParent:'packages/contract/src/fixture.ts'};
+const bindingProfile={logicalZodSpecifier:'zod',emittedZodSpecifier:zodAlias,zodPublicSourceParent:'packages/contract/src/fixture.ts',contractAliasFind:'@chat-ui-bench/contract$',contractAliasTarget:'packages/contract/src/index.ts'};
+describe('fixed worker contract SOURCE resolution',()=>{
+ const target='packages/contract/src/index.ts',importers=['apps/threadplane/src/sse.ts','tests/fixtures/aimock.ts','packages/producer/src/replay.ts'];
+ const fact=(path:string)=>({path,bytes:10,sha256:'b'.repeat(64),regular:true,contained:true,symlink:false});
+ const normal=(path:string,index:number,imports:string[]=[])=>{const id='/repo/'+path;return {index,id,role:'normal-source',codeKind:'string',allowed:false,requested:false,source:{id,kind:'physical',external:false,path,sha256:'b'.repeat(64)},importedIds:imports,dynamicallyImportedIds:[]};};
+ const fixture=(importer=importers[0]!):any=>({compilerProfile:{provider:'rolldown',version:'1.2.13',runtimeModuleId:'\0rolldown/runtime.js'},
+  buildProfile:{entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false,...bindingProfile},workerOutputPolicy:{format:'es',polyfillRequire:false,paths:{zod:zodAlias}},
+  rows:[normal(target,0),normal(importer,1,['/repo/'+target])],
+  callbacks:{target:'node:module',scope:'original external callback observations only',observations:[],omitted:false,callbackCountKnown:true,retainedCallbackCount:0,complete:true},
+  chunks:[{kind:'chunk',fileName:'worker.mjs',format:'es',isEntry:true,moduleIds:['/repo/'+target],facadeModuleId:'/repo/'+target,bytes:10,sha256:'a'.repeat(64)}],
+  counts:{registeredRows:2,normalSources:2,configuredExternals:0,compilerRegisteredDependencies:0,relations:1,work:3}});
+ const facts=()=>[fact(target),...importers.map(path=>fact(path))];
+ const recount=(f:any)=>{f.rows.forEach((row:any,i:number)=>row.index=i);const relations=f.rows.reduce((sum:number,row:any)=>sum+row.importedIds.length+row.dynamicallyImportedIds.length,0);f.counts={registeredRows:f.rows.length,normalSources:f.rows.length,configuredExternals:0,compilerRegisteredDependencies:0,relations,work:f.rows.length+relations};return f;};
+ const run=(value:unknown,files:unknown=facts(),root:unknown='/repo',sink?:(line:string)=>void)=>outputPolicy.validateWorkerContractSourceGraph(value,root,files,sink);
+ it('constructs one exact owned immutable builtin option without normalizing requests',()=>{
+  const value=outputPolicy.workerStaticResolveOptions('/repo');expect(value).toEqual({alias:{'@chat-ui-bench/contract$':'/repo/'+target}});
+  expect(Object.isFrozen(value)).toBe(true);expect(Object.isFrozen(value.alias)).toBe(true);expect(Object.keys(value.alias)).toEqual(['@chat-ui-bench/contract$']);
+ });
+ it.each([undefined,null,{},[],()=>'/repo','repo','/','/repo/','/repo//nested','/repo/../other','/repo/./nested','/repo\0hidden','/repo\nother','/'+ 'x'.repeat(1024),'/'+'😀'.repeat(300)])('refuses unsupported repository root %#',root=>{
+  expect(()=>outputPolicy.workerStaticResolveOptions(root)).toThrow('Worker contract source graph denied');
+ });
+ it('never coerces a hostile root',()=>{let reads=0;const root={[Symbol.toPrimitive](){reads++;return '/repo';},toString(){reads++;return '/repo';}};expect(()=>outputPolicy.workerStaticResolveOptions(root)).toThrow('Worker contract source graph denied');expect(reads).toBe(0);});
+ it.each(importers)('binds the actual static edge and SOURCE hashes for %s without requiring unused importers',path=>{
+  const input=fixture(path),before=structuredClone(input),result=run(input);expect(result).toEqual(input);expect(input).toEqual(before);expect(Object.isFrozen(result)).toBe(true);expect(Object.isFrozen(result.rows)).toBe(true);
+  input.rows[1].importedIds.length=0;expect(result.rows[1]!.importedIds).toEqual(['/repo/'+target]);
+ });
+ it('checks every present known importer even when an earlier one satisfies the representative',()=>{
+  const f=fixture();f.rows.push(normal(importers[1]!,2,['/repo/'+target]));expect(run(recount(f)).rows).toHaveLength(3);
+  f.rows[2].importedIds=[];expect(()=>run(recount(f))).toThrow('Worker contract source graph denied');
+ });
+ it.each(['missing-target','target-virtual','target-hash','target-root','no-importer','foreign-importer','importer-virtual','importer-hash','importer-root','missing-edge','dynamic-edge','mixed-edge'])('refuses %s without weakening generic graph rules',kind=>{
+  const f=fixture();
+  if(kind==='missing-target'){f.rows.shift();f.chunks[0].moduleIds=[];f.chunks[0].facadeModuleId=null;}
+  if(kind==='target-virtual'){f.rows[0].id='virtual:index';f.rows[0].source={id:f.rows[0].id,kind:'virtual',external:false};f.chunks[0].moduleIds=[f.rows[0].id];f.chunks[0].facadeModuleId=f.rows[0].id;}
+  if(kind==='target-hash')f.rows[0].source.sha256='c'.repeat(64);
+  if(kind==='target-root'){f.rows[0].id='/other/'+target;f.rows[0].source.id=f.rows[0].id;f.chunks[0].moduleIds=[f.rows[0].id];f.chunks[0].facadeModuleId=f.rows[0].id;}
+  if(kind==='no-importer')f.rows.pop();
+  if(kind==='foreign-importer')f.rows[1]=normal('node_modules/other/entry.js',1,['/repo/'+target]);
+  if(kind==='importer-virtual'){f.rows[1].id='virtual:importer';f.rows[1].source={id:f.rows[1].id,kind:'virtual',external:false};}
+  if(kind==='importer-hash')f.rows[1].source.sha256='c'.repeat(64);
+  if(kind==='importer-root'){f.rows[1].id='/other/'+importers[0];f.rows[1].source.id=f.rows[1].id;}
+  if(kind==='missing-edge'||kind==='dynamic-edge')f.rows[1].importedIds=[];
+  if(kind==='dynamic-edge'||kind==='mixed-edge')f.rows[1].dynamicallyImportedIds=['/repo/'+target];
+  expect(()=>run(recount(f))).toThrow('Worker contract source graph denied');
+ });
+ it.each(['contractAliasFind','contractAliasTarget'])('requires the fixed declared %s in generic and strict profiles',key=>{
+  for(const mutate of [(f:any)=>delete f.buildProfile[key],(f:any)=>f.buildProfile[key]='wrong']){const f=fixture();mutate(f);expect(()=>outputPolicy.validateWorkerRegisteredGraph(f)).toThrow();expect(()=>run(f)).toThrow();}
+ });
+ it('retains generic supplied graphs without fabricating a contract representative',()=>{
+  const f=fixture();f.rows=[normal('apps/other.ts',0)];f.chunks[0].moduleIds=[];f.chunks[0].facadeModuleId=null;recount(f);
+  expect(outputPolicy.validateWorkerRegisteredGraph(f).rows).toHaveLength(1);expect(()=>run(f)).toThrow('Worker contract source graph denied');
+ });
+ it.each(['missing','duplicate','sparse','array-extra','over128','prototype','accessor','extra','bad-path','negative-bytes','invalid-hash','not-regular','not-contained','symlink','aggregate-overflow'])('refuses %s SOURCE facts without reading accessors',kind=>{
+  let reads=0;const files:any=facts();
+  if(kind==='missing')files.shift();if(kind==='duplicate')files.push({...files[0]});if(kind==='sparse')delete files[1];if(kind==='array-extra')files.extra=1;if(kind==='over128')files.length=129;
+  if(kind==='prototype')Object.setPrototypeOf(files[0],{unexpected:true});if(kind==='accessor')Object.defineProperty(files[0],'sha256',{get(){reads++;return 'b'.repeat(64);}});
+  if(kind==='extra')files[0].extra=1;if(kind==='bad-path')files[0].path='../index.ts';if(kind==='negative-bytes')files[0].bytes=-1;if(kind==='invalid-hash')files[0].sha256='b'.repeat(63);
+  if(kind==='not-regular')files[0].regular=false;if(kind==='not-contained')files[0].contained=false;if(kind==='symlink')files[0].symlink=true;if(kind==='aggregate-overflow')files[0].bytes=32*1024*1024;
+  expect(()=>run(fixture(),files)).toThrow('Worker contract source graph denied');expect(reads).toBe(0);
+ });
+ it('preflights the source entry cap before entry descriptor work',()=>{
+  let reads=0;const files=new Proxy(new Array(129),{getOwnPropertyDescriptor(target,key){if(key!=='length')reads++;return Reflect.getOwnPropertyDescriptor(target,key);}});
+  expect(()=>run(fixture(),files)).toThrow('Worker contract source graph denied');expect(reads).toBe(0);
+ });
+ it('accepts a full bounded inventory and owns graph data independently from source fact mutation',()=>{
+  const files=facts();for(let i=files.length;i<128;i++)files.push(fact('other/'+i+'.ts'));
+  const result=run(fixture(),files);files[0]!.sha256='c'.repeat(64);expect((result.rows[0]!.source as {sha256:string}).sha256).toBe('b'.repeat(64));
+ });
+ it('runs the original generic Zod denial first and forwards its sole diagnostic without replacing the refusal',()=>{
+  const f=fixture();f.rows.push({...normal('packages/contract/dist/comparison-artifact.js',2,['zod'])});
+  f.rows.push({index:3,id:'zod',role:'configured-external',codeKind:'not-read',allowed:true,requested:true});
+  f.counts={registeredRows:4,normalSources:3,configuredExternals:1,compilerRegisteredDependencies:0,relations:2,work:6};
+  const lines:string[]=[];expect(()=>run(f,[],null,line=>lines.push(line))).toThrow('Worker registered graph denied');expect(lines).toHaveLength(1);expect(JSON.parse(lines[0]!).workerZodOriginRefusalDiagnostic.rowIndex).toBe(2);
+ });
+});
 describe('fixed public-root paths and original Zod importer cohort',()=>{
  const paths=()=>({zod:zodAlias});
  it.each([undefined,null,{},[],()=>zodAlias,{zod:'zod'},{zod:zodAlias,rxjs:'other'},{zod:zodAlias,[Symbol('extra')]:1},Object.create({zod:zodAlias})])('refuses a nonexact actual hook mapping %#',value=>{

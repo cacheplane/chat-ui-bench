@@ -679,9 +679,9 @@ provenance remains unknown. This explicit profile tests the documented compiler
 default hypothesis; pure checks do not establish successful hosted emission or
 native conformance.
 
-## Prepared V28 origin-refusal diagnostic
+## Prepared V30 worker contract source resolution
 
-`hosted-copilot-react-production-build-v28` retains an explicit output path for the
+`hosted-copilot-react-production-build-v30` retains an explicit output path for the
 worker's external Zod import. The original contract imports Zod in root package scope;
 flattening that import into the app-local worker changes its package lookup scope.
 V24's original inspection refused the captured app-local entry instead of the
@@ -713,7 +713,7 @@ native conformance, frame rate or performance outcome.
 Original V26 emission failed at the normal-row Zod-origin predicate before worker
 inspection. The refused row was not retained, so the exact failing subpredicate
 and whether its source was SRC, dist, SDK or query-related remain unknown.
-V28 passes a synchronous diagnostic sink only at the original generation hook.
+The retained V28 diagnostic passes a synchronous sink only at the original generation hook.
 That one refusal can publish the already-normalized row index/ID, source kind,
 path/hash and predicate booleans. Strings are exact when bounded or explicitly
 labelled previews with full UTF8 lengths and hashes; the complete line including
@@ -721,4 +721,30 @@ its newline must fit 16 KiB before publication. Best-effort diagnostic failures
 throw the same owned refusal. Default policy/replay callers, successful graphs
 and other denial branches remain silent. The nine-origin gate, public maps,
 19 pins, lock, loader denials, AST coverage and resource caps are unchanged.
-Fresh same-source full frontend and worker STATIC qualification is still required.
+V28's first reported refusal identified physical
+`packages/contract/dist/comparison-artifact.js` with a static Zod edge and a false
+known-origin predicate. Its full incoming graph and other Zod origins were not
+retained; this does not retrospectively identify V26's cause.
+
+V30 uses the builtin worker input `resolve.alias` with the single fixed key
+`@chat-ui-bench/contract$` and an absolute target constructed from the admitted
+repository root plus `packages/contract/src/index.ts`. It deliberately compiles
+the owned source barrel instead of the package's published dist runtime entry.
+No resolver plugin is added, and the frontend/default profile, lock, package pins
+and external maps are unchanged. Terminal `$` matches the resolver's parsed path;
+it does not prove raw query/fragment requests avoid the alias. The profile's
+`contractAliasFind` and `contractAliasTarget` fields declare configuration rather
+than inventing a normalized input observation unavailable in the public API.
+
+The original emit/final/inspect and native bootstrap checks require the rooted
+physical index and at least one actual static incoming edge from the reviewed
+bare-root importers: `apps/threadplane/src/sse.ts`, `tests/fixtures/aimock.ts` or
+`packages/producer/src/replay.ts`. Every present known importer must have its
+selected SOURCE hash and static edge to that same index, without a dynamic edge
+to it. Authenticated source bytes establish bare-package import intent; the graph
+retains resolved edges, not raw resolver-call receipts. Unused importers need not
+exist. All graph rows and the nine-origin Zod predicate remain covered. Bootstrap
+retains its final fresh SOURCE snapshot after physical and resolution checks.
+Pure tests prove no actual compiler resolution or emission. Fresh same-source
+full frontend and worker STATIC qualification is still required before native
+admission; no native conformance or performance outcome is claimed.
