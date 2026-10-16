@@ -47,6 +47,70 @@ describe('fixed public-root paths and original Zod importer cohort',()=>{
  it.each(['logicalZodSpecifier','emittedZodSpecifier','zodPublicSourceParent'])('rejects missing or changed fixed profile fact %s',key=>{
   const f=fixture();delete f.buildProfile[key];expect(()=>validate(f)).toThrow();f.buildProfile[key]='wrong';expect(()=>validate(f)).toThrow();
  });
+ describe('original Zod origin refusal diagnostic',()=>{
+  const run=(f:any,sink?:(line:string)=>void)=>outputPolicy.validateWorkerRegisteredGraph(recount(f),sink);
+  const foreign=()=>{const f=fixture();f.rows.push(physical('packages/contract/dist/fixture.js',2));return f;};
+  const stringFact=(value:string)=>({status:'exact',value,codeUnits:value.length,utf8Bytes:Buffer.byteLength(value,'utf8'),sha256:createHash('sha256').update(value).digest('hex')});
+  const observe=(f:any)=>{const lines:string[]=[];expect(()=>run(f,line=>lines.push(line))).toThrow('Worker registered graph denied');expect(lines).toHaveLength(1);expect(lines[0]!.endsWith('\n')).toBe(true);expect(Buffer.byteLength(lines[0]!)).toBeLessThanOrEqual(16384);const parsed=JSON.parse(lines[0]!);expect(Object.keys(parsed)).toEqual(['workerZodOriginRefusalDiagnostic']);return parsed.workerZodOriginRefusalDiagnostic;};
+  it('reports the actual first refused unrendered physical row and exact predicate facts',()=>{
+   const f=foreign(),r=f.rows[2],record=observe(f);
+   expect(record).toEqual({status:'observed',scope:'first refused normalized normal-source Zod origin row only',rowIndex:2,id:stringFact(r.id),sourceKind:'physical',sourcePath:stringFact(r.source.path),sourceHash:stringFact(r.source.sha256),knownOrigin:false,physical:true,absoluteId:true,idPathSuffix:true,staticZod:true,dynamicZod:false});
+  });
+  it('reports absent virtual source fields without inventing a physical path or hash',()=>{
+   const f=fixture();f.rows[0].id='virtual:fixture';f.rows[0].source={id:'virtual:fixture',kind:'virtual',external:false};
+   expect(observe(f)).toMatchObject({rowIndex:0,id:stringFact('virtual:fixture'),sourceKind:'virtual',sourcePath:{status:'absent'},sourceHash:{status:'absent'},knownOrigin:false,physical:false,absoluteId:false,idPathSuffix:false,staticZod:true,dynamicZod:false});
+  });
+  it.each(['relative','suffix'])('retains the precise %s predicate rather than guessing an importer cause',kind=>{
+   const f=fixture(),id=kind==='relative'?'relative/packages/contract/src/fixture.ts':'/repo/different.ts';f.rows[0].id=id;f.rows[0].source.id=id;
+   expect(observe(f)).toMatchObject({rowIndex:0,id:stringFact(id),knownOrigin:true,physical:true,absoluteId:kind!=='relative',idPathSuffix:kind!=='suffix',staticZod:true,dynamicZod:false});
+  });
+  it('leaves valid normalized graph data frozen, unchanged and silent',()=>{
+   const f=fixture(),before=run(f),lines:string[]=[],after=run(f,line=>lines.push(line));expect(after).toEqual(before);expect(Object.isFrozen(after)).toBe(true);expect(Object.isFrozen(after.rows)).toBe(true);expect(lines).toEqual([]);
+  });
+  it.each(['profile','dynamic','known-edge','orphan','source-root','oversized-id'])('keeps other %s denials silent',kind=>{
+   const f=fixture();
+   if(kind==='profile')f.compilerProfile.version='wrong';
+   if(kind==='dynamic'){f.rows[0].importedIds=[];f.rows[0].dynamicallyImportedIds=['zod'];}
+   if(kind==='known-edge')f.rows[0].importedIds=[];
+   if(kind==='orphan')f.rows.pop();
+   if(kind==='source-root'){const r=physical('packages/contract/src/artifact.ts',2);r.id='/other/'+r.source.path;r.source.id=r.id;f.rows.push(r);}
+   if(kind==='oversized-id'){f.rows[0].id='x'.repeat(4097);f.rows[0].source.id=f.rows[0].id;}
+   const lines:string[]=[];expect(()=>run(f,line=>lines.push(line))).toThrow();expect(lines).toEqual([]);
+  });
+  it('keeps hostile supplied getters out of the diagnostic path',()=>{
+   const f=fixture();let getters=0,emits=0;Object.defineProperty(f.rows[0].source,'path',{get(){getters++;throw Error('getter');}});expect(()=>run(f,()=>{emits++;})).toThrow();expect(getters).toBe(0);expect(emits).toBe(0);
+  });
+  it('does no diagnostic formatting when the optional sink is absent',()=>{
+   let formats=0;const native=JSON.stringify,spy=vi.spyOn(JSON,'stringify').mockImplementation(((value:any,...args:any[])=>{if(value&&Object.hasOwn(value,'workerZodOriginRefusalDiagnostic'))formats++;return (native as any)(value,...args);}) as any);
+   try{expect(()=>run(foreign())).toThrow('Worker registered graph denied');expect(formats).toBe(0);}finally{spy.mockRestore();}
+  });
+  it.each(['sink','formatter'])('preserves the same owned Error through a hostile %s throw',stage=>{
+   const NativeError=globalThis.Error,nativeStringify=JSON.stringify,owned:Error[]=[];let foreignReads=0,emits=0,formats=0,caught:unknown;
+   const hostile={get message(){foreignReads++;throw new NativeError('foreign');},get code(){foreignReads++;throw new NativeError('foreign');},get stack(){foreignReads++;throw new NativeError('foreign');}};
+   const ctor=vi.spyOn(globalThis,'Error').mockImplementation((function(message?:string){const e=new NativeError(message);if(message==='Worker registered graph denied')owned.push(e);return e;}) as any);
+   const stringify=vi.spyOn(JSON,'stringify').mockImplementation(((value:any,...args:any[])=>{if(value&&Object.hasOwn(value,'workerZodOriginRefusalDiagnostic')){formats++;if(stage==='formatter')throw hostile;}return (nativeStringify as any)(value,...args);}) as any);
+   try{try{run(foreign(),()=>{emits++;throw hostile;});}catch(error){caught=error;}}finally{stringify.mockRestore();ctor.mockRestore();}
+   expect(formats).toBe(1);expect(emits).toBe(stage==='sink'?1:0);expect(foreignReads).toBe(0);expect(owned).toHaveLength(1);expect(caught).toBe(owned[0]);expect((caught as Error).message).toBe('Worker registered graph denied');
+  });
+  it.each(['exact-1024','preview-1025','ascii-4096','escaped-controls','unicode-byte-bound','surrogate-preview'])('bounds %s string facts with full original UTF8 hashes',kind=>{
+   const f=foreign(),path=f.rows[2].source.path,suffix='/'+path;
+   let id:string;
+   if(kind==='exact-1024'||kind==='preview-1025'||kind==='ascii-4096'){const size=kind==='exact-1024'?1024:kind==='preview-1025'?1025:4096;id='/'+ 'x'.repeat(size-1-suffix.length)+suffix;}
+   else if(kind==='escaped-controls')id='/'+ '\x01'.repeat(900)+suffix;
+   else if(kind==='unicode-byte-bound'){const prefix='/'+ '😀'.repeat(1000);id=prefix+'x'.repeat(4096-Buffer.byteLength(prefix)-Buffer.byteLength(suffix))+suffix;}
+   else id='/'+ 'x'.repeat(94)+'😀'+'x'.repeat(1100)+suffix;
+   f.rows[2].id=id;f.rows[2].source.id=id;
+   const record=observe(f),actual=record.id;expect(actual.codeUnits).toBe(id.length);expect(actual.utf8Bytes).toBe(Buffer.byteLength(id));expect(actual.sha256).toBe(createHash('sha256').update(id).digest('hex'));
+   if(id.length<=1024&&Buffer.byteLength(id)<=1024)expect(actual).toEqual(stringFact(id));
+   else{expect(actual.status).toBe('preview');expect(actual.value).toBeUndefined();expect(actual.preview.length).toBeLessThanOrEqual(96);expect(actual.previewCodeUnits).toBe(actual.preview.length);expect(actual.previewUtf8Bytes).toBe(Buffer.byteLength(actual.preview));expect(id.startsWith(actual.preview)).toBe(true);const last=actual.preview.charCodeAt(actual.preview.length-1);expect(last>=0xd800&&last<=0xdbff).toBe(false);}
+  });
+  it('refuses publication if complete serialized output exceeds16KiB',()=>{
+   const native=JSON.stringify;let formats=0,emits=0,caught:unknown;
+   const spy=vi.spyOn(JSON,'stringify').mockImplementation(((value:any,...args:any[])=>{if(value&&Object.hasOwn(value,'workerZodOriginRefusalDiagnostic')){formats++;return 'x'.repeat(16384);}return (native as any)(value,...args);}) as any);
+   try{try{run(foreign(),()=>{emits++;});}catch(error){caught=error;}}finally{spy.mockRestore();}
+   expect(formats).toBe(1);expect(emits).toBe(0);expect((caught as Error).message).toBe('Worker registered graph denied');
+  });
+ });
 });
 describe('bounded public-resolution refusal diagnostic',()=>{
  const unavailable='{"workerPublicResolutionDiagnostic":{"status":"unavailable","reason":"invalid-or-oversized-input"}}';

@@ -132,6 +132,23 @@ function own(value:Row,key:string,message:string):unknown {
 type WorkerCallbackObservation=Readonly<{parent:string|null;parentStatus:string;isResolved:boolean|'invalid';returnedAllowed:boolean|'invalid'}>;
 type WorkerCallbackSnapshot=Readonly<{target:'node:module';scope:'original external callback observations only';observations:readonly WorkerCallbackObservation[];omitted:boolean;callbackCountKnown:boolean;retainedCallbackCount:number;complete:boolean}>;
 const graphDenied='Worker registered graph denied';
+type OriginStringFact=Readonly<{status:'absent'}|{status:'exact';value:string;codeUnits:number;utf8Bytes:number;sha256:string}|
+ {status:'preview';preview:string;previewCodeUnits:number;previewUtf8Bytes:number;codeUnits:number;utf8Bytes:number;sha256:string}>;
+/** Private formatting receives only this validator's owned normalized scalars. */
+function originStringFact(value:string|undefined):OriginStringFact {
+ if(value===undefined)return {status:'absent'};
+ const codeUnits=value.length,utf8Bytes=Buffer.byteLength(value,'utf8'),sha256=createHash('sha256').update(value).digest('hex');
+ if(codeUnits<=1024&&utf8Bytes<=1024)return {status:'exact',value,codeUnits,utf8Bytes,sha256};
+ let preview=value.slice(0,96);const last=preview.charCodeAt(preview.length-1);
+ if(last>=0xd800&&last<=0xdbff)preview=preview.slice(0,-1);
+ return {status:'preview',preview,previewCodeUnits:preview.length,previewUtf8Bytes:Buffer.byteLength(preview,'utf8'),codeUnits,utf8Bytes,sha256};
+}
+function formatZodOriginRefusal(row:Readonly<Row>,source:ModuleMapping,known:boolean,imports:readonly string[],dynamic:readonly string[]):string {
+ const physical=source.kind==='physical';
+ return JSON.stringify({workerZodOriginRefusalDiagnostic:{status:'observed',scope:'first refused normalized normal-source Zod origin row only',
+  rowIndex:row.index,id:originStringFact(row.id as string),sourceKind:source.kind,sourcePath:originStringFact(source.path),sourceHash:originStringFact(source.sha256),
+  knownOrigin:known,physical,absoluteId:source.id.startsWith('/'),idPathSuffix:physical&&source.id.endsWith('/'+source.path),staticZod:imports.includes('zod'),dynamicZod:dynamic.includes('zod')}})+'\n';
+}
 function closed(value:unknown,keys:readonly string[]):Row {
  const row=data(value,graphDenied),actual=Reflect.ownKeys(row);
  if(actual.length!==keys.length||!keys.every(key=>Object.hasOwn(row,key)))deny(graphDenied);
@@ -239,7 +256,7 @@ export function assertWorkerChunkMetadataStable(hook:unknown,final:unknown):void
 }
 /** Replay validates complete producer observations, not a fresh native graph.
  * Every accepted object/array is a fresh, closed, frozen JSON-safe projection. */
-export function validateWorkerRegisteredGraph(input:unknown){
+export function validateWorkerRegisteredGraph(input:unknown,diagnosticSink?:(line:string)=>void){
  const root=closed(input,['compilerProfile','buildProfile','workerOutputPolicy','rows','callbacks','chunks','counts']);
  const compilerProfile=literalProfile(own(root,'compilerProfile',graphDenied),{provider:'rolldown',version:'1.2.13',runtimeModuleId:'\0rolldown/runtime.js'});
  const buildProfile=literalProfile(own(root,'buildProfile',graphDenied),{entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false,
@@ -283,7 +300,11 @@ export function validateWorkerRegisteredGraph(input:unknown){
   if(dynamic.includes('zod'))deny(graphDenied);
   if(known&&!imports.includes('zod'))deny(graphDenied);
   if(imports.includes('zod')){
-   if(!known||source.kind!=='physical'||!source.id.startsWith('/')||!source.id.endsWith('/'+source.path))deny(graphDenied);
+   if(!known||source.kind!=='physical'||!source.id.startsWith('/')||!source.id.endsWith('/'+source.path)){
+    const refusal=new Error(graphDenied);
+    if(typeof diagnosticSink==='function')try{const line=formatZodOriginRefusal(row,source,known,imports,dynamic);if(Buffer.byteLength(line,'utf8')<=16384)diagnosticSink(line);}catch{/* Best effort only; never inspect or replace a foreign throw. */}
+    throw refusal;
+   }
    const currentRoot=source.id.slice(0,-(source.path!.length+1));
    if(sourceRoot!==undefined&&sourceRoot!==currentRoot)deny(graphDenied);sourceRoot=currentRoot;
    incoming++;if(source.path===WORKER_ZOD_PUBLIC_BINDING.sourceParent)representative=true;
