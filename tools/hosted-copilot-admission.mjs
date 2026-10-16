@@ -7,7 +7,7 @@ import {collectProductionArtifact} from '../tests/support/hosted-copilot-static-
 const option=process.argv[2];
 if(process.argv.length!==3||!['--initialize-evidence','--admit-artifacts','--source-policy-report'].includes(option)) throw new Error('Fixed explicit production admission action required');
 const context=readHostedCopilotContext();
-if(context.releaseId!=='hosted-copilot-react-production-build-v24'||process.version!=='v24.20.0') throw new Error('Exact twenty-fourth production source/tool profile required');
+if(context.releaseId!=='hosted-copilot-react-production-build-v26'||process.version!=='v24.20.0') throw new Error('Exact twenty-sixth production source/tool profile required');
 const source=readSourceSnapshot(process.cwd(),COPILOT_PRODUCTION_SOURCES),paths=productionArtifactPaths();
 if(source.files.find(file=>file.path==='package-lock.json')?.sha256!=='c9c4138247c23c593ceb5bd9f5275b59962aad0f017bcbc33dc78bcec3545a56') throw new Error('Accepted exact parent-only lock differs');
 if(option==='--source-policy-report') {console.log(JSON.stringify({context,source,runtimeAdmission:false,qualification:false}));process.exitCode=1;}

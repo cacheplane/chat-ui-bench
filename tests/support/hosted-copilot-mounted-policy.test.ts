@@ -1,9 +1,57 @@
 import { describe, expect, it } from 'vitest';
+import * as publicBinding from './hosted-copilot-mounted-policy.ts';
 import { evaluateMountedAdmissionPolicy as admission, evaluateMountedModulePolicy as modulePolicy,
   evaluateMountedOriginPolicy as originPolicy, evaluateMountedClosurePolicy as closure,
   MOUNTED_PACKAGE_PINS, MOUNTED_POLICY_LIMITS } from './hosted-copilot-mounted-policy.js';
 
 const sha = 'a'.repeat(40), hash = 'b'.repeat(64);
+const zodAlias = '../../../../node_modules/zod/index.js';
+describe('exact emitted public root binding',()=>{
+ const root='file:///repo/',worker='file:///repo/apps/copilotkit/.hosted-mounted/123-1/worker.mjs',entry='file:///repo/node_modules/zod/index.js';
+ it('retains the finite raw/logical identities without changing the ten compiler map or nineteen pins',()=>{
+  expect(publicBinding.lookupWorkerPublicPackage(zodAlias)).toEqual({publicSpecifier:'zod',packagePath:'node_modules/zod'});
+  expect(publicBinding.lookupWorkerPublicPackage('zod')).toBeNull();
+  for(const [specifier,packagePath] of Object.entries(publicBinding.MOUNTED_MODULE_PACKAGE_SPECIFIERS))if(specifier!=='zod')expect(publicBinding.lookupWorkerPublicPackage(specifier)).toEqual({publicSpecifier:specifier,packagePath});
+  expect(Object.keys(publicBinding.MOUNTED_MODULE_PACKAGE_SPECIFIERS)).toHaveLength(10);expect(Object.keys(MOUNTED_PACKAGE_PINS)).toHaveLength(19);
+ });
+ it('makes both original parent-aware calls and returns original canonical URL strings',()=>{
+  const calls:string[][]=[];const result=publicBinding.resolveMountedPublicEntry(zodAlias,worker,root,(specifier,parent)=>{calls.push([specifier,parent]);return entry;});
+  expect(calls).toEqual([[zodAlias,worker],['zod','file:///repo/packages/contract/src/fixture.ts']]);
+  expect(result).toEqual({publicSpecifier:'zod',rawUrl:entry,publicUrl:entry});expect(Object.isFrozen(result)).toBe(true);
+ });
+ it('uses one original call for other public names and never substitutes a logical worker-parent zod call',()=>{
+  const calls:string[][]=[];const result=publicBinding.resolveMountedPublicEntry('rxjs',worker,root,(specifier,parent)=>{calls.push([specifier,parent]);return 'file:///repo/node_modules/rxjs/dist/esm/index.js';});
+  expect(calls).toEqual([['rxjs',worker]]);expect(result.publicSpecifier).toBe('rxjs');expect(result.rawUrl).toBe(result.publicUrl);
+ });
+ it.each(['zod','../../../node_modules/zod/index.js','../../../../node_modules/zod/../zod/index.js','../../../../node_modules/zod/index.js?x','file:///repo/node_modules/zod/index.js','zod/v4','node:module'])('rejects unreviewed raw spelling %s before the resolver',raw=>{
+  let calls=0;expect(()=>publicBinding.resolveMountedPublicEntry(raw,worker,root,()=>{calls++;return entry;})).toThrow();expect(calls).toBe(0);
+ });
+ it.each(['file:///other/apps/copilotkit/.hosted-mounted/123-1/worker.mjs','file:///repo/apps/copilotkit/.hosted-mounted/0123-1/worker.mjs','file:///repo/apps/copilotkit/.hosted-mounted/123-2/worker.mjs','file:///repo/tool.mjs','file:///repo/apps/copilotkit/.hosted-mounted/123-1/worker.mjs?x'])('checks the fixed same-root worker URL before port use %s',bad=>{
+  let calls=0;expect(()=>publicBinding.resolveMountedPublicEntry(zodAlias,bad,root,()=>{calls++;return entry;})).toThrow();expect(calls).toBe(0);
+ });
+ it('refuses noncanonical/foreign root and hostile primitives before port use without reflection',()=>{
+  let calls=0;const hostile=new Proxy({}, {get(){calls++;throw Error();},getPrototypeOf(){calls++;throw Error();},ownKeys(){calls++;throw Error();}});
+  for(const raw of [hostile,null,undefined,1])expect(()=>publicBinding.lookupWorkerPublicPackage(raw)).not.toThrow();
+  for(const bad of ['file:///repo','file:///repo/../repo/','https://repo/','file://host/repo/','file:///repo/?x',hostile])expect(()=>publicBinding.resolveMountedPublicEntry(zodAlias,worker,bad,()=>{calls++;return entry;})).toThrow();expect(calls).toBe(0);
+ });
+ it.each(['file:///repo/apps/copilotkit/node_modules/zod/index.js','file:///other/node_modules/zod/index.js','https://example.test/zod.js','file:///repo/node_modules/zod/index.js?x','file:///repo/node_modules/zod/../zod/index.js','file://host/repo/node_modules/zod/index.js'])('refuses unequal or noncanonical original public results %s',bad=>{
+  let calls=0;expect(()=>publicBinding.resolveMountedPublicEntry(zodAlias,worker,root,()=>++calls===1?entry:bad)).toThrow();
+ });
+ it('preserves the original resolver throw without consulting its properties',()=>{
+  let reads=0;const thrown={get message(){reads++;throw Error();}};let observed:unknown;
+  try{publicBinding.resolveMountedPublicEntry(zodAlias,worker,root,()=>{throw thrown;});}catch(error){observed=error;}
+  expect(observed).toBe(thrown);expect(reads).toBe(0);
+ });
+ it('admits actual raw/logical/equal public facts and denies bare or dynamic alias and contradictions',()=>{
+  const f=moduleInput();f.imports=[{specifier:zodAlias,kind:'static',resolutionIndex:0}];
+  f.resolutions=[{specifier:zodAlias,publicSpecifier:'zod',publicEntryPath:'node_modules/zod/index.js',packagePath:'node_modules/zod',version:'4.6.5',integrity:MOUNTED_PACKAGE_PINS['node_modules/zod'].integrity,entryPath:'node_modules/zod/index.js',regular:true,contained:true,symlink:false}];
+  expect(modulePolicy(f).status).toBe('accepted');expect(f.imports[0]!.specifier).toBe(zodAlias);
+  for(const change of [(v:typeof f)=>{v.imports[0]!.specifier='zod';v.resolutions[0]!.specifier='zod';},(v:typeof f)=>v.imports[0]!.kind='dynamic-literal',
+   (v:typeof f)=>v.resolutions[0]!.publicSpecifier='rxjs',(v:typeof f)=>v.resolutions[0]!.publicEntryPath='apps/copilotkit/node_modules/zod/index.js',
+   (v:typeof f)=>v.resolutions[0]!.version='3.25.76']){const v=structuredClone(f);change(v);expect(modulePolicy(v).status).toBe('invalid');}
+  for(const key of ['publicSpecifier','publicEntryPath']){const v:Record<string,any>=structuredClone(f);delete v.resolutions[0][key];expect(modulePolicy(v).status).toBe('invalid');let calls=0;Object.defineProperty(v.resolutions[0],key,{get(){calls++;throw Error();}});expect(modulePolicy(v).status).toBe('invalid');expect(calls).toBe(0);}
+ });
+});
 const lock = 'c9c4138247c23c593ceb5bd9f5275b59962aad0f017bcbc33dc78bcec3545a56';
 const flags = { input: 'supplied-data', sourceAuthenticated: false, prerequisiteQualified: false, installedGraphQualified: false,
   nativeImportQualified: false, originalClosureQualified: false, runtimeAdmission: false, qualification: false };
@@ -29,7 +77,7 @@ const moduleInput = () => ({ schemaVersion: 1, sourceSha: sha, runId: '3', worke
   emitted: [{ path: 'apps/copilotkit/.hosted-mounted/3-1/worker.mjs', kind: 'chunk', format: 'es', entry: true, bytes: 20, sha256: hash }],
   imports: [{ specifier: '@copilotkit/runtime/v2', kind: 'static', resolutionIndex: 0 as number | null },
     { specifier: 'node:http', kind: 'static', resolutionIndex: null as number | null }],
-  resolutions: [{ specifier: '@copilotkit/runtime/v2', packagePath: 'apps/copilotkit/node_modules/@copilotkit/runtime', version: '1.78.0',
+  resolutions: [{ specifier: '@copilotkit/runtime/v2', publicSpecifier: '@copilotkit/runtime/v2', publicEntryPath: 'apps/copilotkit/node_modules/@copilotkit/runtime/dist/v2/index.mjs', packagePath: 'apps/copilotkit/node_modules/@copilotkit/runtime', version: '1.78.0',
     integrity: MOUNTED_PACKAGE_PINS['apps/copilotkit/node_modules/@copilotkit/runtime'].integrity,
     entryPath: 'apps/copilotkit/node_modules/@copilotkit/runtime/dist/v2/index.mjs', regular: true, contained: true, symlink: false }],
   executedCopySha256: hash });
@@ -343,8 +391,8 @@ describe('declared originals, serial boundaries and partial versus whole streams
     const paths = ['apps/copilotkit/node_modules/@copilotkit/runtime','apps/copilotkit/node_modules/@copilotkit/runtime','node_modules/@ag-ui/client','node_modules/@ag-ui/core','node_modules/@ag-ui/core',
       'node_modules/@hono/node-server','node_modules/rxjs','node_modules/@copilotkit/aimock','node_modules/playwright','node_modules/zod'] as const;
     const v = moduleInput(); v.resolutions = specs.map((specifier, i) => { const path = paths[i]!; const pin = MOUNTED_PACKAGE_PINS[path];
-      return { specifier, packagePath: path, version: pin.version, integrity: pin.integrity, entryPath: `${path}/dist/public.mjs`, regular: true, contained: true, symlink: false }; });
-    v.imports = specs.map((specifier, resolutionIndex) => ({ specifier, kind: 'dynamic-literal', resolutionIndex }));
+      return { specifier:specifier==='zod'?zodAlias:specifier, publicSpecifier:specifier, publicEntryPath:`${path}/dist/public.mjs`, packagePath: path, version: pin.version, integrity: pin.integrity, entryPath: `${path}/dist/public.mjs`, regular: true, contained: true, symlink: false }; });
+    v.imports = specs.map((specifier, resolutionIndex) => ({ specifier:specifier==='zod'?zodAlias:specifier, kind: specifier==='zod'?'static':'dynamic-literal', resolutionIndex }));
     expect(modulePolicy(v)).toMatchObject({ status: 'accepted', facts: { importOccurrences: 10, packageResolutions: 10 } });
     v.resolutions.push({ ...v.resolutions[0]! }); expectFailure(modulePolicy(v), 'cardinality-cap');
   });

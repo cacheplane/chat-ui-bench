@@ -178,16 +178,22 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v24`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v26`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
 membership. Report replay also checks the current policy component hashes.
-V24 adds a bounded diagnostic at the public-package resolution refusal, retaining
-the actual specifier, expected package path, worker-parent URL and resolved entry.
-The original V22 inspection remains failed; this diagnostic preserves the refusal
-and resolver policy rather than admitting a package-layout fix.
-The original loader and emitted-import refusals remain in force. These STATIC
+V26 explicitly binds the contract's emitted Zod import to the root public entry.
+The inspector and native bootstrap must resolve the emitted literal from the
+actual worker and the public package from the original contract source parent,
+and require the same entry bytes and pinned package. Reports retain the emitted
+literal separately from the public specifier and both resolved entry paths.
+Every original Zod importer must belong to the reviewed contract source family;
+the complete registered graph also covers unrendered modules.
+The original V24 inspection failed: its bounded diagnostic recorded
+`apps/copilotkit/node_modules/zod/index.js` where the root package was required.
+V26 requires fresh full frontend and worker inspection under its explicit profile.
+Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
 
 ## Planned comparison adapters

@@ -7,7 +7,7 @@ import {readIntegratedAdmission} from '../tests/support/hosted-copilot-context.t
 import {ordinaryPath,assertDenseEntries} from '../tests/support/hosted-copilot-contract.ts';
 import {readPhysicalSource,observeCompilerRuntimeModule} from '../tests/support/hosted-copilot-build-plugin.ts';
 import {assertCompilerProfile,assertCompilerRuntimeOwnership,assertMappings,assertModuleOwnershipId,projectCompilerRuntimeModules} from '../tests/support/hosted-copilot-production-policy.ts';
-import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_PACKAGE_PINS,evaluateMountedModulePolicy} from '../tests/support/hosted-copilot-mounted-policy.ts';
+import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_PACKAGE_PINS,evaluateMountedModulePolicy,WORKER_ZOD_PUBLIC_BINDING,lookupWorkerPublicPackage,resolveMountedPublicEntry} from '../tests/support/hosted-copilot-mounted-policy.ts';
 import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,observeWorkerRegisteredModule,observeWorkerResolvedRelations,validateWorkerRegisteredGraph,readWorkerChunkMetadata,assertWorkerChunkMetadataStable,assertWorkerCallbackSnapshotStable,settleWorkerStaticGeneration,assertWorkerComponentPins,WORKER_STATIC_COMPONENT_PATHS,workerStaticOutputOptions,observeWorkerOutputPolicy,readWorkerOutputPolicy,createWorkerImporterDiagnostic,formatWorkerPublicResolutionDiagnostic} from '../tests/support/hosted-copilot-worker-static-policy.ts';
 
 const action=process.argv[2];
@@ -17,7 +17,8 @@ const runId=process.env.GITHUB_RUN_ID,workerPath=`apps/copilotkit/.hosted-mounte
 if(!/^[1-9][0-9]{0,19}$/.test(runId??''))throw new Error('Fixed worker run identity required');
 const worker=join(root,workerPath),workerDirectory=join(worker,'..');
 const hash=raw=>createHash('sha256').update(raw).digest('hex');
-const buildProfile=Object.freeze({entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false});
+const buildProfile=Object.freeze({entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false,
+ logicalZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.publicSpecifier,emittedZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.rawSpecifier,zodPublicSourceParent:WORKER_ZOD_PUBLIC_BINDING.sourceParent});
 async function physical(path,cap) {
  if(!ordinaryPath(path))throw new Error('Worker physical path denied');
  let ancestor=root;
@@ -80,8 +81,8 @@ if(action==='emit') {
  const bundle=await rolldown({input:join(root,'apps/copilotkit/hosted-native-entry.ts'),cwd:root,platform:'node',tsconfig:false,preserveEntrySignatures:'strict',external,
   plugins:[{name:'worker-static-owned-modules',generateBundle(options,outputs){
    if(observed)throw new Error('Worker mapping hook repeated');observed=true;
-   const format=options.format,polyfillRequire=options.polyfillRequire;
-   workerOutputPolicy=observeWorkerOutputPolicy(format,polyfillRequire);
+   const format=options.format,polyfillRequire=options.polyfillRequire,paths=options.paths;
+   workerOutputPolicy=observeWorkerOutputPolicy(format,polyfillRequire,paths);
    console.log(JSON.stringify({workerOutputPolicy}));
    // Validate actual output membership before considering the null-code row.
    const entries=Object.values(outputs);
@@ -164,24 +165,29 @@ if(action==='emit') {
  }
  const {parseAst}=await import('rolldown/parseAst');
  const imports=collectWorkerModuleImports(parseAst(new TextDecoder('utf-8',{fatal:true}).decode(original.raw),null,'worker.mjs'));
+ if(!imports.some(item=>item.specifier===WORKER_ZOD_PUBLIC_BINDING.rawSpecifier&&item.kind==='static'))throw new Error('Worker static Zod binding missing');
+ const parents=owned.filter(module=>module.kind==='physical'&&module.path===WORKER_ZOD_PUBLIC_BINDING.sourceParent);
+ const parent=readPhysicalSource(join(root,WORKER_ZOD_PUBLIC_BINDING.sourceParent),root);
+ if(parents.length!==1||parents[0].id!==join(root,WORKER_ZOD_PUBLIC_BINDING.sourceParent)||parents[0].sha256!==parent.sha256||!registeredGraph.rows.some(row=>row.id==='zod'&&row.role==='configured-external'))throw new Error('Worker original public source parent differs');
  const resolutions=[],resolutionFiles=[],rows=[];
  for(const item of imports) {
   if(MOUNTED_MODULE_BUILTINS.includes(item.specifier)){rows.push({...item,resolutionIndex:null});continue;}
   let index=resolutions.findIndex(row=>row.specifier===item.specifier);
   if(index<0) {
    if(resolutions.length>=10)throw new Error('Worker resolution count bound');
-   const packagePath=MOUNTED_MODULE_PACKAGE_SPECIFIERS[item.specifier];if(!packagePath)throw new Error('Worker public import denied');
+   const binding=lookupWorkerPublicPackage(item.specifier);if(!binding)throw new Error('Worker public import denied');const packagePath=binding.packagePath;
    const workerParentUrl=pathToFileURL(worker).href;
-   const url=new URL(import.meta.resolve(item.specifier,workerParentUrl));
+   const observed=resolveMountedPublicEntry(item.specifier,workerParentUrl,pathToFileURL(root+'/').href,(specifier,parent)=>import.meta.resolve(specifier,parent));
+   const url=new URL(observed.rawUrl),publicUrl=new URL(observed.publicUrl);
    if(url.protocol!=='file:'||url.search||url.hash)throw new Error('Worker public resolution URL denied');
-   const entryPath=relative(root,fileURLToPath(url));
+   const entryPath=relative(root,fileURLToPath(url)),publicEntryPath=relative(root,fileURLToPath(publicUrl));
    if(!entryPath.startsWith(packagePath+'/')){
     const refusal=new Error('Worker public resolution package differs');
     try{process.stderr.write(formatWorkerPublicResolutionDiagnostic(item.specifier,packagePath,workerParentUrl,entryPath)+'\n');}catch{/* Diagnostic failure must not replace the original refusal. */}
     throw refusal;
    }
    const actual=await physical(entryPath,16*1024*1024),pin=MOUNTED_PACKAGE_PINS[packagePath];
-   resolutions.push({specifier:item.specifier,packagePath,version:pin.version,integrity:pin.integrity,entryPath,regular:true,contained:true,symlink:false});
+   resolutions.push({specifier:item.specifier,publicSpecifier:observed.publicSpecifier,publicEntryPath,packagePath,version:pin.version,integrity:pin.integrity,entryPath,regular:true,contained:true,symlink:false});
    resolutionFiles.push(actual.fact);index=resolutions.length-1;
   }
   rows.push({...item,resolutionIndex:index});

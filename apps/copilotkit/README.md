@@ -678,3 +678,34 @@ unchanged. V16 refused a `node:module` enumeration, but its precise insertion
 provenance remains unknown. This explicit profile tests the documented compiler
 default hypothesis; pure checks do not establish successful hosted emission or
 native conformance.
+
+## Prepared V26 public-root worker binding
+
+`hosted-copilot-react-production-build-v26` gives the worker's external Zod import
+an explicit output path. The original contract imports Zod in root package scope;
+flattening that import into the app-local worker changes its package lookup scope.
+V24's original inspection refused the captured app-local entry instead of the
+required root entry. Its failed original remains preserved.
+
+The new Rolldown output profile sets exactly
+`paths: {zod: '../../../../node_modules/zod/index.js'}`. The actual normalized
+hook mapping and final parser-observed static import must agree. The filename is
+accepted only when resolving that literal from the actual worker URL equals
+resolving public `zod` from the original `packages/contract/src/fixture.ts` URL.
+Inspection checks the root Zod 4.6.5 pin, manifest and entry bytes. The native
+bootstrap repeats both resolutions and byte checks before native effects.
+Other public dependencies retain their actual worker-parent lookup scope.
+
+The complete registered graph must bind every Zod import, including imports in
+unrendered modules, to one of the nine reviewed physical contract sources in the
+same directory. Foreign, virtual, dynamic, orphaned or missing known relations
+are refused. `fixture.ts` must be an actual owned physical source. This limits
+the rewrite to contract consumers with the reviewed root lookup context.
+
+`worker-module.json` retains the raw emitted `specifier` and `entryPath`, plus
+mandatory `publicSpecifier` and `publicEntryPath`. Both entry paths must agree;
+they are derived observations rather than separate raw resolver-call receipts.
+All 19 installed package pins, the existing lock commitment and loader denials
+remain required. The profile permits only the exact static Zod literal, and the
+actual worker must contain it. Source tests establish no hosted inspection,
+native conformance, frame rate or performance outcome.

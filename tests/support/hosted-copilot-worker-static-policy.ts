@@ -3,7 +3,7 @@
 import {createHash} from 'node:crypto';
 import {assertProductionOutputInventory,PRODUCTION_FILE_LIMITS,type FileFact} from './hosted-copilot-contract.ts';
 import {assertModuleOwnershipId,assertMappings,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
-import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_POLICY_LIMITS,type NativeImport} from './hosted-copilot-mounted-policy.ts';
+import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_POLICY_LIMITS,WORKER_ZOD_PUBLIC_BINDING,lookupWorkerPublicPackage,type NativeImport} from './hosted-copilot-mounted-policy.ts';
 /** Diagnostic formatting only; no resolution, coercion or policy decision. */
 export function formatWorkerPublicResolutionDiagnostic(specifier:unknown,expectedPackagePath:unknown,workerParentUrl:unknown,resolvedEntryPath:unknown):string {
  const unavailable='{"workerPublicResolutionDiagnostic":{"status":"unavailable","reason":"invalid-or-oversized-input"}}';
@@ -55,19 +55,22 @@ type Row=Record<string,unknown>;
 type WorkerImport=Readonly<Pick<NativeImport,'specifier'>&{kind:'static'|'dynamic-literal'}>;
 function deny(message:string):never {throw new Error(message);}
 /** Fixed loader-free ES generation profile; callers cannot supply overrides. */
-export function workerStaticOutputOptions(){
- return Object.freeze({format:'es' as const,codeSplitting:false as const,entryFileNames:'worker.mjs',sourcemap:false as const,minify:false as const,strictExecutionOrder:true as const,polyfillRequire:false as const});
+export interface WorkerOutputPolicy {readonly format:'es';readonly polyfillRequire:false;readonly paths:Readonly<{zod:string}>}
+export function workerStaticOutputOptions():Readonly<{format:'es';codeSplitting:false;entryFileNames:'worker.mjs';sourcemap:false;minify:false;strictExecutionOrder:true;polyfillRequire:false;paths:Readonly<{zod:string}>}> {
+ return Object.freeze({format:'es',codeSplitting:false,entryFileNames:'worker.mjs',sourcemap:false,minify:false,strictExecutionOrder:true,polyfillRequire:false,paths:Object.freeze({zod:WORKER_ZOD_PUBLIC_BINDING.rawSpecifier})});
 }
 /** Observe normalized public compiler scalars, without coercion or value echo. */
-export function observeWorkerOutputPolicy(format:unknown,polyfillRequire:unknown){
+export function observeWorkerOutputPolicy(format:unknown,polyfillRequire:unknown,paths?:unknown):Readonly<WorkerOutputPolicy> {
  if(format!=='es'||polyfillRequire!==false)return deny('Worker output policy denied');
- return Object.freeze({format:'es' as const,polyfillRequire:false as const});
+ const row=data(paths,'Worker output policy denied');
+ if(Reflect.ownKeys(row).length!==1||own(row,'zod','Worker output policy denied')!==WORKER_ZOD_PUBLIC_BINDING.rawSpecifier)return deny('Worker output policy denied');
+ return Object.freeze({format:'es',polyfillRequire:false,paths:Object.freeze({zod:WORKER_ZOD_PUBLIC_BINDING.rawSpecifier})});
 }
 /** Fixed successful-report projection; accessors and additional keys are denied. */
-export function readWorkerOutputPolicy(value:unknown){
+export function readWorkerOutputPolicy(value:unknown):Readonly<WorkerOutputPolicy> {
  const row=data(value,'Worker output policy denied');
- if(Reflect.ownKeys(row).length!==2)return deny('Worker output policy denied');
- return observeWorkerOutputPolicy(own(row,'format','Worker output policy denied'),own(row,'polyfillRequire','Worker output policy denied'));
+ if(Reflect.ownKeys(row).length!==3)return deny('Worker output policy denied');
+ return observeWorkerOutputPolicy(own(row,'format','Worker output policy denied'),own(row,'polyfillRequire','Worker output policy denied'),own(row,'paths','Worker output policy denied'));
 }
 /** Exact configured externals are identified by this build's prior callback
  * decision, never by a code-null sentinel. An external code getter is not read.
@@ -239,7 +242,8 @@ export function assertWorkerChunkMetadataStable(hook:unknown,final:unknown):void
 export function validateWorkerRegisteredGraph(input:unknown){
  const root=closed(input,['compilerProfile','buildProfile','workerOutputPolicy','rows','callbacks','chunks','counts']);
  const compilerProfile=literalProfile(own(root,'compilerProfile',graphDenied),{provider:'rolldown',version:'1.2.13',runtimeModuleId:'\0rolldown/runtime.js'});
- const buildProfile=literalProfile(own(root,'buildProfile',graphDenied),{entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false});
+ const buildProfile=literalProfile(own(root,'buildProfile',graphDenied),{entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false,
+  logicalZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.publicSpecifier,emittedZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.rawSpecifier,zodPublicSourceParent:WORKER_ZOD_PUBLIC_BINDING.sourceParent});
  const workerOutputPolicy=readWorkerOutputPolicy(own(root,'workerOutputPolicy',graphDenied));
  const supplied=own(root,'rows',graphDenied),length=arrayLength(supplied,MODULE_OWNERSHIP_LIMIT);denseKeys(supplied,length);
  let work=length,relations=0,normalSources=0,configuredExternals=0,compilerRegisteredDependencies=0;
@@ -268,6 +272,24 @@ export function validateWorkerRegisteredGraph(input:unknown){
    compilerRegisteredDependencies++;rows.push(Object.freeze({...base,isEntry:false,inputFormat:'unknown'}));
   }else deny(graphDenied);
  }
+ // Inspect every original normal row, including unrendered sources. The fixed
+ // output rewrite must never redirect an SDK's Zod3 edge to the owned Zod4.
+ const origins=['fixture','artifact','long-thread','capture-bridge','comparison-presentation','comparison-artifact','comparison-installer-options','presentation','comparison'].map(name=>'packages/contract/src/'+name+'.ts');
+ let zodPresent=ids.has('zod'),incoming=0,representative=false,sourceRoot:string|undefined;
+ for(const row of rows)if(row.role==='normal-source'){
+  const source=row.source as ModuleMapping,imports=row.importedIds as readonly string[],dynamic=row.dynamicallyImportedIds as readonly string[];
+  const known=source.kind==='physical'&&origins.includes(source.path!);
+  if(known||imports.includes('zod')||dynamic.includes('zod'))zodPresent=true;
+  if(dynamic.includes('zod'))deny(graphDenied);
+  if(known&&!imports.includes('zod'))deny(graphDenied);
+  if(imports.includes('zod')){
+   if(!known||source.kind!=='physical'||!source.id.startsWith('/')||!source.id.endsWith('/'+source.path))deny(graphDenied);
+   const currentRoot=source.id.slice(0,-(source.path!.length+1));
+   if(sourceRoot!==undefined&&sourceRoot!==currentRoot)deny(graphDenied);sourceRoot=currentRoot;
+   incoming++;if(source.path===WORKER_ZOD_PUBLIC_BINDING.sourceParent)representative=true;
+  }
+ }
+ if(zodPresent&&(!rows.some(row=>row.id==='zod'&&row.role==='configured-external')||incoming===0||!representative))deny(graphDenied);
  const callbacks=readWorkerCallbackSnapshot(own(root,'callbacks',graphDenied));
  if(compilerRegisteredDependencies===1&&callbacks.retainedCallbackCount===0||compilerRegisteredDependencies===0&&callbacks.retainedCallbackCount!==0)deny(graphDenied);
  const chunkValues=own(root,'chunks',graphDenied);if(arrayLength(chunkValues,1)!==1)deny(graphDenied);denseKeys(chunkValues,1);
@@ -335,7 +357,7 @@ export function collectWorkerModuleImports(ast:unknown):readonly WorkerImport[] 
    for(const key of ['attributes','assertions'])if(n[key]!=null&&(!Array.isArray(n[key])||n[key].length!==0))deny(importDenied);
    if(n.options!=null||n.phase!=null)deny(importDenied);
    const source=data(n.source,importDenied),specifier=own(source,'value',importDenied);
-   if(own(source,'type',importDenied)!=='Literal'||typeof specifier!=='string'||(!Object.hasOwn(MOUNTED_MODULE_PACKAGE_SPECIFIERS,specifier)&&!MOUNTED_MODULE_BUILTINS.includes(specifier)))deny(importDenied);
+   if(own(source,'type',importDenied)!=='Literal'||typeof specifier!=='string'||(lookupWorkerPublicPackage(specifier)===null&&!MOUNTED_MODULE_BUILTINS.includes(specifier))||specifier===WORKER_ZOD_PUBLIC_BINDING.rawSpecifier&&n.type==='ImportExpression')deny(importDenied);
    if(output.length>=MOUNTED_POLICY_LIMITS.imports)deny('Worker import occurrence overflow');
    output.push(Object.freeze({specifier,kind:n.type==='ImportExpression'?'dynamic-literal':'static'}));
   }else if(n.type==='ImportAttribute'||n.type==='ImportExpression'||n.type==='ImportDeclaration')deny(importDenied);
