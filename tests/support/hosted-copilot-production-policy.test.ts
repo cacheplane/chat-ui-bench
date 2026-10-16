@@ -13,6 +13,52 @@ describe('runtime URL shared accounting v9',()=>{
  it('requires a valid new counter and preserves all existing counter obligations',()=>{for(const key of Object.keys(counts)){for(const value of [undefined,-1,0.5,NaN,Infinity,Number.MAX_SAFE_INTEGER]){const input={...counts,[key]:value};expect(()=>Reflect.apply(policy.projectStaticReferenceCounts,null,[input])).toThrow();}}});
  it('refuses a missing new counter',()=>expect(()=>Reflect.apply(policy.projectStaticReferenceCounts,null,[{metadataOccurrences:0,manifestOwnerOccurrences:0,manifestEdgeOccurrences:0,parsedEdgeOccurrences:0}])).toThrow());
 });
+describe('bounded static reference budget diagnostics',()=>{
+ const counts={metadataOccurrences:1797,manifestOwnerOccurrences:536,manifestEdgeOccurrences:1797,parsedEdgeOccurrences:0,unqualifiedRuntimeUrlOccurrences:0};
+ function failure(input:unknown):Error {
+  let thrown:unknown;
+  try {Reflect.apply(policy.projectStaticReferenceCounts,null,[input]);}catch(error){thrown=error;}
+  expect(thrown).toBeInstanceOf(Error);
+  return thrown as Error;
+ }
+ function diagnostic(input:typeof counts,attemptedReferenceBudgetCharges:number) {
+  const message=failure(input).message,prefix='Reference occurrence overflow ';
+  expect(message.startsWith(prefix)).toBe(true);
+  expect(Buffer.byteLength(message)).toBeLessThan(1024);
+  expect(JSON.parse(message.slice(prefix.length))).toEqual({stage:'static-reference-budget',...input,attemptedReferenceBudgetCharges,limit:4096});
+ }
+ it('reports all five retained V12 components and the attempted4130 charge',()=>diagnostic(counts,4130));
+ it('accepts the manifest-plus-hook prefix at exactly4096',()=>{
+  const input={...counts,manifestEdgeOccurrences:1763};
+  expect(policy.projectStaticReferenceCounts(input)).toEqual({...input,referenceBudgetCharges:4096,staticGraphReferenceOccurrences:1763});
+ });
+ it('reports the manifest-plus-hook prefix overflow at4097',()=>diagnostic({...counts,manifestEdgeOccurrences:1764},4097));
+ it('preserves the original generic overflow when a later component is NaN',()=>{
+  expect(failure({...counts,metadataOccurrences:4096,manifestOwnerOccurrences:1,parsedEdgeOccurrences:NaN}).message).toBe('Reference occurrence overflow');
+ });
+ it('preserves the original invalid-count error without diagnostic JSON',()=>{
+  expect(failure({...counts,metadataOccurrences:NaN}).message).toBe('Reference count invalid');
+ });
+ it('never serializes or coerces a hostile component, including after an early overflow',()=>{
+  let calls=0;
+  const hostile={toJSON(){calls++;throw new Error('component toJSON invoked');},valueOf(){calls++;throw new Error('component coercion invoked');}};
+  expect(failure({...counts,metadataOccurrences:hostile}).message).toBe('Reference count invalid');
+  expect(failure({...counts,metadataOccurrences:4096,manifestOwnerOccurrences:1,parsedEdgeOccurrences:hostile}).message).toBe('Reference occurrence overflow');
+  expect(calls).toBe(0);
+ });
+ it('projects fixed diagnostic keys without invoking the input toJSON sentinel',()=>{
+  let calls=0;
+  const input={...counts,toJSON(){calls++;throw new Error('input toJSON invoked');}};
+  const message=failure(input).message,prefix='Reference occurrence overflow ';
+  expect(calls).toBe(0);
+  expect(message.startsWith(prefix)).toBe(true);
+  expect(Buffer.byteLength(message)).toBeLessThan(1024);
+  expect(JSON.parse(message.slice(prefix.length))).toEqual({stage:'static-reference-budget',...counts,attemptedReferenceBudgetCharges:4130,limit:4096});
+ });
+ it('keeps individually oversized safe integers out of diagnostic JSON',()=>{
+  for(const key of Object.keys(counts))expect(failure({...counts,[key]:Number.MAX_SAFE_INTEGER}).message).toBe('Reference occurrence overflow');
+ });
+});
 describe('bounded production module ownership capacity',()=>{
  const mappings=(count:number)=>Array.from({length:count},(_,index)=>({id:`\0virtual:${index}`,kind:'virtual' as const,external:false}));
  it.each([9212,16384])('retains all %i distinct module mappings',count=>expect(assertMappings(mappings(count))).toMatchObject({physical:0,virtual:count,qualification:false}));

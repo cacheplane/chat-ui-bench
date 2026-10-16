@@ -105,7 +105,17 @@ export function assertHookMetadataIntegrity(input:readonly HookMetadataFile[],de
  return actual;
 }
 export function projectStaticReferenceCounts(input:{metadataOccurrences:number;manifestOwnerOccurrences:number;manifestEdgeOccurrences:number;parsedEdgeOccurrences:number;unqualifiedRuntimeUrlOccurrences:number}) {
- const referenceBudgetCharges=assertReferenceCount([input.metadataOccurrences,input.manifestOwnerOccurrences,input.manifestEdgeOccurrences,input.parsedEdgeOccurrences,input.unqualifiedRuntimeUrlOccurrences]);
+ const {metadataOccurrences,manifestOwnerOccurrences,manifestEdgeOccurrences,parsedEdgeOccurrences,unqualifiedRuntimeUrlOccurrences}=input;
+ const counts=[metadataOccurrences,manifestOwnerOccurrences,manifestEdgeOccurrences,parsedEdgeOccurrences,unqualifiedRuntimeUrlOccurrences];
+ let referenceBudgetCharges:number;
+ try {referenceBudgetCharges=assertReferenceCount(counts);}catch(error) {
+  // Only bounded primitive counts may enter diagnostics; preserve every other original refusal.
+  if(counts.every(value=>Number.isSafeInteger(value)&&value>=0&&value<=LIMITS.references)) {
+   const attemptedReferenceBudgetCharges=counts.reduce((sum,value)=>sum+value,0);
+   if(attemptedReferenceBudgetCharges>LIMITS.references)throw new Error('Reference occurrence overflow '+JSON.stringify({stage:'static-reference-budget',metadataOccurrences,manifestOwnerOccurrences,manifestEdgeOccurrences,parsedEdgeOccurrences,unqualifiedRuntimeUrlOccurrences,attemptedReferenceBudgetCharges,limit:LIMITS.references}));
+  }
+  throw error;
+ }
  return Object.freeze({...input,referenceBudgetCharges,staticGraphReferenceOccurrences:input.manifestEdgeOccurrences+input.parsedEdgeOccurrences});
 }
 export function classifyJsReference(node:{kind:string;specifier:string|null;base:string|null}):string|null {
