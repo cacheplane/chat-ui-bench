@@ -1,10 +1,12 @@
-import { expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { calibrationOrder, closeBrowserWithPage, runOwnedCapture, withDeadline } from './calibrate.js';
 import { finishTrace, matchingStallObservation } from './capture.js';
 import type { Observation } from '@chat-ui-bench/contract';
+
+afterEach(() => { vi.useRealTimers(); });
 
 it('interleaves seven variants per round, defaulting to 21 fresh runs', () => {
   const runs = calibrationOrder();
@@ -75,6 +77,8 @@ it('a late browser factory result is closed after setup timeout and never captur
   expect(closed).toBe(true); expect(captured).toBe(false);
 });
 it('subscribes before ending the trace, drains until EOF, closes stream and records data loss', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: false });
+  try {
   const calls: string[] = []; let complete: ((event: { stream: string; dataLossOccurred: boolean }) => void) | undefined;
   const session = {
     once: (_event: string, handler: typeof complete) => { calls.push('subscribe'); complete = handler; },
@@ -86,6 +90,7 @@ it('subscribes before ending the trace, drains until EOF, closes stream and reco
   expect(calls).toEqual(['subscribe', 'Tracing.end', 'IO.read', 'IO.close']);
   expect(result).toMatchObject({ complete: false, lossReason: 'CDP reported trace data loss' });
   expect(JSON.parse(await readFile(join(base, 'trace.json'), 'utf8')).traceEvents).toEqual([]);
+  } finally { vi.useRealTimers(); }
 });
 it('keeps an inspectable trace artifact when completion times out', async () => {
   const base = await mkdtemp(join(tmpdir(), 'bench-trace-timeout-'));
@@ -105,6 +110,8 @@ it('retains raw artifact and an explicit failure when trace completion omits the
   expect(await readFile(join(base, 'trace.json'), 'utf8')).toBe('');
 });
 it('treats a stream close failure as incomplete collection while retaining drained data', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: false });
+  try {
   const base = await mkdtemp(join(tmpdir(), 'bench-trace-close-')); let callback: ((event: { stream: string }) => void) | undefined;
   const result = await finishTrace({ once: (_name, handler) => { callback = handler; }, off: () => {}, send: async method => {
     if (method === 'Tracing.end') { callback!({ stream: 's' }); return {}; }
@@ -113,4 +120,5 @@ it('treats a stream close failure as incomplete collection while retaining drain
   } }, join(base, 'trace.json'), 100);
   expect(result.complete).toBe(false); expect(result.lossReason).toContain('IO.close rejected');
   expect(JSON.parse(await readFile(join(base, 'trace.json'), 'utf8')).traceEvents).toEqual([]);
+  } finally { vi.useRealTimers(); }
 });
