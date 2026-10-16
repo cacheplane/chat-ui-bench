@@ -127,11 +127,11 @@ async function collectProductionFiles(inputRoot:string,kind:'output'|'artifact')
    const path=join(directory,entry.name),name=relative(root,path).split('\\').join('/'),before=await lstat(path);
    if(!ordinaryPath(name)||before.isSymbolicLink()||await realpath(path)!==path) throw new Error('Production file containment/type');
    if(before.isDirectory()) {
-    if(kind==='artifact'&&name!=='api'&&name!=='dist'&&!name.startsWith('dist/')) throw new Error('Unexpected artifact directory');
+    if(kind==='artifact'&&name!=='api'&&name!=='dist'&&name!=='worker'&&!name.startsWith('dist/')) throw new Error('Unexpected artifact directory');
     await walk(path);continue;
    }
    if(kind==='artifact') {
-    const allowed=name.startsWith('dist/')||/^api\/[0-9]{2}\.(?:body\.bin|json)$/.test(name)||/^(?:intent|admission|admission-failure|installed-profile|build-mappings|static-assets|artifact-inventory)\.json$/.test(name)||/^step-(?:profile|install|audit|audit-high|contract|consumer|controls|helpers|vendor|build|inspect)(?:-(?:started|result)\.json|\.(?:stdout|stderr))$/.test(name);
+    const allowed=name.startsWith('dist/')||name==='worker/worker.mjs'||/^worker-(?:module|module-policy|owned-modules|installed-packages|resolution-files|compiler-profile)\.json$/.test(name)||/^api\/[0-9]{2}\.(?:body\.bin|json)$/.test(name)||/^(?:intent|admission|admission-failure|installed-profile|build-mappings|static-assets|artifact-inventory)\.json$/.test(name)||/^step-(?:profile|install|audit|audit-high|contract|consumer|controls|helpers|vendor|build|inspect|worker-build|worker-inspect)(?:-(?:started|result)\.json|\.(?:stdout|stderr))$/.test(name);
     if(!allowed) throw new Error('Unexpected artifact file');
     if(/\.(?:stdout|stderr)$/.test(name)&&before.size>4*1024*1024) throw new Error('Original command log overflow; retained originals not uploaded');
    }

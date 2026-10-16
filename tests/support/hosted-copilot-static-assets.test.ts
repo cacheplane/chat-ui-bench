@@ -112,6 +112,23 @@ describe('production output capacity v3 owned collectors',()=>{
  it('refuses an already-present final inventory before publication',async()=>owned(async root=>{await writeFile(join(root,'artifact-inventory.json'),'{}');const collected=await productionAssets.collectProductionArtifact(root);expect(()=>productionContract.assertProductionFinalInventory(collected.files,collected.visitedEntries,10)).toThrow('pre-existing');}));
 });
 
+describe('worker STATIC artifact namespace',()=>{
+ async function owned(action:(root:string)=>Promise<void>){const raw=await mkdtemp(join(tmpdir(),'copilot-worker-artifact-')),root=await realpath(raw);try{await action(root);}finally{await rm(root,{recursive:true,force:true});}}
+ it('charges the worker copy, six reports, eight step originals and directory',async()=>owned(async root=>{
+  await mkdir(join(root,'worker'));await writeFile(join(root,'worker','worker.mjs'),'export {};');
+  for(const name of ['module','module-policy','owned-modules','installed-packages','resolution-files','compiler-profile'])await writeFile(join(root,`worker-${name}.json`),'{}');
+  for(const step of ['worker-build','worker-inspect'])for(const suffix of ['-started.json','-result.json','.stdout','.stderr'])await writeFile(join(root,`step-${step}${suffix}`),'{}');
+  const result=await productionAssets.collectProductionArtifact(root);
+  expect(result.files).toHaveLength(15);expect(result.visitedEntries).toBe(16);expect(result.bytes).toBe(38);
+ }));
+ it('refuses an extra worker output even under the admitted directory',async()=>owned(async root=>{
+  await mkdir(join(root,'worker'));await writeFile(join(root,'worker','extra.mjs'),'x');await expect(productionAssets.collectProductionArtifact(root)).rejects.toThrow('Unexpected artifact file');
+ }));
+ it('refuses a nested worker directory',async()=>owned(async root=>{
+  await mkdir(join(root,'worker','nested'),{recursive:true});await expect(productionAssets.collectProductionArtifact(root)).rejects.toThrow('Unexpected artifact directory');
+ }));
+});
+
 import {projectHookFacts as projectHookFactsWithProfile,type HookFile} from './hosted-copilot-build-plugin.ts';
 const compilerProfile={provider:'rolldown' as const,version:'1.2.13' as const,runtimeModuleId:'\0rolldown/runtime.js'};
 function projectHookFacts(input:readonly HookFile[],modules:Parameters<typeof projectHookFactsWithProfile>[1]){return projectHookFactsWithProfile(input,modules,compilerProfile,[]);}

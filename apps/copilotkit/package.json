@@ -7,7 +7,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:controls": "tsc -p tsconfig.controls.json --noEmit",
     "typecheck:vendor": "tsc -p tsconfig.vendor.json --noEmit",
-    "build:hosted": "vite build --config vite.config.ts"
+    "build:hosted": "vite build --config vite.config.ts",
+    "build:worker:hosted": "node ../../tools/hosted-copilot-worker-static.mjs emit",
+    "inspect:worker:hosted": "node --experimental-import-meta-resolve ../../tools/hosted-copilot-worker-static.mjs inspect"
   },
   "dependencies": {
     "@copilotkit/react-core": "1.78.0",
