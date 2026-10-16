@@ -73,7 +73,7 @@ describe('worker STATIC supplied AST only',()=>{
  });
  it('refuses sparse child arrays',()=>expect(()=>collectWorkerModuleImports(program(new Array(1)))).toThrow('Worker AST data denied'));
  it.each(['toString','toPrimitive'])('never coerces hostile Identifier.name through %s',form=>{
-  let calls=0;const name=form==='toString'?{toString(){calls++;return 'process';}}:{[Symbol.toPrimitive](){calls++;return 'process';}};
+  let calls=0;const name:unknown=form==='toString'?{toString(){calls++;return 'process';}}:{[Symbol.toPrimitive](){calls++;return 'process';}};
   const node={type:'MemberExpression',object:{type:'Identifier',name},property:id('binding'),computed:false};
   expect(()=>collectWorkerModuleImports(program([node]))).toThrow('Worker AST data denied');expect(calls).toBe(0);
  });
