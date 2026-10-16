@@ -515,3 +515,46 @@ and actual compiler/version/options provenance; unmatched controls cannot suppor
 that comparison. The new profile still requires a separately admitted hosted
 build and full frontend and worker STATIC qualification before mounted runtime
 or FPS work. The policy alone establishes no speedup or performance ranking.
+
+The proposed V14 profile adds `external-assets-no-inline-v1` alongside the
+manual initial/syntax/diagram grouping. The pure `productionAssetOptions()`
+helper supplies `build.assetsInlineLimit:0`: imported fonts and other assets
+are emitted as separate resources instead of automatic small-asset data URLs.
+Vite's raw-asset size threshold can otherwise produce a larger base64 resource
+string than the unchanged 4096-byte resource limit. Explicit source data URLs
+and forced-inline imports still undergo the same inspection; this setting is
+not a whitelist.
+All fonts and features remain included. Separate files can add requests and
+change caching, CSS/output sizes and startup behavior; they also consume the
+unchanged output-file and artifact-byte budgets. Fresh hosted output must
+establish actual fit and behavior. This is a custom build profile, with no
+performance or default-profile equivalence claim. V12/V13 results remain
+preserved; their outputs are not rewritten by this source change.
+
+The proposed V14 STATIC stage adds an export-only `hosted-native-entry.ts` for
+the existing `createCaseServer` factory. In the same hosted job, successful
+frontend inspection precedes worker emission and inspection; both worker actions
+also check the same-source frontend receipt and parser report. This stage never
+imports the emitted worker, starts the SDK or a server, or launches a browser.
+
+The worker uses the public pinned Rolldown API to produce one ES module, with
+the existing 16 MiB, 64 raw import and 10 public resolution limits. Encoder and
+owned contract/replay code remain bundled. Installed SDK imports use the existing
+public subpath allowlist. Worker compilation explicitly disables tsconfig
+discovery so consumer typecheck aliases cannot redirect public package exports.
+The STATIC inspector uses Node's explicit
+`--experimental-import-meta-resolve` flag and the actual app-local worker URL as
+the resolution parent; it measures resolved entry bytes without importing them.
+The retained worker copy, reports and original command logs share the existing
+artifact limits, including directory visits. Compiler ownership records retain
+physical source hashes and paths, virtual module identities, the distinct
+compiler runtime observation, and exact allowlisted external callback/enumeration
+observations.
+
+The worker AST check covers supported static/export-from/literal dynamic imports
+and a finite set of loader forms under the existing traversal limits. It is not
+a general JavaScript sandbox or an evaluation of external package side effects.
+Unsupported syntax and unknown closure fail inspection. Generated contract
+modules and their related tracked sources retain distinct ownership identities.
+This stage has no measured output-fit, runtime or FPS outcome until its original
+hosted artifacts receive independent review.

@@ -9,6 +9,22 @@ function projectHookFacts(input:readonly HookFile[],modules:Parameters<typeof pr
 const row:HookFile={contentSha256:'b'.repeat(64),fileName:'assets/main.js',kind:'chunk',imports:[],dynamicImports:[],moduleIds:['/owned/source.js'],originalNames:[],facadeModuleId:'/owned/source.js'};
 const module={id:'/owned/source.js',kind:'physical' as const,path:'source.js',sha256:'a'.repeat(64),external:false};
 
+describe('production external asset options',()=>{
+ function options():{assetsInlineLimit:number} {
+  const create=(buildPlugin as {productionAssetOptions?:unknown}).productionAssetOptions;
+  expect(create,'pure productionAssetOptions export is required').toBeTypeOf('function');
+  if(typeof create!=='function')throw Error('Expected pure productionAssetOptions function');
+  return create() as {assetsInlineLimit:number};
+ }
+ it('disables automatic inlining without adding asset exclusions or other overrides',()=>{
+  expect(options()).toStrictEqual({assetsInlineLimit:0});
+ });
+ it('owns fresh option data so a caller cannot change a later build profile',()=>{
+  const first=options(),second=options();expect(first).not.toBe(second);
+  first.assetsInlineLimit=4096;expect(second).toStrictEqual({assetsInlineLimit:0});
+ });
+});
+
 // Local test view only; production separately returns pinned OutputOptions.
 type PlannedOutput = {
  strictExecutionOrder: boolean;

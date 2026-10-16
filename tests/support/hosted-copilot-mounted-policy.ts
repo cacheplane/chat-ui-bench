@@ -1,5 +1,5 @@
 /** Inert supplied-data checks only. Acceptance never establishes an original native fact. */
-import { ordinaryPath, assertInventory, assertOriginalCommand, type OriginalCommand, type FileFact } from './hosted-copilot-contract.js';
+import { ordinaryPath, assertInventory, assertOriginalCommand, type OriginalCommand, type FileFact } from './hosted-copilot-contract.ts';
 export const MOUNTED_POLICY_LIMITS = Object.freeze({ files: 128, bytes: 33554432, packages: 19, imports: 64, resolutions: 10,
   registrationHistory: 2, leases: 2, caseWitnesses: 19, globalWitnesses: 10, stdio: 8, parentStream: 4194304, applicationStream: 262144 });
 export const MOUNTED_PACKAGE_PINS = freeze({
@@ -264,10 +264,10 @@ export function evaluateMountedAdmissionPolicy(input: unknown): PolicyResult<Adm
   if(!assertOriginalCommand(original).success) return deny('install-original-failed','unavailable');
   return {...facts,phase:'post-install',installedPackages:19,checkedInstalledRecords:profile.checkedInstalledRecords};
 }); }
-const packageSpecifiers: Readonly<Record<string,string>>=Object.freeze({'@copilotkit/runtime/v2':'apps/copilotkit/node_modules/@copilotkit/runtime','@copilotkit/runtime/v2/hono':'apps/copilotkit/node_modules/@copilotkit/runtime',
+export const MOUNTED_MODULE_PACKAGE_SPECIFIERS: Readonly<Record<string,string>>=Object.freeze({'@copilotkit/runtime/v2':'apps/copilotkit/node_modules/@copilotkit/runtime','@copilotkit/runtime/v2/hono':'apps/copilotkit/node_modules/@copilotkit/runtime',
   '@ag-ui/client':'node_modules/@ag-ui/client','@ag-ui/core':'node_modules/@ag-ui/core','@ag-ui/core/schemas':'node_modules/@ag-ui/core','@hono/node-server':'node_modules/@hono/node-server',
   'rxjs':'node_modules/rxjs','@copilotkit/aimock/agui':'node_modules/@copilotkit/aimock','playwright':'node_modules/playwright','zod':'node_modules/zod'});
-const builtins=['node:http','node:crypto','node:fs/promises','node:path','node:url','node:perf_hooks'];
+export const MOUNTED_MODULE_BUILTINS: readonly string[]=Object.freeze(['node:http','node:crypto','node:fs/promises','node:path','node:url','node:perf_hooks']);
 const moduleShape=shape({schemaVersion:value(),sourceSha:value(40),runId:value(20),workerPath:value(1024),executedCopySha256:value(64),
   emitted:list(shape({path:value(1024),kind:value(),format:value(),entry:value(),bytes:value(),sha256:value(64)}),1,1),
   imports:list(shape({specifier:value(),kind:value(),resolutionIndex:value()}),64),
@@ -280,10 +280,10 @@ export function evaluateMountedModulePolicy(input: unknown): PolicyResult<Module
   if(workerPath!==`apps/copilotkit/.hosted-mounted/${runId}-1/worker.mjs`) return deny('native-output-path');
   if(output.path!==workerPath||output.kind!=='chunk'||output.format!=='es'||!output.entry||output.bytes<1||output.bytes>16777216||output.sha256!==copyHash) return deny('native-output');
   if(imports.length===0) return deny('native-imports-missing');
-  if(imports.some(i=>i.kind==='dynamic-computed'||!builtins.includes(i.specifier)&&!Object.hasOwn(packageSpecifiers,i.specifier))) return deny('native-import');
-  const seen=new Set<string>(),used=new Set<number>();for(const q of resolutions) {const expectedPath=packageSpecifiers[q.specifier],expected=expectedPath?pin(expectedPath):undefined;
+  if(imports.some(i=>i.kind==='dynamic-computed'||!MOUNTED_MODULE_BUILTINS.includes(i.specifier)&&!Object.hasOwn(MOUNTED_MODULE_PACKAGE_SPECIFIERS,i.specifier))) return deny('native-import');
+  const seen=new Set<string>(),used=new Set<number>();for(const q of resolutions) {const expectedPath=MOUNTED_MODULE_PACKAGE_SPECIFIERS[q.specifier],expected=expectedPath?pin(expectedPath):undefined;
     if(!expected||seen.has(q.specifier)||q.packagePath!==expectedPath||q.version!==expected.version||q.integrity!==expected.integrity||!q.entryPath.startsWith(q.packagePath+'/')||!q.regular||!q.contained||q.symlink) return deny('native-resolution');seen.add(q.specifier);}
-  for(const i of imports) {if(builtins.includes(i.specifier)) {if(i.resolutionIndex!==null) return deny('native-resolution');}
+  for(const i of imports) {if(MOUNTED_MODULE_BUILTINS.includes(i.specifier)) {if(i.resolutionIndex!==null) return deny('native-resolution');}
     else {if(i.resolutionIndex===null||resolutions[i.resolutionIndex]?.specifier!==i.specifier) return deny('native-resolution');used.add(i.resolutionIndex);}}
   if(used.size!==resolutions.length) return deny('native-resolution');
   return {sourceSha,workerPath,workerSha256:output.sha256,importOccurrences:imports.length,packageResolutions:resolutions.length};

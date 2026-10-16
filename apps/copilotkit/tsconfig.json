@@ -18,6 +18,7 @@
     }
   },
   "include": [
+    "hosted-native-entry.ts",
     "src/**/*.ts",
     "src/**/*.tsx",
     "runtime/**/*.ts"

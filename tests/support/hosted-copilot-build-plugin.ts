@@ -1,5 +1,5 @@
 /** Public build hook source; import has no Vite value or owned I/O. */
-import type {Plugin} from 'vite';
+import type {Plugin,BuildOptions} from 'vite';
 import type {OutputOptions} from 'rolldown';
 import {createHash} from 'node:crypto';
 import {lstatSync,readFileSync,realpathSync,writeFileSync} from 'node:fs';
@@ -7,6 +7,10 @@ import {join,relative,resolve,isAbsolute} from 'node:path';
 import {assertDenseEntries,ordinaryPath,PRODUCTION_FILE_LIMITS,assertProductionCount} from './hosted-copilot-contract.ts';
 import {assertMappings,assertCompilerProfile,assertCombinedModuleOwnershipCount,projectCompilerRuntimeModules,assertCompilerRuntimeOwnership,type CompilerRuntimeObservation,assertModuleOwnershipId,assertReferenceCount,classifyHookMetadata,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {readIntegratedAdmission} from './hosted-copilot-context.ts';
+/** Emit assets separately; raw-size inlining can exceed resource limits after base64 encoding. */
+export function productionAssetOptions():Pick<BuildOptions,'assetsInlineLimit'> {
+ return {assetsInlineLimit:0};
+}
 /** Explicit manual initial/syntax/diagram ESM treatment; each caller owns fresh option data. */
 export function productionEsmOutputOptions():OutputOptions {
  return {strictExecutionOrder:true,codeSplitting:{groups:[

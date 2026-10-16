@@ -65,6 +65,10 @@ jobs:
         run: node tools/hosted-copilot-step.mjs build
       - name: Inspect actual supported static graph with original parsers
         run: node tools/hosted-copilot-step.mjs inspect
+      - name: Emit export-only native worker after frontend inspection
+        run: node tools/hosted-copilot-step.mjs worker-build
+      - name: Inspect worker syntax and public resolutions without importing it
+        run: node tools/hosted-copilot-step.mjs worker-inspect
       - name: Admit actual original artifact file inventory
         id: artifacts
         if: always()

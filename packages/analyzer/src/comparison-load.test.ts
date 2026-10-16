@@ -272,15 +272,24 @@ describe('comparison loader physical membership', () => {
     if (count === 16) expect(result.physicalInventory.status).toBe('complete');
     else expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'rootCandidates', limit: 16, observed: 17}));
   });
+  // This filesystem-capacity check is not a wall-clock performance assertion.
+  // Keep both real boundary inputs and all production inspection limits unchanged.
   it.each([4096, 4097])('counts actual slot temporary candidates at inclusive capacity %i', async count => {
+    const started = performance.now();
+    const mark = (phase: string) => console.info('comparison-slot-capacity: ' + JSON.stringify({count, phase, elapsedMs: performance.now() - started}));
+    mark('fixture-start');
     const f = await rootFixture(), slot = f.runs[0]!.artifactDirectory;
+    mark('fixture-ready');
     for (let offset = 0; offset < count - 1; offset += 32) await Promise.all(Array.from({length: Math.min(32, count - 1 - offset)}, (_, index) =>
       writeFile(join(f.root, slot, temporary(offset + index).replace('invocation.json.', 'page.jsonl.')), '')));
+    mark('temporary-files-ready');
     const result = await loadComparisonInvocation(f.root), observed = result.physicalInventory.candidates.slots.find(row => row.path === slot)!;
+    mark('loader-returned');
     expect(observed.count).toBe(count);
     if (count === 4096) expect(result.physicalInventory.status).toBe('complete');
     else expect(result.loadingIssues).toContainEqual(expect.objectContaining({kind: 'admission-limit', limitName: 'slotCandidates', limit: 4096, observed: 4097}));
-  }, 20000);
+    mark('assertions-returned');
+  }, 60000);
   it('detects own directory membership changes after its original close without consuming the new payload', async () => {
     const f = await rootFixture(), original = fs.opendir.bind(fs); let mutated = false;
     vi.spyOn(fs, 'opendir').mockImplementation(async (...args) => {

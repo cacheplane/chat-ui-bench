@@ -6,8 +6,8 @@ import {join} from 'node:path';
 import {readIntegratedAdmission} from '../tests/support/hosted-copilot-context.ts';
 import {assertOriginalCommand} from '../tests/support/hosted-copilot-contract.ts';
 import {capturedStreamComplete,assertFullAudit,assertExpectedAudit,assertExpectedVendor,classifyVendorDiagnostics} from '../tests/support/hosted-copilot-production-policy.ts';
-const order=['profile','install','audit','audit-high','contract','consumer','controls','helpers','vendor','build','inspect'];
-const commands={profile:['--version'],install:['ci','--ignore-scripts','--no-audit','--no-fund'],audit:['audit','--json'],'audit-high':['audit','--audit-level=high','--json'],contract:['run','build','--workspace','@chat-ui-bench/contract'],consumer:['run','typecheck','--workspace','@chat-ui-bench/copilotkit'],controls:['run','typecheck:controls','--workspace','@chat-ui-bench/copilotkit'],helpers:['exec','--','tsc','-p','tests/tsconfig.copilot-production.json','--noEmit'],vendor:['run','typecheck:vendor','--workspace','@chat-ui-bench/copilotkit'],build:['run','build:hosted','--workspace','@chat-ui-bench/copilotkit']};
+const order=['profile','install','audit','audit-high','contract','consumer','controls','helpers','vendor','build','inspect','worker-build','worker-inspect'];
+const commands={profile:['--version'],install:['ci','--ignore-scripts','--no-audit','--no-fund'],audit:['audit','--json'],'audit-high':['audit','--audit-level=high','--json'],contract:['run','build','--workspace','@chat-ui-bench/contract'],consumer:['run','typecheck','--workspace','@chat-ui-bench/copilotkit'],controls:['run','typecheck:controls','--workspace','@chat-ui-bench/copilotkit'],helpers:['exec','--','tsc','-p','tests/tsconfig.copilot-production.json','--noEmit'],vendor:['run','typecheck:vendor','--workspace','@chat-ui-bench/copilotkit'],build:['run','build:hosted','--workspace','@chat-ui-bench/copilotkit'],'worker-build':['run','build:worker:hosted','--workspace','@chat-ui-bench/copilotkit'],'worker-inspect':['run','inspect:worker:hosted','--workspace','@chat-ui-bench/copilotkit']};
 const step=process.argv[2];
 if(process.argv.length!==3||!order.includes(step)) throw new Error('Fixed original hosted step required');
 const admission=readIntegratedAdmission(),directory=admission.artifactDirectory;
@@ -31,7 +31,7 @@ if(step==='inspect') {
 } else {
  if(step==='build') {await mkdir(admission.outputDirectory);const value=await lstat(admission.outputDirectory);if(!value.isDirectory()||value.isSymbolicLink()) throw new Error('Fresh original output directory required');}
  const env={...process.env};delete env['GH_TOKEN'];delete env['GITHUB_TOKEN'];
- const started=performance.now(),deadline=['install','build'].includes(step)?300_000:60_000;
+ const started=performance.now(),deadline=['install','build','worker-build'].includes(step)?300_000:60_000;
  const child=spawn('npm',commands[step],{cwd:admission.repositoryRoot,env,stdio:['ignore','pipe','pipe']});
  let spawned=false,spawnError=null,timedOut=false;child.once('spawn',()=>{spawned=true;});child.once('error',error=>{spawnError=error.name;});
  // One owned termination request is not closure. Wait for original close below.
