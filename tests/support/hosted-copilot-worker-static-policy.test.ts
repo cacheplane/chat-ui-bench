@@ -4,6 +4,214 @@ import {assertCompilerRuntimeOwnership} from './hosted-copilot-production-policy
 import {createHash} from 'node:crypto';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS} from './hosted-copilot-mounted-policy.ts';
 import * as outputPolicy from './hosted-copilot-worker-static-policy.ts';
+describe('complete worker registered graph',()=>{
+ const profile={provider:'rolldown',version:'1.2.13',runtimeModuleId:'\0rolldown/runtime.js'};
+ const build={entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false};
+ const normal=(index=0,id='virtual:entry')=>({index,id,role:'normal-source',codeKind:'string',allowed:false,requested:false,
+  source:{id,kind:'virtual',external:false},importedIds:[],dynamicallyImportedIds:[]});
+ const fixture=():any=>({compilerProfile:{...profile},buildProfile:{...build},workerOutputPolicy:{format:'es',polyfillRequire:false},
+  rows:[normal(),{index:1,id:'node:module',role:'compiler-registered-dependency',codeKind:'null',allowed:false,requested:false,isEntry:false,inputFormat:'unknown'}],
+  callbacks:{target:'node:module',scope:'original external callback observations only',observations:[{parent:'\0rolldown/runtime.js',parentStatus:'valid',isResolved:false,returnedAllowed:false}],omitted:false,callbackCountKnown:true,retainedCallbackCount:1,complete:true},
+  chunks:[{kind:'chunk',fileName:'worker.mjs',format:'es',isEntry:true,moduleIds:['virtual:entry'],facadeModuleId:'virtual:entry',bytes:10,sha256:'a'.repeat(64)}],
+  counts:{registeredRows:2,normalSources:1,configuredExternals:0,compilerRegisteredDependencies:1,relations:0,work:2}});
+ const validate=(value:unknown)=>outputPolicy.validateWorkerRegisteredGraph(value);
+ it('accepts the complete conditional fixture as a fresh deeply frozen JSON projection',()=>{
+  const input=fixture(),result=validate(input);expect(result).toEqual(input);expect(result).not.toBe(input);
+  expect(Object.isFrozen(result.rows)).toBe(true);expect(Object.isFrozen(result.rows[0])).toBe(true);
+  input.rows[0].importedIds.push('node:module');expect(JSON.parse(JSON.stringify(result))).toEqual(fixture());
+ });
+ it.each(['importedIds','dynamicallyImportedIds'])('denies a resolved alias target in %s even with only the runtime callback and an unrendered parent',key=>{
+  const f=fixture();f.rows[0][key]=['node:module'];f.chunks[0].moduleIds=[];f.chunks[0].facadeModuleId=null;
+  f.counts.relations=1;f.counts.work=3;expect(()=>validate(f)).toThrow();
+ });
+ it.each(['importedIds','dynamicallyImportedIds'])('requires every normal own dense %s without evaluating accessors',key=>{
+  for(const bad of [undefined,null,new Array(1),Object.assign(Object.create(['safe']),{length:1}),[{}]]){
+   const f=fixture();f.rows[0][key]=bad;expect(()=>validate(f)).toThrow();
+  }
+  let calls=0;const f=fixture();Object.defineProperty(f.rows[0],key,{get(){calls++;return [];}});expect(()=>validate(f)).toThrow();
+  const g=fixture(),array=['safe'];Object.defineProperty(array,'0',{get(){calls++;return 'safe';}});g.rows[0][key]=array;expect(()=>validate(g)).toThrow();expect(calls).toBe(0);
+ });
+ it.each([{codeKind:'undefined'},{codeKind:'getter-threw'},{isEntry:true},{inputFormat:undefined},{inputFormat:'unavailable'},{inputFormat:'esm'},{allowed:true},{requested:true},{id:'module'}])('rejects candidate contradiction %#',change=>{
+  const f=fixture();Object.assign(f.rows[1],change);expect(()=>validate(f)).toThrow();
+ });
+ it('rejects duplicate roles, unclaimed rows, configured overlap, normal null and extra keys',()=>{
+  for(const change of [(f:any)=>f.rows.push({...f.rows[1],index:2}),(f:any)=>f.rows[0].role='unclaimed',(f:any)=>f.rows[1].role='configured-external',
+   (f:any)=>f.rows[0].codeKind='null',(f:any)=>f.rows[0].extra=true,(f:any)=>f.extra=true,(f:any)=>f.rows[1].index=0]){
+   const f=fixture();change(f);expect(()=>validate(f)).toThrow();
+  }
+ });
+ it.each([(f:any)=>f.compilerProfile.version='1.2.14',(f:any)=>f.buildProfile.tsconfig=true,(f:any)=>f.buildProfile.userResolverPlugins=true,
+  (f:any)=>f.workerOutputPolicy.polyfillRequire=true,(f:any)=>f.counts.work=3,(f:any)=>f.rows[0].source.id='virtual:other'])('rejects fixed profile, mapping or count changes %#',change=>{
+  const f=fixture();change(f);expect(()=>validate(f)).toThrow();
+ });
+ it.each([(f:any)=>f.chunks[0].moduleIds.push('node:module'),(f:any)=>f.chunks[0].facadeModuleId='node:module',
+  (f:any)=>delete f.chunks[0].moduleIds,(f:any)=>f.chunks[0].fileName='other.mjs',(f:any)=>f.chunks[0].isEntry=false])('requires actual complete expected chunk absence %#',change=>{
+  const f=fixture();change(f);expect(()=>validate(f)).toThrow();
+ });
+ it.each([(f:any)=>f.callbacks.observations=[],(f:any)=>f.callbacks.observations[0].parent='virtual:normal',
+  (f:any)=>f.callbacks.observations[0].isResolved=true,(f:any)=>f.callbacks.observations[0].returnedAllowed=true,
+  (f:any)=>f.callbacks.complete=false,(f:any)=>f.callbacks.omitted=true,(f:any)=>f.callbacks.observations=Array(9).fill(f.callbacks.observations[0])])('requires complete bounded matching runtime callbacks %#',change=>{
+  const f=fixture();change(f);expect(()=>validate(f)).toThrow();
+ });
+ it('retains repeated actual calls rather than deduplicating witnesses',()=>{
+  const f=fixture();f.callbacks.observations.push({...f.callbacks.observations[0]});f.callbacks.retainedCallbackCount=2;
+  expect(validate(f).callbacks.retainedCallbackCount).toBe(2);
+ });
+ it('admits exactly16384 shared units and rejects16385 before indexed descriptors',()=>{
+  const f=fixture();f.rows=[normal(0),normal(1,'virtual:b'),normal(2,'virtual:c'),normal(3,'virtual:d'),normal(4,'virtual:e'),{...f.rows[1],index:5}];
+  for(let i=0;i<3;i++)f.rows[i].importedIds=Array(4096).fill('safe');f.rows[3].importedIds=Array(4090).fill('safe');
+  f.counts={registeredRows:6,normalSources:5,configuredExternals:0,compilerRegisteredDependencies:1,relations:16378,work:16384};expect(validate(f).counts.work).toBe(16384);
+  let indexed=0;const array=new Proxy(Array(4091).fill('safe'),{getOwnPropertyDescriptor(target,key){if(key==='0')indexed++;return Reflect.getOwnPropertyDescriptor(target,key);}});
+  f.rows[3].importedIds=array;expect(()=>validate(f)).toThrow();expect(indexed).toBe(0);
+ });
+ it('bounds each array before reading indices and IDs before byte scanning or coercion',()=>{
+  let reads=0;const f=fixture();f.rows[0].importedIds=new Proxy(Array(4097),{getOwnPropertyDescriptor(target,key){if(key==='0')reads++;return Reflect.getOwnPropertyDescriptor(target,key);}});
+  expect(()=>validate(f)).toThrow();expect(reads).toBe(0);
+  for(const id of ['x'.repeat(4097),'é'.repeat(2049),{toString(){reads++;return 'safe';}}]){const g=fixture();g.rows[0].importedIds=[id];expect(()=>validate(g)).toThrow();}expect(reads).toBe(0);
+  for(const id of ['x'.repeat(4096),'é'.repeat(2048)]){const g=fixture();g.rows[0].importedIds=[id];g.counts.relations=1;g.counts.work=3;expect(validate(g).counts.relations).toBe(1);}
+ });
+ it('reserves both normal arrays before either indexed descriptor when their combined work overflows',()=>{
+  let reads=0;const imported=new Proxy(['safe'],{getOwnPropertyDescriptor(target,key){if(key==='0')reads++;return Reflect.getOwnPropertyDescriptor(target,key);}});
+  expect(()=>outputPolicy.observeWorkerResolvedRelations(imported,['safe'],16383)).toThrow();expect(reads).toBe(0);
+ });
+ it('captures actual source code once including null candidate and never ast or error properties',()=>{
+  let reads=0;const info={id:'node:module',get code(){reads++;return null;},isEntry:false,inputFormat:'unknown',get ast(){throw Error('ast');}};
+  expect(outputPolicy.observeWorkerRegisteredModule('node:module',1,info,false)).toEqual(fixture().rows[1]);expect(reads).toBe(1);
+  expect(()=>classifyWorkerModuleSource('node:module',1,info,false)).toThrow();expect(reads).toBe(2);
+  for(const code of [undefined,{},1])expect(()=>outputPolicy.observeWorkerRegisteredModule('node:module',1,{id:'node:module',code,isEntry:false,inputFormat:'unknown'},false)).toThrow();
+ });
+ it('checks own id before code and leaves configured external code unread',()=>{
+  let reads=0;expect(()=>outputPolicy.observeWorkerRegisteredModule('node:module',0,{id:'wrong',get code(){reads++;return null;}},false)).toThrow();
+  expect(outputPolicy.observeWorkerRegisteredModule('rxjs',0,{id:'rxjs',get code(){reads++;throw Error();}},true)).toEqual({id:'rxjs',index:0,role:'configured-external',codeKind:'not-read',allowed:true,requested:true});expect(reads).toBe(0);
+ });
+ it('fails candidate scalar contradictions immediately without inspecting later fields',()=>{
+  let reads=0;const bad={id:'node:module',code:null,isEntry:true,get inputFormat(){reads++;return 'unknown';}};
+  expect(()=>outputPolicy.observeWorkerRegisteredModule('node:module',0,bad,false)).toThrow();expect(reads).toBe(0);
+  for(const info of [{id:'node:module',code:null,isEntry:false},{id:'node:module',code:null,isEntry:false,inputFormat:'unavailable'},
+   {id:'node:module',code:'',importedIds:[],dynamicallyImportedIds:[]}])expect(()=>outputPolicy.observeWorkerRegisteredModule('node:module',0,info,false)).toThrow();
+ });
+ it('snapshots are fresh immutable full-parent projections and expose late/overflow changes',()=>{
+  const d=outputPolicy.createWorkerImporterDiagnostic();d.observe('node:module','\0rolldown/runtime.js',false,false);
+  const first=d.snapshot();expect(first).toEqual(fixture().callbacks);expect(Object.isFrozen(first.observations[0])).toBe(true);
+  expect(first).not.toBe(d.snapshot());d.observe('node:module','\0rolldown/runtime.js',false,false);expect(d.snapshot()).not.toEqual(first);
+  for(let i=0;i<7;i++)d.observe('node:module','\0rolldown/runtime.js',false,false);expect(d.snapshot()).toMatchObject({omitted:true,complete:false,callbackCountKnown:false});
+ });
+ it.each(['generate','close'])('denies a callback arriving after the %s boundary snapshot',()=>{
+  const d=outputPolicy.createWorkerImporterDiagnostic();d.observe('node:module','\0rolldown/runtime.js',false,false);const hook=d.snapshot();
+  expect(()=>outputPolicy.assertWorkerCallbackSnapshotStable(hook,d.snapshot())).not.toThrow();
+  d.observe('node:module','\0rolldown/runtime.js',false,false);expect(()=>outputPolicy.assertWorkerCallbackSnapshotStable(hook,d.snapshot())).toThrow();
+ });
+ it('compares actual final output membership and facade with the hook metadata',()=>{
+  const chunk=fixture().chunks[0];expect(()=>outputPolicy.assertWorkerChunkMetadataStable(chunk,{...chunk,moduleIds:[...chunk.moduleIds]})).not.toThrow();
+  for(const changed of [{...chunk,moduleIds:[]},{...chunk,facadeModuleId:null},{...chunk,moduleIds:['node:module']},{...chunk,fileName:'changed.mjs'}])
+   expect(()=>outputPolicy.assertWorkerChunkMetadataStable(chunk,changed)).toThrow();
+ });
+ it('preserves the16384 actual chunk membership cap independently of the4096 relation cap',()=>{
+  const chunk=fixture().chunks[0];chunk.moduleIds=Array.from({length:16384},(_,i)=>'virtual:'+i);
+  expect(outputPolicy.readWorkerChunkMetadata(chunk).moduleIds).toHaveLength(16384);
+  chunk.moduleIds.push('virtual:overflow');expect(()=>outputPolicy.readWorkerChunkMetadata(chunk)).toThrow();
+ });
+ it('retains full bounded parents and distinct invalid argument states in immutable snapshots',()=>{
+  const d=outputPolicy.createWorkerImporterDiagnostic();for(const parent of [undefined,null,{},'x'.repeat(4097),'é'.repeat(2048)])d.observe('node:module',parent,false,false);
+  const snapshot=d.snapshot();expect(snapshot.observations.map(row=>row.parentStatus)).toEqual(['absent','null','invalid','bound','valid']);
+  expect(snapshot.observations[4]!.parent).toBe('é'.repeat(2048));expect(Object.isFrozen(snapshot)).toBe(true);
+ });
+ it('authenticates only the fixed component paths and rejects changed source pins',()=>{
+  const pins=outputPolicy.WORKER_STATIC_COMPONENT_PATHS.map(path=>({path,bytes:10,sha256:'a'.repeat(64)}));
+  expect(()=>outputPolicy.assertWorkerComponentPins(pins,structuredClone(pins))).not.toThrow();
+  for(const change of [(p:any)=>p[0].sha256='b'.repeat(64),(p:any)=>p[0].path='arbitrary.ts',(p:any)=>p[0].bytes=11,(p:any)=>p[0].extra=true,(p:any)=>p.pop()]){
+   const changed=structuredClone(pins);change(changed);expect(()=>outputPolicy.assertWorkerComponentPins(pins,changed)).toThrow();
+  }
+ });
+ it('accepts every configured external role without extending the16-specifier universe',()=>{
+  const f=fixture(),configured=[...Object.keys(MOUNTED_MODULE_PACKAGE_SPECIFIERS),...MOUNTED_MODULE_BUILTINS];
+  for(const id of configured)f.rows.push({id,index:f.rows.length,role:'configured-external',codeKind:'not-read',allowed:true,requested:true});
+  f.counts.registeredRows+=16;f.counts.configuredExternals=16;f.counts.work+=16;expect(validate(f).counts.configuredExternals).toBe(16);
+  const ordinary=fixture();ordinary.rows.pop();ordinary.callbacks.observations=[];ordinary.callbacks.retainedCallbackCount=0;
+  ordinary.counts={registeredRows:1,normalSources:1,configuredExternals:0,compilerRegisteredDependencies:0,relations:0,work:1};expect(validate(ordinary).counts.compilerRegisteredDependencies).toBe(0);
+ });
+ it.each([...Object.keys(MOUNTED_MODULE_PACKAGE_SPECIFIERS),...MOUNTED_MODULE_BUILTINS])('never reads configured code for graph observation %s',id=>{
+  let reads=0;expect(outputPolicy.observeWorkerRegisteredModule(id,0,{id,get code(){reads++;throw Error('secret');}},true).role).toBe('configured-external');expect(reads).toBe(0);
+ });
+ it('captures a normal source code once and replay never touches original info',()=>{
+  let reads=0;const info={id:'virtual:entry',get code(){reads++;return '';},importedIds:['safe'],dynamicallyImportedIds:[],get ast(){throw Error('ast');}};
+  const observed=outputPolicy.observeWorkerRegisteredModule(info.id,0,info,false);expect(reads).toBe(1);
+  const f=fixture();f.rows[0]={...observed,source:{id:info.id,kind:'virtual',external:false}};f.counts.relations=1;f.counts.work=3;
+  const graph=validate(f);validate(graph);expect(reads).toBe(1);
+  expect(()=>outputPolicy.observeWorkerRegisteredModule('virtual:normal',0,{id:'virtual:normal',code:null},false)).toThrow();
+ });
+ it('requires own candidate scalars and preserves thrown code identity without reading error members',()=>{
+  let reads=0;const error={get message(){reads++;throw Error('secret');},get toJSON(){reads++;throw Error('secret');}};
+  expect(()=>outputPolicy.observeWorkerRegisteredModule('node:module',0,{id:'node:module',get code(){throw error;}},false)).toThrow('Worker module source denied');
+  for(const key of ['isEntry','inputFormat']){
+   const info:any={id:'node:module',code:null,isEntry:false,inputFormat:'unknown'};delete info[key];
+   Object.setPrototypeOf(info,{[key]:key==='isEntry'?false:'unknown'});expect(()=>outputPolicy.observeWorkerRegisteredModule('node:module',0,info,false)).toThrow();
+   Object.defineProperty(info,key,{get(){reads++;return key==='isEntry'?false:'unknown';}});expect(()=>outputPolicy.observeWorkerRegisteredModule('node:module',0,info,false)).toThrow();
+  }
+  expect(reads).toBe(0);
+ });
+ it('admits exactly16384 registered rows and rejects16385 before any indexed row descriptor',()=>{
+  const f=fixture(),candidate=f.rows[1];f.rows=Array.from({length:16383},(_,i)=>normal(i,'virtual:'+i));f.rows.push({...candidate,index:16383});
+  f.chunks[0].moduleIds=['virtual:0'];f.chunks[0].facadeModuleId='virtual:0';f.counts={registeredRows:16384,normalSources:16383,configuredExternals:0,compilerRegisteredDependencies:1,relations:0,work:16384};
+  expect(validate(f).counts.registeredRows).toBe(16384);let reads=0;
+  f.rows=new Proxy(Array(16385),{getOwnPropertyDescriptor(target,key){if(key==='0')reads++;return Reflect.getOwnPropertyDescriptor(target,key);}});
+  expect(()=>validate(f)).toThrow();expect(reads).toBe(0);
+ });
+ it('preflights registered ID characters before byte scanning, allowlist lookup or source-code reads',()=>{
+  let bytes=0,lookups=0,reads=0;const originalBytes=Buffer.byteLength,originalOwn=Object.hasOwn;
+  const b=vi.spyOn(Buffer,'byteLength').mockImplementation((value,encoding)=>{bytes++;return originalBytes(value,encoding);});
+  const o=vi.spyOn(Object,'hasOwn').mockImplementation((object,key)=>{if(object===MOUNTED_MODULE_PACKAGE_SPECIFIERS)lookups++;return originalOwn(object,key);});
+  try{expect(()=>outputPolicy.observeWorkerRegisteredModule('x'.repeat(4097),0,{get code(){reads++;return null;}},false)).toThrow();expect(bytes).toBe(0);expect(lookups).toBe(0);expect(reads).toBe(0);}
+  finally{b.mockRestore();o.mockRestore();}
+ });
+ it('rejects inherited relation elements, extra row symbols and mismatched physical source IDs without coercion',()=>{
+  let calls=0;const array=new Array(1);Object.setPrototypeOf(array,Object.assign(Object.create(Array.prototype),{0:'safe'}));
+  const f=fixture();f.rows[0].importedIds=array;expect(()=>validate(f)).toThrow();
+  const g=fixture();g.rows[0][Symbol('extra')]=true;expect(()=>validate(g)).toThrow();
+  const h=fixture();h.rows[0].source={id:'different',kind:'physical',external:false,path:{toString(){calls++;return 'a.ts';}},sha256:'a'.repeat(64)};expect(()=>validate(h)).toThrow();expect(calls).toBe(0);
+ });
+ it('refuses the reserved compiler-runtime marker in the registered source cohort',()=>{
+  const f=fixture();f.rows[0]=normal(0,'\0rolldown/runtime.js');f.chunks[0].moduleIds=['\0rolldown/runtime.js'];f.chunks[0].facadeModuleId=null;
+  expect(()=>validate(f)).toThrow();
+ });
+ it('rejects invalid and overflowing snapshots even when a late snapshot is otherwise equal',()=>{
+  for(const parent of [undefined,null,{},'normal','\0rolldown/runtime.js-suffix']){
+   const d=outputPolicy.createWorkerImporterDiagnostic();d.observe('node:module',parent,false,false);expect(()=>outputPolicy.assertWorkerCallbackSnapshotStable(d.snapshot(),d.snapshot())).toThrow();
+  }
+  const d=outputPolicy.createWorkerImporterDiagnostic();for(let i=0;i<9;i++)d.observe('node:module','\0rolldown/runtime.js',false,false);
+  expect(()=>outputPolicy.assertWorkerCallbackSnapshotStable(d.snapshot(),d.snapshot())).toThrow();
+ });
+ it('binds chunk metadata to bounded actual emitted bytes and hash',()=>{
+  const chunk={...fixture().chunks[0],bytes:10,sha256:'a'.repeat(64)};
+  expect(()=>outputPolicy.readWorkerChunkMetadata(chunk)).not.toThrow();
+  for(const change of [{bytes:0},{bytes:16*1024*1024+1},{sha256:'invalid'},{sha256:{toString(){throw Error('secret');}}}])
+   expect(()=>outputPolicy.readWorkerChunkMetadata({...chunk,...change})).toThrow();
+  expect(()=>outputPolicy.assertWorkerChunkMetadataStable(chunk,{...chunk,sha256:'b'.repeat(64)})).toThrow();
+ });
+ it('settles original generate then original close once and retains result identity',async()=>{
+  const value={},order:string[]=[];
+  const result=await outputPolicy.settleWorkerStaticGeneration(()=>{order.push('generate');return Promise.resolve(value);},()=>{order.push('close');return Promise.resolve();},()=>{order.push('snapshot');});
+  expect(result).toBe(value);expect(order).toEqual(['generate','snapshot','close','snapshot']);
+ });
+ it.each([null,undefined,{},'primary'])('preserves any original rejection even if close also rejects %#',async original=>{
+  let close=0,checks=0,caught=false;
+  try{await outputPolicy.settleWorkerStaticGeneration(()=>Promise.reject(original),()=>{close++;return Promise.reject({secondary:true});},()=>{checks++;});}
+  catch(error){caught=true;expect(error).toBe(original);}
+  expect(caught).toBe(true);expect(close).toBe(1);expect(checks).toBe(0);
+ });
+ it('denies an original close rejection without reading error properties or returning a value',async()=>{
+  let reads=0,checks=0,caught=false;const error={get message(){reads++;throw Error();},get toJSON(){reads++;throw Error();}};
+  try{await outputPolicy.settleWorkerStaticGeneration(()=>Promise.resolve({}),()=>Promise.reject(error),()=>{checks++;});}
+  catch(actual){caught=true;expect(actual).toBe(error);}
+  expect(caught).toBe(true);expect(reads).toBe(0);expect(checks).toBe(1);
+ });
+ it.each(['generate','close'])('rejects actual observation changes during the %s promise boundary',async boundary=>{
+  const d=outputPolicy.createWorkerImporterDiagnostic();d.observe('node:module','\0rolldown/runtime.js',false,false);const hook=d.snapshot();let closes=0;
+  const late=()=>d.observe('node:module','\0rolldown/runtime.js',false,false);
+  await expect(outputPolicy.settleWorkerStaticGeneration(()=>Promise.resolve().then(()=>{if(boundary==='generate')late();return {};}),()=>Promise.resolve().then(()=>{closes++;if(boundary==='close')late();}),()=>outputPolicy.assertWorkerCallbackSnapshotStable(hook,d.snapshot()))).rejects.toThrow('Worker callback observations changed');
+  expect(closes).toBe(1);
+ });
+});
 describe('bounded original node module callback diagnostic',()=>{
  const capture=(d:ReturnType<typeof outputPolicy.createWorkerImporterDiagnostic>,error:unknown={})=>{
   let line='';try{d.rethrow(error,'node:module',value=>{line=value;});}catch(e){expect(e).toBe(error);}
