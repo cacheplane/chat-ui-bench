@@ -1,5 +1,7 @@
-import {describe,it,expect} from 'vitest';
-import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite} from './hosted-copilot-worker-static-policy.ts';
+import {describe,it,expect,vi} from 'vitest';
+import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,classifyWorkerModuleSource} from './hosted-copilot-worker-static-policy.ts';
+import {assertCompilerRuntimeOwnership} from './hosted-copilot-production-policy.ts';
+import {createHash} from 'node:crypto';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS} from './hosted-copilot-mounted-policy.ts';
 const id=(name:string)=>({type:'Identifier',name});
 const lit=(value:unknown)=>({type:'Literal',value});
@@ -7,6 +9,58 @@ const program=(body:unknown[])=>({type:'Program',body});
 const imp=(source:unknown)=>({type:'ImportDeclaration',source,specifiers:[]});
 const call=(callee:unknown)=>({type:'CallExpression',callee,arguments:[]});
 const member=(object:unknown,property:unknown,computed=false)=>({type:'MemberExpression',object,property,computed});
+describe('worker configured external classification',()=>{
+ it.each([['oversized-id','x'.repeat(4097),0],['invalid-index','rxjs',16384]] as const)('preflights %s before allowlist lookup or module getters',(_name,id,index)=>{
+  let lookups=0,idReads=0,codeReads=0,message='';const original=Object.hasOwn;
+  const spy=vi.spyOn(Object,'hasOwn').mockImplementation((object,key)=>{if(object===MOUNTED_MODULE_PACKAGE_SPECIFIERS)lookups++;return original(object,key);});
+  try{classifyWorkerModuleSource(id,index,{get id(){idReads++;return id;},get code(){codeReads++;return null;}},true);}catch(e){if(e instanceof Error)message=e.message;}
+  finally{spy.mockRestore();}
+  expect(lookups).toBe(0);expect(idReads).toBe(0);expect(codeReads).toBe(0);expect(message).toMatch(/^Worker module source denied: /);expect(Buffer.byteLength(message)).toBeLessThanOrEqual(1024);
+ });
+ it.each([...Object.keys(MOUNTED_MODULE_PACKAGE_SPECIFIERS),...MOUNTED_MODULE_BUILTINS])('uses exact configured specifier %s with no code getter',id=>{
+  let calls=0;expect(classifyWorkerModuleSource(id,0,{id,get code(){calls++;throw Error('not read');}},true)).toBe('configured-external');expect(calls).toBe(0);
+ });
+ it.each([null,undefined,'unexpected source'])('classifies exact requested external without reading code %#',value=>{
+  let calls=0;const info={id:'rxjs',get code(){calls++;return value;}};
+  expect(classifyWorkerModuleSource('rxjs',0,info,true)).toBe('configured-external');expect(calls).toBe(0);
+ });
+ it('does not invoke a throwing code getter on a configured external',()=>{
+  let calls=0;const info={id:'node:http',get code(){calls++;throw Error('private');}};
+  expect(classifyWorkerModuleSource('node:http',0,info,true)).toBe('configured-external');expect(calls).toBe(0);
+ });
+ it.each([['rxjs',false,null],['unknown',true,undefined],['/owned/a.ts',false,null]] as const)('requires string code for unclassified ID %s', (id,requested,code)=>{
+  expect(()=>classifyWorkerModuleSource(id,0,{id,code},requested)).toThrow();
+ });
+ it('reads owned code exactly once before physical/virtual ownership continues',()=>{
+  let calls=0;expect(classifyWorkerModuleSource('/owned/a.ts',1,{id:'/owned/a.ts',get code(){calls++;return 'export const x=1';}},false)).toBe('owned');expect(calls).toBe(1);
+ });
+ it('rejects info ID mismatch before configured classification/code access',()=>{
+  let calls=0;expect(()=>classifyWorkerModuleSource('rxjs',2,{id:'zod',get code(){calls++;return null;}},true)).toThrow();expect(calls).toBe(0);
+ });
+ it('does not execute an info ID accessor or borrow missing info as an external',()=>{
+  let calls=0;expect(()=>classifyWorkerModuleSource('rxjs',0,{get id(){calls++;return 'rxjs';}},true)).toThrow();expect(calls).toBe(0);
+  expect(()=>classifyWorkerModuleSource('rxjs',0,null,true)).toThrow();
+ });
+ it('redacts a failing owned code getter without reading its thrown message',()=>{
+  let calls=0,reads=0;const error={get message(){reads++;throw Error('secret');}};let message='';
+  try{classifyWorkerModuleSource('/owned/a.ts',0,{id:'/owned/a.ts',get code(){calls++;throw error;}},false);}catch(e){if(e instanceof Error)message=e.message;}
+  expect(message).toContain('"codeKind":"getter-threw"');expect(message).not.toContain('secret');expect(calls).toBe(1);expect(reads).toBe(0);
+ });
+ it('returns bounded primitive diagnostic facts without evaluating hostile code objects',()=>{
+  let calls=0;const hostile={toJSON(){calls++;throw Error('private');},toString(){calls++;throw Error('private');},[Symbol.toPrimitive](){calls++;throw Error('private');}};
+  let message='';try{classifyWorkerModuleSource('/owned/a.ts',3,{id:'/owned/a.ts',code:hostile},false);}catch(e){if(e instanceof Error)message=e.message;}
+  expect(message).toMatch(/^Worker module source denied: /);expect(Buffer.byteLength(message)).toBeLessThanOrEqual(1024);
+  expect(JSON.parse(message.slice('Worker module source denied: '.length))).toMatchObject({idSha256:createHash('sha256').update('/owned/a.ts').digest('hex'),codeKind:'object',allowed:false,requested:false,index:3,idMatches:true});expect(calls).toBe(0);expect(message).not.toContain('private');
+ });
+ it('bounds escaped diagnostic preview for a4096-character ID',()=>{
+  const id='\0'.repeat(4096);let message='';try{classifyWorkerModuleSource(id,4,{id,code:null},false);}catch(e){if(e instanceof Error)message=e.message;}
+  expect(Buffer.byteLength(message)).toBeLessThanOrEqual(1024);expect(message).toContain(createHash('sha256').update(id).digest('hex'));
+ });
+ it('keeps final ownership refusal when a configured external appears in emitted owned modules',()=>{
+  expect(classifyWorkerModuleSource('rxjs',0,{id:'rxjs',code:null},true)).toBe('configured-external');
+  expect(()=>assertCompilerRuntimeOwnership([{kind:'chunk',moduleIds:['rxjs'],facadeModuleId:null}],[],{provider:'rolldown',version:'1.2.13',runtimeModuleId:'\0rolldown/runtime.js'},[])).toThrow();
+ });
+});
 describe('worker STATIC supplied AST only',()=>{
  it('retains static, export-from and dynamic occurrences in original order',()=>{
   expect(collectWorkerModuleImports(program([imp(lit('rxjs')),{type:'ExportNamedDeclaration',source:lit('rxjs'),specifiers:[]},

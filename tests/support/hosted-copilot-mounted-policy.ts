@@ -330,6 +330,8 @@ export function evaluateMountedOriginPolicy(input:unknown):PolicyResult<OriginFa
 const caseLabels=['seedReaderEOF','coldReaderEOF','mountedACK','publicRun','successfulTerminal','completionACK','bridge','producerFinish','producerReaderEOF','nativeOriginClose','producerOriginClose',
   'remoteCloseAdmission','hostDispose','rootUnmount','pageClose','contextClose','storeClear','publicStoreEmpty','caseDomainRelease'];
 const globalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
+export const MOUNTED_CASE_WITNESS_LABELS:readonly string[]=Object.freeze([...caseLabels]);
+export const MOUNTED_GLOBAL_WITNESS_LABELS:readonly string[]=Object.freeze([...globalLabels]);
 const witnessShape=shape({label:value(64),status:value()});
 const caseShape=shape({...fields(['caseNumber','journey','threadId','seedRunId','continuationRunId','repetition','completed','publicIdle','storeEmpty','domainReleased']),originals:list(witnessShape,19,19)});
 const streamShape=shape(fields(['readableEOF','writerFinish','writerClose','writerError','seen','retained','retainedBytesKnown']));

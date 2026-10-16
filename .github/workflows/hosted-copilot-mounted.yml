@@ -1,0 +1,89 @@
+name: Hosted Copilot native conformance
+run-name: hosted-copilot-react-h100-r6400-v1
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Same immutable source as independently qualified frontend and worker STATIC
+        required: true
+        type: string
+      static_run_id:
+        description: Original successful same-source production STATIC run attempt 1
+        required: true
+        type: string
+      static_artifact_id:
+        description: Independently qualified original STATIC artifact ID
+        required: true
+        type: string
+      static_archive_sha256:
+        description: Actual qualified STATIC archive SHA256
+        required: true
+        type: string
+      static_root_sha256:
+        description: Existing ROOT qualification report SHA256 assertion
+        required: true
+        type: string
+      static_peer_sha256:
+        description: Existing independent peer qualification report SHA256 assertion
+        required: true
+        type: string
+      frontend_settings_sha256:
+        description: SHA256 of the documented source config helper lock JSON tuple
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hosted-copilot-mounted
+  cancel-in-progress: false
+jobs:
+  native-conformance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: true
+      HOSTED_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+      HOSTED_STATIC_RUN_ID: ${{ inputs.static_run_id }}
+      HOSTED_STATIC_ARTIFACT_ID: ${{ inputs.static_artifact_id }}
+      HOSTED_STATIC_ARCHIVE_SHA256: ${{ inputs.static_archive_sha256 }}
+      HOSTED_STATIC_ROOT_SHA256: ${{ inputs.static_root_sha256 }}
+      HOSTED_STATIC_PEER_SHA256: ${{ inputs.static_peer_sha256 }}
+      HOSTED_FRONTEND_SETTINGS_SHA256: ${{ inputs.frontend_settings_sha256 }}
+      HOSTED_RUNNER_MARKER: ubuntu-24.04-hosted-copilot-mounted
+      COPILOTKIT_TELEMETRY_DISABLED: 'true'
+      DO_NOT_TRACK: '1'
+    steps:
+      - name: Check out immutable same-source native workflow
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Provision exact native Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.20.0'
+      - name: Verify original same-source frontend and worker STATIC before dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-mounted-bootstrap.mjs prepare
+      - name: Capture locked install without scripts and verify pins and public resolutions
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-mounted-bootstrap.mjs install
+      - name: Provision pinned browser only after installed and STATIC admission
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-mounted-bootstrap.mjs provision
+      - name: Run two serial original native cases without rebuilding
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-mounted-bootstrap.mjs run
+      - name: Admit bounded complete or incomplete native artifacts
+        id: artifacts
+        if: always()
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-mounted-bootstrap.mjs inventory
+      - name: Retain original complete or incomplete native artifacts
+        if: always() && steps.artifacts.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: copilot-mounted-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/copilot-mounted-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7

@@ -1,23 +1,33 @@
-import { EventType, type BaseEvent, type Event, type RunAgentInput } from '@ag-ui/core';
+import { EventType, type BaseEvent, type RunAgentInput } from '@ag-ui/core';
 import { EventSchema } from '@ag-ui/core/schemas';
 import { EventEncoder } from '@ag-ui/encoder';
 import type { ReplayEvent } from '../../../packages/contract/src/fixture.js';
 import { parseReplaySse } from '../../threadplane/src/sse.js';
-import type { HistoryMessage } from '../src/controls.js';
+import type { CaseIds } from '../src/controls.js';
+import type { LongThreadFixture } from '../../../packages/contract/src/long-thread.js';
+import {compileCanonicalHistoryRestoreFixture,compileCanonicalLongThreadFixture} from '../../../tests/fixtures/aimock.js';
+import {findFixture,matchesFixture} from '@copilotkit/aimock/agui';
+import {createFixtureSelection,type FixtureSelection,type ContinuationFixtureReader,type SelectedFixtureEvent} from './fixture-selection.js';
 
 export const MAX_REQUEST_BYTES=128*1024;
 export const MAX_NATIVE_BYTES=512*1024;
-export function seedEvents(input: RunAgentInput,history: readonly HistoryMessage[]): Event[] {
-  return [{type:EventType.RUN_STARTED,threadId:input.threadId,runId:input.runId},
-    {type:EventType.MESSAGES_SNAPSHOT,messages:history.map(message=>({...message}))},
-    {type:EventType.RUN_FINISHED,threadId:input.threadId,runId:input.runId,outcome:{type:'success'}}];
+/** Actual public AIMock data compilation/matching; no mock HTTP server or no-op
+ * registration. Synthetic epoch is fixture provenance, never producer pacing. */
+export function createNativeFixtureSelection(fixture:LongThreadFixture,ids:CaseIds):FixtureSelection {
+  const seed=compileCanonicalHistoryRestoreFixture(fixture,{threadId:ids.threadId,runId:ids.seedRunId,epochMs:0});
+  const continuation=compileCanonicalLongThreadFixture(fixture,{threadId:ids.threadId,runId:ids.continuationRunId,epochMs:0});
+  return createFixtureSelection({threadId:ids.threadId,seedRunId:ids.seedRunId,continuationRunId:ids.continuationRunId,
+    history:fixture.history.map(m=>({id:m.id,role:m.role,content:m.text})),events:fixture.events,epochMs:0},
+    {seed:seed.fixture,continuation:continuation.fixture},{findFixture,matchesFixture});
 }
-export function translateReplay(input: RunAgentInput,event: ReplayEvent): Event[] {
-  switch(event.type) {
-    case 'assistant-start': return [{type:EventType.RUN_STARTED,threadId:input.threadId,runId:input.runId},{type:EventType.TEXT_MESSAGE_START,messageId:event.messageId,role:'assistant'}];
-    case 'text-delta': return [{type:EventType.TEXT_MESSAGE_CONTENT,messageId:event.messageId,delta:event.text}];
-    case 'assistant-complete': return [{type:EventType.TEXT_MESSAGE_END,messageId:event.messageId},{type:EventType.RUN_FINISHED,threadId:input.threadId,runId:input.runId,outcome:{type:'success'}}];
-  }
+function nativeEvents(events:readonly SelectedFixtureEvent[]):BaseEvent[] {
+  return events.map(event=>({...event,type:EventSchema.parse(event).type}));
+}
+export function seedEvents(selection:FixtureSelection,input:RunAgentInput):BaseEvent[] {
+  return nativeEvents(selection.seed(input));
+}
+export function translateReplay(selection:ContinuationFixtureReader,event:ReplayEvent):BaseEvent[] {
+  return nativeEvents(selection.next(event));
 }
 export async function readBoundedJson(request: Request): Promise<unknown> {
   if(!request.body) throw new Error('Missing owned JSON request');
