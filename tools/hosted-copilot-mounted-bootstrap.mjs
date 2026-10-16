@@ -8,7 +8,7 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {readSourceSnapshot,COPILOT_PRODUCTION_SOURCES} from '../tests/support/hosted-copilot-context.ts';
 import {ordinaryPath,assertInventory,assertProductionOutputInventory,assertOriginalCommand} from '../tests/support/hosted-copilot-contract.ts';
 import {MOUNTED_PACKAGE_PINS,evaluateMountedAdmissionPolicy,evaluateMountedModulePolicy,evaluateMountedClosurePolicy,WORKER_ZOD_PUBLIC_BINDING,resolveMountedPublicEntry} from '../tests/support/hosted-copilot-mounted-policy.ts';
-import {validateWorkerRegisteredGraph,assertWorkerComponentPins,WORKER_STATIC_COMPONENT_PATHS} from '../tests/support/hosted-copilot-worker-static-policy.ts';
+import {validateWorkerContractSourceGraph,assertWorkerComponentPins,WORKER_STATIC_COMPONENT_PATHS} from '../tests/support/hosted-copilot-worker-static-policy.ts';
 
 const RELEASE='hosted-copilot-react-h100-r6400-v1',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
@@ -184,7 +184,7 @@ async function verifyGraph(directory,scratch,prerequisites){
  }
  const worker=join(process.cwd(),prerequisites.module.workerPath);
  const compiler=await jsonFile(join(scratch,'worker-compiler-profile.json')),owned=await jsonFile(join(scratch,'worker-owned-modules.json'));
- const graph=validateWorkerRegisteredGraph(compiler.registeredGraph);
+ const graph=validateWorkerContractSourceGraph(compiler.registeredGraph,process.cwd(),prerequisites.intent.source.files);
  need(JSON.stringify(graph.rows.filter(row=>row.role==='normal-source').map(row=>row.source))===JSON.stringify(owned)&&graph.chunks[0].sha256===prerequisites.module.executedCopySha256&&graph.chunks[0].bytes===prerequisites.module.emitted[0].bytes,'Original worker graph binding differs');
  const components=[];for(const path of WORKER_STATIC_COMPONENT_PATHS){const file=await physical(join(process.cwd(),path),4*MiB);components.push({path,bytes:file.bytes,sha256:file.sha256});}
  assertWorkerComponentPins(components,compiler.componentPins);

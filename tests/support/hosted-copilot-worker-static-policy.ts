@@ -1,7 +1,8 @@
 /** Supplied AST/data and explicit compiler-info observations only.
  * Never imports a parser, compiler, SDK or worker. */
 import {createHash} from 'node:crypto';
-import {assertProductionOutputInventory,PRODUCTION_FILE_LIMITS,type FileFact} from './hosted-copilot-contract.ts';
+import {join,resolve} from 'node:path';
+import {assertInventory,assertProductionOutputInventory,ordinaryPath,LIMITS,PRODUCTION_FILE_LIMITS,type FileFact} from './hosted-copilot-contract.ts';
 import {assertModuleOwnershipId,assertMappings,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_POLICY_LIMITS,WORKER_ZOD_PUBLIC_BINDING,lookupWorkerPublicPackage,type NativeImport} from './hosted-copilot-mounted-policy.ts';
 /** Diagnostic formatting only; no resolution, coercion or policy decision. */
@@ -260,7 +261,8 @@ export function validateWorkerRegisteredGraph(input:unknown,diagnosticSink?:(lin
  const root=closed(input,['compilerProfile','buildProfile','workerOutputPolicy','rows','callbacks','chunks','counts']);
  const compilerProfile=literalProfile(own(root,'compilerProfile',graphDenied),{provider:'rolldown',version:'1.2.13',runtimeModuleId:'\0rolldown/runtime.js'});
  const buildProfile=literalProfile(own(root,'buildProfile',graphDenied),{entry:'apps/copilotkit/hosted-native-entry.ts',platform:'node',tsconfig:false,hmr:false,userResolverPlugins:false,
-  logicalZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.publicSpecifier,emittedZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.rawSpecifier,zodPublicSourceParent:WORKER_ZOD_PUBLIC_BINDING.sourceParent});
+  logicalZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.publicSpecifier,emittedZodSpecifier:WORKER_ZOD_PUBLIC_BINDING.rawSpecifier,zodPublicSourceParent:WORKER_ZOD_PUBLIC_BINDING.sourceParent,
+  contractAliasFind:'@chat-ui-bench/contract$',contractAliasTarget:'packages/contract/src/index.ts'});
  const workerOutputPolicy=readWorkerOutputPolicy(own(root,'workerOutputPolicy',graphDenied));
  const supplied=own(root,'rows',graphDenied),length=arrayLength(supplied,MODULE_OWNERSHIP_LIMIT);denseKeys(supplied,length);
  let work=length,relations=0,normalSources=0,configuredExternals=0,compilerRegisteredDependencies=0;
@@ -320,6 +322,53 @@ export function validateWorkerRegisteredGraph(input:unknown,diagnosticSink?:(lin
  const chunks=Object.freeze([chunk]);
  const counts=literalProfile(own(root,'counts',graphDenied),{registeredRows:length,normalSources,configuredExternals,compilerRegisteredDependencies,relations,work});
  return Object.freeze({compilerProfile,buildProfile,workerOutputPolicy,rows:Object.freeze(rows),callbacks,chunks,counts});
+}
+const contractSourceDenied='Worker contract source graph denied',contractSourceTarget='packages/contract/src/index.ts';
+const contractSourceImporters=Object.freeze(['apps/threadplane/src/sse.ts','tests/fixtures/aimock.ts','packages/producer/src/replay.ts']);
+function contractSourceRoot(value:unknown):string {
+ if(typeof value!=='string'||value.length<2||value.length>1024||Buffer.byteLength(value,'utf8')>1024||!value.startsWith('/')||
+  value.includes('\0')||value.includes('\n')||value.includes('\r')||value.endsWith('/')||resolve(value)!==value)deny(contractSourceDenied);
+ return value;
+}
+/** Declared builtin input configuration only; no resolver or filesystem observation. */
+export function workerStaticResolveOptions(repositoryRoot:unknown):Readonly<{alias:Readonly<{'@chat-ui-bench/contract$':string}>}> {
+ const root=contractSourceRoot(repositoryRoot);
+ return Object.freeze({alias:Object.freeze({'@chat-ui-bench/contract$':join(root,contractSourceTarget)})});
+}
+/** Strict original-worker route. SOURCE facts are expected hashes until the
+ * caller's existing physical/Git checks confirm them; no native ports run here. */
+export function validateWorkerContractSourceGraph(input:unknown,repositoryRoot:unknown,sourceFiles:unknown,diagnosticSink?:(line:string)=>void):ReturnType<typeof validateWorkerRegisteredGraph> {
+ const graph=validateWorkerRegisteredGraph(input,diagnosticSink),root=contractSourceRoot(repositoryRoot);
+ let inventory:ReturnType<typeof assertInventory>;
+ try{
+  const count=arrayLength(sourceFiles,LIMITS.files);if(count===0)deny(contractSourceDenied);denseKeys(sourceFiles,count);
+  const projected:FileFact[]=[];
+  for(let i=0;i<count;i++){
+   const row=closed(element(sourceFiles,i),['path','bytes','sha256','regular','contained','symlink']);
+   const path=own(row,'path',graphDenied),bytes=own(row,'bytes',graphDenied),sha256=own(row,'sha256',graphDenied);
+   if(typeof path!=='string'||!ordinaryPath(path)||typeof bytes!=='number'||!Number.isSafeInteger(bytes)||bytes<0||
+    typeof sha256!=='string'||!(/^[a-f0-9]{64}$/.test(sha256))||own(row,'regular',graphDenied)!==true||own(row,'contained',graphDenied)!==true||own(row,'symlink',graphDenied)!==false)deny(contractSourceDenied);
+   projected.push({path,bytes,sha256,regular:true,contained:true,symlink:false});
+  }
+  inventory=assertInventory(projected);
+ }catch{/* Supplied data/reflection failure has no foreign-error inspection. */return deny(contractSourceDenied);}
+ const facts=new Map(inventory.files.map(file=>[file.path,file]));
+ const targetId=join(root,contractSourceTarget),targetFact=facts.get(contractSourceTarget);
+ const targets=graph.rows.filter(row=>row.role==='normal-source'&&((row.source as ModuleMapping).path===contractSourceTarget||row.id===targetId));
+ if(targets.length!==1||!targetFact)deny(contractSourceDenied);
+ const target=targets[0]!.source as ModuleMapping;
+ if(target.kind!=='physical'||target.id!==targetId||target.path!==contractSourceTarget||target.sha256!==targetFact.sha256)deny(contractSourceDenied);
+ let representatives=0;
+ for(const row of graph.rows)if(row.role==='normal-source'){
+  const source=row.source as ModuleMapping;
+  const path=contractSourceImporters.find(path=>source.path===path||row.id===join(root,path));
+  if(path===undefined)continue;
+  const expected=facts.get(path),imports=row.importedIds as readonly string[],dynamic=row.dynamicallyImportedIds as readonly string[];
+  if(source.kind!=='physical'||source.path!==path||source.id!==join(root,path)||!expected||source.sha256!==expected.sha256||!imports.includes(targetId)||dynamic.includes(targetId))deny(contractSourceDenied);
+  representatives++;
+ }
+ if(representatives===0)deny(contractSourceDenied);
+ return graph;
 }
 const importDenied='Worker module import denied',loaderDenied='Worker loader form denied',astDenied='Worker AST data denied';
 const loaderNames=new Set(['require','createRequire','eval','Function','importScripts','Worker','SharedWorker']);

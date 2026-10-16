@@ -178,7 +178,7 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v28`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v30`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
@@ -194,11 +194,27 @@ The original V24 inspection failed: its bounded diagnostic recorded
 `apps/copilotkit/node_modules/zod/index.js` where the root package was required.
 The original V26 worker emission failed at the normal-row Zod-origin predicate.
 It did not retain the refused row, so its exact subpredicate and importer cause
-remain unknown. V28 adds one bounded diagnostic at that original refusal only:
+remain unknown. V28 added one bounded diagnostic at that original refusal only:
 normalized row identity, source path/hash and predicate facts, with exact or
 explicit preview string values. Diagnostic failure preserves the same refusal;
 successful graphs and other denial branches stay silent. No origin is newly
-admitted. V28 requires fresh full frontend and worker inspection under this profile.
+admitted. V28's first reported refusal was the physical
+`packages/contract/dist/comparison-artifact.js` row with a static Zod edge outside
+the reviewed source-origin set. That observation does not establish the full
+incoming graph or retrospectively explain V26.
+
+V30 declares a worker-only builtin input alias from the exact parsed package path
+`@chat-ui-bench/contract$` to the admitted repository's
+`packages/contract/src/index.ts`. This deliberately replaces the owned package's
+published dist entry for this worker; frontend defaults and dependencies do not
+change. The retained profile records the fixed alias key and relative target.
+The complete graph must bind the physical source index and every present known
+bare-root importer to selected SOURCE hashes and actual static resolved edges,
+with at least one such importer present. Resolved edges and authenticated source
+intent are separate facts; the profile does not claim an observed raw resolver
+request or query/fragment exclusion. The unchanged nine-origin Zod gate covers
+all original rows, including unrendered modules. V30 requires fresh full frontend
+and worker inspection under this profile.
 Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
 
