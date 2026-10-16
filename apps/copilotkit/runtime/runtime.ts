@@ -7,7 +7,7 @@ import { validateCanonicalLongThreadFixture } from '../../../packages/contract/s
 import { createStoreDomain, ownHistory, validateResponse, type CaseIds } from '../src/controls.js';
 import { AGENT_ID, RUNTIME_URL, CONTEXT_URL, MOUNTED_URL, COMPLETED_URL, CONTINUATION_URL, dataRecord, parseCaseContext, type CaseContext } from '../src/context.js';
 import { ProducerAgent, type BridgeSpec } from './producer-agent.js';
-import { OwnedOperations, claimApplicationDomain, SettlementBudget } from './ownership.js';
+import { OwnedOperations, claimApplicationDomain, SettlementBudget, notifyNativeCase, type NativeCaseHooks, type NativeCaseObservation } from './ownership.js';
 import { readBoundedJson, consumeNativeSeed, isSuccessfulTerminal, MAX_NATIVE_BYTES, createNativeFixtureSelection } from './wire.js';
 
 interface PublicRunOutcome { readonly runId:string; eventCount:number;terminalSuccess:boolean;settled:boolean }
@@ -74,11 +74,11 @@ class OwnedRunner extends InMemoryAgentRunner {
         original.subscribe({next:event=> {
           outcome.eventCount++;
           if(outcome.eventCount>(owned.runId===this.spec.ids.seedRunId?3:204)) {if(!operation.settled) operation.fail('Original public event count exceeded');return;}
-          if(isSuccessfulTerminal(event) && 'threadId' in event && event.threadId===owned.threadId && 'runId' in event && event.runId===owned.runId) outcome.terminalSuccess=true;
+          if(isSuccessfulTerminal(event) && 'threadId' in event && event.threadId===owned.threadId && 'runId' in event && event.runId===owned.runId) {outcome.terminalSuccess=true;if(owned.runId===this.spec.ids.continuationRunId)notifyNativeCase(this.spec.hooks,this.operations,{kind:'witness',label:'successfulTerminal',status:'fulfilled'});}
         },error:error=> {outcome.settled=true;if(!operation.settled) operation.fail(error);},complete:()=> {
           outcome.settled=true;this.activeRunId=null;
           if(!operation.settled) {
-            if(outcome.terminalSuccess && outcome.eventCount===(owned.runId===this.spec.ids.seedRunId?3:204)) operation.succeed();
+            if(outcome.terminalSuccess && outcome.eventCount===(owned.runId===this.spec.ids.seedRunId?3:204)) {operation.succeed();if(owned.runId===this.spec.ids.continuationRunId)notifyNativeCase(this.spec.hooks,this.operations,{kind:'witness',label:'publicRun',status:'fulfilled'});}
             else operation.fail('Original public run completed without exact successful lifecycle');
           }
         }});
@@ -102,7 +102,7 @@ class OwnedRunner extends InMemoryAgentRunner {
 /** Only explicit case allocation; no runtime, producer, listener or request is
  * constructed at import. Hosted entry must own one worker/store domain and serial
  * cases. This module lease alone does not prove no other runner is imported. */
-export function createCaseRuntime(input:unknown,ids:CaseIds,repetition:string) {
+export function createCaseRuntime(input:unknown,ids:CaseIds,repetition:string,hooks?:NativeCaseHooks) {
   preflightFixture(input);
   if(!repetition || repetition.length>128 || new TextEncoder().encode(repetition).byteLength>128) throw new Error('Invalid repetition');
   const fixture=validateCanonicalLongThreadFixture(input);
@@ -114,8 +114,9 @@ export function createCaseRuntime(input:unknown,ids:CaseIds,repetition:string) {
   validateResponse(response,response);
   const fixtureSelection=createNativeFixtureSelection(fixture,ids);
   const releaseDomain=claimApplicationDomain();
-  const spec:BridgeSpec={fixture,ids,history,response,repetition,fixtureSelection};
+  const spec:BridgeSpec={fixture,ids,history,response,repetition,fixtureSelection,hooks};
   const runner=new OwnedRunner(spec);
+  const observe=(event:NativeCaseObservation)=>notifyNativeCase(hooks,runner.operations,event);
   const bridge=new ProducerAgent(spec,runner.operations,input=>runner.requireAdmitted(input));
   const runtime=new CopilotRuntime({agents:{[AGENT_ID]:bridge},runner});
   const native=createCopilotHonoHandler({runtime,basePath:RUNTIME_URL});
@@ -142,7 +143,7 @@ export function createCaseRuntime(input:unknown,ids:CaseIds,repetition:string) {
       const finish=(success:boolean,error?:unknown)=> {
         if(finished) return;finished=true;request.signal.removeEventListener('abort',abort);nativeControllers.delete(cancellation);ownedReader.releaseLock();
         if(!success || cancelled) {const failure=error??'Native response cancelled before original EOF';read.fail(failure);http.fail(failure);}
-        else {nativeEof.add(label);read.succeed();http.succeed();}
+        else {nativeEof.add(label);read.succeed();http.succeed();if(label==='native-connect')observe({kind:'witness',label:'coldReaderEOF',status:'fulfilled'});}
       };
       return new Response(new ReadableStream<Uint8Array>({
         async pull(controller) {
@@ -158,9 +159,11 @@ export function createCaseRuntime(input:unknown,ids:CaseIds,repetition:string) {
       const cancellation=new AbortController();
       const receipt=await runner.operations.run('http','original-seed-client-http',async()=> {
         const body:RunAgentInput={threadId:ids.threadId,runId:ids.seedRunId,messages:[],state:{},tools:[],context:[],forwardedProps:{benchmarkMode:'seed'},protocolVersion:PROTOCOL_VERSION};
+        observe({kind:'origin',role:'native-case',action:'request',origin:new URL(baseUrl).origin,path:`${RUNTIME_URL}/agent/${AGENT_ID}/run`,method:'POST'});
         const original=await fetch(new URL(`${RUNTIME_URL}/agent/${AGENT_ID}/run`,baseUrl),{method:'POST',headers:{'content-type':'application/json','accept':'text/event-stream'},body:JSON.stringify(body),signal:cancellation.signal});
         return runner.operations.run('reader','original-seed-client-reader',()=>consumeNativeSeed(original,ids.threadId,ids.seedRunId),async()=> {cancellation.abort();});
       },async()=> {cancellation.abort();});
+      observe({kind:'witness',label:'seedReaderEOF',status:'fulfilled'});
       await runner.operations.awaitOriginals();
       const publicOutcome=runner.outcomes.get(ids.seedRunId),bridgeOutcome=bridge.receipt(ids.seedRunId);
       const idle=!await runner.isRunning({threadId:ids.threadId});
@@ -237,7 +240,7 @@ export function createCaseRuntime(input:unknown,ids:CaseIds,repetition:string) {
     original.then(()=> {entry.settled=true;request.signal.removeEventListener('abort',abort);},error=> {entry.settled=true;request.signal.removeEventListener('abort',abort);runner.operations.cleanupFailure(error);});
     return original;
   }
-  return {seed,fetch:fetchTracked,context:()=>context,completed:()=>completed,
+  return {seed,fetch:fetchTracked,observe,context:()=>context,completed:()=>completed,
     bindMountedOwner(owner:MountedOwner) {if(mountedOwner || mountReleased || closed) throw new Error('Mounted original owner is once-only');mountedOwner=owner;},
     async dispose(closeServer:()=>Promise<void>):Promise<void> {
       const budget=new SettlementBudget();
@@ -263,9 +266,11 @@ export function createCaseRuntime(input:unknown,ids:CaseIds,repetition:string) {
       await runner.operations.awaitOriginals(false,budget);
       const idle=!await budget.wait(runner.isRunning({threadId:ids.threadId}),'Owned public idle');runner.controls.observeIdle(idle);
       if(!completed) throw new Error('Incomplete owned case retains state; global clear and reuse forbidden');
-      await runner.controls.clearStore(()=>runner.clearThreads());runner.controls.observeEmptyAfterClear(runner.listThreads());
+      await runner.controls.clearStore(()=>runner.clearThreads());observe({kind:'witness',label:'storeClear',status:'fulfilled'});runner.controls.observeEmptyAfterClear(runner.listThreads());observe({kind:'witness',label:'publicStoreEmpty',status:'fulfilled'});
       await budget.wait(closeOriginalServer(),'Owned server disposal');
-      await runner.operations.awaitOriginals(true,budget);runner.controls.finishDisposal();releaseDomain();
+      await runner.operations.awaitOriginals(true,budget);runner.controls.finishDisposal();releaseDomain();observe({kind:'witness',label:'caseDomainRelease',status:'fulfilled'});
+      // A final recorder failure cannot turn into a successful disposal result.
+      await runner.operations.awaitOriginals(true,budget);
       } catch(primary) {
         // Failure closes this owned listener when possible, but never clears
         // retained SDK state, releases the lease, retries, or invents settlement.

@@ -10,7 +10,7 @@ import type { HistoryMessage, CaseIds } from '../src/controls.js';
 import { AGENT_ID } from '../src/context.js';
 import { boundedChunks, producerEvents, seedEvents, translateReplay } from './wire.js';
 import type { FixtureSelection } from './fixture-selection.js';
-import { OwnedOperations, boundedWait, diagnostic } from './ownership.js';
+import { OwnedOperations, boundedWait, diagnostic, notifyNativeCase, type NativeCaseHooks } from './ownership.js';
 
 export interface BridgeSpec {
   readonly fixture: LongThreadFixture;
@@ -19,6 +19,7 @@ export interface BridgeSpec {
   readonly response: HistoryMessage;
   readonly repetition: string;
   readonly fixtureSelection: FixtureSelection;
+  readonly hooks?:NativeCaseHooks|undefined;
 }
 interface ProducerCompletion { readonly complete: boolean;readonly error: string|null }
 interface OwnedProducer {
@@ -33,7 +34,7 @@ interface OwnedProducer {
 /** The existing independently timed producer writes its real HTTP response.
  * Its scheduling/emission clock is separate from bridge receipt observations.
  * This explicit allocator is never called by seed and has no module-level listener. */
-async function createOwnedProducer(spec: BridgeSpec): Promise<OwnedProducer> {
+async function createOwnedProducer(spec: BridgeSpec,operations:OwnedOperations): Promise<OwnedProducer> {
   let session: LongThreadReplaySession|undefined,response: ServerResponse|undefined,connected=false,finished=false,drains=0;
   let closePromise: Promise<void>|undefined;
   const records: ComparisonObservation[]=[];
@@ -45,7 +46,7 @@ async function createOwnedProducer(spec: BridgeSpec): Promise<OwnedProducer> {
     connected=true;response=res;
     res.writeHead(200,{'content-type':'text/event-stream; charset=utf-8','cache-control':'no-store','connection':'keep-alive'});res.flushHeaders();
     res.on('drain',()=> {drains++;});
-    res.once('finish',()=> {finished=true;resolveWrites({complete:session?.state==='complete',error:session?.state==='complete'?null:'Producer finished without successful original lifecycle'});});
+    res.once('finish',()=> {finished=true;notifyNativeCase(spec.hooks,operations,{kind:'witness',label:'producerFinish',status:session?.state==='complete'?'fulfilled':'rejected'});resolveWrites({complete:session?.state==='complete',error:session?.state==='complete'?null:'Producer finished without successful original lifecycle'});});
     res.once('close',()=> {if(!finished) {session?.disconnect();resolveWrites({complete:false,error:'Original producer response closed before finish'});}});
     session=startLongThreadReplay(spec.fixture,{repetition:spec.repetition,writer:{write:frame=>res.write(frame),end:()=>res.end()},record:record=> {
       if(records.length>=204) throw new Error('Producer evidence bound exceeded');
@@ -54,12 +55,13 @@ async function createOwnedProducer(spec: BridgeSpec): Promise<OwnedProducer> {
   });
   await new Promise<void>((resolve,reject)=> {server.once('error',reject);server.listen(0,'127.0.0.1',()=> {server.off('error',reject);resolve();});});
   const address=server.address();if(!address || typeof address==='string') throw new Error('Expected owned loopback producer address');
-  return {url:`http://127.0.0.1:${address.port}/replay`,writes,get state(){return session?.state??'waiting';},get drains(){return drains;},get records(){return records;},
+  const origin=`http://127.0.0.1:${address.port}`;notifyNativeCase(spec.hooks,operations,{kind:'origin',role:'independent-producer',action:'listen',origin,path:null,method:null});
+  return {url:`${origin}/replay`,writes,get state(){return session?.state??'waiting';},get drains(){return drains;},get records(){return records;},
     close() {
       if(closePromise) return closePromise;
       closePromise=(async()=> {
         session?.dispose();if(!finished) response?.destroy();server.closeAllConnections();
-        await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
+        await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));notifyNativeCase(spec.hooks,operations,{kind:'witness',label:'producerOriginClose',status:'fulfilled'});notifyNativeCase(spec.hooks,operations,{kind:'origin',role:'independent-producer',action:'close',origin,path:null,method:null});
         if(!connected) resolveWrites({complete:false,error:'Owned producer never connected'});
       })();return closePromise;
     }};
@@ -108,10 +110,11 @@ export class ProducerAgent extends AbstractAgent {
           } else {
             const selected=this.spec.fixtureSelection.continuation(input);
             // Allocation occurs only after the runner admitted unchanged full H.
-            producer=await createOwnedProducer(this.spec);
+            producer=await createOwnedProducer(this.spec,this.operations);
             const producerOperation=this.operations.start('producer','original-producer',()=>producer?.close()??Promise.resolve());
             const readerOperation=this.operations.start('reader','original-producer-reader',async()=> {await reader?.cancel();});
             try {
+              notifyNativeCase(this.spec.hooks,this.operations,{kind:'origin',role:'independent-producer',action:'request',origin:new URL(producer.url).origin,path:'/replay',method:'GET'});
               const response=await fetch(producer.url,{signal:cancellation.signal});
               if(!response.ok || !response.body || !response.headers.get('content-type')?.startsWith('text/event-stream')) throw new Error('Invalid owned producer response');
               reader=response.body.getReader();
@@ -127,7 +130,7 @@ export class ProducerAgent extends AbstractAgent {
               selected.complete();
               const writes=await boundedWait(producer.writes,10000,'Original producer finish');
               if(!writes.complete || producer.state!=='complete' || !eof || deltaCount!==200 || responseBytes!==6400 || eventCount!==204) throw new Error(writes.error??'Incomplete canonical producer receipt');
-              await reader.cancel();reader.releaseLock();reader=undefined;readerSettled=true;readerOperation.succeed();
+              await reader.cancel();reader.releaseLock();reader=undefined;readerSettled=true;readerOperation.succeed();notifyNativeCase(this.spec.hooks,this.operations,{kind:'witness',label:'producerReaderEOF',status:'fulfilled'});
               await producer.close();producerSettled=true;producerOperation.succeed();producerDrains=producer.drains;
               if(producer.records.length!==202 || this.producerRecords.length!==0) throw new Error('Original producer emission record count mismatch');
               this.producerRecords.push(...producer.records);
@@ -151,7 +154,7 @@ export class ProducerAgent extends AbstractAgent {
       },async()=> {cancellation.abort();});
       // Original remains owned by operations until its asynchronous finally closes
       // the reader and producer. Observable unsubscription only requests abort.
-      original.then(()=>subscriber.complete(),error=>subscriber.error(error));
+      original.then(()=>{if(input.runId===this.spec.ids.continuationRunId)notifyNativeCase(this.spec.hooks,this.operations,{kind:'witness',label:'bridge',status:'fulfilled'});subscriber.complete();},error=>subscriber.error(error));
       return ()=> {cancellation.abort();};
     });
   }

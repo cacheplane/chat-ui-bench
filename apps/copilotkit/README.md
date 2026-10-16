@@ -572,7 +572,7 @@ modules and their related tracked sources retain distinct ownership identities.
 This stage has no measured output-fit, runtime or FPS outcome until its original
 hosted artifacts receive independent review.
 
-The proposed V15 geometry integration adds an explicitly unscored full H100
+The V16 geometry integration adds an explicitly unscored full H100
 DOM collector to the original frontend host. Canonical ID host uniqueness and
 role-specific content ownership are checked before text-node ranges are read.
 Eligible text determines membership; returned message bounds come from the row
@@ -599,3 +599,65 @@ override is supplied, with an overscan setting of five and translated wrappers.
 H100 exceeds that source threshold; actual mounted behavior remains to be observed.
 `npm run typecheck:copilot-geometry` checks the collector and its supplied tests
 with the strict browser-source type profile and `skipLibCheck:false` as part of CI.
+
+## Prepared native conformance source
+
+The unused `hosted-copilot-mounted.yml` workflow and inert
+`runNativeMountedConformance` worker export are included before a fresh V16
+frontend/worker STATIC release. After ROOT and peer qualify that completed
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v1`
+native tag must point to the same commit. The native dispatch supplies the
+verified original STATIC run/artifact/archive and review hashes; these are
+caller review assertions, not cryptographic certification by the pure policy.
+No SDK, server, producer or browser effect is admitted by STATIC acceptance alone.
+
+`frontendSettingsSha256` is SHA256 of the UTF8 bytes of
+`JSON.stringify([['source', candidateSha], ['apps/copilotkit/vite.config.ts', configSha], ['tests/support/hosted-copilot-build-plugin.ts', helperSha], ['package-lock.json', lockSha]])`,
+with that exact tuple order and no trailing newline. Each file digest is the
+SHA256 of its same-source checkout bytes; `candidateSha` is the immutable source
+commit SHA. The bootstrap retains the exact tuple in `frontend-settings.json`.
+This binds the source, build settings and locked toolchain; supplied ROOT/peer
+review hashes are ordinary review assertions, not signatures or self-authenticated
+approvals.
+
+The prepared harness runs only two fresh serial H100/R6400 cases, follow then
+history-reading. It keeps the default UI, uses actual DOM geometry and native
+wheel/return-control actions, and requires advancing public response progress.
+The history case checks an observed trusted upward wheel and actual scrollTop
+movement, then evaluates the same-element historical anchor pair. Signed anchor
+displacement is retained without a universal pixel score. Full geometry scans
+are unscored and limited before invocation to four attempts for follow and five
+for history-reading, including failed attempts. Readiness polling reads only
+public progress scalars and one response/scroller box, without full history scans.
+This source is not an installed comparison capture adapter and
+cannot publish FPS, presentation, scoring or ranking results.
+
+The public AIMock fixture-data/matching integration supplies owned selected
+events to the seed/continuation bridge. The independent repository producer still
+supplies real pacing.
+Synthetic fixture timestamps remain provenance, and no AIMock HTTP server or
+model-key requirement is introduced. The integration must receive fresh
+same-source STATIC qualification after all source changes are combined.
+
+The native case's combined assets/runtime origin and the independent producer
+are the only two HTTP origins. Static asset requests use the exact qualified
+file inventory and fresh byte checks separately from the native protocol-route
+policy. One parent-owned BrowserServer supplies the exact control endpoint;
+the worker connects once. Every case requires its original page/host/root,
+context/server/producer, public state and domain disposal outcomes before reuse.
+A callback recorder failure is an owned cleanup failure and blocks publication.
+`browserServerClose` means the pre-registered actual BrowserServer close event;
+`publicServerClose` means its retained once-only public `close()` promise.
+Neither slot represents an extra HTTP listener or is filled from the other.
+
+The parent owns original child exit/close and complete streams. Browser process
+stdio has only honest post-bind coverage. Native geometry results are written
+to bounded artifact files rather than pushed through the 256KiB application
+stdio allowance. Unsupported geometry, missing original closure, network
+refusals, timeouts or budget overflow remain incomplete failures. No actual
+native conformance outcome is established by this source preparation.
+
+CI includes 23 supplied-data bootstrap regressions and nine tiny synthetic ZIP
+cases using the exact embedded stdlib extractor. These tests run no bootstrap
+action or SDK/browser effects. Strict mounted conformance and bootstrap test
+typing run through the repository typecheck commands.

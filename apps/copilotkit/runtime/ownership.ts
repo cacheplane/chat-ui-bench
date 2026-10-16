@@ -1,6 +1,15 @@
 import { createStoreDomain, type OperationKind } from '../src/controls.js';
 
 export type CaseControls = ReturnType<ReturnType<typeof createStoreDomain>['beginCase']>;
+export type NativeCaseWitness='seedReaderEOF'|'coldReaderEOF'|'mountedACK'|'publicRun'|'successfulTerminal'|'completionACK'|'bridge'|'producerFinish'|'producerReaderEOF'|'nativeOriginClose'|'producerOriginClose'|'remoteCloseAdmission'|'hostDispose'|'rootUnmount'|'pageClose'|'contextClose'|'storeClear'|'publicStoreEmpty'|'caseDomainRelease';
+export type NativeCaseObservation=Readonly<{kind:'witness';label:NativeCaseWitness;status:'fulfilled'|'rejected'}>|
+ Readonly<{kind:'origin';role:'native-case'|'independent-producer';action:'listen'|'request'|'close';origin:string;path:string|null;method:'GET'|'POST'|null}>;
+export interface NativeCaseHooks {observe(event:NativeCaseObservation):void}
+/** Hooks describe actual original boundaries. A recorder failure becomes an
+ * owned cleanup failure; it must not interrupt original resource settlement. */
+export function notifyNativeCase(hooks:NativeCaseHooks|undefined,failures:{cleanupFailure(error:unknown):void},event:NativeCaseObservation):void {
+ try{hooks?.observe({...event});}catch{failures.cleanupFailure('Native observation callback failed');}
+}
 export interface OperationOutcome { readonly label: string; readonly success: boolean; readonly error: string | null }
 export interface OriginalOperation {
   readonly kind: OperationKind;

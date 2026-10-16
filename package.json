@@ -14,9 +14,10 @@
   "scripts": {
     "test": "vitest run",
     "test:hosted:httpagent": "node tools/hosted-httpagent-admission.mjs && vitest run --config vitest.hosted-httpagent.config.ts --no-color",
-    "typecheck": "npm run typecheck --workspaces --if-present && npm run typecheck:fixtures && npm run typecheck:copilot-geometry",
+    "typecheck": "npm run typecheck --workspaces --if-present && npm run typecheck:fixtures && npm run typecheck:copilot-geometry && npm run typecheck:copilot-mounted",
     "typecheck:fixtures": "tsc -p tests/tsconfig.types.json",
     "typecheck:copilot-geometry": "tsc -p tests/tsconfig.copilot-geometry.json --noEmit",
+    "typecheck:copilot-mounted": "tsc -p tests/tsconfig.copilot-mounted.json --noEmit",
     "build": "npm run build --workspace @chat-ui-bench/contract && npm run build --workspace @chat-ui-bench/producer && npm run build --workspace @chat-ui-bench/reference && npm run build --workspace @chat-ui-bench/analyzer && npm run build --workspace @chat-ui-bench/runner && npm run build --workspace @chat-ui-bench/threadplane",
     "test:browser": "npm run build && vitest run --config vitest.browser.config.ts",
     "bench:calibrate": "node packages/runner/dist/cli.js",
