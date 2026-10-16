@@ -562,7 +562,12 @@ The retained worker copy, reports and original command logs share the existing
 artifact limits, including directory visits. Compiler ownership records retain
 physical source hashes and paths, virtual module identities, the distinct
 compiler runtime observation, and exact allowlisted external callback/enumeration
-observations.
+observations. An enumerated external must match the exact public/builtin allowlist
+and this build's prior true external callback decision, after matching module
+info and ID. Its code getter is not read. This records configured external
+classification, not proof from a null/undefined code sentinel. Other modules
+require one string-code observation before physical/virtual ownership; final
+chunk ownership still rejects a configured external emitted as an owned module.
 
 The worker AST check covers supported static/export-from/literal dynamic imports
 and a finite set of loader forms under the existing traversal limits. It is not

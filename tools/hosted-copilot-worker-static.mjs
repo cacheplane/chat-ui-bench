@@ -8,7 +8,7 @@ import {ordinaryPath,assertDenseEntries} from '../tests/support/hosted-copilot-c
 import {readPhysicalSource,observeCompilerRuntimeModule} from '../tests/support/hosted-copilot-build-plugin.ts';
 import {assertCompilerProfile,assertCompilerRuntimeOwnership,assertMappings,assertModuleOwnershipId,projectCompilerRuntimeModules} from '../tests/support/hosted-copilot-production-policy.ts';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_PACKAGE_PINS,evaluateMountedModulePolicy} from '../tests/support/hosted-copilot-mounted-policy.ts';
-import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite} from '../tests/support/hosted-copilot-worker-static-policy.ts';
+import {collectWorkerModuleImports,assertWorkerFrontendPrerequisite,classifyWorkerModuleSource} from '../tests/support/hosted-copilot-worker-static-policy.ts';
 
 const action=process.argv[2];
 if(process.argv.length!==3||!['emit','inspect'].includes(action))throw new Error('Fixed worker STATIC action required');
@@ -59,9 +59,9 @@ if(action==='emit') {
     assertModuleOwnershipId(id,index++);
     if(id===RUNTIME_MODULE_ID)throw new Error('Compiler runtime appeared in source enumeration');
     const info=this.getModuleInfo(id);
-    if(!info||info.id!==id)throw new Error('Worker module source unavailable');
-    if(info.code===null&&allowed(id)&&requestedExternals.has(id)){enumeratedExternals.add(id);continue;}
-    if(typeof info.code!=='string')throw new Error('Worker module source not ready');
+    // Configuration-first classification after exact info/id checks. A prior
+    // true external callback is distinct from any null/undefined code sentinel.
+    if(classifyWorkerModuleSource(id,index-1,info,requestedExternals.has(id))==='configured-external'){enumeratedExternals.add(id);continue;}
     owned.push(id.startsWith('\0')||id.startsWith('virtual:')?{id,kind:'virtual',external:false}:{id,kind:'physical',...readPhysicalSource(id,root),external:false});
    }
    assertMappings(owned);

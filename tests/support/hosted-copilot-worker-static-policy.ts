@@ -1,9 +1,38 @@
-/** Supplied AST/data only. Never imports a parser, compiler, SDK or worker. */
+/** Supplied AST/data and explicit compiler-info observations only.
+ * Never imports a parser, compiler, SDK or worker. */
+import {createHash} from 'node:crypto';
 import {assertProductionOutputInventory,PRODUCTION_FILE_LIMITS,type FileFact} from './hosted-copilot-contract.ts';
+import {assertModuleOwnershipId,MODULE_OWNERSHIP_LIMIT} from './hosted-copilot-production-policy.ts';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS,MOUNTED_POLICY_LIMITS,type NativeImport} from './hosted-copilot-mounted-policy.ts';
 type Row=Record<string,unknown>;
 type WorkerImport=Readonly<Pick<NativeImport,'specifier'>&{kind:'static'|'dynamic-literal'}>;
 function deny(message:string):never {throw new Error(message);}
+/** Exact configured externals are identified by this build's prior callback
+ * decision, never by a code-null sentinel. An external code getter is not read.
+ * Other modules still require one string-code observation, then the caller's
+ * unchanged physical/virtual and final emitted-chunk ownership checks. */
+export function classifyWorkerModuleSource(id:unknown,index:unknown,info:unknown,requestedExternal:unknown):'configured-external'|'owned'{
+ const requested=requestedExternal===true;let allowed=false,idMatches=false,codeKind='not-read';
+ const fail=():never=>{
+  // Only primitive facts are serialized. No module code, error, toJSON or
+  // string coercion is used; even invalid caller IDs have bounded work/output.
+  const boundedId=typeof id==='string'&&id.length<=4096&&Buffer.byteLength(id,'utf8')<=4096;
+  const facts={idSha256:boundedId?createHash('sha256').update(id).digest('hex'):null,idPreview:typeof id==='string'?id.slice(0,96):null,
+   codeKind,allowed,requested,index:typeof index==='number'&&Number.isSafeInteger(index)&&index>=0&&index<MODULE_OWNERSHIP_LIMIT?index:null,idMatches};
+  return deny('Worker module source denied: '+JSON.stringify(facts));
+ };
+ if(typeof index!=='number'||!Number.isSafeInteger(index)||index<0||index>=MODULE_OWNERSHIP_LIMIT)return fail();
+ try{assertModuleOwnershipId(id,index);}catch{return fail();}
+ allowed=Object.hasOwn(MOUNTED_MODULE_PACKAGE_SPECIFIERS,id)||MOUNTED_MODULE_BUILTINS.includes(id);
+ if(typeof requestedExternal!=='boolean'||info===null||typeof info!=='object')return fail();
+ try{const descriptor=Object.getOwnPropertyDescriptor(info,'id');idMatches=Boolean(descriptor&&Object.hasOwn(descriptor,'value')&&descriptor.value===id);}catch{return fail();}
+ if(!idMatches)return fail();
+ if(allowed&&requested)return 'configured-external';
+ let code:unknown;try{code=Reflect.get(info,'code');}catch{codeKind='getter-threw';return fail();}
+ codeKind=code===null?'null':typeof code;
+ if(typeof code!=='string')return fail();
+ return 'owned';
+}
 function data(value:unknown,message:string):Row {
  if(value===null||typeof value!=='object'||Array.isArray(value))return deny(message);
  const prototype=Object.getPrototypeOf(value);
