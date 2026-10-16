@@ -36,6 +36,12 @@ export interface DecodedFragment {
   sourceCoverage: typeof LABELS.sourceCoverage; evaluationEligibility: false; scoringEligibility: false; rankingEligibility: false;
 }
 export interface UnavailableFragment { status: 'unavailable'; diagnostics: { code: string }[] }
+export interface PayloadMember {fieldOccurrenceIndex:number;memberIndex:number;logicalIndex:number;start:number;valueStart:number;end:number;value:string}
+export interface DecodedFragmentWithMembers extends DecodedFragment {members:PayloadMember[]}
+/** Internal opt-in for the restricted whole-trace projector; selected fields stay v1. */
+export function decodeBrowserFramePayloadWithMembers(input:unknown,kind:unknown):DecodedFragmentWithMembers|UnavailableFragment {
+ return decodePayload(input,kind,PAYLOAD_POLICY,true) as DecodedFragmentWithMembers|UnavailableFragment;
+}
 const STATES = ['no_update_desired', 'presented_all', 'presented_partial', 'dropped'] as const;
 const FRAME_TYPES = ['forked', 'backfill'] as const;
 const STEPS = ['unknown', 'did_not_produce_frame', 'generate_compositor_frame', 'generate_render_pass', 'issue_begin_frame',
@@ -84,13 +90,22 @@ function sink(bytes: Uint8Array, field: WireField, budget: WireBudget, occurrenc
   }
   return result;
 }
-function members(bytes: Uint8Array, field: WireField, budget: WireBudget, values: string[]): void {
+function members(bytes: Uint8Array, field: WireField, budget: WireBudget, values: string[], retained?:PayloadMember[],fieldOccurrenceIndex=0): void {
   const o = field.occurrence;
-  if (o.wireType === 0) { budget.chargeMember(); values.push(signed64(scalar(field))); return; }
+  if (o.wireType === 0) {
+    budget.chargeMember();const value=signed64(scalar(field));
+    retained?.push({fieldOccurrenceIndex,memberIndex:0,logicalIndex:values.length,start:o.valueStart,valueStart:o.valueStart,end:o.end,value});
+    values.push(value);return;
+  }
   if (o.wireType !== 2) throw new WireError('selected-field-wrong-wire-type');
   // Packed scalar values are a flat bounded window, not recursive messages or extra field occurrences.
   const reader = new BodyReader(bytes, o.valueStart, o.end, budget);
-  while (!reader.complete) { budget.chargeMember(); values.push(signed64(reader.varint())); }
+  let memberIndex=0;
+  while (!reader.complete) {
+    budget.chargeMember();const start=reader.position,value=signed64(reader.varint());
+    retained?.push({fieldOccurrenceIndex,memberIndex:memberIndex++,logicalIndex:values.length,start,valueStart:start,end:reader.position,value});
+    values.push(value);
+  }
 }
 function reporter(fields: PayloadFields, field: WireField): void {
   switch (field.occurrence.fieldNumber) {
@@ -109,6 +124,9 @@ function reporter(fields: PayloadFields, field: WireField): void {
 
 /** Decode an explicitly selected standalone body; success supplies no packet/clock/pair/target authority. */
 export function decodeBrowserFramePayload(input: unknown, kind: unknown, policy: unknown): DecodedFragment | UnavailableFragment {
+  return decodePayload(input,kind,policy,false);
+}
+function decodePayload(input:unknown,kind:unknown,policy:unknown,retainMembers:boolean):DecodedFragment|DecodedFragmentWithMembers|UnavailableFragment {
   try {
     if (policy !== PAYLOAD_POLICY) throw new WireError('unsupported-policy');
     if (kind !== 'reporter2' && kind !== 'graphics') throw new WireError('unsupported-payload-kind');
@@ -116,6 +134,7 @@ export function decodeBrowserFramePayload(input: unknown, kind: unknown, policy:
     const budget = new WireBudget(); const reader = new BodyReader(bytes, 0, bytes.byteLength, budget);
     const fields: PayloadFields = {};
     const occurrences: Occurrence[] = []; const skippedFields: Occurrence[] = [];
+    const retained:PayloadMember[]|undefined=retainMembers?[]:undefined;
     const present = new Set<number>(); const selected = kind === 'reporter2' ? REPORTER_FIELDS : GRAPHICS_FIELDS;
     while (!reader.complete) {
       const field = reader.next('root'); const o = field.occurrence;
@@ -129,12 +148,12 @@ export function decodeBrowserFramePayload(input: unknown, kind: unknown, policy:
         case 1: fields.step = enumeration(field, STEPS); break;
         case 2: fields.frameSinkId = sink(bytes, field, budget, occurrences, skippedFields); break;
         case 3: fields.displayTraceId = signed64(scalar(field)); break;
-        case 8: fields.surfaceTraceIds ??= []; members(bytes, field, budget, fields.surfaceTraceIds); break;
+        case 8: fields.surfaceTraceIds ??= []; members(bytes, field, budget, fields.surfaceTraceIds,retained,occurrences.length-1); break;
         case 10: fields.surfaceTraceId = signed64(scalar(field)); break;
       }
     }
     return { status: 'decoded_fragment', kind, fields, source: PAYLOAD_SOURCE, presentFieldNumbers: [...present].sort((a, b) => a - b),
-      occurrences, skippedFields, consumedBytes: bytes.byteLength, ...LABELS };
+      occurrences, skippedFields, consumedBytes: bytes.byteLength, ...LABELS,...(retained===undefined?{}:{members:retained}) };
   } catch (error) {
     // One fixed diagnostic on denial; no prefix fields, arbitrary exception messages or caller evidence escape.
     return { status: 'unavailable', diagnostics: [{ code: error instanceof WireError ? error.code : 'invalid-payload-input' }] };

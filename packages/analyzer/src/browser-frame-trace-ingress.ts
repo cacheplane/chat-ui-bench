@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { copyBody, WIRE_LIMITS, WireError } from './browser-frame-protobuf-wire.js';
-import { decodeBrowserFramePacket, PACKET_POLICY, type PacketFragment } from './browser-frame-packet-fragments.js';
+import { decodeBrowserFramePacket, decodeBrowserFramePacketWithMembers, PACKET_POLICY, type PacketFragment, type PacketFragmentWithMembers } from './browser-frame-packet-fragments.js';
+import {ProfileError,type Budget} from './browser-frame-ordered-state.js';
 
 export const TRACE_INGRESS_POLICY = 'pinned-trace-packet-ingress-diagnostic-v1';
 const LABELS = {
@@ -22,6 +23,12 @@ export interface TraceIngressDiagnostic extends Readonly<typeof LABELS> {
 export interface TraceIngressUnavailable extends Readonly<typeof LABELS> {
   status: 'unavailable'; inputRef: InputRef; structuralContainerEOF: boolean;
   diagnostics: { code: string; offset?: number; frameIndex?: number; cause?: string }[];
+}
+export interface SliceTraceFrame extends Omit<TraceFrame,'packet'> {packet:PacketFragmentWithMembers}
+export interface SliceTraceIngress extends Omit<TraceIngressDiagnostic,'frames'> {frames:SliceTraceFrame[]}
+/** Internal owned composition; the caller creates the one whole-call ledger. */
+export function decodeBrowserFrameTraceForSlices(input:Uint8Array,budget:Budget):SliceTraceIngress|TraceIngressUnavailable {
+ return decodeTrace(input,TRACE_INGRESS_POLICY,budget) as SliceTraceIngress|TraceIngressUnavailable;
 }
 type FrameWindow = Omit<TraceFrame, 'bodySha256' | 'bodyBytes' | 'packet'>;
 const FRAME_LIMIT = 1024;
@@ -45,6 +52,9 @@ function errorCode(error: unknown): string {
 
 /** Whole supplied Trace bytes only. Structural EOF provides no capture or semantic authority. */
 export function decodeBrowserFrameTrace(input: unknown, policy: unknown): TraceIngressDiagnostic | TraceIngressUnavailable {
+ return decodeTrace(input,policy);
+}
+function decodeTrace(input:unknown,policy:unknown,sliceBudget?:Budget):TraceIngressDiagnostic|TraceIngressUnavailable {
   let inputRef: InputRef = { status: 'unavailable' };
   let structuralContainerEOF = false;
   let offset: number | undefined;
@@ -100,7 +110,7 @@ export function decodeBrowserFrameTrace(input: unknown, policy: unknown): TraceI
       frameIndex = window.frameIndex;
       offset = window.bodyStart;
       const body = bytes.subarray(window.bodyStart, window.bodyEnd);
-      const packet = decodeBrowserFramePacket(body, PACKET_POLICY);
+      const packet = sliceBudget===undefined?decodeBrowserFramePacket(body, PACKET_POLICY):decodeBrowserFramePacketWithMembers(body);
       if (packet.status === 'unavailable') {
         const cause = packet.diagnostics[0]?.code;
         return unavailable('packet-unavailable', typeof cause === 'string' && /^[\x20-\x7e]{1,64}$/.test(cause) ? cause : 'invalid-packet-input');
@@ -112,12 +122,20 @@ export function decodeBrowserFrameTrace(input: unknown, policy: unknown): TraceI
       if (packetMembers > WIRE_LIMITS.members - members) return unavailable('aggregate-member-capacity');
       occurrences += packet.occurrences.length;
       members += packetMembers;
+      if(sliceBudget!==undefined){
+        const retainedEvent=(packet as PacketFragmentWithMembers).event;
+        const shiftedMembers=(retainedEvent?.reporter2?.members.length??0)+(retainedEvent?.graphics?.members.length??0);
+        sliceBudget.fieldsVisited(packet.occurrences.length,frameIndex);
+        // The opt-in span shift is an additional pass, including for one large packed field.
+        sliceBudget.repeatedWork(1+packetMembers+shiftedMembers,frameIndex);
+      }
       // Packet owns its copy; hashes describe this snapshot, not future mutable output authority.
       frames.push({ ...window, bodyBytes: body.byteLength, bodySha256: hash(body), packet });
     }
     return { ...LABELS, status: 'decoded_trace_container_fragments', inputRef,
       structuralContainerEOF: true, frameCount: frames.length, frames };
   } catch (error) {
+    if(sliceBudget!==undefined&&error instanceof ProfileError)return unavailable(error.code);
     return unavailable(errorCode(error));
   }
 }

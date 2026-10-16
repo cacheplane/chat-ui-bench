@@ -59,6 +59,8 @@ export class BodyReader {
     this.cursor = start;
   }
   get complete(): boolean { return this.cursor === this.end; }
+  /** Original byte cursor for an explicitly retained scalar member span. */
+  get position(): number { return this.cursor; }
   varint(): bigint {
     let value = 0n;
     for (let index = 0; index < 10; index++) {

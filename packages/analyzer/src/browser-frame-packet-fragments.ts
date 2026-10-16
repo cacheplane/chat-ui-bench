@@ -1,5 +1,5 @@
 import { BodyReader, copyBody, WireBudget, WireError, type WireField } from './browser-frame-protobuf-wire.js';
-import { decodeModernTrackEvent, type EventFragment } from './browser-frame-track-event-fragments.js';
+import { decodeModernTrackEvent, decodeModernTrackEventWithMembers, type EventFragment, type EventFragmentWithMembers } from './browser-frame-track-event-fragments.js';
 export const PACKET_POLICY = 'pinned-browser-frame-packet-fragments-v1';
 export const PACKET_SOURCE = Object.freeze({ perfettoPin: '403906f4adfbf287a02e5546f8430dcc9d56b649', chromiumPin: 'f842f52ef39fd97b449eb27cff414bf05a98ddce' });
 export const PACKET_LABELS = Object.freeze({ normalizationCapability: 'structural-packet-fragments-only', runtimeQualification: 'unestablished', sourceCoverage: 'unestablished', evaluationEligibility: false, scoringEligibility: false, rankingEligibility: false } as const);
@@ -11,6 +11,11 @@ export interface PacketFragment extends Readonly<typeof PACKET_LABELS> {
   bodyBytes: Uint8Array; opaquePayloads: PacketOccurrence[]; occurrences: PacketOccurrence[]; skippedFields: PacketOccurrence[]; presentFieldNumbers: number[]; consumedBytes: number;
 }
 export interface PacketUnavailable { status: 'unavailable'; diagnostics: { code: string }[] }
+export interface PacketFragmentWithMembers extends Omit<PacketFragment,'event'> {event?:EventFragmentWithMembers}
+/** Internal restricted-profile path; no additional selected payload fields. */
+export function decodeBrowserFramePacketWithMembers(input:unknown):PacketFragmentWithMembers|PacketUnavailable {
+ return decodePacket(input,PACKET_POLICY,true) as PacketFragmentWithMembers|PacketUnavailable;
+}
 // Exactly the 86 data-oneof declarations at the pinned schema. Future unknown fields are opaque.
 const DATA = new Set([11,60,117,118,120,122,129,2,90,9,4,5,6,7,89,33,34,35,37,74,75,38,40,39,45,46,109,47,48,49,51,52,53,54,131,57,62,63,65,66,67,68,69,134,135,70,71,73,77,78,82,83,84,86,91,124,125,126,127,128,130,61,64,43,44,1,36,50,133,72,95,99,100,101,102,103,107,110,111,113,115,119,123,132,138,900]);
 const UNSUPPORTED = new Set([50,133,107,124,125]);
@@ -45,6 +50,9 @@ function boolean(field: WireField): boolean {
 }
 /** Explicit standalone body: body EOF supplies no Trace/capture EOF or semantic admission. */
 export function decodeBrowserFramePacket(input: unknown, policy: unknown): PacketFragment | PacketUnavailable {
+  return decodePacket(input,policy,false);
+}
+function decodePacket(input:unknown,policy:unknown,retainMembers:boolean):PacketFragment|PacketUnavailable {
   try {
     if (policy !== PACKET_POLICY) throw new WireError('unsupported-policy');
     const bytes = copyBody(input); const budget = new WireBudget();
@@ -73,7 +81,7 @@ export function decodeBrowserFramePacket(input: unknown, policy: unknown): Packe
         case 79: fields.trustedPid = canonicalInt32(field); break;
         case 41: fields.incrementalStateCleared = boolean(field); break;
         case 87: fields.firstPacketOnSequence = boolean(field); break;
-        case 11: event = decodeModernTrackEvent(context, o.valueStart, o.end); break;
+        case 11: event = retainMembers?decodeModernTrackEventWithMembers(context,o.valueStart,o.end):decodeModernTrackEvent(context, o.valueStart, o.end); break;
       }
     }
     return { status: 'decoded_packet_fragment', fields, ...(event === undefined ? {} : { event }), source: PACKET_SOURCE,

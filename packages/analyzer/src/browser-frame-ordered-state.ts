@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto';
 import { decodeBrowserFrameTrackDescriptorBody, TRACK_DESCRIPTOR_BODY_POLICY, type TrackDescriptorFields } from './browser-frame-track-descriptor-fragments.js';
 import { copyBody, WireError } from './browser-frame-protobuf-wire.js';
-import { decodeBrowserFramePacket, PACKET_POLICY, PACKET_SOURCE, type PacketFields } from './browser-frame-packet-fragments.js';
+import { decodeBrowserFramePacket, PACKET_POLICY, PACKET_SOURCE, type PacketFields, type PacketFragmentWithMembers } from './browser-frame-packet-fragments.js';
 import { decodeBrowserFrameStateBody, STATE_BODY_POLICY, type ClockFields } from './browser-frame-state-fragments.js';
+import type {EventFragmentWithMembers} from './browser-frame-track-event-fragments.js';
 export const ORDERED_STATE_POLICY = 'ordered-manual-browser-frame-state-v1';
 export const ORDERED_STATE_V2_POLICY = 'ordered-manual-browser-frame-evidence-v2';
 
 const LABELS = Object.freeze({ normalizationCapability: 'ordered-manual-name-state-only', clockAdmission: 'not_evaluated', captureOrder: 'caller_declared', runtimeQualification: 'unestablished', sourceCoverage: 'unestablished', evaluationEligibility: false, scoringEligibility: false, rankingEligibility: false } as const);
-class ProfileError extends Error {
+export class ProfileError extends Error {
   constructor(readonly code: string, readonly packetIndex?: number, readonly component?: string, readonly causeCode?: string) { super(code); }
 }
 interface Sequence { sequenceIndex: number; sequenceId: string; machineId?: string; valid: boolean; intervalVersion: number; defaultsVersionIndex: number | null; names:Map<string,number>;categories:Map<string,number> }
@@ -18,6 +19,7 @@ interface InternDefinition { definitionIndex:number;sequenceIndex:number;interva
 type Selection = {status:'selected';source:'packet'|'event'|'defaults';clockId?:string;trackUuid?:string;defaultsVersionIndex?:number} | {status:'unavailable';reason:string};
 interface EventFact { eventIndex: number; packetIndex: number; sequenceIndex: number; intervalVersion: number; defaultsVersionIndex: number|null; location: Location; name?: {kind:'literal';value:string} | {kind:'intern';definitionIndex:number}; literalCategories?: string[]; internedCategoryDefinitionIndexes?:number[]; type?: string; trackSelection: Selection; typedArgumentKinds:string[] }
 interface PacketFact { packetIndex: number; sequenceIndex: number; fields: PacketFields; valid: boolean; intervalVersion: number; stateEffect: 'none' | 'reset' | 'loss'; defaultsVersionIndex: number | null; clockSelection:Selection; eventOutcome:'absent'|'resolved'|'withheld_dependency'|'withheld_intern_invalid';eventIndex?:number;eventLocation?:Location;internLocation?:Location;internUpdateOutcome:'absent'|'applied'|'withheld_invalid';internNewDefinitions:number;internRepeatedDefinitions:number }
+export interface RestrictedPacketFact extends Omit<PacketFact,'eventOutcome'> {eventOutcome:PacketFact['eventOutcome']|'withheld_missing_intern_definition'}
 interface BodyFact {packetIndex:number;bytes:number;sha256:string}
 interface SequenceFact {sequenceIndex:number;sequenceId:string;machineId?:string;valid:boolean;intervalVersion:number}
 export interface OrderedStateProjection extends Readonly<typeof LABELS> {
@@ -39,6 +41,13 @@ export interface OrderedEvidenceProjection extends Omit<OrderedStateProjection,'
  metadataPackets:readonly MetadataPacket[];descriptorObservations:readonly DescriptorObservation[];clockSnapshots:readonly ClockObservation[];lossObservations:readonly LossObservation[];
 }
 export interface OrderedStateUnavailable {status:'unavailable';diagnostics:readonly {code:string;packetIndex?:number;component?:string;cause?:string}[]}
+export interface OwnedSlicePacket {packet:PacketFragmentWithMembers;bodySha256:string;bodyBytes:number;frameIndex:number}
+export interface RestrictedEventInput {rawEventIndex:number;packetIndex:number;sequenceIndex:number;intervalVersion:number;defaultsVersionIndex:number|null;eventLocation:Location;event:EventFragmentWithMembers;trackSelection:Selection;clockSelection:Selection;resolution:Exclude<RestrictedPacketFact['eventOutcome'],'absent'>;orderedEventIndex?:number}
+export interface RestrictedOrderedBuild {status:'built_restricted_state';ordered:Omit<OrderedEvidenceProjection,'status'|'packets'>&{status:'projected_restricted_slice_state';packets:readonly RestrictedPacketFact[]};rawEventInputs:RestrictedEventInput[]}
+/** Internal: only fragments owned and hash-checked by whole-input composition. */
+export function projectOwnedBrowserFrameSliceState(frames:readonly OwnedSlicePacket[],budget:Budget):RestrictedOrderedBuild|OrderedStateUnavailable {
+ return project(undefined,ORDERED_STATE_V2_POLICY,true,{frames,budget}) as RestrictedOrderedBuild|OrderedStateUnavailable;
+}
 function select(sequence:Sequence, versions:DefaultVersion[], explicit:string|undefined, kind:'clock'|'track'):Selection {
   const value = sequence.defaultsVersionIndex === null ? undefined : versions[sequence.defaultsVersionIndex]?.fields;
   if (explicit !== undefined && (kind==='track'||explicit!=='0')) return {status:'selected',source:kind==='clock'?'packet':'event',...(kind==='clock'?{clockId:explicit}:{trackUuid:explicit})};
@@ -46,7 +55,15 @@ function select(sequence:Sequence, versions:DefaultVersion[], explicit:string|un
   if (sequence.valid && fallback !== undefined && (kind==='track'||fallback!=='0')) return {status:'selected',source:'defaults',...(kind==='clock'?{clockId:fallback}:{trackUuid:fallback}),defaultsVersionIndex:sequence.defaultsVersionIndex!};
   return {status:'unavailable',reason:!sequence.valid && sequence.defaultsVersionIndex!==null?'invalid_sequence_default_state':`no_explicit_or_valid_default_${kind}`};
 }
-class Budget {
+export class Budget {
+  constructor(private readonly mode:'eager'|'final-owned'='eager'){}
+  private finalized=false;
+  /** Internal whole-owned admission only; never traverse caller objects here. */
+  finishOwnedOutput(value:unknown):void{
+    if(this.mode!=='final-owned')throw new ProfileError('invalid-output-mode');
+    if(this.finalized)throw new ProfileError('output-already-finalized');
+    this.finalized=true;this.countOutput(value);
+  }
   private fields=0;private repeated=0;private updates=0;private references=0;private nodes=0;private strings=0;
   private liveEntries=0;private liveBytes=0;
   fieldsVisited(count:number,index:number):void{if((this.fields+=count)>131072)throw new ProfileError('field-capacity',index);}
@@ -61,12 +78,15 @@ class Budget {
     for(const index of table.values()){this.liveEntries--;this.liveBytes-=Buffer.byteLength(definitions[index]!.value,'utf8');}
   }
   output(value:unknown,index?:number):void{
+    if(this.mode==='eager')this.countOutput(value,index);
+  }
+  private countOutput(value:unknown,index?:number):void{
     if(++this.nodes>262144)throw new ProfileError('output-node-capacity',index);
     if(typeof value==='string'){
       if((this.strings+=Buffer.byteLength(value,'utf8'))>524288)throw new ProfileError('output-string-capacity',index);
     }else if(value!==null&&typeof value==='object'){
       // Owned JSON-safe rows only. This is not a traversal of arbitrary caller objects.
-      for(const item of Object.values(value))this.output(item,index);
+      for(const item of Object.values(value))this.countOutput(item,index);
     }
   }
 }
@@ -108,15 +128,16 @@ export function projectOrderedBrowserFrameState(input:unknown,policy:unknown):Or
 export function projectOrderedBrowserFrameEvidence(input:unknown,policy:unknown):OrderedEvidenceProjection|OrderedStateUnavailable {
  return project(input,policy,true) as OrderedEvidenceProjection|OrderedStateUnavailable;
 }
-function project(input:unknown,policy:unknown,v2:boolean):OrderedStateProjection|OrderedEvidenceProjection|OrderedStateUnavailable {
+function project(input:unknown,policy:unknown,v2:boolean,slice?:{frames:readonly OwnedSlicePacket[];budget:Budget}):OrderedStateProjection|OrderedEvidenceProjection|OrderedStateUnavailable|RestrictedOrderedBuild {
   try {
     if (policy !== (v2?ORDERED_STATE_V2_POLICY:ORDERED_STATE_POLICY)) throw new ProfileError('unsupported-policy');
-    const own = preflight(input);
-    const budget=new Budget();
+    const own = slice===undefined?preflight(input):{domain:'whole-supplied-restricted-trace-group-v1',packets:slice.frames.map(f=>f.packet.bodyBytes)};
+    const budget=slice?.budget??new Budget();
     budget.output({status:'projected_ordered_manual_state',domain:own.domain,source:PACKET_SOURCE,bodies:[],sequences:[],defaultsVersions:[],internDefinitions:[],packets:[],events:[],opaqueLocations:[],...LABELS});
     const bodies=own.packets.map((bytes,packetIndex)=>{const row={packetIndex,bytes:bytes.byteLength,sha256:createHash('sha256').update(bytes).digest('hex')};budget.output(row,packetIndex);return row;});
-    const sequences: Sequence[] = []; const byKey = new Map<string,Sequence>(); const packets: PacketFact[] = [];
+    const sequences: Sequence[] = []; const byKey = new Map<string,Sequence>(); const packets: RestrictedPacketFact[] = [];
     const defaultsVersions:DefaultVersion[]=[];const events:EventFact[]=[];const opaqueLocations:Location[]=[];const internDefinitions:InternDefinition[]=[];
+    const rawEventInputs:RestrictedEventInput[]=[];
     const descriptorObservations:DescriptorObservation[]=[],clockSnapshots:ClockObservation[]=[],lossObservations:LossObservation[]=[],metadataPackets:MetadataPacket[]=[];
     const disclosures=new Map<string,{values:Map<string,string>;conflict:boolean;processSeen:boolean;threadSeen:boolean}>();
     const machine=(fields:PacketFields):MachineContext=>fields.machineId===undefined?{status:'absent'}:{status:'present',machineId:fields.machineId};
@@ -175,7 +196,7 @@ function project(input:unknown,policy:unknown,v2:boolean):OrderedStateProjection
       budget.output(row,row.packetIndex);opaqueKeys.add(key);opaqueLocations.push(row);
     }
     for (let packetIndex=0;packetIndex<own.packets.length;packetIndex++) {
-      const fragment = decodeBrowserFramePacket(own.packets[packetIndex],PACKET_POLICY);
+      const fragment = slice===undefined?decodeBrowserFramePacket(own.packets[packetIndex],PACKET_POLICY):slice.frames[packetIndex]!.packet;
       if (fragment.status === 'unavailable') throw new ProfileError('fragment-unavailable',packetIndex,'packet',fragment.diagnostics[0]?.code);
       budget.fieldsVisited(fragment.occurrences.length,packetIndex);
       budget.repeatedWork((fragment.event?.fields.categoryIids?.length??0)+(fragment.event?.fields.categories?.length??0)+(fragment.event?.graphics?.fields.surfaceTraceIds?.length??0),packetIndex);
@@ -220,7 +241,7 @@ function project(input:unknown,policy:unknown,v2:boolean):OrderedStateProjection
         const version={versionIndex:defaultsVersions.length,sequenceIndex:sequence.sequenceIndex,intervalVersion:sequence.intervalVersion,packetIndex,location:{packetIndex,...defaultAt},fields:value};budget.output(version,packetIndex);defaultsVersions.push(version);
         for(const at of decoded.skippedFields)opaque({packetIndex,...at,start:at.start+defaultAt.valueStart,valueStart:at.valueStart+defaultAt.valueStart,end:at.end+defaultAt.valueStart});
       }
-      const fact:PacketFact={packetIndex,sequenceIndex:sequence.sequenceIndex,fields:{...fields},valid:sequence.valid,intervalVersion:sequence.intervalVersion,stateEffect,defaultsVersionIndex:sequence.defaultsVersionIndex,clockSelection:select(sequence,defaultsVersions,fields.timestampClockId,'clock'),eventOutcome:'absent',internUpdateOutcome:'absent',internNewDefinitions:0,internRepeatedDefinitions:0};
+      const fact:RestrictedPacketFact={packetIndex,sequenceIndex:sequence.sequenceIndex,fields:{...fields},valid:sequence.valid,intervalVersion:sequence.intervalVersion,stateEffect,defaultsVersionIndex:sequence.defaultsVersionIndex,clockSelection:select(sequence,defaultsVersions,fields.timestampClockId,'clock'),eventOutcome:'absent',internUpdateOutcome:'absent',internNewDefinitions:0,internRepeatedDefinitions:0};
       const internAt=fragment.opaquePayloads.find(at=>at.fieldNumber===12);
       if(internAt){
         fact.internLocation={packetIndex,...internAt};
@@ -252,8 +273,12 @@ function project(input:unknown,policy:unknown,v2:boolean):OrderedStateProjection
         fact.eventLocation={packetIndex,...eventAt};
         const e=fragment.event.fields;
         if(e.nameIid==='0'||e.categoryIids?.some(iid=>iid==='0'))throw new ProfileError('invalid-event-iid',packetIndex);
+        const raw:RestrictedEventInput|undefined=slice===undefined?undefined:{rawEventIndex:rawEventInputs.length,packetIndex,sequenceIndex:sequence.sequenceIndex,intervalVersion:sequence.intervalVersion,defaultsVersionIndex:sequence.defaultsVersionIndex,eventLocation:{packetIndex,...eventAt},event:fragment.event as EventFragmentWithMembers,trackSelection:select(sequence,defaultsVersions,e.trackUuid,'track'),clockSelection:fact.clockSelection,resolution:'withheld_dependency'};
         if(!sequence.valid&&(flags&2n)!==0n)fact.eventOutcome='withheld_dependency';
         else if(!sequence.valid&&(e.nameIid!==undefined||(e.categoryIids?.length??0)>0))fact.eventOutcome='withheld_intern_invalid';
+        else if(slice!==undefined&&(e.nameIid!==undefined&&!sequence.names.has(e.nameIid)||e.categoryIids?.some(iid=>!sequence.categories.has(iid)))){
+          budget.categoryReferences(e.categoryIids?.length??0,packetIndex);fact.eventOutcome='withheld_missing_intern_definition';
+        }
         else{
           budget.categoryReferences(e.categoryIids?.length??0,packetIndex);
           const lookup=(iid:string,table:Map<string,number>):number=>{const definitionIndex=table.get(iid);if(definitionIndex===undefined)throw new ProfileError('missing-intern-definition',packetIndex);return definitionIndex;};
@@ -262,6 +287,7 @@ function project(input:unknown,policy:unknown,v2:boolean):OrderedStateProjection
           fact.eventOutcome='resolved';fact.eventIndex=events.length;
           const row={eventIndex:events.length,packetIndex,sequenceIndex:sequence.sequenceIndex,intervalVersion:sequence.intervalVersion,defaultsVersionIndex:sequence.defaultsVersionIndex,location:{packetIndex,...eventAt},...(name===undefined?{}:{name}),...(e.categories===undefined?{}:{literalCategories:e.categories}),...(refs===undefined?{}:{internedCategoryDefinitionIndexes:refs}),...(e.type===undefined?{}:{type:e.type}),trackSelection:select(sequence,defaultsVersions,e.trackUuid,'track'),typedArgumentKinds:[...(fragment.event.reporter2?['reporter2']:[]),...(fragment.event.graphics?['graphics']:[])]};budget.output(row,packetIndex);events.push(row);
         }
+        if(raw!==undefined){budget.repeatedWork(1,packetIndex);raw.resolution=fact.eventOutcome;if(fact.eventIndex!==undefined)raw.orderedEventIndex=fact.eventIndex;rawEventInputs.push(raw);}
         for(const at of fragment.occurrences)if(at.scope==='track_event'&&(at.fieldNumber===1052||at.fieldNumber===1075))opaque({packetIndex,...at});
       }
       budget.output(fact,packetIndex);packets.push(fact);
@@ -282,11 +308,16 @@ function project(input:unknown,policy:unknown,v2:boolean):OrderedStateProjection
       }
       budget.output({status:'projected_ordered_manual_evidence',normalizationCapability:'ordered-manual-identity-evidence-only',associationStatus:'unestablished',associationReasons,metadataPackets:[],descriptorObservations:[],clockSnapshots:[],lossObservations:[]});
     }
-    const base:OrderedStateProjection={ status:'projected_ordered_manual_state',domain:own.domain,source:PACKET_SOURCE,bodies,sequences:sequenceRows,defaultsVersions,internDefinitions,packets,events,opaqueLocations:opaqueLocations.sort((a,b)=>a.packetIndex-b.packetIndex||a.start-b.start||a.end-b.end),...LABELS };
-    const result:OrderedStateProjection|OrderedEvidenceProjection=v2?{...base,status:'projected_ordered_manual_evidence',normalizationCapability:'ordered-manual-identity-evidence-only',associationStatus:'unestablished',associationReasons,metadataPackets,descriptorObservations,clockSnapshots,lossObservations}:base;
+    const base:Omit<OrderedStateProjection,'packets'>&{packets:RestrictedPacketFact[]}={ status:'projected_ordered_manual_state',domain:own.domain,source:PACKET_SOURCE,bodies,sequences:sequenceRows,defaultsVersions,internDefinitions,packets,events,opaqueLocations:opaqueLocations.sort((a,b)=>a.packetIndex-b.packetIndex||a.start-b.start||a.end-b.end),...LABELS };
+    const result:typeof base|(Omit<OrderedEvidenceProjection,'packets'>&{packets:RestrictedPacketFact[]})=v2?{...base,status:'projected_ordered_manual_evidence',normalizationCapability:'ordered-manual-identity-evidence-only',associationStatus:'unestablished',associationReasons,metadataPackets,descriptorObservations,clockSnapshots,lossObservations}:base;
+    if(slice!==undefined){
+      if(result.status!=='projected_ordered_manual_evidence')throw new ProfileError('invalid-internal-slice-mode');
+      return {status:'built_restricted_state',ordered:{...result,status:'projected_restricted_slice_state'},rawEventInputs};
+    }
     // Final admission cap; bounded JSON serialization may transiently exceed it.
     if(Buffer.byteLength(JSON.stringify(result),'utf8')>4194304)throw new ProfileError('output-byte-capacity');
-    return freezeOwned(result);
+    // The only new outcome is guarded by slice!==undefined above; old declarations remain unchanged.
+    return freezeOwned(result) as OrderedStateProjection|OrderedEvidenceProjection;
   } catch (error) {
     return freezeOwned({status:'unavailable',diagnostics:[{code:error instanceof ProfileError ? error.code : 'invalid-ordered-state-input',...(error instanceof ProfileError && error.packetIndex !== undefined ? {packetIndex:error.packetIndex}: {}),...(error instanceof ProfileError && error.component!==undefined?{component:error.component}:{}),...(error instanceof ProfileError && error.causeCode!==undefined?{cause:error.causeCode}:{})}]});
   }
