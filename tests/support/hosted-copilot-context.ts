@@ -103,7 +103,7 @@ export function productionArtifactPaths() {
 }
 export function readIntegratedAdmission() {
  const context=readHostedCopilotContext();
- if(context.releaseId!=='hosted-copilot-react-production-build-v20'||process.version!=='v24.20.0') throw new Error('Fixed production release/tool profile required');
+ if(context.releaseId!=='hosted-copilot-react-production-build-v22'||process.version!=='v24.20.0') throw new Error('Fixed production release/tool profile required');
  const paths=productionArtifactPaths();
  const directory=lstatSync(paths.artifactDirectory);if(!directory.isDirectory()||directory.isSymbolicLink()) throw new Error('Artifact owner differs');
  const stateFile=join(paths.artifactDirectory,'admission.json'),stateStat=lstatSync(stateFile);
