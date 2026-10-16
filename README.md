@@ -282,6 +282,15 @@ analyze these version 2 artifacts. Long-thread offline analysis, presentation
 eligibility, competitor adapters, and comparative reports remain in development;
 these capture commands do not establish published FPS results or rankings.
 
+The SDK-free `tests/support/direct-cost-diagnostics.ts` foundation assesses
+supplied observations and sequences fixed CDP calls through caller-owned ports.
+It separates explicit `threadTicks` CPU-time deltas from `timeTicks` elapsed
+task durations, retains missing measurements as unavailable, and preserves
+signed heap and DOM gauge changes. Session continuity, isolate identity and
+cleanup outcomes remain explicit. Reply artifacts contain bounded supported
+fields, not complete protocol wire bytes. Native session wiring is not yet
+integrated; this helper supplies no FPS or competitor ranking.
+
 Private offline renderer diagnostics describe matched target Blink
 `AnimationFrame` lifecycle records and their emitted presentation callbacks
 inside admitted trace windows. They include short monitored frames, but coverage
