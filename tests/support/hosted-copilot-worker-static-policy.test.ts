@@ -4,6 +4,63 @@ import {assertCompilerRuntimeOwnership} from './hosted-copilot-production-policy
 import {createHash} from 'node:crypto';
 import {MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_MODULE_BUILTINS} from './hosted-copilot-mounted-policy.ts';
 import * as outputPolicy from './hosted-copilot-worker-static-policy.ts';
+describe('bounded original node module callback diagnostic',()=>{
+ const capture=(d:ReturnType<typeof outputPolicy.createWorkerImporterDiagnostic>,error:unknown={})=>{
+  let line='';try{d.rethrow(error,'node:module',value=>{line=value;});}catch(e){expect(e).toBe(error);}
+  expect(Buffer.byteLength(line)).toBeLessThanOrEqual(16384);return JSON.parse(line).workerImporterDiagnostic;
+ };
+ it('has no effects until observed and reports no acquisition/edge authority',()=>{
+  const result=capture(outputPolicy.createWorkerImporterDiagnostic());
+  expect(result).toMatchObject({target:'node:module',observations:[],omitted:false,scope:'original external callback observations only',codeObservation:'see original refusal'});
+ });
+ it('retains exact callback arguments and decisions without interpreting ownership',()=>{
+  const d=outputPolicy.createWorkerImporterDiagnostic();d.observe('node:module','\0rolldown/runtime.js',false,false);
+  expect(capture(d).observations).toEqual([{parent:{status:'valid',sha256:createHash('sha256').update('\0rolldown/runtime.js').digest('hex'),preview:'\0rolldown/runtime.js',byteLength:20,exactRuntimeMarkerMatch:true},isResolved:false,returnedAllowed:false}]);
+ });
+ it('retains first8 original calls and saturates omission without claiming an exact total',()=>{
+  const d=outputPolicy.createWorkerImporterDiagnostic();for(let i=0;i<12;i++)d.observe('node:module',String(i),true,false);
+  const v=capture(d);expect(v.observations).toHaveLength(8);expect(v.omitted).toBe(true);expect(v.observations[7].parent.preview).toBe('7');expect(v).not.toHaveProperty('total');
+ });
+ it('does not coerce unrelated IDs, parent fields, or boolean fields',()=>{
+  let calls=0;const hostile={toString(){calls++;throw Error('secret');},toJSON(){calls++;throw Error('secret');}};
+  const d=outputPolicy.createWorkerImporterDiagnostic();d.observe(hostile,hostile,hostile,hostile);d.observe('node:module',hostile,hostile,hostile);
+  expect(capture(d).observations).toEqual([{parent:{status:'invalid'},isResolved:'invalid',returnedAllowed:'invalid'}]);expect(calls).toBe(0);
+ });
+ it.each([[undefined,'absent'],[null,'null'],['x'.repeat(4097),'bound'],['é'.repeat(2049),'bound']])('preserves parent status %#',(parent,status)=>{
+  const d=outputPolicy.createWorkerImporterDiagnostic();d.observe('node:module',parent,true,false);expect(capture(d).observations[0].parent).toEqual({status});
+ });
+ it('admits inclusive parent bounds and bounds escaped output for8 hostile-looking previews',()=>{
+  const d=outputPolicy.createWorkerImporterDiagnostic();for(let i=0;i<8;i++)d.observe('node:module','\0'.repeat(4096),false,false);
+  const v=capture(d);expect(v.observations[0].parent.status).toBe('valid');expect(v.omitted).toBe(false);
+ });
+ it('never accesses error properties, code or arbitrary module getters',()=>{
+  let calls=0;const error={get message(){calls++;throw Error('secret');},get code(){calls++;throw Error('secret');},get toJSON(){calls++;throw Error('secret');}};
+  capture(outputPolicy.createWorkerImporterDiagnostic(),error);expect(calls).toBe(0);
+ });
+ it('does not reread classifier code and preserves the exact original refusal object',()=>{
+  let calls=0,error:unknown;try{classifyWorkerModuleSource('node:module',44,{id:'node:module',get code(){calls++;return null;}},false);}catch(e){error=e;}
+  expect(error).toBeInstanceOf(Error);capture(outputPolicy.createWorkerImporterDiagnostic(),error);expect(calls).toBe(1);
+ });
+ it('preserves original failure when the supplied emitter throws',()=>{
+  const original={};let caught:unknown,calls=0;try{outputPolicy.createWorkerImporterDiagnostic().rethrow(original,'node:module',()=>{calls++;throw Error('emit');});}catch(e){caught=e;}
+  expect(caught).toBe(original);expect(calls).toBe(1);
+ });
+ it('does not emit diagnostic for other refused IDs or coerce them',()=>{
+  let calls=0;const d=outputPolicy.createWorkerImporterDiagnostic(),original={};
+  try{d.rethrow(original,{toString(){calls++;return 'node:module';}},()=>{calls++;});}catch(e){expect(e).toBe(original);}expect(calls).toBe(0);
+ });
+ it('reports known zero matching callbacks without claiming no graph importers',()=>{
+  expect(capture(outputPolicy.createWorkerImporterDiagnostic())).toMatchObject({callbackCountKnown:true,retainedCallbackCount:0,complete:true,scope:'original external callback observations only'});
+ });
+ it('makes the ninth matching callback partial with unknown total',()=>{
+  const d=outputPolicy.createWorkerImporterDiagnostic();for(let i=0;i<9;i++)d.observe('node:module',undefined,false,false);
+  expect(capture(d)).toMatchObject({callbackCountKnown:false,retainedCallbackCount:8,complete:false,omitted:true});
+ });
+ it.each([['\0rolldown/runtime.js',true],['\0rolldown/runtime.js-suffix',false],['é',false]])('retains byte length and exact runtime marker comparison %#',(parent,match)=>{
+  const d=outputPolicy.createWorkerImporterDiagnostic();d.observe('node:module',parent,false,false);
+  expect(capture(d).observations[0].parent).toMatchObject({byteLength:Buffer.byteLength(parent),exactRuntimeMarkerMatch:match});
+ });
+});
 describe('worker loader-free ES output profile',()=>{
  it('retains the fixed generation profile and explicitly disables the require polyfill',()=>{
   expect(typeof outputPolicy.workerStaticOutputOptions).toBe('function');

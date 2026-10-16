@@ -177,6 +177,12 @@ Node/Linux AG-UI
 profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
+The next CopilotKit production STATIC release uses the separate fixed identity
+`hosted-copilot-react-production-build-v20`. Its worker failure diagnostic retains
+bounded original compiler callback observations while preserving the original
+module refusal. A scanned compiler dependency does not establish emitted code,
+and this diagnostic grants no native execution or FPS eligibility.
+
 ## Planned comparison adapters
 
 The shared version 2 workload contract and independent replay producer are
