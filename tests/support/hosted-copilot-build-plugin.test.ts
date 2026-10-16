@@ -13,7 +13,7 @@ const module={id:'/owned/source.js',kind:'physical' as const,path:'source.js',sh
 type PlannedOutput = {
  strictExecutionOrder: boolean;
  codeSplitting: {groups: {
-  name: string; tags: string[]; minSize: number; maxSize: number;
+  name: string; tags?: string[]; test?: RegExp; priority?: number; entriesAware?: boolean; minSize: number; maxSize: number;
   includeDependenciesRecursively: boolean;
  }[]};
 };
@@ -28,28 +28,96 @@ function proposedOutputOptions(): PlannedOutput {
 const expectedOutput = {
  strictExecutionOrder: true,
  codeSplitting: {groups: [{
-  name: 'production-initial', tags: ['$initial'], minSize: 0,
+  name: 'production-initial', tags: ['$initial'], priority: 30, minSize: 0,
   maxSize: 262144, includeDependenciesRecursively: true,
+ }, {
+  name: 'production-syntax-data', test: /(?:^|[\\/])node_modules[\\/]@shikijs[\\/](?:langs|themes)[\\/]/,
+  priority: 20, minSize: 0, maxSize: 262144, includeDependenciesRecursively: true, entriesAware: false,
+ }, {
+  name: 'production-diagrams', test: /(?:^|[\\/])node_modules[\\/](?:mermaid[\\/]|@mermaid-js[\\/]parser[\\/])/,
+  priority: 10, minSize: 0, maxSize: 262144, includeDependenciesRecursively: true, entriesAware: false,
  }]},
 };
-describe('declared manual initial ESM build treatment', () => {
- it('supplies only the supported initial-graph policy and execution-order guard', () => {
+describe('declared manual initial and bounded syntax diagram ESM build treatment', () => {
+ function selector(index: number): RegExp {
+  const test = proposedOutputOptions().codeSplitting.groups[index]?.test;
+  expect(test).toBeInstanceOf(RegExp);
+  return test as RegExp;
+ }
+ it('supplies exactly the three prioritized groups and execution-order guard', () => {
   expect(proposedOutputOptions()).toStrictEqual(expectedOutput);
+ });
+ it('matches syntax languages and themes at POSIX and backslash package boundaries', () => {
+  const test = selector(1);
+  for (const id of ['node_modules/@shikijs/langs/dist/javascript.mjs', '/repo/node_modules/@shikijs/themes/dist/dark.mjs', '/repo/node_modules/.pnpm/@shikijs+langs@3/node_modules/@shikijs/langs/dist/a.mjs']) {
+   expect(test.test(id), id).toBe(true);
+   expect(test.test(id.replaceAll('/', '\\')), id).toBe(true);
+  }
+ });
+ it('excludes near syntax package names and non-package paths', () => {
+  const test = selector(1);
+  for (const id of ['/repo/node_modules/@shikijs/langs-extra/a.js', '/repo/node_modules/@shikijs/themes-extra/a.js', '/repo/node_modules/@shikijs/core/a.js', '/repo/node_modules/@shikijs-extra/langs/a.js', '/repo/not_node_modules/@shikijs/langs/a.js', '/repo/src/@shikijs/themes/a.js']) {
+   expect(test.test(id), id).toBe(false);
+   expect(test.test(id.replaceAll('/', '\\')), id).toBe(false);
+  }
+ });
+ it('matches mermaid and its parser at POSIX and backslash package boundaries', () => {
+  const test = selector(2);
+  for (const id of ['node_modules/mermaid/dist/diagram.js', '/repo/node_modules/@mermaid-js/parser/dist/a.mjs', '/repo/node_modules/.pnpm/mermaid@11/node_modules/mermaid/dist/a.js']) {
+   expect(test.test(id), id).toBe(true);
+   expect(test.test(id.replaceAll('/', '\\')), id).toBe(true);
+  }
+ });
+ it('excludes near diagram package names and non-package paths', () => {
+  const test = selector(2);
+  for (const id of ['/repo/node_modules/mermaid-extra/a.js', '/repo/node_modules/@mermaid-js/parser-extra/a.js', '/repo/node_modules/@mermaid-js/other/a.js', '/repo/node_modules/@mermaid-js-extra/parser/a.js', '/repo/not_node_modules/mermaid/a.js', '/repo/src/mermaid/a.js']) {
+   expect(test.test(id), id).toBe(false);
+   expect(test.test(id.replaceAll('/', '\\')), id).toBe(false);
+  }
+ });
+ it('uses stateless selectors without global or sticky flags', () => {
+  for (const index of [1, 2]) {
+   const test = selector(index);
+   expect(test.global).toBe(false);
+   expect(test.sticky).toBe(false);
+   expect(test.flags).toBe('');
+  }
  });
  it('owns a fresh nested option graph on every call', () => {
   const first = proposedOutputOptions(), second = proposedOutputOptions();
   expect(first).not.toBe(second);
   expect(first.codeSplitting).not.toBe(second.codeSplitting);
   expect(first.codeSplitting.groups).not.toBe(second.codeSplitting.groups);
-  expect(first.codeSplitting.groups[0]).not.toBe(second.codeSplitting.groups[0]);
-  expect(first.codeSplitting.groups[0]!.tags).not.toBe(second.codeSplitting.groups[0]!.tags);
+  expect(first.codeSplitting.groups).toHaveLength(3);
+  for (let index = 0; index < 3; index++) {
+   expect(first.codeSplitting.groups[index]).not.toBe(second.codeSplitting.groups[index]);
+   const a = first.codeSplitting.groups[index]!, b = second.codeSplitting.groups[index]!;
+   if (index === 0) expect(a.tags).not.toBe(b.tags);
+   else {
+    expect(a.test).toBeInstanceOf(RegExp);
+    expect(a.test).not.toBe(b.test);
+    a.test!.lastIndex = 7;
+    expect(b.test!.lastIndex).toBe(0);
+    a.test = /caller-only/;
+   }
+   a.maxSize = 1;
+  }
   // A caller-owned mutation must affect neither a concurrent result nor a later call.
-  first.codeSplitting.groups[0]!.tags.push('$dynamic');
-  first.codeSplitting.groups[0]!.maxSize = 1;
+  first.codeSplitting.groups[0]!.tags!.push('$dynamic');
   first.codeSplitting.groups.push({name:'caller-only', tags:[], minSize:0, maxSize:1,
    includeDependenciesRecursively:false});
   expect(second).toStrictEqual(expectedOutput);
-  expect(proposedOutputOptions()).toStrictEqual(expectedOutput);
+  const later = proposedOutputOptions();
+  expect(later).toStrictEqual(expectedOutput);
+  expect(later).not.toBe(second);
+  expect(later.codeSplitting).not.toBe(second.codeSplitting);
+  expect(later.codeSplitting.groups).not.toBe(second.codeSplitting.groups);
+  for (let index = 0; index < 3; index++) expect(later.codeSplitting.groups[index]).not.toBe(second.codeSplitting.groups[index]);
+  expect(later.codeSplitting.groups[0]!.tags).not.toBe(second.codeSplitting.groups[0]!.tags);
+  for (const index of [1, 2]) {
+   expect(later.codeSplitting.groups[index]!.test).not.toBe(second.codeSplitting.groups[index]!.test);
+   expect(later.codeSplitting.groups[index]!.test!.lastIndex).toBe(0);
+  }
  });
 });
 

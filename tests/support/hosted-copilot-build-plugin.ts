@@ -7,9 +7,13 @@ import {join,relative,resolve,isAbsolute} from 'node:path';
 import {assertDenseEntries,ordinaryPath,PRODUCTION_FILE_LIMITS,assertProductionCount} from './hosted-copilot-contract.ts';
 import {assertMappings,assertCompilerProfile,assertCombinedModuleOwnershipCount,projectCompilerRuntimeModules,assertCompilerRuntimeOwnership,type CompilerRuntimeObservation,assertModuleOwnershipId,assertReferenceCount,classifyHookMetadata,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {readIntegratedAdmission} from './hosted-copilot-context.ts';
-/** Explicit manual initial-ESM treatment; each caller owns fresh option data. */
+/** Explicit manual initial/syntax/diagram ESM treatment; each caller owns fresh option data. */
 export function productionEsmOutputOptions():OutputOptions {
- return {strictExecutionOrder:true,codeSplitting:{groups:[{name:'production-initial',tags:['$initial'],minSize:0,maxSize:262144,includeDependenciesRecursively:true}]}};
+ return {strictExecutionOrder:true,codeSplitting:{groups:[
+  {name:'production-initial',tags:['$initial'],priority:30,minSize:0,maxSize:262144,includeDependenciesRecursively:true},
+  {name:'production-syntax-data',test:/(?:^|[\\/])node_modules[\\/]@shikijs[\\/](?:langs|themes)[\\/]/,priority:20,minSize:0,maxSize:262144,includeDependenciesRecursively:true,entriesAware:false},
+  {name:'production-diagrams',test:/(?:^|[\\/])node_modules[\\/](?:mermaid[\\/]|@mermaid-js[\\/]parser[\\/])/,priority:10,minSize:0,maxSize:262144,includeDependenciesRecursively:true,entriesAware:false},
+ ]}};
 }
 export interface HookFile {contentSha256?:string|undefined;fileName:string;kind:'chunk'|'asset';imports:readonly string[];dynamicImports:readonly string[];moduleIds:readonly string[];originalNames:readonly string[];facadeModuleId:string|null}
 type IdDiagnostic=Readonly<{type:string;value:string|null;utf8Bytes:number|null;truncated:boolean}>;
