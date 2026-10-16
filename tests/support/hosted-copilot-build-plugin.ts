@@ -1,11 +1,16 @@
 /** Public build hook source; import has no Vite value or owned I/O. */
 import type {Plugin} from 'vite';
+import type {OutputOptions} from 'rolldown';
 import {createHash} from 'node:crypto';
 import {lstatSync,readFileSync,realpathSync,writeFileSync} from 'node:fs';
 import {join,relative,resolve,isAbsolute} from 'node:path';
 import {assertDenseEntries,ordinaryPath,PRODUCTION_FILE_LIMITS,assertProductionCount} from './hosted-copilot-contract.ts';
 import {assertMappings,assertCompilerProfile,assertCombinedModuleOwnershipCount,projectCompilerRuntimeModules,assertCompilerRuntimeOwnership,type CompilerRuntimeObservation,assertModuleOwnershipId,assertReferenceCount,classifyHookMetadata,MODULE_OWNERSHIP_LIMIT,type ModuleMapping} from './hosted-copilot-production-policy.ts';
 import {readIntegratedAdmission} from './hosted-copilot-context.ts';
+/** Explicit manual initial-ESM treatment; each caller owns fresh option data. */
+export function productionEsmOutputOptions():OutputOptions {
+ return {strictExecutionOrder:true,codeSplitting:{groups:[{name:'production-initial',tags:['$initial'],minSize:0,maxSize:262144,includeDependenciesRecursively:true}]}};
+}
 export interface HookFile {contentSha256?:string|undefined;fileName:string;kind:'chunk'|'asset';imports:readonly string[];dynamicImports:readonly string[];moduleIds:readonly string[];originalNames:readonly string[];facadeModuleId:string|null}
 type IdDiagnostic=Readonly<{type:string;value:string|null;utf8Bytes:number|null;truncated:boolean}>;
 type OwnershipSample=Readonly<{from:string;index?:number;id:IdDiagnostic}>;

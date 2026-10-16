@@ -2,11 +2,57 @@ import {mkdtempSync,writeFileSync,symlinkSync,mkdirSync,realpathSync} from 'node
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {describe,it,expect} from 'vitest';
+import * as buildPlugin from './hosted-copilot-build-plugin.ts';
 import {projectHookFacts as projectHookFactsWithProfile,projectHookFactsWithRuntimeLookup,observeCompilerRuntimeModule,enrichOwnershipMismatch,readPhysicalSource,type HookFile} from './hosted-copilot-build-plugin.ts';
 const compilerProfile={provider:'rolldown' as const,version:'1.2.13' as const,runtimeModuleId:'\0rolldown/runtime.js'};
 function projectHookFacts(input:readonly HookFile[],modules:Parameters<typeof projectHookFactsWithProfile>[1]) {return projectHookFactsWithProfile(input,modules,compilerProfile,[]);}
 const row:HookFile={contentSha256:'b'.repeat(64),fileName:'assets/main.js',kind:'chunk',imports:[],dynamicImports:[],moduleIds:['/owned/source.js'],originalNames:[],facadeModuleId:'/owned/source.js'};
 const module={id:'/owned/source.js',kind:'physical' as const,path:'source.js',sha256:'a'.repeat(64),external:false};
+
+// Local test view only; production separately returns pinned OutputOptions.
+type PlannedOutput = {
+ strictExecutionOrder: boolean;
+ codeSplitting: {groups: {
+  name: string; tags: string[]; minSize: number; maxSize: number;
+  includeDependenciesRecursively: boolean;
+ }[]};
+};
+function proposedOutputOptions(): PlannedOutput {
+ const create: unknown = (buildPlugin as unknown as {
+  productionEsmOutputOptions?: unknown;
+ }).productionEsmOutputOptions;
+ expect(create, 'pure productionEsmOutputOptions export is required').toBeTypeOf('function');
+ if (typeof create !== 'function') throw Error('Expected pure productionEsmOutputOptions function');
+ return (create as () => PlannedOutput)();
+}
+const expectedOutput = {
+ strictExecutionOrder: true,
+ codeSplitting: {groups: [{
+  name: 'production-initial', tags: ['$initial'], minSize: 0,
+  maxSize: 262144, includeDependenciesRecursively: true,
+ }]},
+};
+describe('declared manual initial ESM build treatment', () => {
+ it('supplies only the supported initial-graph policy and execution-order guard', () => {
+  expect(proposedOutputOptions()).toStrictEqual(expectedOutput);
+ });
+ it('owns a fresh nested option graph on every call', () => {
+  const first = proposedOutputOptions(), second = proposedOutputOptions();
+  expect(first).not.toBe(second);
+  expect(first.codeSplitting).not.toBe(second.codeSplitting);
+  expect(first.codeSplitting.groups).not.toBe(second.codeSplitting.groups);
+  expect(first.codeSplitting.groups[0]).not.toBe(second.codeSplitting.groups[0]);
+  expect(first.codeSplitting.groups[0]!.tags).not.toBe(second.codeSplitting.groups[0]!.tags);
+  // A caller-owned mutation must affect neither a concurrent result nor a later call.
+  first.codeSplitting.groups[0]!.tags.push('$dynamic');
+  first.codeSplitting.groups[0]!.maxSize = 1;
+  first.codeSplitting.groups.push({name:'caller-only', tags:[], minSize:0, maxSize:1,
+   includeDependenciesRecursively:false});
+  expect(second).toStrictEqual(expectedOutput);
+  expect(proposedOutputOptions()).toStrictEqual(expectedOutput);
+ });
+});
+
 describe('module ownership is independent of resource references',()=>{
  const modules=(count:number)=>Array.from({length:count},(_,index)=>({id:`\0virtual:${index}`,kind:'virtual' as const,external:false}));
  it.each([9212,16384])('retains every one of %i chunk module IDs',count=>{const owned=modules(count),ids=owned.map(value=>value.id);const facts=projectHookFacts([{...row,moduleIds:ids,facadeModuleId:ids[0]!,imports:Array(2048).fill(row.fileName),dynamicImports:Array(2048).fill(row.fileName)}],owned);expect(facts.files[0]!.moduleIds).toEqual(ids);expect(facts.modules).toHaveLength(count);expect(facts.metadataOccurrenceCount).toBe(4096);expect(facts.qualification).toBe(false);});
