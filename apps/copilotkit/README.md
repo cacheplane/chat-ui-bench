@@ -467,6 +467,33 @@ including repeated arguments. The existing bounded source label, phase, reason,
 depth, shared visited count, safe node type and parser offsets remain. Projection
 failure retains the original prefix without expression text or identifier names.
 The depth and visit limits, traversal order, shared counter and first-refusal
-behavior remain unchanged. V11 composition and its hosted outcome remain unknown
-until fresh admitted evidence; this change makes no traversal fix or performance
-claim.
+behavior remain unchanged. The original [V11 run `38843510351`](https://github.com/cacheplane/chat-ui-bench/actions/runs/38843510351),
+attempt 1, built successfully (exit 0) in 3960.675440 ms. Its inspector then refused
+at `assets/index-FC4hQth_.js`: resource-walk, visits, depth 7, visited 500001,
+resourcePops 499943, probePops 58 and probeCalls 28. The full resource walk accounts
+for most charged work. No STATIC, runtime or FPS outcome is qualified.
+
+The prospective `hosted-copilot-react-production-build-v12` uses the custom
+bundler policy `manual-initial-esm-256k-order-v1`. The pure
+`productionEsmOutputOptions()` helper supplies `build.rolldownOptions.output`
+with `strictExecutionOrder:true` and one `production-initial` group tagged
+`$initial`, minSize 0, maxSize 262144 bytes and recursive dependency inclusion.
+This explicitly customized Vite/Rolldown output policy targets smaller initial
+ESM parse units and requests execution-order preservation; it is not default
+bundler output. The group size is an engineering target, not a hard maximum or an AST
+visit guarantee: indivisible modules and dependency constraints can exceed it.
+
+The SDK entry/API, dependency inputs and full emitted resource/ownership checks
+remain unchanged. Each parsed unit still shares 500000 visits across resource
+walk and probes, with depth 256; the graph retains 4096 reference occurrences,
+1024 hook files, 1025 output files, 1024 manifest records, 16384 module owners and
+32 MiB total bytes. All emitted units and compiler runtime owners still require
+validation. Existing source/build mappings bind the exact config/helper source
+digests; the compiler profile records compiler provenance rather than default
+output settings.
+
+Manual grouping changes request/cache topology, wrapper bytes and initialization
+costs. Any future competitor comparison must predeclare matched build policies
+and actual compiler/version/options provenance; unmatched controls cannot support
+that comparison. The V12 hosted build, STATIC, mounted runtime and FPS outcomes
+remain unknown. The policy alone establishes no speedup or performance ranking.
