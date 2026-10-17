@@ -178,7 +178,7 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v40`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v42`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
@@ -213,7 +213,7 @@ bare-root importer to selected SOURCE hashes and actual static resolved edges,
 with at least one such importer present. Resolved edges and authenticated source
 intent are separate facts; the profile does not claim an observed raw resolver
 request or query/fragment exclusion. The unchanged nine-origin Zod gate covers
-all original rows, including unrendered modules. V40 requires fresh full frontend
+all original rows, including unrendered modules. V42 requires fresh full frontend
 and worker inspection under this profile.
 Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
@@ -250,9 +250,25 @@ stdout, each including LF≤4096 bytes. Awaited child write callbacks do not pro
 parent retention or stream closure. These diagnostics share the existing stdout and
 archive caps, and cannot promote geometry or lifecycle success. Default Chat,
 canonical workload, strict geometry and its4/5 read budgets remain unchanged.
-Fresh native preparation uses `hosted-copilot-react-h100-r6400-v6` only after
-independent qualification of same-source full STATIC V40. Neither pure checks nor
+Fresh native preparation uses `hosted-copilot-react-h100-r6400-v7` only after
+independent qualification of same-source full STATIC V42. Neither pure checks nor
 content readiness establish recovery, native conformance, FPS or ranking.
+
+The separate experimental `hosted-copilot-react-tracker-json-a-v1` workflow requires
+independently qualified same-source STATIC V42 and successful ordinary-native V7
+original artifacts. It authenticates the native prerequisite archive as opaque
+bytes. Its five tracker roles are `tracker-a-profile.json`,
+`tracker-a-case-2-input.json`, `tracker-a-case-2-trace.json`,
+`tracker-a-case-2-transport.json`, and `tracker-a-result.json`. Raw JSON capture
+stays bounded to 4 MiB, 64 reads and 133 operations; a separate pure projection
+requires the complete raw file to fit 256 KiB. Child/parent exit code 2 denotes an
+originally closed incomplete report; required incompleteness keeps the outer
+runtime unsuccessful. Pilot inventory runs only after actual runtime success,
+and upload only after inventory success, so incomplete or early-failure pilot
+artifacts are not uploaded; original workflow logs remain diagnostic evidence.
+Timing, scenario, FPS, ratio and ranking claims remain unavailable. Dispatch is
+held until fresh immutable-source prerequisites and independent qualification
+are complete; pure checks do not establish hosted runtime performance.
 
 Native V4 retained two content-ready diagnostics but no case or child result files;
 those diagnostics do not establish completed cases or accepted geometry. The next

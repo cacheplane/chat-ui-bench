@@ -112,6 +112,12 @@ export type NativeResolution = Readonly<{ specifier: string; publicSpecifier: st
 export type MountedModuleInput = Readonly<{ schemaVersion: 1; sourceSha: string; runId: string; workerPath: string;
   emitted: readonly Readonly<{ path: string; kind: 'chunk' | 'asset'; format: 'es' | 'cjs'; entry: boolean; bytes: number; sha256: string }>[];
   imports: readonly NativeImport[]; resolutions: readonly NativeResolution[]; executedCopySha256: string }>;
+/** Supplied opaque commitments; these fields never qualify historical native behavior. */
+export type TrackerANativePrerequisite = Readonly<{ sourceSha: string; sourceTreeSha: string; originalRunId: string; attempt: 1;
+  workflowId: number; workflowPath: string; releaseId: string; artifactId: string; archiveSha256: string; archiveBytes: number;
+  qualifiedRootReceiptSha256: string; qualifiedPeerReceiptSha256: string; frontendSettingsSha256: string; qualification: false }>;
+export type MountedTrackerAPilotPrerequisites = Readonly<{ intent: PreInstallIntent; installed: PostInstallAdmission;
+  module: MountedModuleInput; nativePrerequisite: TrackerANativePrerequisite }>;
 export type ModuleFacts = Readonly<{ sourceSha: string; workerPath: string; workerSha256: string; importOccurrences: number; packageResolutions: number }>;
 export type OriginRole = 'native-case' | 'independent-producer';
 export type CaseJourney = 'follow' | 'history-reading';
@@ -234,29 +240,36 @@ function parseIntent(r: Data): PreInstallIntent {
 }
 function sourceCap(r: Data): void { let bytes=0; for(const v of A(R(r.source).files)) {const n=R(v).bytes;if(typeof n==='number'&&Number.isSafeInteger(n)&&n>=0) bytes+=n;}
   if(bytes>MOUNTED_POLICY_LIMITS.bytes) deny('cardinality-cap'); }
-function intentSemantics(v: PreInstallIntent): AdmissionFacts {
-  const c=v.context; const release='hosted-copilot-react-h100-r6400-v6',ref=`refs/tags/${release}`;
-  if(v.purpose!=='hosted-copilot-mounted-default-react-only') return deny('mounted-purpose');
-  if(c.repository!=='cacheplane/chat-ui-bench'||c.releaseId!==release||c.githubRef!==ref||c.workflowRef!==`cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@${ref}`||
-    c.eventName!=='workflow_dispatch'||c.actions!=='true'||c.platform!=='linux'||c.runnerOs!=='Linux'||c.runnerMarker!=='ubuntu-24.04-hosted-copilot-mounted'||c.attempt!=='1') return deny('mounted-context');
+type AdmissionProfile = 'ordinary' | 'tracker-a';
+function intentSemantics(v: PreInstallIntent, profile: AdmissionProfile): AdmissionFacts {
+  const pilot=profile==='tracker-a',c=v.context;
+  const release=pilot?'hosted-copilot-react-tracker-json-a-v1':'hosted-copilot-react-h100-r6400-v7',ref=`refs/tags/${release}`;
+  const workflow=pilot?'.github/workflows/hosted-copilot-tracker-a.yml':'.github/workflows/hosted-copilot-mounted.yml';
+  if(v.purpose!==(pilot?'hosted-copilot-mounted-tracker-json-a-pilot-only':'hosted-copilot-mounted-default-react-only')) return deny('mounted-purpose');
+  if(c.repository!=='cacheplane/chat-ui-bench'||c.releaseId!==release||c.githubRef!==ref||c.workflowRef!==`cacheplane/chat-ui-bench/${workflow}@${ref}`||
+    c.eventName!=='workflow_dispatch'||c.actions!=='true'||c.platform!=='linux'||c.runnerOs!=='Linux'||c.runnerMarker!==(pilot?'ubuntu-24.04-hosted-copilot-tracker-a':'ubuntu-24.04-hosted-copilot-mounted')||c.attempt!=='1') return deny('mounted-context');
   if([c.checkoutSha,c.githubSha,c.workflowSha,c.tagSha,v.source.commitSha].some(s=>s!==c.candidateSha)) return deny('source-mismatch');
   let inventory; try {inventory=assertInventory(v.source.files);}catch {return deny('source-inventory');}
   const required=['package-lock.json','.github/workflows/hosted-copilot-mounted.yml','tools/hosted-copilot-mounted-bootstrap.mjs','apps/copilotkit/hosted-native-entry.ts','apps/copilotkit/src/geometry-policy.ts'];
+  if(pilot) required.push('.github/workflows/hosted-copilot-tracker-a.yml','apps/copilotkit/runtime/mounted-tracker-a.ts','apps/copilotkit/runtime/mounted-tracker-a-trace.ts',
+    'tests/copilotkit-mounted-tracker-a.test.ts','tests/copilotkit-mounted-tracker-a-trace.test.ts');
   if(required.some(path=>!v.source.files.some(f=>f.path===path))) return deny('source-inventory');
   if(v.source.lockSha256!==lockSHA||v.source.files.find(f=>f.path==='package-lock.json')!.sha256!==lockSHA) return deny('lock-mismatch');
   if(v.profile.nodeVersion!=='v24.20.0'||v.profile.npmVersion!=='11.19.0'||v.profile.telemetryDisabled!=='true'||v.profile.doNotTrack!=='1') return deny('profile-mismatch');
   return {phase:'pre-install',sourceSha:v.source.commitSha,treeSha:v.source.treeSha,sourceFiles:inventory.files.length,sourceBytes:inventory.bytes,lockSha256:v.source.lockSha256};
 }
 const pin = (path: string): Readonly<{version:string;integrity:string}> | undefined => Object.hasOwn(MOUNTED_PACKAGE_PINS,path)?MOUNTED_PACKAGE_PINS[path as keyof typeof MOUNTED_PACKAGE_PINS]:undefined;
-export function evaluateMountedAdmissionPolicy(input: unknown): PolicyResult<AdmissionFacts> { return evaluate(()=> {
+export function evaluateMountedTrackerAAdmissionPolicy(input: unknown): PolicyResult<AdmissionFacts> { return admissionPolicy(input,'tracker-a'); }
+export function evaluateMountedAdmissionPolicy(input: unknown): PolicyResult<AdmissionFacts> { return admissionPolicy(input,'ordinary'); }
+function admissionPolicy(input: unknown, selected: AdmissionProfile): PolicyResult<AdmissionFacts> { return evaluate(()=> {
   const kind=E(own(input,'kind'),['pre-install-intent','post-install-admission']);const r=R(copy(input,kind==='pre-install-intent'?intentShape:postShape));
   const raw=kind==='pre-install-intent'?r:R(r.intent);sourceCap(raw);const intent=parseIntent(raw);
-  if(kind==='pre-install-intent') return intentSemantics(intent);
+  if(kind==='pre-install-intent') return intentSemantics(intent,selected);
   V(r.schemaVersion);const original=declaredCommand(r.originalInstall),p=R(r.installedProfile);
   const profile={sourceSha:H(p.sourceSha,40),lockSha256:H(p.lockSha256),originalInstallReceiptSha256:H(p.originalInstallReceiptSha256),hiddenLockReceiptSha256:H(p.hiddenLockReceiptSha256),
     checkedInstalledRecords:N(p.checkedInstalledRecords,4096,19),packages:A(p.packages).map(x=>{const q=R(x);return {path:P(q.path),version:S(q.version),integrity:S(q.integrity,256),manifestSha256:H(q.manifestSha256),regular:B(q.regular),contained:B(q.contained),symlink:B(q.symlink)};})};
   if(!commandConsistent(original)) return deny('invalid-scalar');
-  const facts=intentSemantics(intent);
+  const facts=intentSemantics(intent,selected);
   if(profile.sourceSha!==intent.source.commitSha||profile.lockSha256!==intent.source.lockSha256) return deny('installed-source-mismatch');
   const seen=new Set<string>();for(const q of profile.packages) {const expected=pin(q.path);if(!expected||seen.has(q.path)||q.version!==expected.version||q.integrity!==expected.integrity||!q.regular||!q.contained||q.symlink) return deny('installed-profile-mismatch');seen.add(q.path);}
   if(original.stdoutBytes>MOUNTED_POLICY_LIMITS.parentStream||original.stderrBytes>MOUNTED_POLICY_LIMITS.parentStream) return deny('install-stream-overflow');
@@ -313,6 +326,26 @@ export function evaluateMountedModulePolicy(input: unknown): PolicyResult<Module
     else {if(i.resolutionIndex===null||resolutions[i.resolutionIndex]?.specifier!==i.specifier) return deny('native-resolution');used.add(i.resolutionIndex);}}
   if(used.size!==resolutions.length) return deny('native-resolution');
   return {sourceSha,workerPath,workerSha256:output.sha256,importOccurrences:imports.length,packageResolutions:resolutions.length};
+});}
+const trackerANativePrerequisiteShape=shape({sourceSha:value(40),sourceTreeSha:value(40),originalRunId:value(20),attempt:value(),workflowId:value(),
+  workflowPath:value(1024),releaseId:value(64),artifactId:value(20),archiveSha256:value(64),archiveBytes:value(),
+  qualifiedRootReceiptSha256:value(64),qualifiedPeerReceiptSha256:value(64),frontendSettingsSha256:value(64),qualification:value()});
+const trackerAPrerequisitesShape=shape({intent:intentShape,installed:postShape,module:moduleShape,nativePrerequisite:trackerANativePrerequisiteShape});
+export function evaluateMountedTrackerAPilotPrerequisites(input:unknown):PolicyResult<AdmissionFacts> {return evaluate(()=> {
+  // Admit the entire bounded own-data graph before scalar checks or canonical comparison.
+  const r=R(copy(input,trackerAPrerequisitesShape));
+  const pre=evaluateMountedTrackerAAdmissionPolicy(r.intent),post=evaluateMountedTrackerAAdmissionPolicy(r.installed),module=evaluateMountedModulePolicy(r.module);
+  for(const result of [pre,post,module]) if(result.status!=='accepted') deny(result.reason??'invalid-shape',result.status==='unavailable'?'unavailable':'invalid');
+  const intent=parseIntent(R(r.intent)),installedIntent=parseIntent(R(R(r.installed).intent)),m=R(r.module);
+  // Parser output is finite canonical own data; raw caller objects are never serialized.
+  if(JSON.stringify(intent)!==JSON.stringify(installedIntent)||m.sourceSha!==intent.source.commitSha||m.runId!==intent.prerequisite.originalRunId) return deny('source-mismatch');
+  const q=R(r.nativePrerequisite),qualification=B(q.qualification);if(qualification!==false) return deny('invalid-scalar');
+  const native:TrackerANativePrerequisite={sourceSha:H(q.sourceSha,40),sourceTreeSha:H(q.sourceTreeSha,40),originalRunId:numericID(q.originalRunId),attempt:V(q.attempt),
+    workflowId:N(q.workflowId),workflowPath:P(q.workflowPath),releaseId:S(q.releaseId,64),artifactId:numericID(q.artifactId),archiveSha256:H(q.archiveSha256),archiveBytes:N(q.archiveBytes,33554432,1),
+    qualifiedRootReceiptSha256:H(q.qualifiedRootReceiptSha256),qualifiedPeerReceiptSha256:H(q.qualifiedPeerReceiptSha256),frontendSettingsSha256:H(q.frontendSettingsSha256),qualification};
+  if(native.workflowId!==386692729||native.workflowPath!=='.github/workflows/hosted-copilot-mounted.yml'||native.releaseId!=='hosted-copilot-react-h100-r6400-v7') return deny('mounted-context');
+  if(native.sourceSha!==intent.source.commitSha||native.sourceTreeSha!==intent.source.treeSha||native.frontendSettingsSha256!==intent.prerequisite.frontendSettingsSha256) return deny('source-mismatch');
+  return post.facts!;
 });}
 const roleChoices=['native-case','independent-producer'] as const,journeys=['follow','history-reading'] as const,statuses=['fulfilled','pending','rejected','timed-out','unavailable'] as const;
 const leaseShape=shape({role:value(),origin:value(64),caseId:value(),threadId:value()});
