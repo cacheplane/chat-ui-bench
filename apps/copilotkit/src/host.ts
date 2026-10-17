@@ -73,7 +73,7 @@ export function createFrontendHost(context: CaseContext, agent: AbstractAgent, c
   let detachPromise: Promise<void> | undefined;
   let disposePromise: Promise<void> | undefined;
   const locators = {
-    scroller: '[class~="cpk:overflow-y-auto"]:has(> div > [data-testid="copilot-scroll-content"])',
+    scroller: '[data-testid="copilot-chat"] > [class~="cpk:flex-1"] > div:has(> [class~="cpk:overflow-y-auto"] > div > [data-testid="copilot-scroll-content"])',
     composer: '[data-testid="copilot-chat-textarea"]',
     returnToResponse: '[data-testid="copilot-scroll-to-bottom"]',
     messageHost(messageId: string): string {
