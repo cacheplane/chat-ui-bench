@@ -51,8 +51,9 @@ async function mount(): Promise<void> {
   }
   root.render(
     <CopilotKitProvider runtimeUrl="/copilot" onError={({ error }) => { observeError(error); }}>
-      <CopilotChat agentId={context.agentId} threadId={context.ids.threadId} className="benchmark-chat" />
-      <Probe context={context} attach={attach} />
+      <Probe context={context} attach={attach}>
+        <CopilotChat agentId={context.agentId} threadId={context.ids.threadId} className="benchmark-chat" />
+      </Probe>
     </CopilotKitProvider>,
   );
 }

@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V32
+`runNativeMountedConformance` worker export now prepare a fresh V34
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v2`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v3`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -626,6 +626,22 @@ Global invalid input retains `invalid` / `policy`; acceptance, all-or-nothing
 collection, DOM reads, readiness, timing and retries remain unchanged. This does
 not establish a fix, native conformance, FPS or ranking result. The historical
 V1 attempt and its failed outcome remain preserved.
+
+The preserved native V2 attempt completed its first follow case with all nineteen
+original witnesses and four available geometry snapshots. Its second history
+case failed before mounted acknowledgement or any snapshots; application stderr
+reported `Only admitted native cold connect is permitted`. Response-reader EOF
+alone proves neither admitted replay nor connect count or request ordering.
+
+V34 tests the source-supported provisional-to-registered startup hypothesis by
+rendering the identical default Chat from Probe only when its existing public
+`useAgent` hook reports ready. Provider discovery, ready-only host attachment and
+cleanup remain unchanged, as does the runtime's exact once-only cold-connect
+admission. The V2 failure does not prove that startup sequence occurred or that
+this gate fixes it. Fresh native V3 must independently complete both original
+serial cases after qualification of same-source full STATIC V34. Earlier V1's
+geometry cause remains unknown; no overall native conformance, FPS or ranking
+result is established.
 
 `frontendSettingsSha256` is SHA256 of the UTF8 bytes of
 `JSON.stringify([['source', candidateSha], ['apps/copilotkit/vite.config.ts', configSha], ['tests/support/hosted-copilot-build-plugin.ts', helperSha], ['package-lock.json', lockSha]])`,
