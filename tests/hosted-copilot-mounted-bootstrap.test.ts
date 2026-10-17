@@ -59,7 +59,7 @@ test.each(extractionCases)('embedded extractor: %s',name=>{
  const result=JSON.parse(original.stdout);expect(result.name).toBe(name);expect(result.passed).toBe(true);expect(result.syntheticOnly).toBe(true);
 },20000);
 
-function modeContext(pilot=true){const release=pilot?'hosted-copilot-react-tracker-json-a-v4':'hosted-copilot-react-h100-r6400-v11',ref='refs/tags/'+release;return {candidateSha:sha,checkoutSha:sha,githubSha:sha,workflowSha:sha,tagSha:sha,repository:'cacheplane/chat-ui-bench',releaseId:release,githubRef:ref,workflowRef:'cacheplane/chat-ui-bench/.github/workflows/'+(pilot?'hosted-copilot-tracker-a.yml':'hosted-copilot-mounted.yml')+'@'+ref,eventName:'workflow_dispatch',actions:'true',platform:'linux',runnerOs:'Linux',runnerMarker:pilot?'ubuntu-24.04-hosted-copilot-tracker-a':'ubuntu-24.04-hosted-copilot-mounted',attempt:'1'};}
+function modeContext(pilot=true){const release=pilot?'hosted-copilot-react-tracker-json-a-v5':'hosted-copilot-react-h100-r6400-v12',ref='refs/tags/'+release;return {candidateSha:sha,checkoutSha:sha,githubSha:sha,workflowSha:sha,tagSha:sha,repository:'cacheplane/chat-ui-bench',releaseId:release,githubRef:ref,workflowRef:'cacheplane/chat-ui-bench/.github/workflows/'+(pilot?'hosted-copilot-tracker-a.yml':'hosted-copilot-mounted.yml')+'@'+ref,eventName:'workflow_dispatch',actions:'true',platform:'linux',runnerOs:'Linux',runnerMarker:pilot?'ubuntu-24.04-hosted-copilot-tracker-a':'ubuntu-24.04-hosted-copilot-mounted',attempt:'1'};}
 test.each([true,false])('fixed authenticated bootstrap selector admits profile %s',pilot=>{expect(tool.selectMountedBootstrapMode(modeContext(pilot))).toBe(pilot?'tracker-a':'ordinary');});
 test.each(['releaseId','githubRef','workflowRef','runnerMarker','candidateSha','checkoutSha','githubSha','workflowSha','tagSha','repository','attempt'])('bootstrap selector refuses changed %s with no ordinary fallback',key=>{expect(()=>tool.selectMountedBootstrapMode({...modeContext(),[key]:'wrong'})).toThrow();});
 test('bootstrap selector rejects extra/getter/symbol fields without evaluating getter',()=>{let calls=0;const c=modeContext();Object.defineProperty(c,'githubRef',{get(){calls++;throw Error('must not evaluate');}});expect(()=>tool.selectMountedBootstrapMode(c)).toThrow();expect(calls).toBe(0);expect(()=>tool.selectMountedBootstrapMode({...modeContext(),mode:'tracker-a'})).toThrow();expect(()=>tool.selectMountedBootstrapMode({...modeContext(),[Symbol()]:1})).toThrow();});
@@ -79,7 +79,7 @@ test('capacity admits exact bytes/files and rejects +1 without borrowing active 
 test('registry exact closed replacement preserves runtime union charge and never duplicates a slot',()=>{const a=tool.mountedTrackerAReservation('runtime',[],runtimeKnown());const b=tool.mountedTrackerAReservation('runtime-registry-closed',[{path:'browser-registry.json',bytes:1}],runtimeKnown());expect(b.bytes).toBe(a.bytes);expect(b.files).toBe(a.files);expect(b.roles).toHaveLength(26);expect(()=>tool.mountedTrackerAReservation('runtime-registry-closed',[{path:'browser-registry.json',bytes:2}],runtimeKnown())).toThrow();});
 test('all five original startup closures replace only their own fixed reservations monotonically',()=>{const k=runtimeKnown(),closed:{path:string;bytes:number}[]=[{path:'browser-registry.json',bytes:1}],before=tool.mountedTrackerAReservation('runtime-registry-closed',closed,k);let prior=before;for(const [phase,path,bytes,remaining] of [['runtime-parent-started-closed','parent-started.json',2,25],['runtime-process-closed','browser-process.json',5,24],['runtime-options-closed','native-child-options.json',1,23],['trace','application-started.json',3,22]] as const){closed.push({path,bytes});const next=tool.mountedTrackerAReservation(phase,closed,k);expect(next.files).toBe(before.files);expect(next.roles).toHaveLength(remaining);expect(next.bytes).toBeLessThanOrEqual(prior.bytes);prior=next;}});
 
-function nativeProvider(){const source='a'.repeat(40),archive=new Uint8Array([0,255,1]),archiveSha256=createHash('sha256').update(archive).digest('hex');return {archive,expected:{sourceSha:source,originalRunId:'123',artifactId:'456',archiveSha256},run:{name:'hosted-copilot-react-h100-r6400-v11',id:123,run_attempt:1,head_sha:source,event:'workflow_dispatch',workflow_id:386692729,path:'.github/workflows/hosted-copilot-mounted.yml',head_branch:'hosted-copilot-react-h100-r6400-v11',display_title:'hosted-copilot-react-h100-r6400-v11',status:'completed',conclusion:'success',repository:{full_name:'cacheplane/chat-ui-bench'}},artifact:{id:456,name:'copilot-mounted-123-1',expired:false,size_in_bytes:3,digest:'sha256:'+archiveSha256,workflow_run:{id:123,head_sha:source}},receipt:{url:'https://api.github.com/repos/cacheplane/chat-ui-bench/actions/artifacts/456/zip',status:200,bytes:3,observedBytes:3,bodyComplete:true,sha256:archiveSha256,qualification:false}};}
+function nativeProvider(){const source='a'.repeat(40),archive=new Uint8Array([0,255,1]),archiveSha256=createHash('sha256').update(archive).digest('hex');return {archive,expected:{sourceSha:source,originalRunId:'123',artifactId:'456',archiveSha256},run:{name:'hosted-copilot-react-h100-r6400-v12',id:123,run_attempt:1,head_sha:source,event:'workflow_dispatch',workflow_id:386692729,path:'.github/workflows/hosted-copilot-mounted.yml',head_branch:'hosted-copilot-react-h100-r6400-v12',display_title:'hosted-copilot-react-h100-r6400-v12',status:'completed',conclusion:'success',repository:{full_name:'cacheplane/chat-ui-bench'}},artifact:{id:456,name:'copilot-mounted-123-1',expired:false,size_in_bytes:3,digest:'sha256:'+archiveSha256,workflow_run:{id:123,head_sha:source}},receipt:{url:'https://api.github.com/repos/cacheplane/chat-ui-bench/actions/artifacts/456/zip',status:200,bytes:3,observedBytes:3,bodyComplete:true,sha256:archiveSha256,qualification:false}};}
 test('native prerequisite binds arbitrary opaque bytes using original native provider success and EOF only',()=>{const f=nativeProvider();expect(tool.validateOrdinaryNativePrerequisiteProvider(f.expected,f.run,f.artifact)).toEqual({sourceSha:sha,qualification:false});expect(tool.bindOpaqueNativePrerequisite({...f.expected,archiveBytes:3},f.receipt,f.archive)).toEqual({bytes:3,sha256:f.expected.archiveSha256,qualification:false});});
 test.each([{id:9007199254740992},{run_attempt:2},{workflow_id:384492100},{path:'wrong'},{head_branch:'wrong'},{conclusion:'failure'},{repository:{full_name:'wrong'}}])('native provider refuses mismatched original %#',change=>{const f=nativeProvider();expect(()=>tool.validateOrdinaryNativePrerequisiteProvider(f.expected,{...f.run,...change},f.artifact)).toThrow();});
 test.each([{bodyComplete:false},{observedBytes:4},{bytes:2},{status:500},{sha256:'c'.repeat(64)}])('opaque native byte binding refuses original response mismatch %#',change=>{const f=nativeProvider();expect(()=>tool.bindOpaqueNativePrerequisite({...f.expected,archiveBytes:3},{...f.receipt,...change},f.archive)).toThrow();});
@@ -146,7 +146,7 @@ function bootstrapBundle(){
  const installed={schemaVersion:1,kind:'post-install-admission',intent:structuredClone(intent),originalInstall:{exitCode:0,signal:null,stdoutBytes:0,stderrBytes:0,stdoutRetainedBytes:0,stderrRetainedBytes:0,closed:true,streamsComplete:true},installedProfile:{sourceSha:sha,lockSha256:lock,originalInstallReceiptSha256:digest,hiddenLockReceiptSha256:digest,checkedInstalledRecords:19,packages:Object.entries(MOUNTED_PACKAGE_PINS).map(([path,p])=>({path,version:p.version,integrity:p.integrity,manifestSha256:digest,regular:true,contained:true,symlink:false}))}};
  const path='apps/copilotkit/.hosted-mounted/3-1/worker.mjs',pin=MOUNTED_PACKAGE_PINS['apps/copilotkit/node_modules/@copilotkit/runtime'];
  const module={schemaVersion:1,sourceSha:sha,runId:'3',workerPath:path,emitted:[{path,kind:'chunk',format:'es',entry:true,bytes:20,sha256:digest}],imports:[{specifier:'@copilotkit/runtime/v2',kind:'static',resolutionIndex:0},{specifier:'node:http',kind:'static',resolutionIndex:null}],resolutions:[{specifier:'@copilotkit/runtime/v2',publicSpecifier:'@copilotkit/runtime/v2',publicEntryPath:'apps/copilotkit/node_modules/@copilotkit/runtime/dist/v2/index.mjs',packagePath:'apps/copilotkit/node_modules/@copilotkit/runtime',version:pin.version,integrity:pin.integrity,entryPath:'apps/copilotkit/node_modules/@copilotkit/runtime/dist/v2/index.mjs',regular:true,contained:true,symlink:false}],executedCopySha256:digest};
- const nativePrerequisite={sourceSha:sha,sourceTreeSha:'c'.repeat(40),originalRunId:'123',attempt:1,workflowId:386692729,workflowPath:'.github/workflows/hosted-copilot-mounted.yml',releaseId:'hosted-copilot-react-h100-r6400-v11',artifactId:'456',archiveSha256:digest,archiveBytes:3,qualifiedRootReceiptSha256:digest,qualifiedPeerReceiptSha256:digest,frontendSettingsSha256:digest,qualification:false};
+ const nativePrerequisite={sourceSha:sha,sourceTreeSha:'c'.repeat(40),originalRunId:'123',attempt:1,workflowId:386692729,workflowPath:'.github/workflows/hosted-copilot-mounted.yml',releaseId:'hosted-copilot-react-h100-r6400-v12',artifactId:'456',archiveSha256:digest,archiveBytes:3,qualifiedRootReceiptSha256:digest,qualifiedPeerReceiptSha256:digest,frontendSettingsSha256:digest,qualification:false};
  return {intent,installed,module,nativePrerequisite};
 }
 const bootstrapAssets=()=>({root:'/private/tmp/qualified/dist',files:[{path:'index.html',bytes:1,sha256:digest,regular:true,contained:true,symlink:false}]});
@@ -190,11 +190,12 @@ async function outerPublication(incomplete=false,supplied?:Awaited<ReturnType<ty
 async function outerDiagnosticFixture(incomplete=false,mutate?:PublicationMutation,rawText='{}'){
  const files=await publicationFiles(incomplete,mutate,rawText),value=await outerPublication(incomplete,files),command=completedCommand('parent');if(files.native.pilot.transport?.raw.ref)value.rawRef=files.native.pilot.transport.raw.ref;command.original.exitCode=files.partial.status==='complete'?0:2;command.exit!.exitCode=command.original.exitCode;
  const accepted=await tool.authenticateTrackerAReport(command,'parent',profileRef,{read:files.read});
- return {files,value,retained:accepted.diagnostic};
+ return {files,value:{...value,rawRef:accepted.diagnostic?.rawRef??null},retained:accepted.diagnostic};
 }
 function diagnosticWriter(){const writes:Uint8Array[]=[];return {writes,write:(bytes:Uint8Array,done:(error?:Error|null)=>void)=>{writes.push(bytes);done();return true;}};}
 type DiagnosticSidecar=NonNullable<Awaited<ReturnType<typeof tool.authenticateTrackerAReport>>['diagnostic']>;
-type DiagnosticView={schemaVersion:number;kind:string;mode:string;phase:string;status:string;refs:(readonly[number,string]|null)[];stages:unknown;childFailure:unknown;failures:unknown;commands:unknown;originals:readonly[readonly string[],readonly (readonly [number,boolean,boolean,boolean,boolean,readonly string[]])[]];stdio:unknown;policy:unknown;input:NonNullable<DiagnosticSidecar['input']>|null;transport:NonNullable<DiagnosticSidecar['transport']>|null;authority:unknown};
+type DiagnosticRelations=readonly[readonly[number,number,number|null,number,number]|null,readonly[number,boolean|null,number|null]|null,number];
+type DiagnosticView={schemaVersion:number;kind:string;mode:string;phase:string;status:string;refs:(readonly[number,string]|null)[];stages:unknown;childFailure:unknown;failures:unknown;commands:unknown;originals:readonly[readonly string[],readonly (readonly [number,boolean,boolean,boolean,boolean,readonly string[]])[]];stdio:unknown;policy:unknown;input:NonNullable<DiagnosticSidecar['input']>|null;transport:NonNullable<DiagnosticSidecar['transport']>|null;relations:DiagnosticRelations;authority:unknown};
 function parseDiagnostic(bytes:Uint8Array):DiagnosticView{const text=Buffer.from(bytes).toString('utf8');expect(text.endsWith('\n')).toBe(true);expect(text.split('\n')).toHaveLength(2);expect(bytes.byteLength).toBeLessThanOrEqual(16384);return JSON.parse(text) as DiagnosticView;}
 function projectDiagnostic(f:Awaited<ReturnType<typeof outerDiagnosticFixture>>,retained=f.retained){const final=tool.constructTrackerAResult({...f.value,nativeResultRef:namedRef('native-result.json')});return tool.constructTrackerAIncompleteDiagnostic(f.value,final,retained);}
 
@@ -203,7 +204,7 @@ test('outer incomplete diagnostic follows publication and retains exact false au
  const f=await outerDiagnosticFixture(true),order:string[]=[],writer=diagnosticWriter();let exit=0,nativePayload:unknown,trackerPayload:unknown;
  await tool.runTrackerAPilotAction('run',()=>tool.publishTrackerAOuterResult(f.value,{writeNative:async v=>{nativePayload=v;order.push('native-write');},authenticateNative:async()=>{order.push('native-authenticate');return {path:'native-result.json',bytes:1,sha256:digest};},writeTracker:async v=>{trackerPayload=v;order.push('tracker-write');}},{retained:f.retained,write:(bytes,done)=>{order.push('diagnostic');return writer.write(bytes,done);}}),code=>{exit=code;});
  expect(order).toEqual(['native-write','native-authenticate','tracker-write','diagnostic']);expect(exit).toBe(1);expect(nativePayload).toEqual(tool.constructTrackerANativeResult(f.value.nativeResult));expect(trackerPayload).toEqual(tool.constructTrackerAResult({...f.value,nativeResultRef:namedRef('native-result.json')}));expect(writer.writes).toHaveLength(1);
- const d=parseDiagnostic(writer.writes[0]!);expect(Object.keys(d)).toEqual(['schemaVersion','kind','mode','phase','status','refs','stages','childFailure','failures','commands','originals','stdio','policy','input','transport','authority']);expect(d).toMatchObject({schemaVersion:1,kind:'tracker-a-incomplete-diagnostic',mode:'tracker-json-a-pilot-v1',phase:'outer-published',status:'incomplete',authority:[false,'unavailable','unavailable',false,false]});
+ const d=parseDiagnostic(writer.writes[0]!);expect(Object.keys(d)).toEqual(['schemaVersion','kind','mode','phase','status','refs','stages','childFailure','failures','commands','originals','stdio','policy','input','transport','relations','authority']);expect(d).toMatchObject({schemaVersion:1,kind:'tracker-a-incomplete-diagnostic',mode:'tracker-json-a-pilot-v1',phase:'outer-published',status:'incomplete',authority:[false,'unavailable','unavailable',false,false]});expect(d.relations).toEqual(f.retained!.relations);
  expect(d.refs).toEqual([profileRef,f.value.inputRef,f.value.transportRef,f.value.childResultRef,f.value.parentPartialRef,namedRef('native-result.json'),rawRef].map(ref=>ref===null?null:[ref.bytes,ref.sha256]));expect(d.failures).toEqual([[0,0,0],[0,0,1]]);expect(d.childFailure).toEqual(['case-conformance',[],'fulfilled']);expect(d.input).toEqual(f.retained!.input);expect(d.transport).toEqual(f.retained!.transport);
 });
 test.each(['native-write','native-authenticate','tracker-write'] as const)('incomplete original %s hold/rejection cannot emit published diagnostic',async phase=>{
@@ -214,7 +215,7 @@ test.each(['native-write','native-authenticate','tracker-write'] as const)('inco
 test('parent and child authenticated sidecars agree and are returned after final raw read only',async()=>{
  const f=await publicationFiles(true),command=completedCommand('child');command.exit!.exitCode=2;command.original.exitCode=2;const reads:string[]=[],rawGate=held<void>();let settled=false;
  const work=tool.authenticateTrackerAReport(command,'child',profileRef,{read:async name=>{reads.push(name);if(name==='tracker-a-case-2-trace.json')await rawGate.promise;return f.read(name);}}).then(value=>{settled=true;return value;});
- for(let i=0;i<40;i++)await Promise.resolve();expect(reads.at(-1)).toBe('tracker-a-case-2-trace.json');expect(settled).toBe(false);rawGate.resolve();const child=await work;expect(child.diagnostic).not.toBeNull();expect(Object.keys(child.diagnostic!)).toEqual(['profileRef','childResultRef','inputRef','transportRef','rawRef','input','transport']);
+ for(let i=0;i<40;i++)await Promise.resolve();expect(reads.at(-1)).toBe('tracker-a-case-2-trace.json');expect(settled).toBe(false);rawGate.resolve();const child=await work;expect(child.diagnostic).not.toBeNull();expect(Object.keys(child.diagnostic!)).toEqual(['profileRef','childResultRef','inputRef','transportRef','rawRef','input','transport','relations']);
  const parentCommand=completedCommand('parent');parentCommand.exit!.exitCode=2;parentCommand.original.exitCode=2;const parent=await tool.authenticateTrackerAReport(parentCommand,'parent',profileRef,{read:f.read});expect(parent.diagnostic).toEqual(child.diagnostic);
 });
 test.each(['raw','input-profile','transport-profile','child-ref','case-join','browser-join'] as const)('authentication refuses %s with no partially returned sidecar',async kind=>{
@@ -238,12 +239,126 @@ test.each(['profileRef','childResultRef','inputRef','transportRef','rawRef'] as 
 });
 test('available authenticated child cannot be promoted with a null diagnostic sidecar',async()=>{const f=await outerDiagnosticFixture(true);expect(()=>projectDiagnostic(f,null)).toThrow();});
 
+type RelationNative=Awaited<ReturnType<typeof projectionNative>>;
+type ScalarOriginal=NonNullable<RelationNative['pilot']['input']>['scalarObservations'][number];
+function observedScalars(native:RelationNative,rows:readonly {index:number;page:number;top:number;status?:ScalarOriginal['status']}[]){
+ const input=native.pilot.input!,sample=structuredClone(input.scalarObservations.find(row=>row.value!==null)!.value!);
+ input.phase.hostT0Ms=null;input.phase.hostT1Ms=null;
+ for(const row of input.scalarObservations){row.value=null;Object.assign(row,{requestedHostMs:null,settledHostMs:null});}
+ for(const spec of rows){const row=input.scalarObservations[spec.index]!;row.value={...sample,pageNowMs:spec.page,scrollTop:spec.top};if(spec.status!==undefined)row.status=spec.status;}
+ return input;
+}
+test.each([
+ {name:'page clock decrease before scroll increase',rows:[{index:0,page:10,top:20},{index:2,page:9,top:30}],expected:[1,2,0,9,10]},
+ {name:'scroll increase before end stop',rows:[{index:0,page:10,top:-1},{index:2,page:10,top:0}],expected:[2,2,0,0,-1]},
+ {name:'non-pre end stop',rows:[{index:1,page:10,top:0}],expected:[3,1,null,0,0]},
+ {name:'first pre/post no net upward movement',rows:[{index:0,page:10,top:20},{index:81,page:10,top:20}],expected:[4,81,0,20,20]},
+] as const)('observed relation projects %s from original array indices',async({rows,expected})=>{
+ const f=await outerDiagnosticFixture(true,native=>{const input=observedScalars(native,rows);input.scalarObservations[0]!.ordinal=Number.MAX_SAFE_INTEGER;input.scalarObservations[2]!.ordinal=Number.MAX_SAFE_INTEGER;});
+ expect(parseDiagnostic(projectDiagnostic(f)).relations[0]).toEqual(expected);
+});
+test.each(['requested','settled'] as const)('absolute slot %s boundary takes priority over value relations including fulfilled late originals',async which=>{
+ const f=await outerDiagnosticFixture(true,native=>{const input=observedScalars(native,[{index:0,page:10,top:20},{index:1,page:9,top:30,status:'fulfilled'}]);input.phase.hostT0Ms=1000;input.phase.hostT1Ms=3000;input.scalarObservations[1]!.requestedHostMs=which==='requested'?1050:1049;input.scalarObservations[1]!.settledHostMs=1060;});
+ const d=parseDiagnostic(projectDiagnostic(f));expect(d.relations[0]).toEqual([which==='requested'?5:6,1,null,which==='requested'?1050:1060,1050]);expect(d.input!.scalars[1]![3]).toBe('fulfilled');
+});
+test('scan prioritizes earlier rows over later timing and final pre/post relations',async()=>{
+ const f=await outerDiagnosticFixture(true,native=>{const input=observedScalars(native,[{index:0,page:10,top:20},{index:2,page:9,top:19},{index:81,page:10,top:20}]);input.phase.hostT0Ms=1000;input.phase.hostT1Ms=3000;input.scalarObservations[3]!.requestedHostMs=1100;});
+ expect(parseDiagnostic(projectDiagnostic(f)).relations[0]).toEqual([1,2,0,9,10]);
+});
+test('adjacent value-bearing original may be rejected and null rows do not become runtime priorScalar claims',async()=>{
+ const f=await outerDiagnosticFixture(true,native=>observedScalars(native,[{index:0,page:10,top:20},{index:2,page:20,top:19,status:'rejected'},{index:4,page:19,top:18,status:'pending'}]));
+ const d=parseDiagnostic(projectDiagnostic(f));expect(d.relations[0]).toEqual([1,4,2,19,20]);expect(d.input!.scalars[2]![3]).toBe('rejected');expect(d.input!.scalars[3]![4]).toBe(false);expect(d.input!.scalars[4]![3]).toBe('pending');
+});
+test.each(['missing-t0','missing-slot','missing-timestamps','finite-extreme','pre-end-stop'] as const)('absent observed relation stays null for %s without tightening input admission',async kind=>{
+ const f=await outerDiagnosticFixture(true,native=>{const input=observedScalars(native,kind==='pre-end-stop'?[{index:0,page:0,top:0}]:[]),row=input.scalarObservations[1]!;
+  if(kind==='missing-t0')row.requestedHostMs=Number.MAX_VALUE;
+  if(kind==='missing-slot'){input.phase.hostT0Ms=0;input.phase.hostT1Ms=2000;row.slot=null;row.requestedHostMs=Number.MAX_VALUE;}
+  if(kind==='missing-timestamps'){input.phase.hostT0Ms=0;input.phase.hostT1Ms=2000;}
+  if(kind==='finite-extreme'){input.phase.hostT0Ms=Number.MAX_VALUE;input.phase.hostT1Ms=Number.MAX_VALUE;row.requestedHostMs=-Number.MAX_VALUE;row.settledHostMs=-Number.MAX_VALUE;}
+ });expect(parseDiagnostic(projectDiagnostic(f)).relations[0]).toBeNull();
+});
+test('nonzero slot uses the original two-addition upper and pre/post roles cannot create timing relations',async()=>{
+ const f=await outerDiagnosticFixture(true,native=>{const input=observedScalars(native,[]);input.phase.hostT0Ms=2**57;input.phase.hostT1Ms=1.4411518807585786e17;const row=input.scalarObservations[79]!;row.requestedHostMs=1.4411518807585786e17;row.settledHostMs=1.441151880758579e17;input.scalarObservations[0]!.requestedHostMs=Number.MAX_VALUE;input.scalarObservations[81]!.settledHostMs=Number.MAX_VALUE;});
+ expect(parseDiagnostic(projectDiagnostic(f)).relations[0]).toEqual([6,79,null,1.441151880758579e17,1.441151880758579e17]);
+});
+test('final net relation uses first value-bearing pre and post rather than a later pre',async()=>{
+ const f=await outerDiagnosticFixture(true,native=>{const input=observedScalars(native,[{index:2,page:10,top:20},{index:4,page:10,top:20},{index:6,page:10,top:20}]);input.scalarObservations[2]!.role='pre';input.scalarObservations[4]!.role='pre';input.scalarObservations[6]!.role='post';});
+ expect(parseDiagnostic(projectDiagnostic(f)).relations[0]).toEqual([4,6,2,20,20]);
+});
+test.each([Number.MAX_VALUE,-Number.MAX_VALUE])('finite extreme t0 %s retains exact upper operands without timestamp subtraction',async t0=>{
+ const f=await outerDiagnosticFixture(true,native=>{const input=observedScalars(native,[]);input.phase.hostT0Ms=t0;input.phase.hostT1Ms=t0;input.scalarObservations[1]!.requestedHostMs=t0;});
+ expect(parseDiagnostic(projectDiagnostic(f)).relations[0]).toEqual([5,1,null,t0,t0]);
+});
+test('input absence keeps check null while transport observations remain available',async()=>{
+ const f=await outerDiagnosticFixture(true,native=>{native.pilot.input=null;});expect(parseDiagnostic(projectDiagnostic(f)).relations[0]).toBeNull();
+});
+test('no authenticated child sidecar emits the exact unavailable relations tuple',async()=>{
+ const f=await outerDiagnosticFixture(true),value={...f.value,childResult:null,childResultRef:null,parentPartial:null,parentPartialRef:null,nativeResult:{...f.value.nativeResult,tracker:{...f.value.nativeResult.tracker,childResultRef:null,parentPartialRef:null}}};
+ const final=tool.constructTrackerAResult({...value,nativeResultRef:namedRef('native-result.json')});expect(parseDiagnostic(tool.constructTrackerAIncompleteDiagnostic(value,final,null)).relations).toEqual([null,null,0]);
+});
+test.each([null,false,true] as const)('last recorded read retains EOF %s independently of full cap or original status',async eof=>{
+ const f=await outerDiagnosticFixture(true,native=>{const t=native.pilot.transport!,sample=t.operations.find(row=>row.kind==='read')!;
+  t.operations=Array.from({length:64},(_,i)=>({...sample,ordinal:i+1,bytes:65536,eof:i===63?eof:false,status:i===63?'pending' as const:'fulfilled' as const}));t.operations.push({...sample,ordinal:65,kind:'write',eof:true,bytes:0});t.portCalls=65;t.readCalls=64;t.knownReadBytes=4194304;
+ });const d=parseDiagnostic(projectDiagnostic(f));expect(d.relations[1]).toEqual([63,eof,65536]);expect(d.transport!.counts).toEqual([65,64,4194304]);
+});
+test.each(['rejected','not-started'] as const)('last %s read retains nullable EOF and maximum safe byte fact',async status=>{
+ const f=await outerDiagnosticFixture(true,native=>{const t=native.pilot.transport!,sample=t.operations.find(row=>row.kind==='read')!;t.operations=[{...sample,ordinal:1,status,eof:null,bytes:Number.MAX_SAFE_INTEGER}];t.portCalls=1;t.readCalls=1;});
+ expect(parseDiagnostic(projectDiagnostic(f)).relations[1]).toEqual([0,null,Number.MAX_SAFE_INTEGER]);
+});
+test('last failed read retains null byte knowledge without borrowing an earlier completed read',async()=>{
+ const f=await outerDiagnosticFixture(true,native=>{const t=native.pilot.transport!,sample=t.operations.find(row=>row.kind==='read')!;t.operations=[{...sample,ordinal:1,eof:true,bytes:2},{...sample,ordinal:2,status:'rejected',eof:null,bytes:null}];t.portCalls=2;t.readCalls=2;});expect(parseDiagnostic(projectDiagnostic(f)).relations[1]).toEqual([1,null,null]);
+});
+test('no read or absent transport has no inferred tail and absent transport order is zero',async()=>{
+ for(const absent of [false,true]){const f=await outerDiagnosticFixture(true,native=>{if(absent)native.pilot.transport=null;else{const t=native.pilot.transport!;t.operations=t.operations.filter(row=>row.kind!=='read').map((row,i)=>({...row,ordinal:i+1}));t.portCalls=t.operations.length;t.readCalls=0;}}),d=parseDiagnostic(projectDiagnostic(f));expect(d.relations[1]).toBeNull();if(absent)expect(d.relations[2]).toBe(0);}
+});
+test.each([
+ {name:'matched close without detach',close:10,match:true,detaches:[],expected:0},
+ {name:'unobserved even with ambiguous detaches',close:null,match:false,detaches:[[10,20],[10,20]],expected:1},
+ {name:'unmatched before ambiguous detaches',close:10,match:false,detaches:[[10,20],[10,20]],expected:2},
+ {name:'unknown match',close:10,match:null,detaches:[[10,20]],expected:2},
+ {name:'ambiguous before inconsistent ordering',close:10,match:true,detaches:[[20,10],[20,10]],expected:3},
+ {name:'inconsistent settlement before request',close:5,match:true,detaches:[[20,10]],expected:8},
+ {name:'before request',close:9,match:true,detaches:[[10,20]],expected:4},
+ {name:'within',close:15,match:true,detaches:[[10,20]],expected:5},
+ {name:'request equality',close:10,match:true,detaches:[[10,20]],expected:5},
+ {name:'settlement equality',close:20,match:true,detaches:[[10,20]],expected:5},
+ {name:'all equal',close:10,match:true,detaches:[[10,10]],expected:5},
+ {name:'after settlement',close:21,match:true,detaches:[[10,20]],expected:6},
+ {name:'unsettled at request',close:10,match:true,detaches:[[10,null]],expected:7},
+ {name:'before unsettled request',close:9,match:true,detaches:[[10,null]],expected:4},
+ {name:'missing request',close:10,match:true,detaches:[[null,20]],expected:0},
+ {name:'extreme finite endpoints',close:Number.MAX_VALUE,match:true,detaches:[[-Number.MAX_VALUE,Number.MAX_VALUE]],expected:5},
+] as const)('close order observes %s without causal or lateness inference',async({close,match,detaches,expected})=>{
+ const f=await outerDiagnosticFixture(true,native=>{const t=native.pilot.transport!,sample=t.operations.find(row=>row.kind==='detach')!;Object.assign(t,{operations:detaches.map(([requestedHostMs,settledHostMs],i)=>({...sample,ordinal:i+1,requestedHostMs,settledHostMs}))});t.portCalls=t.operations.length;t.readCalls=0;t.sessionClose.firstHostMs=close;t.sessionClose.originalSessionMatch=match;});
+ expect(parseDiagnostic(projectDiagnostic(f)).relations[2]).toBe(expected);
+});
+test.each([
+ [null,null,9],[[0,0,null,0,0],null,0],[[1,0,null,0,0],null,0],[[2,0,null,0,0],null,0],[[4,0,null,0,0],null,0],[[3,0,1,0,0],null,0],[[5,0,1,0,0],null,0],[[6,0,1,0,0],null,0],[[4,82,0,0,0],null,0],[[2,0,82,0,0],null,0],[[1,-1,0,0,0],null,0],[[1,0.5,0,0,0],null,0],[[5,0,null,Infinity,0],null,0],[[5,0,null,0,NaN],null,0],[[6,0,null,0,0,1],null,0],
+ [null,[133,true,0],0],[null,[0,'false',0],0],[null,[0,false,Number.MAX_SAFE_INTEGER+1],0],[null,[0,false,-1],0],[null,[0,false,0,1],0],[null,null,0,'extra'],
+].map(relations=>({relations})))('closed relations rejects malformed tuple %# before diagnostic write',async({relations})=>{
+ const f=await outerDiagnosticFixture(true),writer=diagnosticWriter(),retained={...f.retained!,relations};await expect(tool.publishTrackerAOuterResult(f.value,{writeNative:async()=>{},authenticateNative:async()=>({path:'native-result.json',bytes:1,sha256:digest}),writeTracker:async()=>{}},{retained:retained as unknown as DiagnosticSidecar,write:writer.write})).rejects.toThrow();expect(writer.writes).toHaveLength(0);
+});
+test('transport relation is rederived from the authenticated original rather than trusted after sidecar mutation',async()=>{
+ const f=await outerDiagnosticFixture(true),retained={...f.retained!,relations:[null,null,0]};expect(()=>projectDiagnostic(f,retained as unknown as DiagnosticSidecar)).toThrow();
+});
+test.each(['sparse','accessor','absent-input','absent-transport','beyond-scalar-count','beyond-operation-count'] as const)('relations %s admission refuses before logging or getter execution',async kind=>{
+ const f=await outerDiagnosticFixture(true,native=>{if(kind==='absent-input')native.pilot.input=null;if(kind==='absent-transport')native.pilot.transport=null;if(kind==='beyond-scalar-count')native.pilot.input!.scalarObservations=native.pilot.input!.scalarObservations.slice(0,1);}),writer=diagnosticWriter();let getters=0;const retained=structuredClone(f.retained!);
+ if(kind==='sparse'){const relations:unknown[]=[null,null,0];Reflect.deleteProperty(relations,0);Object.assign(retained,{relations});}
+ if(kind==='accessor')Object.defineProperty(retained,'relations',{get(){getters++;throw Error('must not call');},enumerable:true});
+ if(kind==='absent-input')Object.assign(retained,{relations:[[3,0,null,0,0],null,0]});
+ if(kind==='absent-transport')Object.assign(retained,{relations:[null,null,1]});
+ if(kind==='beyond-scalar-count')Object.assign(retained,{relations:[[1,1,0,0,1],null,0]});
+ if(kind==='beyond-operation-count')Object.assign(retained,{relations:[null,[132,true,0],0]});
+ await expect(tool.publishTrackerAOuterResult(f.value,{writeNative:async()=>{},authenticateNative:async()=>({path:'native-result.json',bytes:1,sha256:digest}),writeTracker:async()=>{}},{retained,write:writer.write})).rejects.toThrow();expect(writer.writes).toHaveLength(0);expect(getters).toBe(0);
+});
+
 const receiptStates=['not-started','pending','fulfilled','rejected'] as const;
 const originalStates=['fulfilled','pending','rejected','timed-out','unavailable'] as const;
 const operationKinds=['start','end','read','write','io-close','sink-finish','detach'] as const;
 const maximalDiagnosticMutation:PublicationMutation=native=>{
  const input=native.pilot.input!,transport=native.pilot.transport!;expect(input.scalarObservations).toHaveLength(82);expect(input.wheelRequests).toHaveLength(40);
  input.scalarObservations.forEach((row,i)=>{row.status=receiptStates[i%4]!;row.ordinal=i===1?1:i+1;if(i%3===0)row.value=null;});
+ input.phase.hostT0Ms=Number.MAX_VALUE;input.phase.hostT1Ms=Number.MAX_VALUE;input.scalarObservations[1]!.settledHostMs=Number.MAX_VALUE;
  input.wheelRequests.forEach((row,i)=>{row.status=receiptStates[i%4]!;row.nominalHostMs=i%2?Number.MAX_VALUE:-Number.MAX_VALUE;Object.assign(row,{requestedHostMs:i===1?null:i%2?-Number.MAX_VALUE:Number.MAX_VALUE,settledHostMs:i%3===0?null:1.7976931348623155e308,beforeOrdinal:i===0?Number.MAX_SAFE_INTEGER:i+1,afterOrdinal:i===1?null:i===2?Number.MAX_SAFE_INTEGER:i+2});});
  input.phase.postBoundarySettled='rejected';Object.values(input.listeners).forEach((listener,i)=>{listener.registration.status=receiptStates[i%4]!;listener.removal.status=receiptStates[(i+1)%4]!;listener.ownedIdentityMatch=i%2?null:false;});
  for(const [i,checkpoint] of Object.values(input.geometryCheckpoints).entries())checkpoint.status=receiptStates[i%4]!;
@@ -252,6 +367,7 @@ const maximalDiagnosticMutation:PublicationMutation=native=>{
  input.motionEvents=Array.from({length:32},(_,i)=>({ordinal:i+1,kind:i%2?'animationstart':'transitionrun',receivedHostMs:0,pageNowMs:0,eventTimeStampMs:0,targetContained:true}));
  input.losses={navigation:{firstHostMs:0,firstOverflowHostMs:null},context:{firstHostMs:0,firstOverflowHostMs:1},page:{firstHostMs:0,firstOverflowHostMs:null},session:{firstHostMs:0,firstOverflowHostMs:1}};input.overflows={wheel:{firstHostMs:0,ordinal:Number.MAX_SAFE_INTEGER},scroll:{firstHostMs:0,ordinal:Number.MAX_SAFE_INTEGER},motion:{firstHostMs:0,ordinal:Number.MAX_SAFE_INTEGER}};
  transport.raw.status='known-prefix';transport.raw.extent='unknown';transport.operations=Array.from({length:133},(_,i)=>({ordinal:i+1,kind:operationKinds[i%7]!,requestedHostMs:0,settledHostMs:null,status:receiptStates[i%4]!,timedOut:i%3===0,handleOrdinal:null,bytes:null,eof:null,readOperationOrdinal:null}));transport.portCalls=133;transport.readCalls=64;transport.knownReadBytes=4194304;
+ transport.operations[128]!.bytes=Number.MAX_SAFE_INTEGER;transport.operations[128]!.eof=false;
  transport.handles=[{ordinal:1,firstHostMs:0,role:'accepted',closeOperationOrdinal:Number.MAX_SAFE_INTEGER},{ordinal:2,firstHostMs:0,role:'unexpected',closeOperationOrdinal:Number.MAX_SAFE_INTEGER}];transport.handleOverflow={firstHostMs:0,ordinal:3};transport.sink.finish='rejected';transport.sink.fsync='pending';transport.sink.fileClose='fulfilled';transport.completion.overflowHostMs=1;transport.sessionClose.overflowHostMs=1;transport.sessionClose.originalSessionMatch=null;transport.sessionClose.timing='unexpected-loss';transport.outcome={capture:{status:'incomplete',reason:'transport'},containment:'unverified'};
  Object.values(transport.listeners).forEach((listener,i)=>{listener.registration.status=receiptStates[i]!;listener.removal.status=receiptStates[i+1]!;listener.ownedIdentityMatch=null;});
  const withOriginalStates=(record:(typeof native.caseEvidence)[number])=>({...record,originals:record.originals.map((row,i)=>({...row,status:originalStates[i%5]!}))});
@@ -274,6 +390,7 @@ test('full admitted maximum diagnostic is one bounded complete line without prun
  const f=await outerDiagnosticFixture(true,maximalDiagnosticMutation);const globals=f.value.nativeResult.originals as {label:string;status:string}[];globals.forEach((row,i)=>{row.status=originalStates[i%5]!;});
  Object.assign(f.value.nativeResult,{stdio:Array.from({length:8},(_,index)=>({index,kind:index%2?'stderr':'stdout',status:originalStates[index%5]!,coverage:'post-bind-only',seenBytes:Number.MAX_SAFE_INTEGER,retainedBytes:262144})),failures:{parent:Array(16).fill('Original command failed/incomplete'),outer:Array(16).fill('Pilot child incomplete')}});
  const bytes=projectDiagnostic(f),d=parseDiagnostic(bytes);expect(bytes.byteLength).toBeLessThanOrEqual(16384);expect(d.refs).toHaveLength(7);expect(d.refs.every(Boolean)).toBe(true);expect(d.input!.scalars).toHaveLength(82);expect(d.input!.wheels).toHaveLength(40);expect(d.input!.events).toEqual([40,256,32]);expect(d.input!.overflows).toEqual([[true,Number.MAX_SAFE_INTEGER],[true,Number.MAX_SAFE_INTEGER],[true,Number.MAX_SAFE_INTEGER]]);expect(d.originals[0]).toEqual(globals.map(row=>row.status));expect(d.originals[0]).toHaveLength(10);expect(d.originals[1]).toHaveLength(2);expect(d.originals[1].flatMap(row=>row[5])).toHaveLength(38);expect(d.transport!.operations).toHaveLength(7);expect(d.transport!.handles).toHaveLength(2);
+ const input=f.files.native.pilot.input!,firstBefore=input.scalarObservations[1]!;expect(d.relations).toEqual([[6,1,null,firstBefore.settledHostMs,(input.phase.hostT0Ms!+50*firstBefore.slot!)+50],[128,false,Number.MAX_SAFE_INTEGER],2]);expect(d.relations).toEqual(f.retained!.relations);
 });
 test('admitted private arbitrary strings reach projection but never diagnostic output',async()=>{
  const sentinel='PRIVATE_SENTINEL_47bda2',f=await outerDiagnosticFixture(true,native=>{native.browserVersion=sentinel;native.pilot.primary=sentinel;native.pilot.input!.scalarObservations.find(row=>row.value!==null)!.value!.url='https://'+sentinel+'/';},sentinel);
@@ -334,7 +451,7 @@ function assertTrackerWorkflowBoundary(source:string){
  const runs=blocks.filter(block=>block.includes('run: '));
  expect(runs.map(block=>block.match(/bootstrap\.mjs (\w+)\n/)?.[1])).toEqual(['prepare','install','provision','run','inventory']);
  for(const block of runs.slice(0,3))expect(block).not.toMatch(/^        if:/m);
- expect(source).toContain('run-name: hosted-copilot-react-tracker-json-a-v4\n');
+ expect(source).toContain('run-name: hosted-copilot-react-tracker-json-a-v5\n');
 }
 test('fixed pilot SOURCE gates inventory on original runtime success and upload on inventory success',async()=>{assertTrackerWorkflowBoundary(await trackerWorkflowSource());});
 test.each(['native-result.json','tracker-a-result.json'] as const)('fixed workflow refuses inventory eligibility while full visible %s publication originals fail or remain held',async name=>{
@@ -358,8 +475,8 @@ test('coherent pilot source membership and fixed next source profiles are select
  const literal=source.split('export const COPILOT_PRODUCTION_SOURCES=Object.freeze([')[1]!.split(']);')[0]!;
  const paths=[...literal.matchAll(/'([^']+)'/g)].map(match=>match[1]!);expect(paths).toHaveLength(79);expect(new Set(paths).size).toBe(79);
  for(const [before,after] of [['.github/workflows/hosted-copilot-mounted.yml','.github/workflows/hosted-copilot-tracker-a.yml'],['apps/copilotkit/runtime/mounted-native.ts','apps/copilotkit/runtime/mounted-tracker-a-trace.ts'],['apps/copilotkit/runtime/mounted-tracker-a-trace.ts','apps/copilotkit/runtime/mounted-tracker-a.ts'],['tests/copilotkit-mounted-conformance.test.ts','tests/copilotkit-mounted-tracker-a-trace.test.ts'],['tests/copilotkit-mounted-tracker-a-trace.test.ts','tests/copilotkit-mounted-tracker-a.test.ts']])expect(paths.indexOf(after!)).toBe(paths.indexOf(before!)+1);
- expect(source).toContain("context.releaseId!=='hosted-copilot-react-production-build-v50'");
- expect(await readFile(new URL('../.github/workflows/hosted-copilot-mounted.yml',import.meta.url),'utf8')).toContain('run-name: hosted-copilot-react-h100-r6400-v11\n');
+ expect(source).toContain("context.releaseId!=='hosted-copilot-react-production-build-v51'");
+ expect(await readFile(new URL('../.github/workflows/hosted-copilot-mounted.yml',import.meta.url),'utf8')).toContain('run-name: hosted-copilot-react-h100-r6400-v12\n');
 });
 
 // These inspect bounded actual bootstrap SOURCE text without evaluating it.
