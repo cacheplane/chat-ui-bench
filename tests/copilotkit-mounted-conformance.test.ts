@@ -57,9 +57,125 @@ describe('bounded original history readiness preflight',()=>{
 });
 
 
+describe('atomic first restored snapshot',()=>{
+ const history=[{id:'history-0',role:'assistant' as const}],context={caseNumber:1 as const,journey:'follow' as const,threadId:'native-thread-1',history};
+ const pending:RestoredHistoryContentScalar={status:'pending',reason:'empty-text',mountedRows:1,emptyRows:1,firstRowId:'history-0',firstRowRole:'assistant'};
+ const ready:RestoredHistoryContentScalar={status:'ready',reason:'content-ready',mountedRows:1,emptyRows:0,firstRowId:null,firstRowRole:null};
+ type Observation={content:unknown;snapshot:GeometrySnapshot|null};
+ type Ports=Omit<Parameters<typeof readiness.awaitRestoredHistoryContent>[1],'observe'>&{observe():Promise<Observation>};
+ // Keep missing future exports inside assertions so existing tests still collect.
+ function capture(ports:Ports):Promise<GeometrySnapshot>{
+  const helper=(readiness as {awaitRestoredHistorySnapshot?:unknown}).awaitRestoredHistorySnapshot;
+  expect(helper).toBeTypeOf('function');
+  return (helper as (c:typeof context,p:Ports)=>Promise<GeometrySnapshot>)(context,ports);
+ }
+ const readerWithRestored=createMountedSnapshotReader as (journey:CaseJourney,normal:()=>Promise<GeometrySnapshot>,restored:()=>Promise<GeometrySnapshot>)=>()=>Promise<GeometrySnapshot>;
+ function fixture(){
+  const records:RestoredHistoryReadinessDiagnostic[]=[];let observations=0,pauses=0,geometry=0;
+  const ports:Ports={check:()=>null,observe:async()=>{observations++;geometry++;return {content:ready,snapshot:snapshot('restored-history')};},pause:async()=>{pauses++;},publish:async r=>{records.push(r);}};
+  return {ports,records,get observations(){return observations;},get pauses(){return pauses;},get geometry(){return geometry;}};
+ }
+ it.each([['follow',4],['history-reading',5]] as const)('selects the first restored callback and shares the remaining %s budget',async(journey,limit)=>{
+  const events:string[]=[],saved=snapshot('restored-history');
+  const read=readerWithRestored(journey,async()=>{events.push('normal');return saved;},async()=>{events.push('restored');return saved;});
+  expect(await read()).toBe(saved);expect(events).toEqual(['restored']);
+  for(let i=1;i<limit;i++)await read();
+  await expect(read()).rejects.toThrow('Full geometry call budget exhausted');
+  expect(events).toEqual(['restored',...Array.from({length:limit-1},()=> 'normal')]);
+ });
+ it.each([['follow',4],['history-reading',5]] as const)('precharges held and rejected first %s operation before reentrant normal reads',async(journey,limit)=>{
+  const events:string[]=[],failure=Object.freeze({original:'restored'});let reject!:(reason:unknown)=>void;
+  let read!:()=>Promise<GeometrySnapshot>;
+  read=readerWithRestored(journey,async()=>{events.push('normal');return snapshot('restored-history');},()=>{
+   events.push('restored');const held=new Promise<GeometrySnapshot>((_yes,no)=>{reject=no;});
+   // This call starts synchronously inside the original first callback.
+   void read();return held;
+  });
+  const first=read(),settled=first.then(value=>({status:'fulfilled',value}),reason=>({status:'rejected',reason}));
+  expect(events).toEqual(['restored','normal']);
+  for(let i=2;i<limit;i++)await read();
+  await expect(read()).rejects.toThrow('Full geometry call budget exhausted');
+  reject(failure);expect(await settled).toEqual({status:'rejected',reason:failure});
+  await expect(read()).rejects.toThrow('Full geometry call budget exhausted');
+  expect(events).toEqual(['restored',...Array.from({length:limit-1},()=> 'normal')]);
+ });
+ it('captures once on ready before held diagnostic publication and retains the serialized source state',async()=>{
+  const f=fixture(),events:string[]=[];let calls=0,geometry=0,sourceTime=7,release!:()=>void,entered!:()=>void;
+  const publishing=new Promise<void>(yes=>{entered=yes;});
+  f.ports.observe=async()=>{events.push('observe');if(++calls<3)return {content:pending,snapshot:null};geometry++;events.push('geometry');return {content:ready,snapshot:structuredClone(snapshot('restored-history',sourceTime))};};
+  f.ports.pause=async()=>{expect(geometry).toBe(0);events.push('pause');};
+  f.ports.publish=async r=>{f.records.push(r);events.push('publish');entered();await new Promise<void>(yes=>{release=yes;});};
+  let settled=false;const original=capture(f.ports).then(value=>{settled=true;return value;});
+  await publishing;expect(settled).toBe(false);expect(geometry).toBe(1);sourceTime=99;
+  expect(events).toEqual(['observe','pause','observe','pause','observe','geometry','publish']);
+  release();const result=await original;expect(result).toEqual(snapshot('restored-history',7));expect(calls).toBe(3);expect(geometry).toBe(1);
+  expect(f.records[0]).toMatchObject({attemptCount:3,outcome:'ready',reason:'content-ready',first:pending,last:ready});
+ });
+ it.each([['follow',4],['history-reading',5]] as const)('composes pending scalar polls with one shared charged %s capture',async(journey,limit)=>{
+  const f=fixture();let polls=0,geometry=0,normal=0;
+  f.ports.observe=async()=>{if(++polls<3)return {content:pending,snapshot:null};geometry++;return {content:ready,snapshot:snapshot('restored-history')};};
+  f.ports.pause=async()=>{expect(geometry).toBe(0);};
+  const read=readerWithRestored(journey,async()=>{normal++;return snapshot('streaming');},()=>capture(f.ports));
+  await read();expect(polls).toBe(3);expect(geometry).toBe(1);expect(normal).toBe(0);
+  for(let i=1;i<limit;i++)await read();await expect(read()).rejects.toThrow();expect(normal).toBe(limit-1);expect(geometry).toBe(1);
+ });
+ it('returns one unavailable capture to the actual sequencer before continuation and original cleanup',async()=>{
+  const f=supplied(),open=f.ports.openCase,unavailable:GeometrySnapshot={status:'unavailable',reason:'policy-empty-text'};let polls=0,geometry=0;
+  f.ports.openCase=async(j,n)=>{const owner=await open(j,n);owner.restore=readerWithRestored(j,async()=>{throw Error('No retry');},()=>capture({check:()=>null,observe:async()=>{polls++;geometry++;return {content:ready,snapshot:unavailable};},pause:async()=>{throw Error('No pause');},publish:async()=>{}}));return owner;};
+  const result=await runMountedConformance(prerequisites(),f.ports);
+  expect(result.snapshots).toEqual([{caseNumber:1,snapshot:unavailable}]);expect(result.primaryFailure).toBe('case-conformance');expect(result.cleanupFailures).toEqual([]);
+  expect(f.calls).toEqual(['connect','open-1','seed-1','close-1','client-close']);expect(polls).toBe(1);expect(geometry).toBe(1);
+ });
+ it.each([1,2])('preserves exact scalar-contract diagnostics for malformed content at observation %i',async at=>{
+  const f=fixture();let calls=0;f.ports.observe=async()=>({content:++calls===at?{...pending,foreign:true}:pending,snapshot:null});
+  await expect(capture(f.ports)).rejects.toThrow();
+  expect(f.records).toEqual([{kind:'copilot-mounted-history-readiness-v1',caseNumber:1,journey:'follow',threadId:'native-thread-1',attemptCount:at,outcome:'invalid',reason:'scalar-contract',first:at===1?null:pending,last:at===1?null:pending,qualification:false}]);expect(calls).toBe(at);expect(f.pauses).toBe(at-1);
+ });
+ it.each([1,2])('preserves original observation rejection identity at observation %i',async at=>{
+  const f=fixture(),failure=Object.freeze({original:true});let calls=0;f.ports.observe=async()=>{if(++calls===at)throw failure;return {content:pending,snapshot:null};};
+  await expect(capture(f.ports)).rejects.toBe(failure);expect(f.records[0]).toMatchObject({attemptCount:at,outcome:'unavailable',reason:'observation-rejected',first:at===1?null:pending,last:at===1?null:pending});expect(calls).toBe(at);
+ });
+ it.each([
+  {status:'invalid',reason:'selector'},
+  {status:'unavailable',reason:'source-error'},
+ ] as const)('retains terminal readiness $status/$reason without geometry or another poll',async terminal=>{
+  const f=fixture(),content:RestoredHistoryContentScalar={...terminal,mountedRows:0,emptyRows:0,firstRowId:null,firstRowRole:null};let calls=0;
+  f.ports.observe=async()=>{calls++;return {content,snapshot:null};};await expect(capture(f.ports)).rejects.toThrow();
+  expect(calls).toBe(1);expect(f.pauses).toBe(0);expect(f.records[0]).toMatchObject({attemptCount:1,outcome:terminal.status,reason:terminal.reason,first:content,last:content});
+ });
+ it.each(['ready-without-capture','pending-with-capture','terminal-with-capture','missing-content','missing-snapshot','extra-field'] as const)('refuses inconsistent original bundle %s without retry',async kind=>{
+  const f=fixture(),saved=snapshot('restored-history');let calls=0;
+  const bundle:unknown=kind==='ready-without-capture'?{content:ready,snapshot:null}:kind==='pending-with-capture'?{content:pending,snapshot:saved}:kind==='terminal-with-capture'?{content:{status:'unavailable',reason:'source-error',mountedRows:0,emptyRows:0,firstRowId:null,firstRowRole:null},snapshot:saved}:kind==='missing-content'?{snapshot:saved}:kind==='missing-snapshot'?{content:ready}:{content:ready,snapshot:saved,extra:true};
+  f.ports.observe=async()=>{calls++;return bundle as Observation;};await expect(capture(f.ports)).rejects.toThrow();expect(calls).toBe(1);expect(f.pauses).toBe(0);
+ });
+ it('exhausts 120 content-only pending observations with 119 pauses and zero full captures',async()=>{
+  const f=fixture();let calls=0;f.ports.observe=async()=>{calls++;return {content:pending,snapshot:null};};
+  await expect(capture(f.ports)).rejects.toThrow();expect(calls).toBe(120);expect(f.pauses).toBe(119);expect(f.geometry).toBe(0);expect(f.records[0]).toMatchObject({attemptCount:120,outcome:'unavailable',reason:'attempt-limit',first:pending,last:pending});
+ });
+ it.each(['deadline','admission-closed','source-error'] as const)('refuses %s before an observation and retains no fabricated diagnostic',async reason=>{
+  const f=fixture();f.ports.check=()=>reason;await expect(capture(f.ports)).rejects.toThrow();expect(f.observations).toBe(0);expect(f.records).toEqual([]);
+ });
+ it.each(['deadline','admission-closed'] as const)('retains last pending observation after later %s',async reason=>{
+  const f=fixture();let checks=0,calls=0;f.ports.check=()=>++checks===1?null:reason;f.ports.observe=async()=>{calls++;return {content:pending,snapshot:null};};
+  await expect(capture(f.ports)).rejects.toThrow();expect(calls).toBe(1);expect(f.records[0]).toMatchObject({attemptCount:1,outcome:'unavailable',reason,first:pending,last:pending});
+ });
+ it('does not return the saved capture on publication rejection and settles original cleanup',async()=>{
+  const f=supplied(),open=f.ports.openCase,failure=Object.freeze({sink:true});let geometry=0;
+  f.ports.openCase=async(j,n)=>{const owner=await open(j,n),close=owner.close;let publicationFailed=false;
+   owner.restore=()=>capture({check:()=>null,observe:async()=>{geometry++;return {content:ready,snapshot:snapshot('restored-history')};},pause:async()=>{},publish:async()=>{publicationFailed=true;throw failure;}});
+   owner.close=()=>readiness.closeAfterHistoryReadinessPublication(close,()=>publicationFailed);return owner;
+  };
+  const result=await runMountedConformance(prerequisites(),f.ports);expect(geometry).toBe(1);expect(result.snapshots).toEqual([]);expect(result.primaryFailure).toBe('case-conformance');expect(result.cleanupFailures).toEqual(['case-close']);expect(f.calls).toEqual(['connect','open-1','seed-1','close-1','client-close']);
+  const ports=fixture().ports;ports.publish=async()=>{throw failure;};await expect(capture(ports)).rejects.toBe(failure);
+ });
+ it('keeps original observation rejection when diagnostic publication also rejects',async()=>{
+  const f=fixture(),primary=Object.freeze({primary:true});f.ports.observe=async()=>{throw primary;};f.ports.publish=async()=>{throw Error('sink');};await expect(capture(f.ports)).rejects.toBe(primary);
+ });
+});
+
 const sha='a'.repeat(40),hash='b'.repeat(64),lock='c9c4138247c23c593ceb5bd9f5275b59962aad0f017bcbc33dc78bcec3545a56';
 function prerequisites():MountedPrerequisites {
- const intent:MountedPrerequisites['intent']={schemaVersion:1,kind:'pre-install-intent',purpose:'hosted-copilot-mounted-default-react-only',context:{candidateSha:sha,checkoutSha:sha,githubSha:sha,workflowSha:sha,tagSha:sha,repository:'cacheplane/chat-ui-bench',releaseId:'hosted-copilot-react-h100-r6400-v8',githubRef:'refs/tags/hosted-copilot-react-h100-r6400-v8',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@refs/tags/hosted-copilot-react-h100-r6400-v8',eventName:'workflow_dispatch',actions:'true',platform:'linux',runnerOs:'Linux',runnerMarker:'ubuntu-24.04-hosted-copilot-mounted',attempt:'1'},source:{commitSha:sha,treeSha:sha,lockSha256:lock,files:['package-lock.json','.github/workflows/hosted-copilot-mounted.yml','tools/hosted-copilot-mounted-bootstrap.mjs','apps/copilotkit/hosted-native-entry.ts','apps/copilotkit/src/geometry-policy.ts'].map(path=>({path,bytes:1,sha256:path==='package-lock.json'?lock:hash,regular:true,contained:true,symlink:false}))},prerequisite:{originalRunId:'3',attempt:1,sourceSha:sha,artifactId:'4',archiveSha256:hash,qualifiedRootReceiptSha256:hash,qualifiedPeerReceiptSha256:hash,frontendSettingsSha256:hash},profile:{nodeVersion:'v24.20.0',npmVersion:'11.19.0',telemetryDisabled:'true',doNotTrack:'1'}};
+ const intent:MountedPrerequisites['intent']={schemaVersion:1,kind:'pre-install-intent',purpose:'hosted-copilot-mounted-default-react-only',context:{candidateSha:sha,checkoutSha:sha,githubSha:sha,workflowSha:sha,tagSha:sha,repository:'cacheplane/chat-ui-bench',releaseId:'hosted-copilot-react-h100-r6400-v9',githubRef:'refs/tags/hosted-copilot-react-h100-r6400-v9',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@refs/tags/hosted-copilot-react-h100-r6400-v9',eventName:'workflow_dispatch',actions:'true',platform:'linux',runnerOs:'Linux',runnerMarker:'ubuntu-24.04-hosted-copilot-mounted',attempt:'1'},source:{commitSha:sha,treeSha:sha,lockSha256:lock,files:['package-lock.json','.github/workflows/hosted-copilot-mounted.yml','tools/hosted-copilot-mounted-bootstrap.mjs','apps/copilotkit/hosted-native-entry.ts','apps/copilotkit/src/geometry-policy.ts'].map(path=>({path,bytes:1,sha256:path==='package-lock.json'?lock:hash,regular:true,contained:true,symlink:false}))},prerequisite:{originalRunId:'3',attempt:1,sourceSha:sha,artifactId:'4',archiveSha256:hash,qualifiedRootReceiptSha256:hash,qualifiedPeerReceiptSha256:hash,frontendSettingsSha256:hash},profile:{nodeVersion:'v24.20.0',npmVersion:'11.19.0',telemetryDisabled:'true',doNotTrack:'1'}};
  return {intent,installed:{schemaVersion:1,kind:'post-install-admission',intent,originalInstall:{exitCode:0,signal:null,stdoutBytes:0,stderrBytes:0,stdoutRetainedBytes:0,stderrRetainedBytes:0,closed:true,streamsComplete:true},installedProfile:{sourceSha:sha,lockSha256:lock,originalInstallReceiptSha256:hash,hiddenLockReceiptSha256:hash,checkedInstalledRecords:19,packages:Object.entries(MOUNTED_PACKAGE_PINS).map(([path,pin])=>({path,...pin,manifestSha256:hash,regular:true,contained:true,symlink:false}))}},module:{schemaVersion:1,sourceSha:sha,runId:'3',workerPath:'apps/copilotkit/.hosted-mounted/3-1/worker.mjs',emitted:[{path:'apps/copilotkit/.hosted-mounted/3-1/worker.mjs',kind:'chunk',format:'es',entry:true,bytes:1,sha256:hash}],imports:[{specifier:'node:http',kind:'static',resolutionIndex:null}],resolutions:[],executedCopySha256:hash}};
 }
 const labels=['seedReaderEOF','coldReaderEOF','mountedACK','publicRun','successfulTerminal','completionACK','bridge','producerFinish','producerReaderEOF','nativeOriginClose','producerOriginClose','remoteCloseAdmission','hostDispose','rootUnmount','pageClose','contextClose','storeClear','publicStoreEmpty','caseDomainRelease'];
