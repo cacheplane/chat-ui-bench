@@ -178,7 +178,7 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v30`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v32`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
@@ -213,10 +213,21 @@ bare-root importer to selected SOURCE hashes and actual static resolved edges,
 with at least one such importer present. Resolved edges and authenticated source
 intent are separate facts; the profile does not claim an observed raw resolver
 request or query/fragment exclusion. The unchanged nine-origin Zod gate covers
-all original rows, including unrendered modules. V30 requires fresh full frontend
+all original rows, including unrendered modules. V32 requires fresh full frontend
 and worker inspection under this profile.
 Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
+
+V32 adds only fixed geometry failure reasons for unavailable viewports, empty
+text, text mismatch, no positive text rectangles, host bounds and scroll scalars.
+Failures retain exactly `status` and `reason`; acceptance, DOM reads, timing and
+retries are unchanged. The preserved native V1 attempt failed on its first
+restored-history geometry read, before `publicRun` started; independent retained-data
+validation records it as incomplete. Its generic `policy` reason cannot identify
+the cause. Fresh native preparation uses
+`hosted-copilot-react-h100-r6400-v2` after independent qualification of the new
+same-source full STATIC V32 artifact. These diagnostics establish no fix,
+runtime conformance, FPS or ranking result.
 
 ## Planned comparison adapters
 

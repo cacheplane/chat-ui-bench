@@ -607,14 +607,25 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 
 ## Prepared native conformance source
 
-The unused `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export are included before a fresh V16
+The `hosted-copilot-mounted.yml` workflow and inert
+`runNativeMountedConformance` worker export now prepare a fresh V32
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v1`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v2`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
 No SDK, server, producer or browser effect is admitted by STATIC acceptance alone.
+
+The preserved native V1 attempt failed on its first restored-history geometry
+read, before `publicRun` started; independent retained-data validation records it
+as incomplete. The retained generic `policy` reason cannot identify the cause.
+V32 changes diagnostic reasons only: unavailable viewport, empty text, text
+mismatch, no positive text rectangles, host bounds and scroll scalars have six
+fixed `policy-` literals. Every failure still contains only `status` and `reason`.
+Global invalid input retains `invalid` / `policy`; acceptance, all-or-nothing
+collection, DOM reads, readiness, timing and retries remain unchanged. This does
+not establish a fix, native conformance, FPS or ranking result. The historical
+V1 attempt and its failed outcome remain preserved.
 
 `frontendSettingsSha256` is SHA256 of the UTF8 bytes of
 `JSON.stringify([['source', candidateSha], ['apps/copilotkit/vite.config.ts', configSha], ['tests/support/hosted-copilot-build-plugin.ts', helperSha], ['package-lock.json', lockSha]])`,
