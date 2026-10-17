@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V44
+`runNativeMountedConformance` worker export now prepare a fresh V46
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v8`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v9`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -643,25 +643,29 @@ geometry read with `policy-empty-text`, before continuation and case2. No failed
 row or renderer transition was retained, so the proposed rendered-text boundary
 remains a source-supported hypothesis.
 
-The new content-only preflight checks original public idle history and bounded
-mounted text after mountedACK, before one unchanged authoritative restored geometry
-read. It performs at most120 sequential observations with existing50ms spacing;
+The preflight checks original public idle history and bounded mounted text after
+mountedACK. It performs at most120 sequential observations with existing50ms spacing;
 empty/all-unmounted content may wait, while mismatch/structure/cap failures refuse.
-It never reads boxes/styles/ranges or retries geometry; strict geometry and4/5
-snapshot limits remain authoritative. The default Chat and canonical producer are
-unchanged. A dedicated bootstrap-owned, separately typed argument attempts one
+Pending observations never read boxes/styles/ranges. The first ready observation
+captures the unchanged authoritative restored geometry in the same synchronous
+browser callback, before publishing the readiness summary. That operation consumes
+the first shared geometry attempt, including failure; unavailable geometry is not
+retried. This closes a scheduling gap without guaranteeing renderer or compositor
+atomicity. Strict geometry and4/5 snapshot limits remain authoritative. The default
+Chat and canonical producer are unchanged. A dedicated bootstrap-owned, separately
+typed argument attempts one
 readiness summary per attempted case, at most two compact JSON lines≤4096 UTF8
 bytes including LF through original application stdout. It preserves first/last
 validated scalars and actual attempted count, without text or arbitrary error
 details. An awaited write callback is separate from parent retained bytes and
 original EOF/writer-close; partial/missing diagnostics or publication failure do
 not supply successful case closure. All existing stdout/archive caps apply.
-Fresh native V8 must independently complete both original serial cases after
-qualification of same-source full STATIC V44. Content readiness and pure tests
+Fresh native V9 must independently complete both original serial cases after
+qualification of same-source full STATIC V46. Content readiness and pure tests
 establish no geometry, runtime conformance, FPS or ranking result.
 
 The separate experimental `hosted-copilot-react-tracker-json-a-v2` workflow requires
-independently qualified same-source STATIC V44 and successful ordinary-native V8
+independently qualified same-source STATIC V46 and successful ordinary-native V9
 original artifacts. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
 `tracker-a-case-2-input.json`, `tracker-a-case-2-trace.json`,

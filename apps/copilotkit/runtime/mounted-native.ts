@@ -1,5 +1,5 @@
 /** Hosted SOURCE adapter, never invoked by local tests or STATIC inspection. */
-import {runMountedConformance,mountedPrerequisitesAccepted,createMountedSnapshotReader,awaitRestoredHistoryContent,closeAfterHistoryReadinessPublication,type MountedPrerequisites,type MountedConformanceResult,type MountedCaseOwner,type JourneyObservations} from './mounted-conformance.ts';
+import {runMountedConformance,mountedPrerequisitesAccepted,createMountedSnapshotReader,awaitRestoredHistorySnapshot,closeAfterHistoryReadinessPublication,type MountedPrerequisites,type MountedConformanceResult,type MountedCaseOwner,type JourneyObservations} from './mounted-conformance.ts';
 import {evaluateMountedOriginPolicy,MOUNTED_CASE_WITNESS_LABELS,type CaseRecord,type Witness,type OriginLease,type OriginalStatus} from '../../../tests/support/hosted-copilot-mounted-policy.ts';
 import {assertProductionOutputInventory,ordinaryPath,type FileFact} from '../../../tests/support/hosted-copilot-contract.ts';
 import type {NativeCaseObservation,NativeCaseWitness} from './ownership.ts';
@@ -104,8 +104,18 @@ async function runNativeMountedOwner(options:NativeMountedOptions|NativeMountedT
    }};
    const server=await createCaseServer({fixture,ids,repetition,mountedOwner,assets,hooks:{observe}});
    const rawRecord=():CaseRecord=>({caseNumber:number,journey,threadId:ids.threadId,seedRunId:ids.seedRunId,continuationRunId:ids.continuationRunId,repetition,completed,publicIdle,storeEmpty:witnesses.find(w=>w.label==='publicStoreEmpty')!.status==='fulfilled',domainReleased:witnesses.find(w=>w.label==='caseDomainRelease')!.status==='fulfilled',originals:witnesses.map(w=>({...w}))});
-   const read=createMountedSnapshotReader(journey,async():Promise<GeometrySnapshot>=>{checkDeadline();if(localClosed||recordingFailed||!page)throw Error('Case admission closed');return page.evaluate(()=>{const h=(window as Window&{__copilotkitBenchHost?:OwnedFrontendHost}).__copilotkitBenchHost;if(!h)throw Error('Original host absent');return h.readGeometrySnapshot();});});
-   // Readiness polling never invokes the full H100 geometry collector. Only one
+   const read=createMountedSnapshotReader(journey,async():Promise<GeometrySnapshot>=>{checkDeadline();if(localClosed||recordingFailed||!page)throw Error('Case admission closed');return page.evaluate(()=>{const h=(window as Window&{__copilotkitBenchHost?:OwnedFrontendHost}).__copilotkitBenchHost;if(!h)throw Error('Original host absent');return h.readGeometrySnapshot();});},()=>awaitRestoredHistorySnapshot({caseNumber:number,journey,threadId:ids.threadId,history:fixture.history},{
+    check:()=>performance.now()>=overallDeadline?'deadline':localClosed?'admission-closed':recordingFailed?'source-error':null,
+    observe:()=>page!.evaluate(()=>{
+     const h=(window as Window&{__copilotkitBenchHost?:OwnedFrontendHost}).__copilotkitBenchHost;if(!h)throw Error('Original host absent');
+     const content=h.readRestoredHistoryContentReadiness();
+     const snapshot=content.status==='ready'?h.readGeometrySnapshot():null;
+     return {content,snapshot};
+    }),
+    pause:()=>page!.waitForTimeout(50),
+    publish:async record=>{try{await diagnostics.emitReadinessSummary(record);}catch(error){publicationFailed=true;throw error;}}
+   }));
+   // Scalar progress polling never invokes the full H100 geometry collector. Only one
    // response box and the scroller box are read; these scalars confer no geometry eligibility.
    async function progress(){
     checkDeadline();if(localClosed||recordingFailed||!page)throw Error('Case admission closed');
@@ -139,12 +149,6 @@ async function runNativeMountedOwner(options:NativeMountedOptions|NativeMountedT
      const committed=server.context();if(!committed)throw Error('Seed context missing');
      await page.evaluate(async history=>{await (window as unknown as {__copilotkitBenchHost:OwnedFrontendHost}).__copilotkitBenchHost.loadHistory(history.map(m=>({id:m.id,role:m.role,text:m.content,status:'complete' as const})));},committed.history);
      mark('mountedACK');
-     await awaitRestoredHistoryContent({caseNumber:number,journey,threadId:ids.threadId,history:fixture.history},{
-      check:()=>performance.now()>=overallDeadline?'deadline':localClosed?'admission-closed':recordingFailed?'source-error':null,
-      observe:()=>page!.evaluate(()=>{const h=(window as Window&{__copilotkitBenchHost?:OwnedFrontendHost}).__copilotkitBenchHost;if(!h)throw Error('Original host absent');return h.readRestoredHistoryContentReadiness();}),
-      pause:()=>page!.waitForTimeout(50),
-      publish:async record=>{try{await diagnostics.emitReadinessSummary(record);}catch(error){publicationFailed=true;throw error;}}
-     });
      const restored=await read();
      if(pilot)await pilot.captureBaseline();
      return restored;

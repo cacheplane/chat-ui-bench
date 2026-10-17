@@ -178,7 +178,7 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v44`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v46`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
@@ -213,7 +213,7 @@ bare-root importer to selected SOURCE hashes and actual static resolved edges,
 with at least one such importer present. Resolved edges and authenticated source
 intent are separate facts; the profile does not claim an observed raw resolver
 request or query/fragment exclusion. The unchanged nine-origin Zod gate covers
-all original rows, including unrendered modules. V44 requires fresh full frontend
+all original rows, including unrendered modules. V46 requires fresh full frontend
 and worker inspection under this profile.
 Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
@@ -240,22 +240,26 @@ native V3 completed setup but failed its first restored-history geometry read wi
 `policy-empty-text`, before continuation or case2. The failed row and actual renderer
 timing were not retained; this does not prove a particular Streamdown transition.
 
-The next source adds an unscored, text-only restored-history preflight between
-mounted acknowledgement and the unchanged authoritative geometry read. At most120
+The restored-history preflight starts after mounted acknowledgement. At most120
 sequential observations with existing50ms spacing check the original public idle
 history and exact mounted canonical text, without box/style/range reads or geometry
-polling. Empty content may wait; structural, mismatch and cap failures refuse.
+polling while content is pending. Empty content may wait; structural, mismatch and
+cap failures refuse. The first ready observation captures the unchanged authoritative
+geometry in the same synchronous browser callback, before diagnostic publication.
+The capture consumes the first shared geometry attempt; unavailable geometry refuses
+without another capture. This closes a scheduling gap without guaranteeing renderer
+or compositor atomicity.
 At most two bounded readiness JSON lines are attempted through original application
 stdout, each including LF≤4096 bytes. Awaited child write callbacks do not prove
 parent retention or stream closure. These diagnostics share the existing stdout and
 archive caps, and cannot promote geometry or lifecycle success. Default Chat,
 canonical workload, strict geometry and its4/5 read budgets remain unchanged.
-Fresh native preparation uses `hosted-copilot-react-h100-r6400-v8` only after
-independent qualification of same-source full STATIC V44. Neither pure checks nor
+Fresh native preparation uses `hosted-copilot-react-h100-r6400-v9` only after
+independent qualification of same-source full STATIC V46. Neither pure checks nor
 content readiness establish recovery, native conformance, FPS or ranking.
 
 The separate experimental `hosted-copilot-react-tracker-json-a-v2` workflow requires
-independently qualified same-source STATIC V44 and successful ordinary-native V8
+independently qualified same-source STATIC V46 and successful ordinary-native V9
 original artifacts. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
 `tracker-a-case-2-input.json`, `tracker-a-case-2-trace.json`,

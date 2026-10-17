@@ -38,6 +38,34 @@ export async function awaitRestoredHistoryContent(context:HistoryReadinessContex
   }
  }
 }
+export type RestoredHistorySnapshotObservation=Readonly<{content:unknown;snapshot:GeometrySnapshot|null}>;
+export interface RestoredHistorySnapshotPorts extends Omit<HistoryReadinessPorts,'observe'> {
+ observe():Promise<RestoredHistorySnapshotObservation>;
+}
+/** Retains the serialized ready capture before the original diagnostic publishes. */
+export async function awaitRestoredHistorySnapshot(context:HistoryReadinessContext,ports:RestoredHistorySnapshotPorts):Promise<GeometrySnapshot>{
+ let captured:GeometrySnapshot|null=null;
+ await awaitRestoredHistoryContent(context,{
+  check:()=>ports.check(),pause:()=>ports.pause(),publish:record=>ports.publish(record),
+  async observe(){
+   const observation=await ports.observe();
+   if(typeof observation!=='object'||observation===null)throw Error('Invalid restored snapshot observation');
+   const keys=Reflect.ownKeys(observation);
+   if(keys.length!==2||!keys.includes('content')||!keys.includes('snapshot'))throw Error('Invalid restored snapshot observation');
+   const content=own(observation,'content'),snapshot=own(observation,'snapshot');
+   let scalar:RestoredHistoryContentScalar;
+   // Let the original waiter diagnose malformed content as scalar-contract.
+   try{scalar=copyHistoryContentScalar(content,context.history);}catch{return content;}
+   if(scalar.status==='ready'){
+    if(typeof snapshot!=='object'||snapshot===null||Array.isArray(snapshot))throw Error('Ready history snapshot absent');
+    captured=snapshot as GeometrySnapshot;
+   }else if(snapshot!==null)throw Error('Unexpected history snapshot before readiness');
+   return scalar;
+  }
+ });
+ if(captured===null)throw Error('Ready history snapshot absent');
+ return captured;
+}
 /** Native local latch only: ordinary cleanup always settles before refusal. */
 export async function closeAfterHistoryReadinessPublication<T>(close:()=>Promise<T>,publicationFailed:()=>boolean):Promise<T>{
  const result=await close();if(publicationFailed())throw Error('History readiness publication incomplete');return result;
@@ -59,9 +87,9 @@ export interface MountedConformancePorts {
 }
 export interface MountedPrerequisites {intent:PreInstallIntent;installed:PostInstallAdmission;module:MountedModuleInput}
 /** Charges attempts before the full H100 collector runs, including failures. */
-export function createMountedSnapshotReader(journey:CaseJourney,read:()=>Promise<GeometrySnapshot>):()=>Promise<GeometrySnapshot>{
+export function createMountedSnapshotReader(journey:CaseJourney,read:()=>Promise<GeometrySnapshot>,restored?:()=>Promise<GeometrySnapshot>):()=>Promise<GeometrySnapshot>{
  let calls=0;const limit=journey==='follow'?4:5;
- return async()=>{if(calls===limit)throw Error('Full geometry call budget exhausted');calls++;return read();};
+ return async()=>{if(calls===limit)throw Error('Full geometry call budget exhausted');calls++;return calls===1&&restored?restored():read();};
 }
 export interface MountedConformanceResult {status:'complete'|'incomplete';cases:readonly CaseRecord[];snapshots:readonly Readonly<{caseNumber:1|2;snapshot:GeometrySnapshot}>[];nativeInputs:readonly Readonly<{caseNumber:1|2;wheel:JourneyObservations['wheel']}>[];primaryFailure:string|null;cleanupFailures:readonly string[];qualification:false;fps:'unavailable'}
 function own(value:unknown,key:string):unknown {
