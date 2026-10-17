@@ -27,7 +27,8 @@ export async function runNativeMountedConformance(options:NativeMountedOptions,d
 export async function runNativeMountedTrackerAPilot(options:NativeMountedTrackerAPilotOptions,diagnostics:RestoredHistoryDiagnosticPort,publication:NativeMountedTrackerAPublication):Promise<NativeMountedTrackerAPilotResult>{
  if(evaluateMountedTrackerAPilotPrerequisites(options.prerequisites).status!=='accepted')throw Error('Fixed pilot prerequisites denied before SDK imports');
  const descriptors=Object.getOwnPropertyDescriptors(publication.profileRef);
- if(Reflect.ownKeys(descriptors).length!==3||descriptors.path?.value!=='tracker-a-profile.json'||!Number.isSafeInteger(descriptors.bytes?.value)||descriptors.bytes.value<0||descriptors.bytes.value>16384||typeof descriptors.sha256?.value!=='string'||!/^[0-9a-f]{64}$/.test(descriptors.sha256.value)||typeof publication.reserveTraceSink!=='function')throw Error('Pilot publication denied before SDK imports');
+ const bytes=descriptors.bytes?.value;
+ if(Reflect.ownKeys(descriptors).length!==3||descriptors.path?.value!=='tracker-a-profile.json'||typeof bytes!=='number'||!Number.isSafeInteger(bytes)||bytes<0||bytes>16384||typeof descriptors.sha256?.value!=='string'||!/^[0-9a-f]{64}$/.test(descriptors.sha256.value)||typeof publication.reserveTraceSink!=='function')throw Error('Pilot publication denied before SDK imports');
  return runNativeMountedOwner(options,diagnostics,{kind:'pilot',publication});
 }
 type NativeMode={kind:'ordinary'}|{kind:'pilot';publication:NativeMountedTrackerAPublication};
