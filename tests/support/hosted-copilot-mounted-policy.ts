@@ -243,7 +243,7 @@ function sourceCap(r: Data): void { let bytes=0; for(const v of A(R(r.source).fi
 type AdmissionProfile = 'ordinary' | 'tracker-a';
 function intentSemantics(v: PreInstallIntent, profile: AdmissionProfile): AdmissionFacts {
   const pilot=profile==='tracker-a',c=v.context;
-  const release=pilot?'hosted-copilot-react-tracker-json-a-v4':'hosted-copilot-react-h100-r6400-v11',ref=`refs/tags/${release}`;
+  const release=pilot?'hosted-copilot-react-tracker-json-a-v5':'hosted-copilot-react-h100-r6400-v12',ref=`refs/tags/${release}`;
   const workflow=pilot?'.github/workflows/hosted-copilot-tracker-a.yml':'.github/workflows/hosted-copilot-mounted.yml';
   if(v.purpose!==(pilot?'hosted-copilot-mounted-tracker-json-a-pilot-only':'hosted-copilot-mounted-default-react-only')) return deny('mounted-purpose');
   if(c.repository!=='cacheplane/chat-ui-bench'||c.releaseId!==release||c.githubRef!==ref||c.workflowRef!==`cacheplane/chat-ui-bench/${workflow}@${ref}`||
@@ -343,7 +343,7 @@ export function evaluateMountedTrackerAPilotPrerequisites(input:unknown):PolicyR
   const native:TrackerANativePrerequisite={sourceSha:H(q.sourceSha,40),sourceTreeSha:H(q.sourceTreeSha,40),originalRunId:numericID(q.originalRunId),attempt:V(q.attempt),
     workflowId:N(q.workflowId),workflowPath:P(q.workflowPath),releaseId:S(q.releaseId,64),artifactId:numericID(q.artifactId),archiveSha256:H(q.archiveSha256),archiveBytes:N(q.archiveBytes,33554432,1),
     qualifiedRootReceiptSha256:H(q.qualifiedRootReceiptSha256),qualifiedPeerReceiptSha256:H(q.qualifiedPeerReceiptSha256),frontendSettingsSha256:H(q.frontendSettingsSha256),qualification};
-  if(native.workflowId!==386692729||native.workflowPath!=='.github/workflows/hosted-copilot-mounted.yml'||native.releaseId!=='hosted-copilot-react-h100-r6400-v11') return deny('mounted-context');
+  if(native.workflowId!==386692729||native.workflowPath!=='.github/workflows/hosted-copilot-mounted.yml'||native.releaseId!=='hosted-copilot-react-h100-r6400-v12') return deny('mounted-context');
   if(native.sourceSha!==intent.source.commitSha||native.sourceTreeSha!==intent.source.treeSha||native.frontendSettingsSha256!==intent.prerequisite.frontendSettingsSha256) return deny('source-mismatch');
   return post.facts!;
 });}

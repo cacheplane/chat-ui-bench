@@ -53,10 +53,18 @@ type TransportDiagnostic = Readonly<{
  sink:readonly [boolean,ReceiptState,ReceiptState,ReceiptState];counts:readonly [number,number,number];
  outcome:readonly [StageTuple,Containment];
 }>;
+type ObservedCheckCode = 1|2|3|4|5|6;
+/** Original-array indices, validated against the bounded diagnostic summaries. */
+type ScalarIndex = number;
+type TransportIndex = number;
+type ObservedCheck = readonly [ObservedCheckCode,ScalarIndex,ScalarIndex|null,number,number];
+type ReadTail = readonly [TransportIndex,boolean|null,number|null];
+type CloseOrder = 0|1|2|3|4|5|6|7|8;
+type Relations = readonly [ObservedCheck|null,ReadTail|null,CloseOrder];
 export type TrackerAAuthenticatedDiagnostic = Readonly<{
  profileRef:Ref<'tracker-a-profile.json'>;childResultRef:Ref<'native-child-result.json'>;
  inputRef:Ref<'tracker-a-case-2-input.json'>|null;transportRef:Ref<'tracker-a-case-2-transport.json'>|null;
- rawRef:Ref<'tracker-a-case-2-trace.json'>|null;input:InputDiagnostic|null;transport:TransportDiagnostic|null;
+ rawRef:Ref<'tracker-a-case-2-trace.json'>|null;input:InputDiagnostic|null;transport:TransportDiagnostic|null;relations:Relations;
 }>;
 type StreamFacts = Readonly<{readableEOF:boolean;writerFinish:boolean;writerClose:boolean;writerError:boolean;seen:number;retained:number;retainedBytesKnown:boolean;overflow:boolean}>;
 export type MountedCaptureResult = Readonly<{

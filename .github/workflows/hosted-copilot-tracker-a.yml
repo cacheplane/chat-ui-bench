@@ -1,5 +1,5 @@
 name: Hosted Copilot Tracker JSON A pilot
-run-name: hosted-copilot-react-tracker-json-a-v4
+run-name: hosted-copilot-react-tracker-json-a-v5
 on:
   workflow_dispatch:
     inputs:
@@ -32,15 +32,15 @@ on:
         required: true
         type: string
       native_run_id:
-        description: Independently qualified successful same-source ordinary-native V11 original run attempt 1
+        description: Independently qualified successful same-source ordinary-native V12 original run attempt 1
         required: true
         type: string
       native_artifact_id:
-        description: Independently qualified successful same-source ordinary-native V11 original artifact ID
+        description: Independently qualified successful same-source ordinary-native V12 original artifact ID
         required: true
         type: string
       native_archive_sha256:
-        description: Actual whole qualified ordinary-native V11 archive SHA256
+        description: Actual whole qualified ordinary-native V12 archive SHA256
         required: true
         type: string
       native_root_sha256:

@@ -31,7 +31,7 @@ export function createRestoredHistoryDiagnosticPort(write){
  }};
 }
 
-const RELEASE='hosted-copilot-react-h100-r6400-v11',REPOSITORY='cacheplane/chat-ui-bench';
+const RELEASE='hosted-copilot-react-h100-r6400-v12',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
 const MiB=1024*1024,hash=b=>createHash('sha256').update(b).digest('hex');
 const need=(ok,message='Mounted bootstrap refused')=>{if(!ok)throw new Error(message);};
@@ -39,8 +39,8 @@ const id=v=>typeof v==='string'&&/^[1-9][0-9]{0,19}$/.test(v);
 const digest=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const boundedError=e=>{try{return e instanceof Error?e.message.slice(0,512):'Original operation failed';}catch{return 'Original operation failed';}};
-const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v4',PILOT_MODE='tracker-json-a-pilot-v1';
-const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v11';
+const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v5',PILOT_MODE='tracker-json-a-pilot-v1';
+const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v12';
 let selectedBootstrapMode=null,pilotPhase=null,pilotKnown=null;
 const contextFields=['candidateSha','checkoutSha','githubSha','workflowSha','tagSha','repository','releaseId','githubRef','workflowRef','eventName','actions','platform','runnerOs','runnerMarker','attempt'];
 function ownData(value,keys){
@@ -193,7 +193,7 @@ export async function authenticateTrackerAReport(command,action,profileRef,ports
  if(action==='child'){
   const snapshots=[];for(const number of [1,2]){const caseFile=await read('native-case-'+number+'.json',2097152),record=ownData(JSON.parse(Buffer.from(caseFile.raw).toString('utf8')),['caseNumber','cases','snapshots','qualification']);need(record.caseNumber===number&&record.qualification===false&&JSON.stringify(record.cases)===JSON.stringify(value.caseEvidence.filter(c=>c.caseNumber===number)));snapshots.push(...copyPilotSnapshots(record.snapshots));}const input=copyTrackerAInput(await bind(value.tracker.inputRef,'tracker-a-case-2-input.json',262144),snapshots),transport=copyTrackerATransport(await bind(value.tracker.transportRef,'tracker-a-case-2-transport.json',262144));
   if(input)need(JSON.stringify(input.profileRef)===JSON.stringify(profile),'Input profile differs');if(transport){need(JSON.stringify(transport.profileRef)===JSON.stringify(profile),'Transport profile differs');if(transport.raw.ref!==null){need(transport.sink.fileClose==='fulfilled','Raw original close absent');const raw=await read('tracker-a-case-2-trace.json',4194304);need(transport.raw.ref.bytes===raw.bytes&&transport.raw.ref.sha256===raw.sha256,'Raw original binding differs');}}
-  diagnostic={profileRef:profile,childResultRef:ref,inputRef:value.tracker.inputRef,transportRef:value.tracker.transportRef,rawRef:transport?.raw.ref??null,input:input===null?null:trackerAInputDiagnostic(input),transport:transport===null?null:trackerATransportDiagnostic(transport)};
+  diagnostic={profileRef:profile,childResultRef:ref,inputRef:value.tracker.inputRef,transportRef:value.tracker.transportRef,rawRef:transport?.raw.ref??null,input:input===null?null:trackerAInputDiagnostic(input),transport:transport===null?null:trackerATransportDiagnostic(transport),relations:trackerADiagnosticRelations(input,transport)};
  }else if(value.tracker.childResultRef!==null){const child=await authenticateTrackerAReport(value.applicationCommand,'child',profile,ports);need(JSON.stringify(child.ref)===JSON.stringify(value.tracker.childResultRef),'Parent child reference differs');need(JSON.stringify(value.cases)===JSON.stringify(child.value.cases)&&JSON.stringify(value.caseEvidence)===JSON.stringify(child.value.caseEvidence)&&value.browserVersion===child.value.browserVersion,'Parent child facts differ');diagnostic=child.diagnostic;}
  return {value,ref,diagnostic};
 }
@@ -378,6 +378,47 @@ function trackerATransportDiagnostic(transport){
  completion:[transport.completion.firstHostMs!==null,transport.completion.overflowHostMs!==null,transport.completion.format,transport.completion.compression,transport.completion.dataLoss],sessionClose:[transport.sessionClose.firstHostMs!==null,transport.sessionClose.overflowHostMs!==null,transport.sessionClose.originalSessionMatch,transport.sessionClose.timing],
  handles:transport.handles.map(h=>[h.ordinal,h.role,h.closeOperationOrdinal]),handleOverflow:transport.handleOverflow!==null,sink:[transport.sink.created,transport.sink.finish,transport.sink.fsync,transport.sink.fileClose],counts:[transport.portCalls,transport.readCalls,transport.knownReadBytes],outcome:[diagnosticStage(transport.outcome.capture),transport.outcome.containment]};
 }
+function trackerAObservedCheck(input){
+ if(input===null)return null;let previous=null,pre=null,post=null;
+ for(const [index,row] of input.scalarObservations.entries()){
+  if((row.role==='before'||row.role==='after')&&row.slot!==null&&input.phase.hostT0Ms!==null){
+   const lower=input.phase.hostT0Ms+50*row.slot,upper=lower+50;
+   if(Number.isFinite(lower)&&Number.isFinite(upper)){
+    if(row.requestedHostMs!==null&&row.requestedHostMs>=upper)return [5,index,null,row.requestedHostMs,upper];
+    if(row.settledHostMs!==null&&row.settledHostMs>=upper)return [6,index,null,row.settledHostMs,upper];
+   }
+  }
+  if(row.value===null)continue;const current=row.value;
+  if(previous!==null){
+   if(current.pageNowMs<previous.value.pageNowMs)return [1,index,previous.index,current.pageNowMs,previous.value.pageNowMs];
+   if(current.scrollTop>previous.value.scrollTop)return [2,index,previous.index,current.scrollTop,previous.value.scrollTop];
+  }
+  if(row.role!=='pre'&&current.scrollTop===0)return [3,index,null,current.scrollTop,0];
+  if(row.role==='pre'&&pre===null)pre={index,value:current};if(row.role==='post'&&post===null)post={index,value:current};
+  previous={index,value:current};
+ }
+ if(pre!==null&&post!==null&&post.value.scrollTop>=pre.value.scrollTop)return [4,post.index,pre.index,post.value.scrollTop,pre.value.scrollTop];
+ return null;
+}
+function trackerATransportRelations(transport){
+ if(transport===null)return [null,0];let readTail=null;
+ for(const [index,row] of transport.operations.entries())if(row.kind==='read')readTail=[index,row.eof,row.bytes];
+ const close=transport.sessionClose,detaches=transport.operations.filter(row=>row.kind==='detach');let order;
+ if(close.firstHostMs===null)order=1;
+ else if(close.originalSessionMatch!==true)order=2;
+ else if(detaches.length>1)order=3;
+ else if(detaches.length===0||detaches[0].requestedHostMs===null)order=0;
+ else{
+  const detach=detaches[0];
+  if(detach.settledHostMs!==null&&detach.settledHostMs<detach.requestedHostMs)order=8;
+  else if(close.firstHostMs<detach.requestedHostMs)order=4;
+  else if(detach.settledHostMs===null)order=7;
+  else if(close.firstHostMs<=detach.settledHostMs)order=5;
+  else order=6;
+ }
+ return [readTail,order];
+}
+function trackerADiagnosticRelations(input,transport){return [trackerAObservedCheck(input),...trackerATransportRelations(transport)];}
 function diagnosticTuple(value,checks){const rows=denseData(value,checks.length);need(rows.length===checks.length,'Diagnostic tuple length');return rows.map((v,i)=>checks[i](v));}
 const diagnosticEnum=values=>value=>{need(values.includes(value),'Diagnostic enum');return value;};
 const diagnosticNullable=check=>value=>value===null?null:check(value);
@@ -402,10 +443,18 @@ function copyTransportDiagnostic(value){
  const handles=diagnosticRows(r.handles,2,v=>diagnosticTuple(v,[diagnosticEnum([1,2]),diagnosticEnum(['accepted','unexpected']),diagnosticCountOrNull]));handles.forEach((row,i)=>need(row[0]===i+1,'Diagnostic handle order'));
  return {raw,listeners:diagnosticRows(r.listeners,2,copyDiagnosticListener,true),operations,completion:diagnosticTuple(r.completion,[bool,bool,diagnosticNullable(diagnosticEnum(['json','other'])),diagnosticNullable(diagnosticEnum(['none','other'])),diagnosticBoolOrNull]),sessionClose:diagnosticTuple(r.sessionClose,[bool,bool,diagnosticBoolOrNull,diagnosticEnum(['unobserved','expected-detach','unexpected-loss'])]),handles,handleOverflow:bool(r.handleOverflow),sink:diagnosticTuple(r.sink,[bool,diagnosticReceipt,diagnosticReceipt,diagnosticReceipt]),counts,outcome:diagnosticTuple(r.outcome,[v=>copyDiagnosticStage(v,['transport']),diagnosticEnum(['verified','unverified'])])};
 }
+function copyDiagnosticRelations(value,input,transport){
+ const relation=diagnosticTuple(value,[diagnosticNullable(v=>diagnosticTuple(v,[diagnosticEnum([1,2,3,4,5,6]),diagnosticBound(81),diagnosticNullable(diagnosticBound(81)),finite,finite])),diagnosticNullable(v=>diagnosticTuple(v,[diagnosticBound(132),diagnosticBoolOrNull,diagnosticCountOrNull])),diagnosticEnum([0,1,2,3,4,5,6,7,8])]);
+ const [check,readTail,closeOrder]=relation;
+ if(check!==null){need(input!==null&&check[1]<input.scalars.length,'Diagnostic scalar index');need([1,2,4].includes(check[0])?check[2]!==null:check[2]===null,'Diagnostic scalar other index presence');if(check[2]!==null)need(check[2]<input.scalars.length,'Diagnostic scalar other index');}
+ if(transport===null)need(readTail===null&&closeOrder===0,'Diagnostic transport relation presence');
+ else if(readTail!==null)need(readTail[0]<transport.counts[0],'Diagnostic transport index');
+ return relation;
+}
 function copyAuthenticatedDiagnostic(value){
- const r=ownData(value,['profileRef','childResultRef','inputRef','transportRef','rawRef','input','transport']),profileRef=fileRef(r.profileRef,'tracker-a-profile.json'),childResultRef=fileRef(r.childResultRef,'native-child-result.json'),inputRef=fileRef(r.inputRef,'tracker-a-case-2-input.json'),transportRef=fileRef(r.transportRef,'tracker-a-case-2-transport.json'),rawRef=fileRef(r.rawRef,'tracker-a-case-2-trace.json');need(profileRef!==null&&childResultRef!==null&&(inputRef===null)===(r.input===null)&&(transportRef===null)===(r.transport===null),'Diagnostic ref presence');
+ const r=ownData(value,['profileRef','childResultRef','inputRef','transportRef','rawRef','input','transport','relations']),profileRef=fileRef(r.profileRef,'tracker-a-profile.json'),childResultRef=fileRef(r.childResultRef,'native-child-result.json'),inputRef=fileRef(r.inputRef,'tracker-a-case-2-input.json'),transportRef=fileRef(r.transportRef,'tracker-a-case-2-transport.json'),rawRef=fileRef(r.rawRef,'tracker-a-case-2-trace.json');need(profileRef!==null&&childResultRef!==null&&(inputRef===null)===(r.input===null)&&(transportRef===null)===(r.transport===null),'Diagnostic ref presence');
  const input=r.input===null?null:copyInputDiagnostic(r.input),transport=r.transport===null?null:copyTransportDiagnostic(r.transport);need(transport!==null||rawRef===null,'Diagnostic raw owner');if(transport){if(transport.raw[0]==='absent')need(rawRef===null);if(transport.raw[0]==='complete-raw')need(rawRef!==null);}
- return {profileRef,childResultRef,inputRef,transportRef,rawRef,input,transport};
+ return {profileRef,childResultRef,inputRef,transportRef,rawRef,input,transport,relations:copyDiagnosticRelations(r.relations,input,transport)};
 }
 function diagnosticCommand(value){
  const c=constructMountedCaptureResult(value),o=c.original;const stream=s=>[s.readableEOF,s.writerFinish,s.writerClose,s.writerError,s.seen,s.retained,s.retainedBytesKnown,s.overflow];
@@ -420,10 +469,11 @@ export function constructTrackerAIncompleteDiagnostic(value,final,retained){
  const d=retained===null?null:copyAuthenticatedDiagnostic(retained);need((refs[3]===null)===(d===null),'Diagnostic child sidecar required');
  if(d!==null){need(child!==null&&parent!==null&&refs[4]!==null,'Diagnostic parent binding');for(const key of ['profileRef','childResultRef','inputRef','transportRef','rawRef'])need(JSON.stringify(d[key])===JSON.stringify(key==='rawRef'?f.raw.ref:f[key]),'Diagnostic retained ref differs');need(JSON.stringify(parent.tracker.childResultRef)===JSON.stringify(refs[3]),'Diagnostic parent child join');need(JSON.stringify(child.tracker.inputRef)===JSON.stringify(d.inputRef)&&JSON.stringify(child.tracker.transportRef)===JSON.stringify(d.transportRef),'Diagnostic child input join');}
  if(d!==null)need(JSON.stringify(d.transport)===JSON.stringify(transport===null?null:trackerATransportDiagnostic(transport)),'Diagnostic transport summary differs');
+ if(d!==null)need(JSON.stringify(d.relations.slice(1))===JSON.stringify(trackerATransportRelations(transport)),'Diagnostic transport relations differ');
  let policy=null;if(native.policy!==null){const p=native.policy;need(p.reason===null||diagnosticPolicyReasons.includes(p.reason),'Diagnostic policy reason');policy=[p.status,p.reason];}
  const stages=report=>[report.status,diagnosticStage(report.tracker.semantic),diagnosticStage(report.tracker.capture),diagnosticStage(report.tracker.cleanup)];
  const failures=rows=>[rows.filter(v=>v==='Original command failed/incomplete').length,rows.filter(v=>v==='Pilot child incomplete').length,rows.filter(v=>v!=='Original command failed/incomplete'&&v!=='Pilot child incomplete').length];
- const record={schemaVersion:1,kind:'tracker-a-incomplete-diagnostic',mode:PILOT_MODE,phase:'outer-published',status:'incomplete',refs:refs.map(ref=>ref===null?null:[ref.bytes,ref.sha256]),stages:{native:stages(native),parent:refs[4]===null||parent===null?null:stages(parent),child:refs[3]===null||child===null?null:stages(child),final:[diagnosticStage(f.semantic),[diagnosticStage(f.cleanup.case1),diagnosticStage(f.cleanup.case2),diagnosticStage(f.cleanup.global)],[f.capture.status,f.capture.containment],[f.raw.status,f.raw.extent],[f.projection.status,f.projection.reason]]},childFailure:refs[3]===null||child===null?null:[child.primaryFailure,child.cleanupFailures,child.workerImport],failures:[native.failures.parent===null?null:failures(native.failures.parent),failures(native.failures.outer)],commands:[diagnosticCommand(native.parentCommand),parent?.applicationCommand==null?null:diagnosticCommand(parent.applicationCommand)],originals:[native.originals.map(o=>o.status),native.cases.map(c=>[c.caseNumber,c.completed,c.publicIdle,c.storeEmpty,c.domainReleased,c.originals.map(o=>o.status)])],stdio:native.stdio.map(s=>[s.index,s.kind,s.status,s.coverage,s.seenBytes,s.retainedBytes]),policy,input:d?.input??null,transport:d?.transport??null,authority:diagnosticAuthority()};
+ const record={schemaVersion:1,kind:'tracker-a-incomplete-diagnostic',mode:PILOT_MODE,phase:'outer-published',status:'incomplete',refs:refs.map(ref=>ref===null?null:[ref.bytes,ref.sha256]),stages:{native:stages(native),parent:refs[4]===null||parent===null?null:stages(parent),child:refs[3]===null||child===null?null:stages(child),final:[diagnosticStage(f.semantic),[diagnosticStage(f.cleanup.case1),diagnosticStage(f.cleanup.case2),diagnosticStage(f.cleanup.global)],[f.capture.status,f.capture.containment],[f.raw.status,f.raw.extent],[f.projection.status,f.projection.reason]]},childFailure:refs[3]===null||child===null?null:[child.primaryFailure,child.cleanupFailures,child.workerImport],failures:[native.failures.parent===null?null:failures(native.failures.parent),failures(native.failures.outer)],commands:[diagnosticCommand(native.parentCommand),parent?.applicationCommand==null?null:diagnosticCommand(parent.applicationCommand)],originals:[native.originals.map(o=>o.status),native.cases.map(c=>[c.caseNumber,c.completed,c.publicIdle,c.storeEmpty,c.domainReleased,c.originals.map(o=>o.status)])],stdio:native.stdio.map(s=>[s.index,s.kind,s.status,s.coverage,s.seenBytes,s.retainedBytes]),policy,input:d?.input??null,transport:d?.transport??null,relations:d?.relations??[null,null,0],authority:diagnosticAuthority()};
  const bytes=encoded(record);need(bytes.length<=16384,'Diagnostic line cap');return bytes;
 }
 function writeTrackerADiagnostic(write,bytes){need(typeof write==='function','Diagnostic writer absent');return new Promise((resolve,reject)=>{try{write(bytes,error=>error?reject(error):resolve());}catch(error){reject(error);}});}

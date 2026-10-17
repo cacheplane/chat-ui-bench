@@ -1,5 +1,5 @@
 name: Hosted Copilot native conformance
-run-name: hosted-copilot-react-h100-r6400-v11
+run-name: hosted-copilot-react-h100-r6400-v12
 on:
   workflow_dispatch:
     inputs:
