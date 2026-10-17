@@ -31,7 +31,7 @@ export function createRestoredHistoryDiagnosticPort(write){
  }};
 }
 
-const RELEASE='hosted-copilot-react-h100-r6400-v9',REPOSITORY='cacheplane/chat-ui-bench';
+const RELEASE='hosted-copilot-react-h100-r6400-v10',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
 const MiB=1024*1024,hash=b=>createHash('sha256').update(b).digest('hex');
 const need=(ok,message='Mounted bootstrap refused')=>{if(!ok)throw new Error(message);};
@@ -39,8 +39,8 @@ const id=v=>typeof v==='string'&&/^[1-9][0-9]{0,19}$/.test(v);
 const digest=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const boundedError=e=>{try{return e instanceof Error?e.message.slice(0,512):'Original operation failed';}catch{return 'Original operation failed';}};
-const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v2',PILOT_MODE='tracker-json-a-pilot-v1';
-const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v9';
+const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v3',PILOT_MODE='tracker-json-a-pilot-v1';
+const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v10';
 let selectedBootstrapMode=null,pilotPhase=null,pilotKnown=null;
 const contextFields=['candidateSha','checkoutSha','githubSha','workflowSha','tagSha','repository','releaseId','githubRef','workflowRef','eventName','actions','platform','runnerOs','runnerMarker','attempt'];
 function ownData(value,keys){
@@ -804,10 +804,10 @@ async function parentTrackerA(directory,scratch,prerequisites){
  finally{if(server){try{const original=server.close();await original;originals.get('publicServerClose').status='fulfilled';await closeEvent;if(stdio)await stdio.closed();}catch(error){originals.get('publicServerClose').status='rejected';failures.push(boundedError(error));}}}
  await verifyGraph(directory,scratch,await bundle(directory,scratch));
  const semantic=result&&childResultRef?result.tracker.semantic:trackerStage(false,'missing-child'),captureStage=result&&childResultRef?result.tracker.capture:trackerStage(false,'missing-child');
- const commandComplete=command?.closeObserved===true&&command.original.streamsComplete===true;const capture=captureStage.status==='complete'&&!commandComplete?trackerStage(false,'transport'):captureStage;
+ const commandComplete=command?.closeObserved===true&&command.original.streamsComplete===true;const effectiveCapture=captureStage.status==='complete'&&!commandComplete?trackerStage(false,'transport'):captureStage;
  const ownCleanup=[...originals.values()].filter(row=>row.label!=='parentWorkerClose').every(row=>row.status==='fulfilled')&&(stdio?.observations??[]).every(row=>row.status==='fulfilled');
- const cleanup=trackerStage(result!==undefined&&childResultRef!==null&&result.tracker.cleanup.status==='complete'&&ownCleanup,'cleanup');const status=failures.length===0&&result?.status==='complete'&&[semantic,capture,cleanup].every(s=>s.status==='complete')?'complete':'incomplete';
- const partial={status,applicationCommand:command??null,cases:result?.cases??[],caseEvidence:result?.caseEvidence??[],browserVersion:result?.browserVersion??null,originals:[...originals.values()].map(row=>({label:row.label,status:row.status})),stdio:stdio?.observations??[],failures,qualification:false,fps:'unavailable',scope:'Parent partial only. Its own close and spawn-complete stdio are observed exclusively by the outer owner. Browser event and original close promise remain distinct. Executable byte identity is unestablished.',mode:PILOT_MODE,tracker:{childResultRef,semantic,capture,cleanup}};
+ const cleanup=trackerStage(result!==undefined&&childResultRef!==null&&result.tracker.cleanup.status==='complete'&&ownCleanup,'cleanup');const status=failures.length===0&&result?.status==='complete'&&[semantic,effectiveCapture,cleanup].every(s=>s.status==='complete')?'complete':'incomplete';
+ const partial={status,applicationCommand:command??null,cases:result?.cases??[],caseEvidence:result?.caseEvidence??[],browserVersion:result?.browserVersion??null,originals:[...originals.values()].map(row=>({label:row.label,status:row.status})),stdio:stdio?.observations??[],failures,qualification:false,fps:'unavailable',scope:'Parent partial only. Its own close and spawn-complete stdio are observed exclusively by the outer owner. Browser event and original close promise remain distinct. Executable byte identity is unestablished.',mode:PILOT_MODE,tracker:{childResultRef,semantic,capture:effectiveCapture,cleanup}};
  return await publishTrackerAInternalReport('parent',partial,value=>writeJson(directory,'native-parent-partial.json',value,524288));
 }
 export function nativeGlobalClosureInput(parentCommand,partial){
@@ -840,9 +840,9 @@ async function runTrackerA(directory,scratch,prerequisites){
  try{successful(command);}catch(error){failures.push(boundedError(error));}
  let rawCreated=false;try{const raw=await lstat(join(directory,'tracker-a-case-2-trace.json'));need(command.spawned&&raw.isFile()&&!raw.isSymbolicLink()&&raw.size<=4194304,'Assigned raw creation differs');rawCreated=true;}catch(error){if(error?.code!=='ENOENT')throw error;}
  const current=await bundle(directory,scratch);await verifyGraph(directory,scratch,current);need(JSON.stringify(current)===JSON.stringify(prerequisites));
- const semantic=partial?.tracker.semantic??trackerStage(false,'missing-parent'),capture=partial?.tracker.capture??trackerStage(false,'missing-parent'),cleanup=trackerStage(policy?.status==='accepted'&&partial?.tracker.cleanup.status==='complete'&&parentPartialRef!==null&&childResultRef!==null,'cleanup');
- const status=failures.length===0&&partial?.status==='complete'&&policy?.status==='accepted'&&[semantic,capture,cleanup].every(stage=>stage.status==='complete')?'complete':'incomplete';
- const native=constructTrackerANativeResult({status,cases:partial?.caseEvidence??[],browserVersion:partial?.browserVersion??null,originals:globalInput?.originals??partial?.originals??globalOriginalLabels.map(label=>({label,status:'pending'})),applicationExit:globalInput?.applicationExit??null,stdio:partial?.stdio??[],parentCommand:command,failures:{parent:partial?.failures??null,outer:failures},policy,qualification:false,fps:'unavailable',scope:'Separate original outer parent capture. Published incomplete descendants retain authentic refs while original global policy independently refuses. Executable byte identity and outward tracker publication proof are unestablished.',mode:PILOT_MODE,tracker:{childResultRef,parentPartialRef,semantic,capture,cleanup}});
+ const semantic=partial?.tracker.semantic??trackerStage(false,'missing-parent'),captureOutcome=partial?.tracker.capture??trackerStage(false,'missing-parent'),cleanup=trackerStage(policy?.status==='accepted'&&partial?.tracker.cleanup.status==='complete'&&parentPartialRef!==null&&childResultRef!==null,'cleanup');
+ const status=failures.length===0&&partial?.status==='complete'&&policy?.status==='accepted'&&[semantic,captureOutcome,cleanup].every(stage=>stage.status==='complete')?'complete':'incomplete';
+ const native=constructTrackerANativeResult({status,cases:partial?.caseEvidence??[],browserVersion:partial?.browserVersion??null,originals:globalInput?.originals??partial?.originals??globalOriginalLabels.map(label=>({label,status:'pending'})),applicationExit:globalInput?.applicationExit??null,stdio:partial?.stdio??[],parentCommand:command,failures:{parent:partial?.failures??null,outer:failures},policy,qualification:false,fps:'unavailable',scope:'Separate original outer parent capture. Published incomplete descendants retain authentic refs while original global policy independently refuses. Executable byte identity and outward tracker publication proof are unestablished.',mode:PILOT_MODE,tracker:{childResultRef,parentPartialRef,semantic,capture:captureOutcome,cleanup}});
  return await publishTrackerAOuterResult({profileRef:loaded.profileRef,inputRef,transportRef,childResultRef,parentPartialRef,nativeResultRef:null,childResult:child,parentPartial:partial,nativeResult:native,transport,rawCreated,rawRef},{writeNative:value=>writeJson(directory,'native-result.json',value,524288),authenticateNative:()=>publishedFileRef(directory,'native-result.json'),writeTracker:value=>writeJson(directory,'tracker-a-result.json',value,262144)});
 }
 async function inventory(directory){
