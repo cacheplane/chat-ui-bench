@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V38
+`runNativeMountedConformance` worker export now prepare a fresh V40
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v5`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v6`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -656,8 +656,8 @@ validated scalars and actual attempted count, without text or arbitrary error
 details. An awaited write callback is separate from parent retained bytes and
 original EOF/writer-close; partial/missing diagnostics or publication failure do
 not supply successful case closure. All existing stdout/archive caps apply.
-Fresh native V5 must independently complete both original serial cases after
-qualification of same-source full STATIC V38. Content readiness and pure tests
+Fresh native V6 must independently complete both original serial cases after
+qualification of same-source full STATIC V40. Content readiness and pure tests
 establish no geometry, runtime conformance, FPS or ranking result.
 
 Native V4 retained two content-ready diagnostics but no case or child result files;
@@ -666,6 +666,14 @@ source observes already-started disposal promises even when their existing deadl
 has expired. It still refuses at the same deadline and never marks settlement or
 releases ownership. The original V4 budget state and bridge cleanup reason remain
 unretained, so this SOURCE fix does not establish that cause or successful recovery.
+
+The pinned default scroll view has a distinct outer scrollport and inner content
+node. Native V5 retained full-content heights and zero scroll range from the
+selected inner node. The next source corrects only the harness locator to the
+outer scrollport, preserving default Chat, CSS and the existing trusted-wheel,
+scroll-decrease and geometry requirements. V5 did not retain its exact failing
+exercise stage; this correction still requires fresh two-case native conformance
+and establishes no FPS result.
 
 `frontendSettingsSha256` is SHA256 of the UTF8 bytes of
 `JSON.stringify([['source', candidateSha], ['apps/copilotkit/vite.config.ts', configSha], ['tests/support/hosted-copilot-build-plugin.ts', helperSha], ['package-lock.json', lockSha]])`,
