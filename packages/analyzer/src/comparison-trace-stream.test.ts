@@ -146,3 +146,57 @@ describe('streamed trace admission', () => {
     expect(value.statistics()).toMatchObject({scannerCompletion: 'eof-finished', completeTotals: {analyzerWorkUnits: 16777216}, legacyWorkThreshold: {status: 'crossed', observed: 8388609}});
   }, 60000);
 });
+
+// Prospective SOURCE grammar fixtures, not observed runtime exports.
+describe('explicit tracker JSON A scanner profile', () => {
+  const profile = 'streamed-tracker-json-a-v1';
+  it('rejects unknown profiles and selector callbacks', () => {
+    for (const value of ['unknown', () => true, {}, null]) {
+      expect(() => Reflect.construct(StreamedTraceAdmission, [value])).toThrow(/profile/);
+    }
+  });
+  it.each([1, 2, 7, 65536])('owns exact original records and closed numeric paths at chunk width %i', chunk => {
+    const raw = '{"name":"FrameSequenceTrackerV3","ph":"b","ts":-0,"pid":2147483647,"tid":-2147483648,"args":{"name":"WheelScroll","args":{"data":{"exp\\u0065cted":1.0000000000000001,"dropped_v3":1e0,"dropped_v4":1.0,"quality":"é😀"}},"data":{"values":{"expected":90}}}}';
+    const prefix = '{"other":"é😀","traceEvents":[{"name":"unused","ph":"I","ts":99},';
+    const text = prefix + raw + ',' + ['Frame', 'Frame ', 'Frame   ', 'Frame  ', 'FrameSequenceTrackerUnknown', 'AnimationFrame'].map(name => JSON.stringify({name, ph: 'n'})).join(',') + ']}';
+    const value = Reflect.construct(StreamedTraceAdmission, [profile]) as StreamedTraceAdmission;
+    expect(value).toHaveProperty('trackerRecords', expect.any(Function));
+    const records = () => (value as StreamedTraceAdmission & {trackerRecords(): Array<{eventIndex:number;startUtf8:number;endUtf8:number;rawJson:string;event:unknown;numberTokens:Array<{slot:string;lexeme:string;startUtf8:number;endUtf8:number}>}>}).trackerRecords();
+    expect(records).toThrow(/admitted/);
+    const bytes = Buffer.from(text); for (let i = 0; i < bytes.length; i += chunk) value.feed(bytes.subarray(i, i + chunk)); value.finish();
+    const retained = records(); expect(retained.map(r => r.eventIndex)).toEqual([1, 2, 3, 4, 6, 7]);
+    expect(retained[0]).toMatchObject({startUtf8:Buffer.byteLength(prefix),endUtf8:Buffer.byteLength(prefix + raw),rawJson:raw,event:JSON.parse(raw)});
+    expect(retained[0]!.numberTokens.map(t => [t.slot,t.lexeme])).toEqual([['ts','-0'],['pid','2147483647'],['tid','-2147483648'],['expected','1.0000000000000001'],['dropped_v3','1e0'],['dropped_v4','1.0']]);
+    for (const token of retained[0]!.numberTokens) expect(bytes.subarray(token.startUtf8,token.endUtf8).toString()).toBe(token.lexeme);
+    expect(value.statistics().policy).toBe(profile);
+    value.dispose(); expect(records).toThrow(/admitted/);
+  });
+  it('keeps default selection and rejects tracker records/visit before admitted tracker EOF', () => {
+    const value = new StreamedTraceAdmission(); value.feed(Buffer.from('{"traceEvents":[{"name":"FrameSequenceTrackerV3","ph":"b"}]}'));value.finish();
+    expect(value.trace()).toEqual({traceEvents:[]});
+    expect(value).toHaveProperty('trackerRecords',expect.any(Function));
+    expect(() => (value as unknown as {trackerRecords():unknown}).trackerRecords()).toThrow(/admitted/);
+    expect(() => (value as unknown as {chargeTrackerProjectionVisit():void}).chargeTrackerProjectionVisit()).toThrow(/admitted/);
+  });
+});
+
+describe('tracker profile shared work ledger',()=>{
+  it('charges retained spans/tokens and exactly one unit per completed projection visit',()=>{
+    const value=new StreamedTraceAdmission('streamed-tracker-json-a-v1');
+    expect(()=>value.chargeTrackerProjectionVisit()).toThrow(/admitted/);
+    value.feed(Buffer.from('{"traceEvents":[{"name":"FrameSequenceTrackerV3","ph":"b","ts":-0,"pid":1,"tid":2,"args":{"args":{"data":{"expected":10,"dropped_v3":0,"dropped_v4":0}}}}]}'));value.finish();
+    const before=value.statistics().observedPrefix!.retainedWork;value.chargeTrackerProjectionVisit();expect(value.statistics().observedPrefix!.retainedWork).toBe(before+1);
+    expect(value.trackerRecords()[0]!.numberTokens).toHaveLength(6);value.dispose();expect(()=>value.chargeTrackerProjectionVisit()).toThrow(/admitted/);
+  });
+  it('enforces the unchanged selected work limit across association visits',()=>{
+    const event='{"name":"AnimationFrame","ph":"b","a":['+'null,'.repeat(65528)+'null]}';
+    const value=new StreamedTraceAdmission('streamed-tracker-json-a-v1');value.feed(Buffer.from('{"traceEvents":['+Array(31).fill(event).join(',')+']}'));value.finish();
+    const before=value.statistics().observedPrefix!.retainedWork;expect(before).toBe(31*65537);
+    for(let work=before;work<2097152;work++)value.chargeTrackerProjectionVisit();
+    expect(value.statistics().observedPrefix!.retainedWork).toBe(2097152);expect(()=>value.chargeTrackerProjectionVisit()).toThrow(/selectedWorkUnits/);expect(()=>value.trackerRecords()).toThrow(/admitted/);value.dispose();
+  });
+  it.each([' garbage',',"dup":1,"\\u0064up":2}'])('exposes no records after malformed selected tail %s',tail=>{
+    const value=new StreamedTraceAdmission('streamed-tracker-json-a-v1'),text='{"traceEvents":[{"name":"FrameSequenceTrackerV3","ph":"b","ts":1}]}';
+    expect(()=>value.feed(Buffer.from(tail===' garbage'?text+tail:text.slice(0,-1)+tail))).toThrow();expect(()=>value.trackerRecords()).toThrow(/admitted/);value.dispose();
+  });
+});
