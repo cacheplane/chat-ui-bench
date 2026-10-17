@@ -178,7 +178,7 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v34`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v36`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
@@ -213,7 +213,7 @@ bare-root importer to selected SOURCE hashes and actual static resolved edges,
 with at least one such importer present. Resolved edges and authenticated source
 intent are separate facts; the profile does not claim an observed raw resolver
 request or query/fragment exclusion. The unchanged nine-origin Zod gate covers
-all original rows, including unrendered modules. V34 requires fresh full frontend
+all original rows, including unrendered modules. V36 requires fresh full frontend
 and worker inspection under this profile.
 Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
@@ -231,14 +231,28 @@ Its application stderr reported `Only admitted native cold connect is permitted`
 Response-reader EOF alone does not establish admitted replay, connect count or
 request ordering.
 
-V34 tests the source-supported provisional-to-registered agent startup hypothesis:
-the existing public `useAgent` readiness now gates the identical default Chat
+V34 tested the source-supported provisional-to-registered agent startup hypothesis:
+the existing public `useAgent` readiness gates the identical default Chat
 inside Probe, with its ready-only attachment and cleanup unchanged. The runtime's
 exact once-only cold-connect gate remains unchanged. The observed V2 failure does
 not prove that startup sequence occurred or that this change fixes it. Fresh
-native preparation uses `hosted-copilot-react-h100-r6400-v3` only after independent
-qualification of a new same-source full STATIC V34 artifact. V1's geometry cause
-remains unknown; no overall native conformance, FPS or ranking result is established.
+native V3 completed setup but failed its first restored-history geometry read with
+`policy-empty-text`, before continuation or case2. The failed row and actual renderer
+timing were not retained; this does not prove a particular Streamdown transition.
+
+The next source adds an unscored, text-only restored-history preflight between
+mounted acknowledgement and the unchanged authoritative geometry read. At most120
+sequential observations with existing50ms spacing check the original public idle
+history and exact mounted canonical text, without box/style/range reads or geometry
+polling. Empty content may wait; structural, mismatch and cap failures refuse.
+At most two bounded readiness JSON lines are attempted through original application
+stdout, each including LF≤4096 bytes. Awaited child write callbacks do not prove
+parent retention or stream closure. These diagnostics share the existing stdout and
+archive caps, and cannot promote geometry or lifecycle success. Default Chat,
+canonical workload, strict geometry and its4/5 read budgets remain unchanged.
+Fresh native preparation uses `hosted-copilot-react-h100-r6400-v4` only after
+independent qualification of same-source full STATIC V36. Neither pure checks nor
+content readiness establish recovery, native conformance, FPS or ranking.
 
 ## Planned comparison adapters
 

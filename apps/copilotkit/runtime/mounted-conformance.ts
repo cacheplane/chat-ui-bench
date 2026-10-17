@@ -3,6 +3,45 @@
 import {evaluateMountedAdmissionPolicy,evaluateMountedModulePolicy,evaluateMountedClosurePolicy,type PreInstallIntent,type PostInstallAdmission,type MountedModuleInput,type CaseRecord,type CaseJourney} from '../../../tests/support/hosted-copilot-mounted-policy.ts';
 import type {GeometrySnapshot} from '../src/geometry.ts';
 import {evaluateMountedGeometry,evaluateHistoricalAnchor} from '../src/geometry-policy.ts';
+import {copyHistoryContentScalar,copyHistoryReadinessDiagnostic,type HistoryReadinessContext,type HistoryContentReason,type HistoryReadinessReason,type HistoryReadinessOutcome,type RestoredHistoryContentScalar,type RestoredHistoryReadinessDiagnostic} from '../src/geometry.ts';
+export interface HistoryReadinessPorts {
+ check():HistoryContentReason|'deadline'|null;
+ observe():Promise<unknown>;
+ pause():Promise<void>;
+ publish(record:RestoredHistoryReadinessDiagnostic):Promise<void>;
+}
+/** Sequential original observations. A race never substitutes for settlement. */
+export async function awaitRestoredHistoryContent(context:HistoryReadinessContext,ports:HistoryReadinessPorts):Promise<void>{
+ let attemptCount=0,first:RestoredHistoryContentScalar|null=null,last:RestoredHistoryContentScalar|null=null;
+ let outcome:HistoryReadinessOutcome='unavailable',reason:HistoryReadinessReason='source-error',failed=false,primary:unknown;
+ try{
+  for(let i=0;i<120;i++){
+   reason='source-error';const denied=ports.check();if(denied){reason=denied;outcome=['selector','ownership','unknown-id','text-mismatch','invalid-data','public-history'].includes(denied)?'invalid':'unavailable';throw Error('History readiness admission unavailable');}
+   attemptCount++;
+   let observed:unknown;
+   try{observed=await ports.observe();}catch(error){reason='observation-rejected';throw error;}
+   let scalar:RestoredHistoryContentScalar;
+   try{scalar=copyHistoryContentScalar(observed,context.history);}catch{outcome='invalid';reason='scalar-contract';throw Error('Invalid history readiness scalar');}
+   if(first===null)first=scalar;last=scalar;reason=scalar.reason;
+   if(scalar.status==='ready'){outcome='ready';return;}
+   if(scalar.status!=='pending'){outcome=scalar.status;throw Error('History content unavailable');}
+   if(i===119){reason='attempt-limit';throw Error('History readiness attempt limit');}
+   try{await ports.pause();}catch(error){reason='source-error';throw error;}
+  }
+ }catch(error){failed=true;primary=error;throw error;}
+ finally{
+  if(attemptCount>0){
+   const record=copyHistoryReadinessDiagnostic({kind:'copilot-mounted-history-readiness-v1',caseNumber:context.caseNumber,journey:context.journey,threadId:context.threadId,attemptCount,outcome,reason,first,last,qualification:false},context);
+   try{await ports.publish(record);}catch(error){if(!failed)throw error;}
+   // A prior rejection (including null/undefined) is not replaced by publication.
+   if(failed)throw primary;
+  }
+ }
+}
+/** Native local latch only: ordinary cleanup always settles before refusal. */
+export async function closeAfterHistoryReadinessPublication<T>(close:()=>Promise<T>,publicationFailed:()=>boolean):Promise<T>{
+ const result=await close();if(publicationFailed())throw Error('History readiness publication incomplete');return result;
+}
 export interface JourneyObservations {samples:readonly GeometrySnapshot[];anchorId:string|null;returned:GeometrySnapshot|null;
  wheel:Readonly<{isTrusted:boolean;deltaY:number;beforeScrollTop:number;afterScrollTop:number}>|null}
 export interface MountedCaseOwner {

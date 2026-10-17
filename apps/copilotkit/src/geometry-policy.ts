@@ -35,7 +35,7 @@ export type HistoricalAnchorEvaluation = Readonly<{ schemaVersion: 1; status: 'a
   reason: AnchorReason | null; elapsedMs: number | null; signedDisplacementCssPx: number | null;
   firstOwnerToken: number | null; secondOwnerToken: number | null; authority: GeometryAuthority }>;
 type RecordData = Record<string, unknown>;
-class InvalidData extends Error { constructor(readonly code: GlobalGeometryReason) { super(code); } }
+class InvalidData extends Error { readonly code:GlobalGeometryReason;constructor(code: GlobalGeometryReason) { super(code);this.code=code; } }
 const fail = (code: GlobalGeometryReason): never => { throw new InvalidData(code); };
 const authority = (): GeometryAuthority => ({ input: 'supplied-data', nativeDOMQualified: false, visibleGlyphProof: false, presentationProof: false, scoringEligibility: false });
 function freeze<T>(owned: T): T {
@@ -77,7 +77,7 @@ function ascii(input: unknown, length?: number, whitespace = false): string {
   if (typeof input !== 'string' || (length !== undefined && input.length !== length) ||
     !(whitespace ? /^[\x09-\x0d\x20-\x7e]*$/ : /^[\x20-\x7e]*$/).test(input)) return fail('invalid-ascii'); return input;
 }
-const project = (text: string): string => text.replace(/[\x09-\x0d\x20]+/g, ' ').replace(/^ +| +$/g, '');
+export const projectGeometryText = (text: string): string => text.replace(/[\x09-\x0d\x20]+/g, ' ').replace(/^ +| +$/g, '');
 function rectangle(input: unknown): GeometryRect {
   const r = record(input, ['x', 'y', 'width', 'height']);
   for (const key of ['x', 'y', 'width', 'height']) if (typeof r[key] !== 'number' || !Number.isFinite(r[key])) return fail('invalid-rect');
@@ -156,7 +156,7 @@ function evaluateRow(row: GeometryObservation, frame: MountedGeometryInput, know
     for (const ancestor of row.ancestorClips) { if (!clipped) break; clipped = intersect(clipped, ancestor.rect, ancestor.clipX, ancestor.clipY); }
     if (clipped) clippedTextRects.push(clipped);
   }
-  const observed = project(row.observedText), canonical = project(known.text), streamingResponse = row.id === frame.expectedResponse.id && frame.phase === 'streaming';
+  const observed = projectGeometryText(row.observedText), canonical = projectGeometryText(known.text), streamingResponse = row.id === frame.expectedResponse.id && frame.phase === 'streaming';
   const conforms = streamingResponse ? canonical.startsWith(observed) : canonical === observed;
   const reason: RowReason | null = !observed ? 'empty-text' : !conforms ? 'text-mismatch' : !originals.length ? 'no-positive-text-rects' : !clippedTextRects.length ? 'fully-clipped' : null;
   return { ...base, textRelation: !observed ? 'not-evaluated' : !conforms ? 'mismatch' : streamingResponse ? 'canonical-prefix' : 'exact', geometryEligibility: reason === null ? 'eligible' : 'ineligible', reason,

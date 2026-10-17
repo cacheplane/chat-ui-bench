@@ -9,8 +9,26 @@ import {readSourceSnapshot,COPILOT_PRODUCTION_SOURCES} from '../tests/support/ho
 import {ordinaryPath,assertInventory,assertProductionOutputInventory,assertOriginalCommand} from '../tests/support/hosted-copilot-contract.ts';
 import {MOUNTED_PACKAGE_PINS,evaluateMountedAdmissionPolicy,evaluateMountedModulePolicy,evaluateMountedClosurePolicy,WORKER_ZOD_PUBLIC_BINDING,resolveMountedPublicEntry} from '../tests/support/hosted-copilot-mounted-policy.ts';
 import {validateWorkerContractSourceGraph,assertWorkerComponentPins,WORKER_STATIC_COMPONENT_PATHS} from '../tests/support/hosted-copilot-worker-static-policy.ts';
+import {copyHistoryReadinessDiagnostic} from '../apps/copilotkit/src/geometry.ts';
 
-const RELEASE='hosted-copilot-react-h100-r6400-v3',REPOSITORY='cacheplane/chat-ui-bench';
+/** Fixed profile identity expectations from contract/src/long-thread.ts H100
+ * history Array.from law: history-i, even assistant/odd user. No generator runs,
+ * DOM/content authentication or caller-provided identity catalog is implied. */
+export function createRestoredHistoryDiagnosticPort(write){
+ const history=Array.from({length:100},(_,i)=>({id:`history-${i}`,role:i%2===0?'assistant':'user'}));
+ const used=new Set();let writing=false;
+ return {async emitReadinessSummary(value){
+  const descriptor=typeof value==='object'&&value!==null?Object.getOwnPropertyDescriptor(value,'caseNumber'):undefined;
+  const number=descriptor&&'value'in descriptor?descriptor.value:undefined;
+  need(number===1||number===2,'Readiness case identity denied');
+  const record=copyHistoryReadinessDiagnostic(value,{caseNumber:number,journey:number===1?'follow':'history-reading',threadId:`native-thread-${number}`,history});
+  const bytes=Buffer.from(JSON.stringify(record)+'\n','utf8');need(bytes.length<=4096,'Readiness line cap');
+  need(!writing&&!used.has(number)&&used.size<2,'Readiness publication already attempted');used.add(number);writing=true;
+  try{await new Promise((resolve,reject)=>{try{write(bytes,error=>error?reject(error):resolve());}catch(error){reject(error);}});}finally{writing=false;}
+ }};
+}
+
+const RELEASE='hosted-copilot-react-h100-r6400-v4',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
 const MiB=1024*1024,hash=b=>createHash('sha256').update(b).digest('hex');
 const need=(ok,message='Mounted bootstrap refused')=>{if(!ok)throw new Error(message);};
@@ -241,7 +259,8 @@ async function child(directory,scratch){
  try{
   const importedWorker=await import(pathToFileURL(join(process.cwd(),options.prerequisites.module.workerPath)).href);imported=true;
   need(typeof importedWorker.runNativeMountedConformance==='function','Qualified native export absent');
-  const result=await importedWorker.runNativeMountedConformance(options);
+  const diagnostics=createRestoredHistoryDiagnosticPort((bytes,callback)=>process.stdout.write(bytes,callback));
+  const result=await importedWorker.runNativeMountedConformance(options,diagnostics);
   for(const caseNumber of [1,2])await writeJson(directory,'native-case-'+caseNumber+'.json',{caseNumber,cases:result.caseEvidence.filter(c=>c.caseNumber===caseNumber),snapshots:result.snapshots.filter(s=>s.caseNumber===caseNumber),qualification:false},2*MiB);
   const {snapshots,...summary}=result;await writeJson(directory,'native-child-result.json',{...summary,workerImport:'fulfilled',snapshotFiles:['native-case-1.json','native-case-2.json']},512*1024);
   console.log(JSON.stringify({status:result.status,resultPath,qualification:false}));if(result.status!=='complete')process.exitCode=1;
