@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V40
+`runNativeMountedConformance` worker export now prepare a fresh V42
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v6`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v7`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -656,9 +656,25 @@ validated scalars and actual attempted count, without text or arbitrary error
 details. An awaited write callback is separate from parent retained bytes and
 original EOF/writer-close; partial/missing diagnostics or publication failure do
 not supply successful case closure. All existing stdout/archive caps apply.
-Fresh native V6 must independently complete both original serial cases after
-qualification of same-source full STATIC V40. Content readiness and pure tests
+Fresh native V7 must independently complete both original serial cases after
+qualification of same-source full STATIC V42. Content readiness and pure tests
 establish no geometry, runtime conformance, FPS or ranking result.
+
+The separate experimental `hosted-copilot-react-tracker-json-a-v1` workflow requires
+independently qualified same-source STATIC V42 and successful ordinary-native V7
+original artifacts. It authenticates the native prerequisite archive as opaque
+bytes. Its five tracker roles are `tracker-a-profile.json`,
+`tracker-a-case-2-input.json`, `tracker-a-case-2-trace.json`,
+`tracker-a-case-2-transport.json`, and `tracker-a-result.json`. Raw JSON capture
+stays bounded to 4 MiB, 64 reads and 133 operations; a separate pure projection
+requires the complete raw file to fit 256 KiB. Child/parent exit code 2 denotes an
+originally closed incomplete report; required incompleteness keeps the outer
+runtime unsuccessful. Pilot inventory runs only after actual runtime success,
+and upload only after inventory success, so incomplete or early-failure pilot
+artifacts are not uploaded; original workflow logs remain diagnostic evidence.
+Timing, scenario, FPS, ratio and ranking claims remain unavailable. Dispatch is
+held until fresh immutable-source prerequisites and independent qualification
+are complete; pure checks do not establish hosted runtime performance.
 
 Native V4 retained two content-ready diagnostics but no case or child result files;
 those diagnostics do not establish completed cases or accepted geometry. The next

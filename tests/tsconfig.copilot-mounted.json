@@ -10,5 +10,11 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": false
   },
-  "include": ["copilotkit-mounted-conformance.test.ts"]
+  "include": [
+    "copilotkit-mounted-conformance.test.ts",
+    "copilotkit-mounted-tracker-a-trace.test.ts",
+    "copilotkit-mounted-tracker-a.test.ts",
+    "hosted-copilot-mounted-bootstrap.test.ts",
+    "support/hosted-copilot-mounted-policy.test.ts"
+  ]
 }

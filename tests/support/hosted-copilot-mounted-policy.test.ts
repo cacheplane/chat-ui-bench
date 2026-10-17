@@ -60,8 +60,8 @@ const required = ['package-lock.json', '.github/workflows/hosted-copilot-mounted
 const file = (path: string) => ({ path, bytes: 1, sha256: path === 'package-lock.json' ? lock : hash, regular: true, contained: true, symlink: false });
 const intent = () => ({ schemaVersion: 1, kind: 'pre-install-intent', purpose: 'hosted-copilot-mounted-default-react-only',
   context: { candidateSha: sha, checkoutSha: sha, githubSha: sha, workflowSha: sha, tagSha: sha, repository: 'cacheplane/chat-ui-bench',
-    releaseId: 'hosted-copilot-react-h100-r6400-v6', githubRef: 'refs/tags/hosted-copilot-react-h100-r6400-v6',
-    workflowRef: 'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@refs/tags/hosted-copilot-react-h100-r6400-v6',
+    releaseId: 'hosted-copilot-react-h100-r6400-v7', githubRef: 'refs/tags/hosted-copilot-react-h100-r6400-v7',
+    workflowRef: 'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@refs/tags/hosted-copilot-react-h100-r6400-v7',
     eventName: 'workflow_dispatch', actions: 'true', platform: 'linux', runnerOs: 'Linux', runnerMarker: 'ubuntu-24.04-hosted-copilot-mounted', attempt: '1' },
   source: { commitSha: sha, treeSha: 'c'.repeat(40), lockSha256: lock, files: required.map(file) },
   prerequisite: { originalRunId: '1', attempt: 1, sourceSha: 'd'.repeat(40), artifactId: '2', archiveSha256: hash,
@@ -103,13 +103,113 @@ const globalInput = () => ({ schemaVersion: 1, kind: 'global-final', cases: [cas
   stdio: [{ index: 1, kind: 'stdout', status: 'fulfilled', coverage: 'post-bind-only', seenBytes: 2 as number | null, retainedBytes: 2 as number | null }],
   parentCommand: { original: command(), stdout: stream(), stderr: stream(0) } });
 type Evaluation = { status: string; reason: string | null; facts: unknown; authority: unknown };
+const pilotRequired = ['.github/workflows/hosted-copilot-tracker-a.yml','apps/copilotkit/runtime/mounted-tracker-a.ts',
+  'apps/copilotkit/runtime/mounted-tracker-a-trace.ts','tests/copilotkit-mounted-tracker-a.test.ts','tests/copilotkit-mounted-tracker-a-trace.test.ts'];
+const pilotIntent = () => {
+  const v=intent();v.purpose='hosted-copilot-mounted-tracker-json-a-pilot-only';v.context.releaseId='hosted-copilot-react-tracker-json-a-v1';
+  v.context.githubRef='refs/tags/'+v.context.releaseId;v.context.workflowRef='cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-tracker-a.yml@'+v.context.githubRef;
+  v.context.runnerMarker='ubuntu-24.04-hosted-copilot-tracker-a';v.source.files.push(...pilotRequired.map(file));return v;
+};
+const pilotPost = () => ({...post(),intent:pilotIntent()});
+const pilotBundle = () => {
+  const v=pilotIntent(),m=moduleInput();m.runId=v.prerequisite.originalRunId;m.workerPath=`apps/copilotkit/.hosted-mounted/${m.runId}-1/worker.mjs`;m.emitted[0]!.path=m.workerPath;
+  return {intent:v,installed:pilotPost(),module:m,nativePrerequisite:{sourceSha:sha,sourceTreeSha:v.source.treeSha,originalRunId:'4',attempt:1,
+    workflowId:386692729,workflowPath:'.github/workflows/hosted-copilot-mounted.yml',releaseId:'hosted-copilot-react-h100-r6400-v7',artifactId:'5',
+    archiveSha256:hash,archiveBytes:1,qualifiedRootReceiptSha256:hash,qualifiedPeerReceiptSha256:hash,frontendSettingsSha256:hash,qualification:false}};
+};
+describe('fixed Tracker A supplied-data pilot gates',()=>{
+  const pilot=publicBinding.evaluateMountedTrackerAAdmissionPolicy,gate=publicBinding.evaluateMountedTrackerAPilotPrerequisites;
+  it('admits pilot pre/post and the joined gate with unchanged false authority',()=>{
+    expect(pilot(pilotIntent())).toMatchObject({status:'accepted',facts:{phase:'pre-install',sourceFiles:10,sourceBytes:10},authority:flags});
+    const result=gate(pilotBundle());expect(result).toEqual(pilot(pilotPost()));expect(result.status).toBe('accepted');
+    expect(result.authority).toEqual(flags);expect(Object.isFrozen(result.facts)).toBe(true);
+    expect(admission(intent()).status).toBe('accepted');expect(admission(post()).status).toBe('accepted');
+  });
+  it('refuses cross-mode intents in both phases',()=>{
+    for(const v of [intent(),post()])expect(pilot(v).status).toBe('invalid');
+    for(const v of [pilotIntent(),pilotPost()])expect(admission(v).status).toBe('invalid');
+  });
+  it.each(['purpose','releaseId','githubRef','workflowRef','runnerMarker','repository','eventName','actions','platform','runnerOs','attempt',
+    'candidateSha','checkoutSha','githubSha','workflowSha','tagSha','commitSha','treeSha','lockSha256','nodeVersion','npmVersion','telemetryDisabled','doNotTrack'])('refuses pilot identity/profile drift: %s',key=>{
+    const v=pilotIntent();const target=key==='purpose'?v:key in v.context?v.context:key in v.source?v.source:v.profile;
+    const replacement=['candidateSha','checkoutSha','githubSha','workflowSha','tagSha','commitSha'].includes(key)?'f'.repeat(40):key==='lockSha256'?'f'.repeat(64):'wrong';
+    Object.defineProperty(target,key,{value:replacement,enumerable:true,configurable:true,writable:true});
+    expect(pilot(v).status).toBe('invalid');const p=pilotPost();p.intent=v;expect(pilot(p).status).toBe('invalid');
+  });
+  it.each([...required,...pilotRequired])('requires authenticated source member %s',path=>{
+    const v=pilotIntent();v.source.files=v.source.files.filter(f=>f.path!==path);expect(pilot(v).status).toBe('invalid');
+  });
+  it.each(['intent','installed','module','nativePrerequisite'])('enforces each exact bundle key: %s',key=>{
+    const v=pilotBundle();Reflect.deleteProperty(v,key);expect(gate(v).status).toBe('invalid');
+    let reads=0;Object.defineProperty(v,key,{get(){reads++;throw Error();}});expect(gate(v).status).toBe('invalid');expect(reads).toBe(0);
+  });
+  it.each(Object.keys(pilotBundle().nativePrerequisite))('enforces native own-data field %s',key=>{
+    const v=pilotBundle();Reflect.deleteProperty(v.nativePrerequisite,key);expect(gate(v).status).toBe('invalid');
+    let reads=0;Object.defineProperty(v.nativePrerequisite,key,{get(){reads++;throw Error();}});expect(gate(v).status).toBe('invalid');expect(reads).toBe(0);
+  });
+  const nativeDrifts:readonly [string,unknown][]=[['sourceSha','f'.repeat(40)],['sourceTreeSha','f'.repeat(40)],['frontendSettingsSha256','f'.repeat(64)],
+    ['originalRunId','0'],['originalRunId','1'.repeat(21)],['originalRunId',1],['artifactId','01'],['artifactId','1'.repeat(21)],['artifactId',1],
+    ['attempt',2],['workflowId',386692730],['workflowId','386692729'],['workflowId',Number.MAX_SAFE_INTEGER+1],['workflowId',NaN],
+    ['workflowPath','.github/workflows/hosted-copilot-tracker-a.yml'],['releaseId','hosted-copilot-react-h100-r6400-v6'],['archiveBytes',0],
+    ['archiveBytes',33554433],['archiveBytes',1.5],['qualification',true],['qualification',0],
+    ...['sourceSha','sourceTreeSha','archiveSha256','qualifiedRootReceiptSha256','qualifiedPeerReceiptSha256','frontendSettingsSha256'].map(key=>[key,'B'.repeat(key.includes('Sha256')?64:40)] as [string,unknown])];
+  it.each(nativeDrifts.map(([key,value],index)=>({key,value,index})))('refuses native scalar or relationship drift $index: $key',({key,value})=>{
+    const v=pilotBundle();Object.defineProperty(v.nativePrerequisite,key,{value});expect(gate(v).status).toBe('invalid');
+  });
+  it('accepts boundary archive lengths and opaque independent native report assertions',()=>{
+    for(const bytes of [1,33554432]){const v=pilotBundle();v.nativePrerequisite.archiveBytes=bytes;v.nativePrerequisite.qualifiedRootReceiptSha256='c'.repeat(64);
+      v.nativePrerequisite.qualifiedPeerReceiptSha256='d'.repeat(64);expect(gate(v)).toMatchObject({status:'accepted',authority:flags});}
+  });
+  it('joins all installed intent fields rather than only source hashes',()=>{
+    const variants=[(v:ReturnType<typeof pilotBundle>)=>v.installed.intent.prerequisite.artifactId='6',
+      (v:ReturnType<typeof pilotBundle>)=>v.installed.intent.source.files[1]!.sha256='c'.repeat(64),
+      (v:ReturnType<typeof pilotBundle>)=>v.installed.intent.source.treeSha='f'.repeat(40),
+      (v:ReturnType<typeof pilotBundle>)=>v.installed.intent.source.files.reverse(),
+      (v:ReturnType<typeof pilotBundle>)=>v.module.sourceSha='f'.repeat(40),
+      (v:ReturnType<typeof pilotBundle>)=>{v.module.runId='7';v.module.workerPath='apps/copilotkit/.hosted-mounted/7-1/worker.mjs';v.module.emitted[0]!.path=v.module.workerPath;},
+      (v:ReturnType<typeof pilotBundle>)=>v.installed.installedProfile.sourceSha='f'.repeat(40),
+      (v:ReturnType<typeof pilotBundle>)=>v.installed.installedProfile.lockSha256='f'.repeat(64),
+      (v:ReturnType<typeof pilotBundle>)=>v.module.imports[0]!.specifier='node:module'];
+    for(const mutate of variants){const v=pilotBundle();mutate(v);expect(gate(v).status).toBe('invalid');}
+  });
+  it('preserves unavailable original-install results',()=>{
+    const v=pilotBundle();v.installed.originalInstall.closed=false;expect(gate(v)).toMatchObject({status:'unavailable',reason:'install-original-incomplete',authority:flags});
+  });
+  it('rejects extras, symbols, nonplain records and sparse populations without invoking accessors',()=>{
+    for(const member of ['outer','native'] as const)for(const kind of ['extra','symbol','prototype'] as const){const v=pilotBundle(),target=member==='outer'?v:v.nativePrerequisite;
+      if(kind==='extra')Object.defineProperty(target,'extra',{value:true});else if(kind==='symbol')Object.defineProperty(target,Symbol('extra'),{value:true});else Object.setPrototypeOf(target,{inherited:true});
+      expect(gate(v).status).toBe('invalid');}
+    const v=pilotBundle();delete v.module.imports[0];expect(gate(v).status).toBe('invalid');
+  });
+  it('caps populations before element access and rejects later native accessors without effects',()=>{
+    for(const member of ['intent','installed','module'] as const){const v=pilotBundle(),a=member==='intent'?v.intent.source.files:member==='installed'?v.installed.intent.source.files:v.module.imports;
+      a.length=member==='module'?65:129;let reads=0;Object.defineProperty(a,'0',{get(){reads++;throw Error();}});
+      expect(gate(v)).toMatchObject({status:'invalid',reason:'cardinality-cap'});expect(reads).toBe(0);}
+    const v=pilotBundle();v.intent.purpose='x'.repeat(129);let reads=0;Object.defineProperty(v.nativePrerequisite,'qualification',{get(){reads++;throw Error();}});
+    expect(gate(v)).toMatchObject({status:'invalid',reason:'invalid-shape'});expect(reads).toBe(0);
+  });
+  it('retains source file and aggregate byte boundaries in pilot admission and the full gate',()=>{
+    const v=pilotIntent();v.source.files.push(...Array.from({length:118},(_,i)=>file(`pilot-extra-${i}`)));
+    expect(pilot(v).status).toBe('accepted');v.source.files.push(file('pilot-overflow'));expect(pilot(v)).toMatchObject({status:'invalid',reason:'cardinality-cap'});
+    const b=pilotBundle();b.intent.source.files[0]!.bytes=33554423;b.installed.intent=structuredClone(b.intent);
+    expect(gate(b).status).toBe('accepted');b.intent.source.files[0]!.bytes++;b.installed.intent=structuredClone(b.intent);
+    expect(gate(b)).toMatchObject({status:'invalid',reason:'cardinality-cap'});
+  });
+  it('rejects unchanged module and install caps through the composed gate',()=>{
+    const variants=[(v:ReturnType<typeof pilotBundle>)=>v.module.resolutions.length=11,
+      (v:ReturnType<typeof pilotBundle>)=>v.installed.installedProfile.packages.length=20];
+    for(const mutate of variants){const v=pilotBundle();mutate(v);expect(gate(v)).toMatchObject({status:'invalid',reason:'cardinality-cap'});}
+    const v=pilotBundle();v.installed.originalInstall.stdoutBytes=v.installed.originalInstall.stdoutRetainedBytes=4194305;
+    expect(gate(v)).toMatchObject({status:'invalid',reason:'install-stream-overflow'});
+  });
+});
 const expectFailure = (result: Evaluation, reason: string, status = 'invalid') => {
   expect(result).toMatchObject({ status, reason, facts: null, authority: flags });
 };
 
 describe('bounded shape precedence across the four supplied-data policies', () => {
-  it('admits the fresh native V6 identity with the same supplied authority limits', () => {
-    const v=intent();expect(v.context.releaseId).toBe('hosted-copilot-react-h100-r6400-v6');
+  it('admits the fresh native V7 identity with the same supplied authority limits', () => {
+    const v=intent();expect(v.context.releaseId).toBe('hosted-copilot-react-h100-r6400-v7');
     expect(admission(v)).toMatchObject({status:'accepted',reason:null,facts:{phase:'pre-install',sourceFiles:5,sourceBytes:5},authority:flags});
     expect(admission(post())).toMatchObject({status:'accepted',reason:null,authority:flags});
   });

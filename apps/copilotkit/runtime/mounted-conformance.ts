@@ -150,3 +150,4 @@ export async function runMountedConformance(prerequisites:MountedPrerequisites,p
  finally{if(connected)try{await ports.closeClient();}catch{cleanupFailures.push('client-close');}}
  return result();
 }
+export {checkJourney};
