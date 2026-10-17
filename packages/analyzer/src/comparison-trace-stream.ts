@@ -1,5 +1,9 @@
 /** Private opt-in consumer. Legacy JsonAdmission and its default budgets are unchanged. */
 export const STREAMED_TRACE_POLICY = 'streamed-renderer-events-v1' as const;
+export const TRACKER_JSON_A_POLICY = 'streamed-tracker-json-a-v1' as const;
+type ScanProfile = typeof STREAMED_TRACE_POLICY | typeof TRACKER_JSON_A_POLICY;
+export interface TrackerNumberToken {slot: 'ts' | 'pid' | 'tid' | 'expected' | 'dropped_v3' | 'dropped_v4'; lexeme: string; startUtf8: number; endUtf8: number}
+export interface TrackerJsonRecord {eventIndex: number; startUtf8: number; endUtf8: number; rawJson: string; event: Record<string, unknown>; numberTokens: TrackerNumberToken[]}
 export interface ComparisonTraceLoadOptions {tracePolicy?: typeof STREAMED_TRACE_POLICY}
 export function selectComparisonTracePolicy(options: ComparisonTraceLoadOptions): typeof STREAMED_TRACE_POLICY | undefined {
   if (options === null || typeof options !== 'object' || Array.isArray(options)
@@ -18,7 +22,7 @@ export interface TraceScanTotals {
   maximumDepth: number; traceEventCount: number;
 }
 export interface TraceAdmissionStatistics {
-  policy: typeof STREAMED_TRACE_POLICY; scannerCompletion: 'not-started' | 'stopped' | 'eof-finished';
+  policy: ScanProfile; scannerCompletion: 'not-started' | 'stopped' | 'eof-finished';
   physicalClosure: 'verified' | 'unverified';
   completeTotals: TraceScanTotals | null;
   observedPrefix: {scannedUtf8Bytes: number; workUnits: number; traceEvents: number; maximumDepth: number; retainedBytes: number; retainedWork: number; retainedEvents: number} | null;
@@ -32,7 +36,7 @@ export class StreamedTraceFailure extends Error {
 export function isStreamedTraceFailure(value: unknown): value is StreamedTraceFailure {
   return (typeof value === 'object' && value !== null || typeof value === 'function') && streamedFailures.has(value);
 }
-type Frame = {kind: 'object' | 'array'; depth: number; state: 'key-or-end' | 'key' | 'colon' | 'value-or-end' | 'value' | 'waiting' | 'comma-or-end'; keys: Set<string>; keyBytes: number; key: string | null; traceArray: boolean};
+type Frame = {kind: 'object' | 'array'; depth: number; state: 'key-or-end' | 'key' | 'colon' | 'value-or-end' | 'value' | 'waiting' | 'comma-or-end'; keys: Set<string>; keyBytes: number; key: string | null; traceArray: boolean; trackerKind: 'event' | 'args' | 'terminalArgs' | 'terminalData' | null};
 const lifecycleNames = new Set(['FrameCommittedInBrowser', 'CommitLoad', 'navigationStart', 'FrameDeletedInBrowser', 'ProcessReadyInBrowser', 'RenderFrameHostImpl::DidCommitSameDocumentNavigation']);
 const selected = (name: string) => name === 'TracingStartedInBrowser' || name === 'thread_name'
   || name === 'AnimationFrame' || name === 'AnimationFrame::Presentation' || lifecycleNames.has(name) || name.startsWith('bench:comparison:');
@@ -40,6 +44,9 @@ const whitespace = (c: string) => c === ' ' || c === '\n' || c === '\r' || c ===
 const width = (c: string) => {const n = c.codePointAt(0)!; return n <= 127 ? 1 : n <= 2047 ? 2 : n <= 65535 ? 3 : 4;};
 
 export class StreamedTraceAdmission {
+  constructor(private readonly profile: ScanProfile = STREAMED_TRACE_POLICY) {
+    if (profile !== STREAMED_TRACE_POLICY && profile !== TRACKER_JSON_A_POLICY) throw new Error('Unknown streamed trace profile');
+  }
   private decoder = new TextDecoder('utf8', {fatal: true, ignoreBOM: true});
   private frames: Frame[] = []; private token: 'key' | 'string' | 'number' | 'literal' | null = null;
   private escaped = false; private unicode = 0; private keyText = ''; private keyRawBytes = 0;
@@ -50,6 +57,8 @@ export class StreamedTraceAdmission {
   private staging: string | null = null; private stagedBytes = 0; private eventWorkStart = 0;
   private retainedBytes = 0; private retainedWork = 0; private retainedCount = 0;
   private records: Record<string, unknown>[] = [];
+  private tracker: TrackerJsonRecord[] = []; private eventStart = 0; private eventExtraWork = 0;
+  private eventNumbers: TrackerNumberToken[] = []; private numberStart = 0; private numberSlot: TrackerNumberToken['slot'] | null = null;
   private completion: TraceAdmissionStatistics['scannerCompletion'] = 'not-started';
   private totals: TraceScanTotals | null = null; private failure: TraceScanFailure | null = null;
   private crossing: {status: 'crossed'; observed: number; utf8Byte: number} | null = null;
@@ -78,14 +87,15 @@ export class StreamedTraceAdmission {
       if (value === null || typeof value !== 'object' || Array.isArray(value)) this.fail('Malformed generic trace event object');
       const event = value as Record<string, unknown>;
       if (typeof event['name'] !== 'string' || !event['name'].trim() || typeof event['ph'] !== 'string' || !event['ph'].trim()) this.fail('Malformed generic trace event name/ph');
-      if (selected(event['name'])) {
-        const work = this.work - this.eventWorkStart;
+      if (selected(event['name']) || this.profile === TRACKER_JSON_A_POLICY && (event['name'].startsWith('FrameSequenceTracker') || ['Frame', 'Frame ', 'Frame   '].includes(event['name']))) {
+        const work = this.work - this.eventWorkStart + (this.profile === TRACKER_JSON_A_POLICY ? this.eventExtraWork + 1 : 0);
         this.limit('selectedEventBytes', this.retainedBytes + this.stagedBytes, 16 * 1024 * 1024);
         this.limit('selectedWorkUnits', this.retainedWork + work, 2097152);
         this.limit('selectedEvents', this.retainedCount + 1, 65536);
         this.retainedBytes += this.stagedBytes; this.retainedWork += work; this.retainedCount++; this.records.push(event);
+        if (this.profile === TRACKER_JSON_A_POLICY) this.tracker.push({eventIndex: this.events - 1, startUtf8: this.eventStart, endUtf8: this.offset, rawJson: this.staging, event, numberTokens: this.eventNumbers});
       }
-      this.staging = null; this.stagedBytes = 0;
+      this.staging = null; this.stagedBytes = 0; this.eventNumbers = []; this.eventExtraWork = 0;
     }
   }
   private beginValue(c: string) {
@@ -96,20 +106,35 @@ export class StreamedTraceAdmission {
       this.events++; this.limit('traceEvents', this.events, 1048576);
       if (c !== '{') this.fail('Malformed generic trace event object');
       this.staging = c; this.stagedBytes = width(c); this.eventWorkStart = this.work;
+      this.eventStart = this.offset - width(c); this.eventNumbers = []; this.eventExtraWork = 0;
     }
     const traceArray = parent?.kind === 'object' && parent.depth === 0 && parent.key === 'traceEvents';
     if (traceArray) {if (c !== '[') this.fail('Top-level traceEvents must be an array'); this.traceSeen = true;}
     if (parent) parent.state = 'waiting';
     if (c === '{' || c === '[') {
-      this.charge(2); this.frames.push({kind: c === '{' ? 'object' : 'array', depth, state: c === '{' ? 'key-or-end' : 'value-or-end', keys: new Set(), keyBytes: 0, key: null, traceArray: !!traceArray});
+      const trackerKind: Frame['trackerKind'] = c !== '{' || this.profile !== TRACKER_JSON_A_POLICY ? null : parent?.traceArray ? 'event'
+        : parent?.kind !== 'object' ? null : parent.trackerKind === 'event' && parent.key === 'args' ? 'args'
+        : parent.trackerKind === 'args' && parent.key === 'args' ? 'terminalArgs'
+        : parent.trackerKind === 'terminalArgs' && parent.key === 'data' ? 'terminalData' : null;
+      this.charge(2); this.frames.push({kind: c === '{' ? 'object' : 'array', depth, state: c === '{' ? 'key-or-end' : 'value-or-end', keys: new Set(), keyBytes: 0, key: null, traceArray: !!traceArray, trackerKind});
     } else if (c === '"') {this.charge(2); this.token = 'string'; this.escaped = false; this.unicode = 0;}
-    else if (c === '-' || /^[0-9]$/.test(c)) {this.charge(2); this.token = 'number'; this.number = c;}
+    else if (c === '-' || /^[0-9]$/.test(c)) {
+      this.charge(2); this.token = 'number'; this.number = c; this.numberStart = this.offset - width(c);
+      const key = parent?.key;
+      this.numberSlot = parent?.trackerKind === 'event' && (key === 'ts' || key === 'pid' || key === 'tid') ? key
+        : parent?.trackerKind === 'terminalData' && (key === 'expected' || key === 'dropped_v3' || key === 'dropped_v4') ? key : null;
+    }
     else if (c === 't' || c === 'f' || c === 'n') {this.charge(c === 'n' ? 1 : 2); this.token = 'literal'; this.literal = c === 't' ? 'true' : c === 'f' ? 'false' : 'null'; this.literalIndex = 1;}
     else this.fail('Invalid JSON value');
   }
-  private endNumber() {
+  private endNumber(endUtf8 = this.offset) {
     if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/.test(this.number)) this.fail('Invalid JSON number');
     if (!Number.isFinite(Number(this.number))) this.fail('Nonfinite JSON number');
+    if (this.numberSlot !== null) {
+      this.limit('selectedWorkUnits', this.retainedWork + this.eventExtraWork + 1, 2097152); this.eventExtraWork++;
+      this.eventNumbers.push({slot: this.numberSlot, lexeme: this.number, startUtf8: this.numberStart, endUtf8});
+    }
+    this.numberSlot = null;
     this.number = ''; this.token = null; this.finishValue();
   }
   private character(c: string) {
@@ -133,7 +158,7 @@ export class StreamedTraceAdmission {
     }
     if (this.token === 'number') {
       if (/^[0-9eE+.-]$/.test(c)) {this.limit('numberTokenBytes', this.number.length + 1, 256); this.number += c; return;}
-      this.endNumber(); this.character(c); return;
+      this.endNumber(this.offset - width(c)); this.character(c); return;
     }
     if (this.token === 'literal') {if (c !== this.literal[this.literalIndex]) this.fail('Invalid JSON literal'); if (++this.literalIndex === this.literal.length) {this.token = null; this.finishValue();} return;}
     if (whitespace(c)) return;
@@ -183,13 +208,16 @@ export class StreamedTraceAdmission {
     this.totals = {byteLength: this.offset, analyzerWorkUnits: this.work, capturePrimitiveTokens: this.tokens, maximumDepth: this.depth, traceEventCount: this.events}; this.completion = 'eof-finished';
   }
   statistics(physicalClosure: TraceAdmissionStatistics['physicalClosure'] = 'unverified'): TraceAdmissionStatistics {
-    return {policy: STREAMED_TRACE_POLICY, scannerCompletion: this.completion === 'not-started' && this.fed ? 'stopped' : this.completion, physicalClosure, completeTotals: this.totals ? {...this.totals} : null,
+    return {policy: this.profile, scannerCompletion: this.completion === 'not-started' && this.fed ? 'stopped' : this.completion, physicalClosure, completeTotals: this.totals ? {...this.totals} : null,
       observedPrefix: this.fed ? {scannedUtf8Bytes: this.offset, workUnits: this.work, traceEvents: this.events, maximumDepth: this.depth, retainedBytes: this.retainedBytes, retainedWork: this.retainedWork, retainedEvents: this.retainedCount} : null,
       legacyWorkThreshold: this.crossing ? {...this.crossing} : {status: this.completion === 'eof-finished' ? 'not-crossed-complete' : 'unknown-not-observed'}, firstFailure: this.failure ? {...this.failure} : null};
   }
   trace() {if (this.disposed || this.completion !== 'eof-finished') throw new Error('Streamed trace syntax not admitted'); return {traceEvents: this.records};}
+  trackerRecords() {this.requireTracker(); return this.tracker;}
+  private requireTracker() {if (this.disposed || this.completion !== 'eof-finished' || this.profile !== TRACKER_JSON_A_POLICY) throw new Error('Tracker trace syntax not admitted');}
+  chargeTrackerProjectionVisit() {this.requireTracker(); this.limit('selectedWorkUnits', this.retainedWork + 1, 2097152); this.retainedWork++;}
   liveState() {return {frames: this.frames.length, keys: this.liveKeys, keyBytes: this.liveKeyBytes, stagedBytes: this.stagedBytes, retainedEvents: this.records.length};}
-  dispose() {this.disposed = true; this.frames.length = 0; this.records.length = 0; this.staging = null; this.stagedBytes = 0; this.liveKeys = 0; this.liveKeyBytes = 0; this.keyText = ''; this.number = '';}
+  dispose() {this.disposed = true; this.frames.length = 0; this.records.length = 0; this.tracker.length = 0; this.eventNumbers.length = 0; this.staging = null; this.stagedBytes = 0; this.liveKeys = 0; this.liveKeyBytes = 0; this.keyText = ''; this.number = ''; this.numberSlot = null;}
 }
 export function notStartedTraceAdmission(): TraceAdmissionStatistics {
   return {policy: STREAMED_TRACE_POLICY, scannerCompletion: 'not-started', physicalClosure: 'unverified', completeTotals: null,
