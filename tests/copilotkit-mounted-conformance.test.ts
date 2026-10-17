@@ -1,4 +1,4 @@
-import {describe,it,expect} from 'vitest';
+import {describe,it,expect,vi} from 'vitest';
 import {runMountedConformance,createMountedSnapshotReader,type MountedPrerequisites,type MountedConformancePorts,type MountedCaseOwner} from '../apps/copilotkit/runtime/mounted-conformance.ts';
 import {MOUNTED_PACKAGE_PINS} from './support/hosted-copilot-mounted-policy.ts';
 import {evaluateMountedGeometry} from '../apps/copilotkit/src/geometry-policy.ts';
@@ -7,6 +7,35 @@ import type {CaseRecord,CaseJourney} from './support/hosted-copilot-mounted-poli
 import * as ownership from '../apps/copilotkit/runtime/ownership.ts';
 import * as readiness from '../apps/copilotkit/runtime/mounted-conformance.ts';
 import type {RestoredHistoryContentScalar,RestoredHistoryReadinessDiagnostic} from '../apps/copilotkit/src/geometry.ts';
+
+describe('runtime disposal original observation',()=>{
+ const turn=()=>new Promise<void>(resolve=>setImmediate(resolve));
+ function expired(){const clock=vi.spyOn(performance,'now').mockReturnValueOnce(0).mockReturnValue(10001);return {budget:new ownership.SettlementBudget(),restore:()=>clock.mockRestore()};}
+ it('retains synchronous deadline refusal and observes the later original rejection',async()=>{
+  let reject!:(reason:unknown)=>void;const original=new Promise<void>((_resolve,no)=>{reject=no;});const f=expired();
+  try{expect(()=>f.budget.wait(original,'original mounted disposal')).toThrow('Original cleanup deadline exceeded; ownership retained');}finally{f.restore();}
+  await turn();reject(Error('Late runtime disposal original rejection'));await turn();await turn();
+ });
+ it.each([null,undefined,false,Object.freeze({original:true})])('preserves a normal original rejection by identity %j',async reason=>{
+  await expect(new ownership.SettlementBudget().wait(Promise.reject(reason),'original')).rejects.toBe(reason);
+ });
+ it('preserves fulfillment value and refuses an already fulfilled original after expiry',async()=>{
+  const value=Object.freeze({value:true});expect(await new ownership.SettlementBudget().wait(Promise.resolve(value),'original')).toBe(value);const f=expired();
+  try{expect(()=>f.budget.wait(Promise.resolve(value),'original')).toThrow('Original cleanup deadline exceeded');}finally{f.restore();}
+ });
+ it('keeps an original pending after deadline until its independent outcome',async()=>{
+  let reject!:(reason:unknown)=>void,settled=false;const original=new Promise<void>((_resolve,no)=>{reject=no;});const reason=Object.freeze({late:true});
+  const own=original.then(()=>{settled=true;},error=>{settled=true;expect(error).toBe(reason);});const f=expired();
+  try{expect(()=>f.budget.wait(original,'original')).toThrow('Original cleanup deadline exceeded');}finally{f.restore();}
+  expect(settled).toBe(false);reject(reason);await own;expect(settled).toBe(true);
+ });
+ it('observes the late rejection after a positive-budget timeout without an independent catch',async()=>{
+  let reject!:(reason:unknown)=>void;const original=new Promise<void>((_resolve,no)=>{reject=no;});
+  const clock=vi.spyOn(performance,'now').mockReturnValueOnce(0).mockReturnValue(9999);const budget=new ownership.SettlementBudget();let waiting:Promise<void>;
+  try{waiting=budget.wait(original,'original');}finally{clock.mockRestore();}
+  await expect(waiting!).rejects.toThrow('original settlement deadline exceeded');reject(Error('Late original after runtime race'));await turn();await turn();
+ });
+});
 
 describe('bounded original history readiness preflight',()=>{
  const history=[{id:'history-0',role:'assistant' as const}],context={caseNumber:1 as const,journey:'follow' as const,threadId:'native-thread-1',history};
@@ -30,7 +59,7 @@ describe('bounded original history readiness preflight',()=>{
 
 const sha='a'.repeat(40),hash='b'.repeat(64),lock='c9c4138247c23c593ceb5bd9f5275b59962aad0f017bcbc33dc78bcec3545a56';
 function prerequisites():MountedPrerequisites {
- const intent:MountedPrerequisites['intent']={schemaVersion:1,kind:'pre-install-intent',purpose:'hosted-copilot-mounted-default-react-only',context:{candidateSha:sha,checkoutSha:sha,githubSha:sha,workflowSha:sha,tagSha:sha,repository:'cacheplane/chat-ui-bench',releaseId:'hosted-copilot-react-h100-r6400-v4',githubRef:'refs/tags/hosted-copilot-react-h100-r6400-v4',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@refs/tags/hosted-copilot-react-h100-r6400-v4',eventName:'workflow_dispatch',actions:'true',platform:'linux',runnerOs:'Linux',runnerMarker:'ubuntu-24.04-hosted-copilot-mounted',attempt:'1'},source:{commitSha:sha,treeSha:sha,lockSha256:lock,files:['package-lock.json','.github/workflows/hosted-copilot-mounted.yml','tools/hosted-copilot-mounted-bootstrap.mjs','apps/copilotkit/hosted-native-entry.ts','apps/copilotkit/src/geometry-policy.ts'].map(path=>({path,bytes:1,sha256:path==='package-lock.json'?lock:hash,regular:true,contained:true,symlink:false}))},prerequisite:{originalRunId:'3',attempt:1,sourceSha:sha,artifactId:'4',archiveSha256:hash,qualifiedRootReceiptSha256:hash,qualifiedPeerReceiptSha256:hash,frontendSettingsSha256:hash},profile:{nodeVersion:'v24.20.0',npmVersion:'11.19.0',telemetryDisabled:'true',doNotTrack:'1'}};
+ const intent:MountedPrerequisites['intent']={schemaVersion:1,kind:'pre-install-intent',purpose:'hosted-copilot-mounted-default-react-only',context:{candidateSha:sha,checkoutSha:sha,githubSha:sha,workflowSha:sha,tagSha:sha,repository:'cacheplane/chat-ui-bench',releaseId:'hosted-copilot-react-h100-r6400-v5',githubRef:'refs/tags/hosted-copilot-react-h100-r6400-v5',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@refs/tags/hosted-copilot-react-h100-r6400-v5',eventName:'workflow_dispatch',actions:'true',platform:'linux',runnerOs:'Linux',runnerMarker:'ubuntu-24.04-hosted-copilot-mounted',attempt:'1'},source:{commitSha:sha,treeSha:sha,lockSha256:lock,files:['package-lock.json','.github/workflows/hosted-copilot-mounted.yml','tools/hosted-copilot-mounted-bootstrap.mjs','apps/copilotkit/hosted-native-entry.ts','apps/copilotkit/src/geometry-policy.ts'].map(path=>({path,bytes:1,sha256:path==='package-lock.json'?lock:hash,regular:true,contained:true,symlink:false}))},prerequisite:{originalRunId:'3',attempt:1,sourceSha:sha,artifactId:'4',archiveSha256:hash,qualifiedRootReceiptSha256:hash,qualifiedPeerReceiptSha256:hash,frontendSettingsSha256:hash},profile:{nodeVersion:'v24.20.0',npmVersion:'11.19.0',telemetryDisabled:'true',doNotTrack:'1'}};
  return {intent,installed:{schemaVersion:1,kind:'post-install-admission',intent,originalInstall:{exitCode:0,signal:null,stdoutBytes:0,stderrBytes:0,stdoutRetainedBytes:0,stderrRetainedBytes:0,closed:true,streamsComplete:true},installedProfile:{sourceSha:sha,lockSha256:lock,originalInstallReceiptSha256:hash,hiddenLockReceiptSha256:hash,checkedInstalledRecords:19,packages:Object.entries(MOUNTED_PACKAGE_PINS).map(([path,pin])=>({path,...pin,manifestSha256:hash,regular:true,contained:true,symlink:false}))}},module:{schemaVersion:1,sourceSha:sha,runId:'3',workerPath:'apps/copilotkit/.hosted-mounted/3-1/worker.mjs',emitted:[{path:'apps/copilotkit/.hosted-mounted/3-1/worker.mjs',kind:'chunk',format:'es',entry:true,bytes:1,sha256:hash}],imports:[{specifier:'node:http',kind:'static',resolutionIndex:null}],resolutions:[],executedCopySha256:hash}};
 }
 const labels=['seedReaderEOF','coldReaderEOF','mountedACK','publicRun','successfulTerminal','completionACK','bridge','producerFinish','producerReaderEOF','nativeOriginClose','producerOriginClose','remoteCloseAdmission','hostDispose','rootUnmount','pageClose','contextClose','storeClear','publicStoreEmpty','caseDomainRelease'];

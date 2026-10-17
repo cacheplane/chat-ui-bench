@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V36
+`runNativeMountedConformance` worker export now prepare a fresh V38
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v4`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v5`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -656,9 +656,16 @@ validated scalars and actual attempted count, without text or arbitrary error
 details. An awaited write callback is separate from parent retained bytes and
 original EOF/writer-close; partial/missing diagnostics or publication failure do
 not supply successful case closure. All existing stdout/archive caps apply.
-Fresh native V4 must independently complete both original serial cases after
-qualification of same-source full STATIC V36. Content readiness and pure tests
+Fresh native V5 must independently complete both original serial cases after
+qualification of same-source full STATIC V38. Content readiness and pure tests
 establish no geometry, runtime conformance, FPS or ranking result.
+
+Native V4 retained two content-ready diagnostics but no case or child result files;
+those diagnostics do not establish completed cases or accepted geometry. The next
+source observes already-started disposal promises even when their existing deadline
+has expired. It still refuses at the same deadline and never marks settlement or
+releases ownership. The original V4 budget state and bridge cleanup reason remain
+unretained, so this SOURCE fix does not establish that cause or successful recovery.
 
 `frontendSettingsSha256` is SHA256 of the UTF8 bytes of
 `JSON.stringify([['source', candidateSha], ['apps/copilotkit/vite.config.ts', configSha], ['tests/support/hosted-copilot-build-plugin.ts', helperSha], ['package-lock.json', lockSha]])`,
