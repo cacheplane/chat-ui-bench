@@ -20,7 +20,7 @@ export interface GeometryPorts {
   now(): number;
   viewport(): GeometryRect;
 }
-export type GeometryFailure = 'disposed' | 'dom-unavailable' | 'selector' | 'work-cap' | 'geometry-cap' | 'unsupported-style' | 'heterogeneous-clips' | 'policy' | 'identity';
+export type GeometryFailure = 'disposed' | 'dom-unavailable' | 'selector' | 'work-cap' | 'geometry-cap' | 'unsupported-style' | 'heterogeneous-clips' | 'policy' | 'identity' | 'policy-unavailable-viewport' | 'policy-empty-text' | 'policy-text-mismatch' | 'policy-no-positive-text-rects' | 'policy-host-bounds' | 'policy-scroll-scalars';
 export type GeometrySnapshot = Readonly<{status:'available';frame:MountedGeometryInput;evaluation:GeometryEvaluation;visibleMessages:readonly VisibleMessage[];scroll:Readonly<{scrollTop:number;scrollHeight:number;clientHeight:number}>}> | Readonly<{status:'unavailable'|'invalid';reason:GeometryFailure}>;
 export type GeometryContext = Pick<CaseContext,'history'|'response'|'ids'>;
 export interface GeometryLocators { scroller:string; messageHost(id:string):string; messageContent(id:string):string }
@@ -116,20 +116,20 @@ export function createGeometryCollector(context:GeometryContext,locators:Geometr
           expectedHistory:expectedHistory.map(m=>({...m})),expectedResponse:{...expectedResponse},responseProgress:{...progress},
           viewport:clientBox(sb),nativeViewport:copyRect(p.viewport()),rows};
         const evaluation=evaluateMountedGeometry(frame);
-        if(evaluation.status!=='evaluated')return {status:evaluation.status==='invalid'?'invalid':'unavailable',reason:'policy'};
+        if(evaluation.status!=='evaluated')return {status:evaluation.status==='invalid'?'invalid':'unavailable',reason:evaluation.status==='invalid'?'policy':'policy-unavailable-viewport'};
         const visibleMessages:VisibleMessage[]=[];
         for(let i=0;i<evaluation.rows.length;i++){
           const r=evaluation.rows[i]!;
           if(r.presence==='unmounted'||(r.presence==='mounted'&&r.reason==='fully-clipped'))continue;
-          if(r.geometryEligibility!=='eligible')return {status:'unavailable',reason:'policy'};
+          if(r.geometryEligibility!=='eligible')return {status:'unavailable',reason:r.reason==='empty-text'?'policy-empty-text':r.reason==='text-mismatch'?'policy-text-mismatch':r.reason==='no-positive-text-rects'?'policy-no-positive-text-rects':'policy'};
           const b=bounds.get(r.id)!;
           if(![b.x,b.y,b.width,b.height].every(Number.isFinite)||Math.abs(b.x)>L.coordinate||Math.abs(b.y)>L.coordinate||
-            b.width<=0||b.height<=0||b.width>L.coordinate||b.height>L.coordinate||!Number.isFinite(b.x+b.width)||!Number.isFinite(b.y+b.height))deny('policy');
+            b.width<=0||b.height<=0||b.width>L.coordinate||b.height>L.coordinate||!Number.isFinite(b.x+b.width)||!Number.isFinite(b.y+b.height))deny('policy-host-bounds');
           visibleMessages.push({id:r.id,text:rows[i]!.observedText,topCssPx:b.y,bottomCssPx:b.y+b.height});
         }
         // Stable sort retains canonical ordering for ties.
         visibleMessages.sort((a,b)=>a.topCssPx-b.topCssPx);
-        if(!Number.isFinite(sb.scrollTop)||!Number.isFinite(sb.scrollHeight)||sb.scrollHeight<0||!Number.isFinite(sb.clientHeight)||sb.clientHeight<0)deny('policy');
+        if(!Number.isFinite(sb.scrollTop)||!Number.isFinite(sb.scrollHeight)||sb.scrollHeight<0||!Number.isFinite(sb.clientHeight)||sb.clientHeight<0)deny('policy-scroll-scalars');
         return {status:'available',frame,evaluation,visibleMessages,scroll:{scrollTop:sb.scrollTop,scrollHeight:sb.scrollHeight,clientHeight:sb.clientHeight}};
       }catch(error){return {status:'unavailable',reason:error instanceof CollectionFailure?error.reason:'dom-unavailable'};}
     }
