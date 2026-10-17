@@ -31,7 +31,7 @@ export function createRestoredHistoryDiagnosticPort(write){
  }};
 }
 
-const RELEASE='hosted-copilot-react-h100-r6400-v7',REPOSITORY='cacheplane/chat-ui-bench';
+const RELEASE='hosted-copilot-react-h100-r6400-v8',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
 const MiB=1024*1024,hash=b=>createHash('sha256').update(b).digest('hex');
 const need=(ok,message='Mounted bootstrap refused')=>{if(!ok)throw new Error(message);};
@@ -39,8 +39,8 @@ const id=v=>typeof v==='string'&&/^[1-9][0-9]{0,19}$/.test(v);
 const digest=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const boundedError=e=>{try{return e instanceof Error?e.message.slice(0,512):'Original operation failed';}catch{return 'Original operation failed';}};
-const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v1',PILOT_MODE='tracker-json-a-pilot-v1';
-const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v7';
+const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v2',PILOT_MODE='tracker-json-a-pilot-v1';
+const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v8';
 let selectedBootstrapMode=null,pilotPhase=null,pilotKnown=null;
 const contextFields=['candidateSha','checkoutSha','githubSha','workflowSha','tagSha','repository','releaseId','githubRef','workflowRef','eventName','actions','platform','runnerOs','runnerMarker','attempt'];
 function ownData(value,keys){
@@ -134,7 +134,7 @@ export function validateOrdinaryNativePrerequisiteProvider(value,run,artifact){
  const r=k=>providerField(run,k),a=k=>providerField(artifact,k),workflow=a('workflow_run');
  const runId=r('id'),artifactId=a('id'),workflowRunId=providerField(workflow,'id');
  need([runId,artifactId,workflowRunId,r('workflow_id')].every(n=>Number.isSafeInteger(n)&&n>0),'Provider numeric identity precision unavailable');
- need(String(runId)===expected.originalRunId&&r('run_attempt')===1&&r('head_sha')===expected.sourceSha&&r('event')==='workflow_dispatch'&&r('workflow_id')===386692729&&r('name')==='Hosted Copilot native conformance'&&r('path')==='.github/workflows/hosted-copilot-mounted.yml'&&r('head_branch')===nativePrerequisiteRelease&&r('display_title')===nativePrerequisiteRelease&&r('status')==='completed'&&r('conclusion')==='success'&&providerField(r('repository'),'full_name')===REPOSITORY,'Original ordinary native run differs');
+ need(String(runId)===expected.originalRunId&&r('run_attempt')===1&&r('head_sha')===expected.sourceSha&&r('event')==='workflow_dispatch'&&r('workflow_id')===386692729&&r('name')===nativePrerequisiteRelease&&r('path')==='.github/workflows/hosted-copilot-mounted.yml'&&r('head_branch')===nativePrerequisiteRelease&&r('display_title')===nativePrerequisiteRelease&&r('status')==='completed'&&r('conclusion')==='success'&&providerField(r('repository'),'full_name')===REPOSITORY,'Original ordinary native run differs');
  const size=a('size_in_bytes');need(String(artifactId)===expected.artifactId&&a('name')==='copilot-mounted-'+expected.originalRunId+'-1'&&a('expired')===false&&Number.isSafeInteger(size)&&size>0&&size<=33554432&&a('digest')==='sha256:'+expected.archiveSha256&&String(workflowRunId)===expected.originalRunId&&providerField(workflow,'head_sha')===expected.sourceSha,'Original ordinary native artifact differs');
  return {sourceSha:expected.sourceSha,qualification:false};
 }

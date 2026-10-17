@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V42
+`runNativeMountedConformance` worker export now prepare a fresh V44
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v7`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v8`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -656,12 +656,12 @@ validated scalars and actual attempted count, without text or arbitrary error
 details. An awaited write callback is separate from parent retained bytes and
 original EOF/writer-close; partial/missing diagnostics or publication failure do
 not supply successful case closure. All existing stdout/archive caps apply.
-Fresh native V7 must independently complete both original serial cases after
-qualification of same-source full STATIC V42. Content readiness and pure tests
+Fresh native V8 must independently complete both original serial cases after
+qualification of same-source full STATIC V44. Content readiness and pure tests
 establish no geometry, runtime conformance, FPS or ranking result.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v1` workflow requires
-independently qualified same-source STATIC V42 and successful ordinary-native V7
+The separate experimental `hosted-copilot-react-tracker-json-a-v2` workflow requires
+independently qualified same-source STATIC V44 and successful ordinary-native V8
 original artifacts. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
 `tracker-a-case-2-input.json`, `tracker-a-case-2-trace.json`,
