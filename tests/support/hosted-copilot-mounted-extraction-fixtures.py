@@ -14,7 +14,7 @@ def run(name,items,valid=False,corrupt=False):
     i=zipfile.ZipInfo(path);i.create_system=3;i.external_attr=mode<<16;z.writestr(i,data)
  if corrupt:
   b=bytearray(archive.read_bytes());p=b.index(b'PK\x01\x02');b[p+16:p+20]=b'\x00'*4;archive.write_bytes(b)
- p=subprocess.run(['/usr/bin/python3','-I','-S','-B','-c',body,str(archive),str(destination)],capture_output=True,timeout=10)
+ p=subprocess.run([sys.executable,'-I','-S','-B','-c',body,str(archive),str(destination)],capture_output=True,timeout=10)
  good=p.returncode==0 if valid else p.returncode!=0 and (destination.exists() if corrupt else not destination.exists())
  if valid and p.returncode==0:
   report=json.loads(p.stdout);good=good and report['bytes']==sum(len(data) for _,data,mode in items if stat.S_IFMT(mode)==stat.S_IFREG)
