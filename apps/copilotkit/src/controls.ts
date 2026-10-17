@@ -1,4 +1,19 @@
 // This module is inert: it imports no SDK, React, producer or server code.
+/** Original frontend disposal deadline; never establishes owner settlement. */
+export async function waitForFrontendDisposal<T>(operation:Promise<T>,deadline:number):Promise<T> {
+  const remaining = deadline - performance.now();
+  if (remaining <= 0) {
+    // The original already started; observation is not owner settlement.
+    void operation.then(()=>{},()=>{});
+    throw new Error('Frontend disposal deadline exceeded; original owner retained');
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([operation, new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => { reject(new Error('Frontend disposal deadline exceeded; original owner retained')); }, remaining);
+    })]);
+  } finally { if (timer !== undefined) clearTimeout(timer); }
+}
 export interface HistoryMessage { readonly id: string; readonly role: 'user' | 'assistant'; readonly content: string }
 export interface CaseIds { readonly threadId: string; readonly seedRunId: string; readonly continuationRunId: string; readonly responseId: string }
 export interface RunRequest { readonly threadId: string; readonly runId: string; readonly messages: unknown }

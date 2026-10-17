@@ -60,8 +60,8 @@ const required = ['package-lock.json', '.github/workflows/hosted-copilot-mounted
 const file = (path: string) => ({ path, bytes: 1, sha256: path === 'package-lock.json' ? lock : hash, regular: true, contained: true, symlink: false });
 const intent = () => ({ schemaVersion: 1, kind: 'pre-install-intent', purpose: 'hosted-copilot-mounted-default-react-only',
   context: { candidateSha: sha, checkoutSha: sha, githubSha: sha, workflowSha: sha, tagSha: sha, repository: 'cacheplane/chat-ui-bench',
-    releaseId: 'hosted-copilot-react-h100-r6400-v4', githubRef: 'refs/tags/hosted-copilot-react-h100-r6400-v4',
-    workflowRef: 'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@refs/tags/hosted-copilot-react-h100-r6400-v4',
+    releaseId: 'hosted-copilot-react-h100-r6400-v5', githubRef: 'refs/tags/hosted-copilot-react-h100-r6400-v5',
+    workflowRef: 'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@refs/tags/hosted-copilot-react-h100-r6400-v5',
     eventName: 'workflow_dispatch', actions: 'true', platform: 'linux', runnerOs: 'Linux', runnerMarker: 'ubuntu-24.04-hosted-copilot-mounted', attempt: '1' },
   source: { commitSha: sha, treeSha: 'c'.repeat(40), lockSha256: lock, files: required.map(file) },
   prerequisite: { originalRunId: '1', attempt: 1, sourceSha: 'd'.repeat(40), artifactId: '2', archiveSha256: hash,
@@ -108,12 +108,12 @@ const expectFailure = (result: Evaluation, reason: string, status = 'invalid') =
 };
 
 describe('bounded shape precedence across the four supplied-data policies', () => {
-  it('admits the fresh native V4 identity with the same supplied authority limits', () => {
-    const v=intent();expect(v.context.releaseId).toBe('hosted-copilot-react-h100-r6400-v4');
+  it('admits the fresh native V5 identity with the same supplied authority limits', () => {
+    const v=intent();expect(v.context.releaseId).toBe('hosted-copilot-react-h100-r6400-v5');
     expect(admission(v)).toMatchObject({status:'accepted',reason:null,facts:{phase:'pre-install',sourceFiles:5,sourceBytes:5},authority:flags});
     expect(admission(post())).toMatchObject({status:'accepted',reason:null,authority:flags});
   });
-  it.each(['v1','v2','v3'])('rejects the used native %s identity even when its three identity fields agree', version => {
+  it.each(['v1','v2','v3','v4'])('rejects the used native %s identity even when its three identity fields agree', version => {
     const v=intent();v.context.releaseId='hosted-copilot-react-h100-r6400-'+version;v.context.githubRef='refs/tags/'+v.context.releaseId;v.context.workflowRef='cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@'+v.context.githubRef;
     expectFailure(admission(v),'mounted-context');const p=post();p.intent=v;expectFailure(admission(p),'mounted-context');
   });

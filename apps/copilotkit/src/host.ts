@@ -3,7 +3,7 @@ import type { CopilotKitCore } from '@copilotkit/core';
 import type { LongThreadAdapterHost, RuntimeProgress, RuntimeTranscriptSnapshot } from '../../../packages/contract/src/comparison.js';
 import type { Message } from '../../../packages/contract/src/fixture.js';
 import { COMPLETED_URL, CONTINUATION_URL, MOUNTED_URL, type CaseContext } from './context.js';
-import { ownHistory, validateResponse } from './controls.js';
+import { ownHistory, validateResponse, waitForFrontendDisposal } from './controls.js';
 import {createGeometryCollector,createNativeGeometryPorts,readRestoredHistoryContent,type GeometrySnapshot,type RestoredHistoryContentScalar} from './geometry.js';
 
 const SETUP_TIMEOUT_MS = 60_000;
@@ -253,15 +253,8 @@ export function createFrontendHost(context: CaseContext, agent: AbstractAgent, c
     disposePromise = (async () => {
       const deadline = performance.now() + 10_000;
       const failures: unknown[] = error === null ? [] : [new Error(error)];
-      async function awaitOwned<T>(operation: Promise<T>): Promise<T> {
-        const remaining = deadline - performance.now();
-        if (remaining <= 0) throw new Error('Frontend disposal deadline exceeded; original owner retained');
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        try {
-          return await Promise.race([operation, new Promise<never>((_resolve, reject) => {
-            timer = setTimeout(() => { reject(new Error('Frontend disposal deadline exceeded; original owner retained')); }, remaining);
-          })]);
-        } finally { if (timer !== undefined) clearTimeout(timer); }
+      function awaitOwned<T>(operation: Promise<T>): Promise<T> {
+        return waitForFrontendDisposal(operation,deadline);
       }
       if (runPromise && !runSettled) {
         try { core.stopAgent({ agent }); }

@@ -34,7 +34,11 @@ export class SettlementBudget {
   private readonly deadline=performance.now()+10000;
   wait<T>(original:Promise<T>,label:string):Promise<T> {
     const remaining=this.deadline-performance.now();
-    if(remaining<=0) throw new Error('Original cleanup deadline exceeded; ownership retained');
+    if(remaining<=0) {
+      // The original already started; observation is not owner settlement.
+      void original.then(()=>{},()=>{});
+      throw new Error('Original cleanup deadline exceeded; ownership retained');
+    }
     return boundedWait(original,remaining,label);
   }
 }

@@ -1,5 +1,42 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ownHistory, validateResponse, createStoreDomain } from '../apps/copilotkit/src/controls.js';
+import { ownHistory, validateResponse, createStoreDomain, waitForFrontendDisposal } from '../apps/copilotkit/src/controls.js';
+
+describe('frontend disposal original observation',()=>{
+  const turn=()=>new Promise<void>(resolve=>setImmediate(resolve));
+  it('retains async deadline refusal and observes the later original rejection',async()=>{
+    let reject!:(reason:unknown)=>void;
+    const original=new Promise<void>((_resolve,no)=>{reject=no;});
+    const clock=vi.spyOn(performance,'now').mockReturnValue(10001);
+    let waiting:Promise<void>;
+    try{expect(()=>{waiting=waitForFrontendDisposal(original,10000);}).not.toThrow();}
+    finally{clock.mockRestore();}
+    await expect(waiting!).rejects.toThrow('Frontend disposal deadline exceeded; original owner retained');
+    await turn();reject(Error('Late frontend disposal original rejection'));await turn();await turn();
+  });
+  it.each([null,undefined,false,Object.freeze({original:true})])('preserves a normal original rejection by identity %j',async reason=>{
+    await expect(waitForFrontendDisposal(Promise.reject(reason),performance.now()+10000)).rejects.toBe(reason);
+  });
+  it('preserves fulfillment value and refuses an already fulfilled original after expiry',async()=>{
+    const value=Object.freeze({value:true});expect(await waitForFrontendDisposal(Promise.resolve(value),performance.now()+10000)).toBe(value);
+    await expect(waitForFrontendDisposal(Promise.resolve(value),0)).rejects.toThrow('Frontend disposal deadline exceeded');
+  });
+  it('keeps an original pending after deadline until its independent outcome and observes late rejection',async()=>{
+    let reject!:(reason:unknown)=>void,settled=false;
+    const original=new Promise<void>((_resolve,no)=>{reject=no;});
+    // Independent owner observes actual settlement in this separate control.
+    const reason=Object.freeze({late:true});const own=original.then(()=>{settled=true;},error=>{settled=true;expect(error).toBe(reason);});
+    const clock=vi.spyOn(performance,'now').mockReturnValue(0);
+    let waiting:Promise<void>;try{waiting=waitForFrontendDisposal(original,1);}finally{clock.mockRestore();}
+    await expect(waiting!).rejects.toThrow('Frontend disposal deadline exceeded');expect(settled).toBe(false);
+    reject(reason);await own;expect(settled).toBe(true);await turn();await turn();
+  });
+  it('observes the late rejection after a positive-budget timeout without an independent catch',async()=>{
+    let reject!:(reason:unknown)=>void;const original=new Promise<void>((_resolve,no)=>{reject=no;});
+    const clock=vi.spyOn(performance,'now').mockReturnValue(0);
+    let waiting:Promise<void>;try{waiting=waitForFrontendDisposal(original,1);}finally{clock.mockRestore();}
+    await expect(waiting!).rejects.toThrow('Frontend disposal deadline exceeded');reject(Error('Late original after frontend race'));await turn();await turn();
+  });
+});
 
 const H = [{ id: 'h1', role: 'user', content: 'hello' }, { id: 'h2', role: 'assistant', content: 'world' }];
 const ids = { threadId: 'thread', seedRunId: 'seed', continuationRunId: 'continue', responseId: 'response' };
