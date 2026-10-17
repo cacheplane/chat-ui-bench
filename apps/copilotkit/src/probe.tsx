@@ -1,13 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useAgent, useCopilotKit } from '@copilotkit/react-core/v2';
 import type { AbstractAgent } from '@ag-ui/client';
 import type { CopilotKitCore } from '@copilotkit/core';
 import type { CaseContext } from './context.js';
 import type { OwnedFrontendHost } from './host.js';
 
-export function Probe({ context, attach }: {
+export function Probe({ context, attach, children }: {
   readonly context: CaseContext;
   readonly attach: (agent: AbstractAgent, core: CopilotKitCore) => OwnedFrontendHost;
+  readonly children: ReactNode;
 }) {
   const { agent, isReady } = useAgent({ agentId: context.agentId });
   const { copilotkit } = useCopilotKit();
@@ -22,5 +23,5 @@ export function Probe({ context, attach }: {
       host.closeAdmission('React probe cleanup: source admission closed');
     };
   }, [agent, isReady, copilotkit, attach]);
-  return null;
+  return isReady ? children : null;
 }
