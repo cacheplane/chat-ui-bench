@@ -1,6 +1,6 @@
 import type { CaseContext } from './context.js';
 import type { GeometryPhase, GeometryRect, GeometryEvaluation, MountedGeometryInput } from './geometry-policy.js';
-import { GEOMETRY_LIMITS as L, evaluateMountedGeometry, type GeometryClip, type GeometryObservation } from './geometry-policy.js';
+import { GEOMETRY_LIMITS as L, evaluateMountedGeometry, projectGeometryText, type GeometryClip, type GeometryObservation } from './geometry-policy.ts';
 import type { VisibleMessage } from '../../../packages/contract/src/comparison.js';
 export const GEOMETRY_NODE_VISITS = 4096;
 export type GeometryNode = object;
@@ -25,7 +25,84 @@ export type GeometrySnapshot = Readonly<{status:'available';frame:MountedGeometr
 export type GeometryContext = Pick<CaseContext,'history'|'response'|'ids'>;
 export interface GeometryLocators { scroller:string; messageHost(id:string):string; messageContent(id:string):string }
 export interface GeometryCollector { read(phase:GeometryPhase,progress:Readonly<{active:boolean;prefix:string}>):GeometrySnapshot; dispose():void }
-class CollectionFailure extends Error { constructor(readonly reason:GeometryFailure){super(reason);} }
+export type HistoryContentStatus='ready'|'pending'|'unavailable'|'invalid';
+export type HistoryContentReason='content-ready'|'empty-text'|'no-mounted-history'|'selector'|'ownership'|'unknown-id'|'text-mismatch'|'node-cap'|'text-cap'|'identity-cap'|'invalid-data'|'public-history'|'public-active'|'source-error'|'admission-closed';
+export interface RestoredHistoryContentScalar {readonly status:HistoryContentStatus;readonly reason:HistoryContentReason;readonly mountedRows:number;readonly emptyRows:number;readonly firstRowId:string|null;readonly firstRowRole:'assistant'|'user'|null}
+export type HistoryReadinessOutcome='ready'|'unavailable'|'invalid';
+export type HistoryReadinessReason=HistoryContentReason|'attempt-limit'|'deadline'|'observation-rejected'|'scalar-contract';
+export interface HistoryReadinessContext {readonly caseNumber:1|2;readonly journey:'follow'|'history-reading';readonly threadId:string;readonly history:readonly Readonly<{id:string;role:'assistant'|'user'}>[]}
+export interface RestoredHistoryReadinessDiagnostic {readonly kind:'copilot-mounted-history-readiness-v1';readonly caseNumber:1|2;readonly journey:'follow'|'history-reading';readonly threadId:string;readonly attemptCount:number;readonly outcome:HistoryReadinessOutcome;readonly reason:HistoryReadinessReason;readonly first:RestoredHistoryContentScalar|null;readonly last:RestoredHistoryContentScalar|null;readonly qualification:false}
+export interface RestoredHistoryDiagnosticPort {emitReadinessSummary(record:RestoredHistoryReadinessDiagnostic):Promise<void>}
+const historyInvalidReasons=['selector','ownership','unknown-id','text-mismatch','invalid-data','public-history'] as const;
+const historyUnavailableReasons=['node-cap','text-cap','identity-cap','public-active','source-error','admission-closed'] as const;
+const historyId=(v:unknown):v is string=>typeof v==='string'&&v.length>0&&v.length<=L.identityLength&&/^[\x20-\x7e]+$/.test(v);
+function historyData(value:unknown,keys:readonly string[]):Record<string,unknown>{
+ if(typeof value!=='object'||value===null||Array.isArray(value)||(Object.getPrototypeOf(value)!==Object.prototype&&Object.getPrototypeOf(value)!==null))throw Error('Invalid readiness data');
+ const names=Reflect.ownKeys(value);if(names.length!==keys.length||names.some(k=>typeof k!=='string'||!keys.includes(k)))throw Error('Invalid readiness keys');
+ const result:Record<string,unknown>={};for(const key of keys){const d=Object.getOwnPropertyDescriptor(value,key);if(!d||!('value'in d))throw Error('Readiness data property required');result[key]=d.value;}return result;
+}
+/** Copy the fixed scalar; no caller flags or foreign error properties are read. */
+export function copyHistoryContentScalar(value:unknown,history:HistoryReadinessContext['history']):RestoredHistoryContentScalar {
+ const r=historyData(value,['status','reason','mountedRows','emptyRows','firstRowId','firstRowRole']);
+ if(!Number.isSafeInteger(r.mountedRows)||!Number.isSafeInteger(r.emptyRows)||typeof r.mountedRows!=='number'||typeof r.emptyRows!=='number'||r.mountedRows<0||r.mountedRows>100||r.emptyRows<0||r.emptyRows>r.mountedRows)throw Error('Invalid readiness counts');
+ if(r.firstRowId===null?r.firstRowRole!==null:!historyId(r.firstRowId)||!history.some(m=>m.id===r.firstRowId&&m.role===r.firstRowRole))throw Error('Unknown readiness identity');
+ const matched=r.status==='ready'?r.reason==='content-ready'&&r.emptyRows===0&&r.mountedRows>0&&r.firstRowId===null:
+ r.status==='pending'?r.reason==='empty-text'?r.emptyRows>0&&r.firstRowId!==null:r.reason==='no-mounted-history'&&r.mountedRows===0&&r.emptyRows===0&&r.firstRowId===null:
+ r.status==='invalid'?historyInvalidReasons.some(v=>v===r.reason):r.status==='unavailable'&&historyUnavailableReasons.some(v=>v===r.reason);
+ if(!matched)throw Error('Invalid readiness status');return Object.freeze(r) as unknown as RestoredHistoryContentScalar;
+}
+export function copyHistoryReadinessDiagnostic(value:unknown,context:HistoryReadinessContext):RestoredHistoryReadinessDiagnostic {
+ const r=historyData(value,['kind','caseNumber','journey','threadId','attemptCount','outcome','reason','first','last','qualification']);
+ if(r.kind!=='copilot-mounted-history-readiness-v1'||r.caseNumber!==context.caseNumber||r.journey!==context.journey||r.threadId!==context.threadId||!historyId(r.threadId)||r.qualification!==false||typeof r.attemptCount!=='number'||!Number.isSafeInteger(r.attemptCount)||r.attemptCount<1||r.attemptCount>120)throw Error('Invalid readiness diagnostic');
+ if((r.first===null)!==(r.last===null))throw Error('Missing readiness observation');
+ const first=r.first===null?null:copyHistoryContentScalar(r.first,context.history),last=r.last===null?null:copyHistoryContentScalar(r.last,context.history);
+ if(r.attemptCount>1&&first!==null&&first.status!=='pending')throw Error('Readiness stopped at first observation');
+ if(r.attemptCount===1&&['observation-rejected','scalar-contract'].some(v=>v===r.reason)&&(first!==null||last!==null))throw Error('Failed first observation cannot retain a scalar');
+ if(r.attemptCount===120&&last?.status==='pending'&&!['attempt-limit','observation-rejected','scalar-contract'].some(v=>v===r.reason))throw Error('No operation follows final pending observation');
+ if(first===null&&(r.attemptCount!==1||!['observation-rejected','scalar-contract'].some(v=>v===r.reason)))throw Error('Impossible absent readiness observation');
+ if(first&&last&&r.attemptCount===1&&Object.keys(first).some(k=>first[k as keyof RestoredHistoryContentScalar]!==last[k as keyof RestoredHistoryContentScalar]))throw Error('One original readiness observation differs');
+ if(r.reason==='attempt-limit'&&(r.attemptCount!==120||last?.status!=='pending'))throw Error('Impossible readiness attempt limit');
+ if(last?.status==='ready'&&r.outcome!=='ready')throw Error('Ready readiness outcome differs');
+ if(last&&(last.status==='invalid'||last.status==='unavailable')&&(r.outcome!==last.status||r.reason!==last.reason))throw Error('Terminal readiness outcome differs');
+ const matched=r.outcome==='ready'?r.reason==='content-ready'&&last?.status==='ready':r.outcome==='invalid'?historyInvalidReasons.some(v=>v===r.reason)||r.reason==='scalar-contract':r.outcome==='unavailable'&&(historyUnavailableReasons.some(v=>v===r.reason)||['attempt-limit','deadline','observation-rejected'].some(v=>v===r.reason));
+ if(!matched)throw Error('Invalid readiness outcome');return Object.freeze({...r,first,last}) as unknown as RestoredHistoryReadinessDiagnostic;
+}
+/** Content only. Uses original selectors/text nodes; never boxes/styles/ranges. */
+export function readRestoredHistoryContent(context:GeometryContext,locators:GeometryLocators,p:GeometryPorts):RestoredHistoryContentScalar {
+ let mountedRows=0,emptyRows=0,firstRowId:string|null=null,firstRowRole:'assistant'|'user'|null=null;
+ let current:Readonly<{id:string;role:'assistant'|'user'}>|null=null;
+ const result=(status:HistoryContentStatus,reason:HistoryContentReason):RestoredHistoryContentScalar=>{
+  if((status==='invalid'||status==='unavailable')&&firstRowId===null&&current){firstRowId=current.id;firstRowRole=current.role;}
+  return {status,reason,mountedRows,emptyRows,firstRowId,firstRowRole};
+ };
+ try{
+  if(context.history.length!==L.history||context.history.some(m=>!historyId(m.id)||(m.role!=='assistant'&&m.role!=='user')||typeof m.content!=='string'||m.content.length>L.historyText||!/^[\x20-\x7e]*$/.test(m.content))||new Set(context.history.map(m=>m.id)).size!==L.history)return result('invalid','invalid-data');
+  const matches=p.find(locators.scroller);if(matches.length!==1||!p.connected(matches[0]!))return result('invalid','selector');const scroller=matches[0]!,seen=new Set<GeometryNode>();let visits=0,totalText=0;
+  const visit=()=>++visits<=GEOMETRY_NODE_VISITS;
+  for(const known of context.history){
+   current=known;
+   const hosts=p.find(locators.messageHost(known.id)),found=p.find(locators.messageContent(known.id));
+   if(hosts.length===0&&found.length===0)continue;
+   if(hosts.length!==1||found.length!==1)return result('invalid','selector');
+   const content=found[0]!,host=hosts[0]!;
+   if(seen.has(content))return result('invalid','ownership');seen.add(content);
+   if(p.parent(content)!==host||!p.connected(host)||!p.connected(content)||!p.contains(scroller,content)||host===scroller||content===scroller)return result('invalid','ownership');
+   mountedRows++;let text='',n:GeometryNode|null=content;
+   while(n){
+    if(!visit())return result('unavailable','node-cap');const part=p.text(n);
+    if(part!==null){if(typeof part!=='string')return result('invalid','invalid-data');if(part.length>L.observedTextPerRow-text.length||part.length>L.observedText-totalText)return result('unavailable','text-cap');if(!/^[\x09-\x0d\x20-\x7e]*$/.test(part))return result('invalid','invalid-data');text+=part;totalText+=part.length;}
+    const child=p.firstChild(n);if(child){if(p.parent(child)!==n)return result('invalid','ownership');n=child;continue;}
+    while(n!==content&&!p.nextSibling(n)){if(!visit())return result('unavailable','node-cap');n=p.parent(n);if(!n)return result('invalid','ownership');}
+    n=n===content?null:p.nextSibling(n);
+   }
+   const projected=projectGeometryText(text);
+   if(projected===''){emptyRows++;if(firstRowId===null){firstRowId=known.id;firstRowRole=known.role;}}
+   else if(projected!==projectGeometryText(known.content)){firstRowId=known.id;firstRowRole=known.role;return result('invalid','text-mismatch');}
+  }
+  return emptyRows?result('pending','empty-text'):mountedRows?result('ready','content-ready'):result('pending','no-mounted-history');
+ }catch{return result('unavailable','source-error');}
+}
+class CollectionFailure extends Error { readonly reason:GeometryFailure;constructor(reason:GeometryFailure){super(reason);this.reason=reason;} }
 function deny(reason:GeometryFailure):never { throw new CollectionFailure(reason); }
 const copyRect=(r:GeometryRect):GeometryRect=>({x:r.x,y:r.y,width:r.width,height:r.height});
 function clientBox(b:GeometryBox):GeometryRect {return {x:b.rect.x+b.clientLeft,y:b.rect.y+b.clientTop,width:b.clientWidth,height:b.clientHeight};}

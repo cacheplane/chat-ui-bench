@@ -235,7 +235,7 @@ function parseIntent(r: Data): PreInstallIntent {
 function sourceCap(r: Data): void { let bytes=0; for(const v of A(R(r.source).files)) {const n=R(v).bytes;if(typeof n==='number'&&Number.isSafeInteger(n)&&n>=0) bytes+=n;}
   if(bytes>MOUNTED_POLICY_LIMITS.bytes) deny('cardinality-cap'); }
 function intentSemantics(v: PreInstallIntent): AdmissionFacts {
-  const c=v.context; const release='hosted-copilot-react-h100-r6400-v3',ref=`refs/tags/${release}`;
+  const c=v.context; const release='hosted-copilot-react-h100-r6400-v4',ref=`refs/tags/${release}`;
   if(v.purpose!=='hosted-copilot-mounted-default-react-only') return deny('mounted-purpose');
   if(c.repository!=='cacheplane/chat-ui-bench'||c.releaseId!==release||c.githubRef!==ref||c.workflowRef!==`cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@${ref}`||
     c.eventName!=='workflow_dispatch'||c.actions!=='true'||c.platform!=='linux'||c.runnerOs!=='Linux'||c.runnerMarker!=='ubuntu-24.04-hosted-copilot-mounted'||c.attempt!=='1') return deny('mounted-context');

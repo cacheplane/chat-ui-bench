@@ -4,7 +4,7 @@ import type { LongThreadAdapterHost, RuntimeProgress, RuntimeTranscriptSnapshot 
 import type { Message } from '../../../packages/contract/src/fixture.js';
 import { COMPLETED_URL, CONTINUATION_URL, MOUNTED_URL, type CaseContext } from './context.js';
 import { ownHistory, validateResponse } from './controls.js';
-import {createGeometryCollector,createNativeGeometryPorts,type GeometrySnapshot} from './geometry.js';
+import {createGeometryCollector,createNativeGeometryPorts,readRestoredHistoryContent,type GeometrySnapshot,type RestoredHistoryContentScalar} from './geometry.js';
 
 const SETUP_TIMEOUT_MS = 60_000;
 export const geometryQualification = Object.freeze({
@@ -53,6 +53,7 @@ export interface OwnedFrontendHost extends LongThreadAdapterHost {
   validateCompletion(): Promise<void>;
   /** Full H100 DOM scan for unscored conformance and anchor observations only. */
   readGeometrySnapshot(): GeometrySnapshot;
+  readRestoredHistoryContentReadiness():RestoredHistoryContentScalar;
   readonly geometryQualification: typeof geometryQualification;
 }
 
@@ -86,7 +87,8 @@ export function createFrontendHost(context: CaseContext, agent: AbstractAgent, c
       return `[data-testid="${role}"][data-message-id="${CSS.escape(messageId)}"] > div:first-child`;
     },
   };
-  const geometry = createGeometryCollector(context,locators,createNativeGeometryPorts(document,window));
+  const geometryPorts=createNativeGeometryPorts(document,window);
+  const geometry = createGeometryCollector(context,locators,geometryPorts);
   const acknowledgements = new Set<Promise<void>>();
   function observeError(reason: unknown): void { error = boundedDiagnostic(reason); }
   const agentSubscription = agent.subscribe({
@@ -237,6 +239,14 @@ export function createFrontendHost(context: CaseContext, agent: AbstractAgent, c
     return geometry.read(phase,{active:progress.loading&&progress.delivery==='streaming'&&progress.activeMessage!==null,
       prefix:phase==='completed'?context.response.content:progress.activeMessage?.text??''});
   }
+  function readRestoredHistoryContentReadiness():RestoredHistoryContentScalar {
+    const fail=(status:'invalid'|'unavailable',reason:'admission-closed'|'source-error'|'public-active'|'public-history'):RestoredHistoryContentScalar=>({status,reason,mountedRows:0,emptyRows:0,firstRowId:null,firstRowRole:null});
+    if(closed)return fail('unavailable','admission-closed');
+    if(error!==null)return fail('unavailable','source-error');
+    if(continuation||agent.isRunning)return fail('unavailable','public-active');
+    try{exactHistory(false);}catch{return fail('invalid','public-history');}
+    return readRestoredHistoryContent(context,locators,geometryPorts);
+  }
   function dispose(): Promise<void> {
     if (disposePromise) return disposePromise;
     closeAdmission();
@@ -284,6 +294,7 @@ export function createFrontendHost(context: CaseContext, agent: AbstractAgent, c
     loadHistory, connectReplay, readProgress, readTranscript, closeAdmission, observeError,
     waitForReplay() {if(!replayPromise) throw new Error('Original continuation is absent');return replayPromise;},validateCompletion,
     readGeometrySnapshot,
+    readRestoredHistoryContentReadiness,
     // This first full H100 scan is unscored; geometryQualification stays false.
     readVisibleMessages() {
       const snapshot=readGeometrySnapshot();

@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V34
+`runNativeMountedConformance` worker export now prepare a fresh V36
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v3`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v4`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -633,15 +633,32 @@ case failed before mounted acknowledgement or any snapshots; application stderr
 reported `Only admitted native cold connect is permitted`. Response-reader EOF
 alone proves neither admitted replay nor connect count or request ordering.
 
-V34 tests the source-supported provisional-to-registered startup hypothesis by
+V34 tested the source-supported provisional-to-registered startup hypothesis by
 rendering the identical default Chat from Probe only when its existing public
 `useAgent` hook reports ready. Provider discovery, ready-only host attachment and
 cleanup remain unchanged, as does the runtime's exact once-only cold-connect
 admission. The V2 failure does not prove that startup sequence occurred or that
-this gate fixes it. Fresh native V3 must independently complete both original
-serial cases after qualification of same-source full STATIC V34. Earlier V1's
-geometry cause remains unknown; no overall native conformance, FPS or ranking
-result is established.
+this gate fixes it. Native V3 subsequently failed its first restored-history
+geometry read with `policy-empty-text`, before continuation and case2. No failed
+row or renderer transition was retained, so the proposed rendered-text boundary
+remains a source-supported hypothesis.
+
+The new content-only preflight checks original public idle history and bounded
+mounted text after mountedACK, before one unchanged authoritative restored geometry
+read. It performs at most120 sequential observations with existing50ms spacing;
+empty/all-unmounted content may wait, while mismatch/structure/cap failures refuse.
+It never reads boxes/styles/ranges or retries geometry; strict geometry and4/5
+snapshot limits remain authoritative. The default Chat and canonical producer are
+unchanged. A dedicated bootstrap-owned, separately typed argument attempts one
+readiness summary per attempted case, at most two compact JSON lines≤4096 UTF8
+bytes including LF through original application stdout. It preserves first/last
+validated scalars and actual attempted count, without text or arbitrary error
+details. An awaited write callback is separate from parent retained bytes and
+original EOF/writer-close; partial/missing diagnostics or publication failure do
+not supply successful case closure. All existing stdout/archive caps apply.
+Fresh native V4 must independently complete both original serial cases after
+qualification of same-source full STATIC V36. Content readiness and pure tests
+establish no geometry, runtime conformance, FPS or ranking result.
 
 `frontendSettingsSha256` is SHA256 of the UTF8 bytes of
 `JSON.stringify([['source', candidateSha], ['apps/copilotkit/vite.config.ts', configSha], ['tests/support/hosted-copilot-build-plugin.ts', helperSha], ['package-lock.json', lockSha]])`,
