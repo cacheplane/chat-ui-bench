@@ -331,13 +331,14 @@ function copyObservations(value:unknown):Observations {
  return {wheelEvents,scrollEvents,motionEvents:motionEvents as MotionEvent[],losses,overflows};
 }
 function checkObservations(input:TrackerAInput):void {
- for(const population of [input.wheelEvents,input.scrollEvents,input.motionEvents]){let lastHost=-Infinity,lastPage=-Infinity,lastEvent=-Infinity;for(let i=0;i<population.length;i++){const row=population[i]!;if(row.ordinal!==i+1||row.receivedHostMs<lastHost||row.pageNowMs<lastPage||row.eventTimeStampMs<lastEvent)throw Error('Observation ordering unavailable');lastHost=row.receivedHostMs;lastPage=row.pageNowMs;lastEvent=row.eventTimeStampMs;}}
+ for(const population of [input.wheelEvents,input.scrollEvents,input.motionEvents]){let lastHost=-Infinity,lastPage=-Infinity,lastEvent=-Infinity;for(let i=0;i<population.length;i++){const row=population[i]!;if(row.ordinal!==i+1||row.eventTimeStampMs<0||row.eventTimeStampMs>row.pageNowMs||row.receivedHostMs<lastHost||row.pageNowMs<lastPage||row.eventTimeStampMs<lastEvent)throw Error('Observation ordering unavailable');lastHost=row.receivedHostMs;lastPage=row.pageNowMs;lastEvent=row.eventTimeStampMs;}}
  if(Object.values(input.losses).some(v=>v!==null)||Object.values(input.overflows).some(v=>v!==null)||input.wheelRequests.length!==40||input.wheelEvents.length!==41)throw Error('Observation coverage incomplete');
  if(input.wheelEvents.some((e,i)=>!e.isTrusted||e.deltaX!==0||e.deltaY!==(i===0?-600:-12)||e.deltaMode!==0||!e.targetContained||!e.currentTargetIsScroller))throw Error('Original trusted wheel facts unavailable');
  const preRows=input.scalarObservations.filter(r=>r.role==='pre'),postRows=input.scalarObservations.filter(r=>r.role==='post');
  const pre=preRows[0]?.value,post=postRows[0]?.value;
  if(preRows.length!==1||postRows.length!==1||!pre||!post||preRows[0]!.status!=='fulfilled'||postRows[0]!.status!=='fulfilled'||input.phase.postBoundaryScalarOrdinal!==postRows[0]!.ordinal||pre.pageNowMs>post.pageNowMs)throw Error('Original phase bracket unavailable');
  const inside=(at:number)=>at>=pre.pageNowMs&&at<=post.pageNowMs;
+ const possibleInside=(event:{eventTimeStampMs:number;pageNowMs:number})=>event.eventTimeStampMs<=post.pageNowMs&&event.pageNowMs>=pre.pageNowMs;
  const before=input.entry.before.value?.scalar,after=input.entry.after.value?.scalar,entry=input.wheelEvents[0]!;
  if(!before||!after||entry.pageNowMs<before.pageNowMs||entry.pageNowMs>after.pageNowMs||entry.pageNowMs>=pre.pageNowMs)throw Error('Original entry wheel bracket unavailable');
  const brackets=input.wheelRequests.map((request,i)=>{
@@ -352,7 +353,7 @@ function checkObservations(input:TrackerAInput):void {
  let previous=pre.scrollTop;
  for(const event of input.scrollEvents){
   if(!event.currentTargetIsScroller)throw Error('Original scroll ownership unavailable');
-  if(inside(event.pageNowMs)){if(event.scrollTop===0||event.scrollTop>previous)throw Error('Scroll direction unavailable');previous=event.scrollTop;}
+  if(possibleInside(event)){if(event.scrollTop===0||event.scrollTop>previous)throw Error('Scroll direction unavailable');previous=event.scrollTop;}
  }
- if(input.motionEvents.some(e=>e.targetContained&&inside(e.pageNowMs)))throw Error('Competing motion observed');
+ if(input.motionEvents.some(e=>e.targetContained&&possibleInside(e)))throw Error('Competing motion observed');
 }

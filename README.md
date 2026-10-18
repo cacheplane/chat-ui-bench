@@ -287,8 +287,9 @@ Pilot mode `tracker-json-a-pilot-v2` explicitly enters history reading with one
 trusted −600 wheel before the forty measured −12 wheels. It retains entry samples
 and all 41 wheel events, requires settled history detachment, and checks every
 measured event against its original slot. All scroll and motion events remain in
-the artifact; direction and competing-motion checks cover the conservative closed
-page-clock bracket around the measured phase, including its boundaries. A separate
+the artifact; direction and competing-motion checks include every event whose
+creation-to-handler interval overlaps the conservative closed page-clock bracket
+around the measured phase. Impossible creation timestamps fail globally. A separate
 capture tail ends two seconds after the fixed phase boundary; full response
 completion and its own closing tail remain mandatory. This changes the workload
 from V5's immediate live-edge escape; it does not retroactively pass that failure.

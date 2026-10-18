@@ -693,8 +693,11 @@ and three entry samples separately from the eighty-two measured scalars. The
 entry must settle away from the live edge while the public response advances.
 All 41 wheel events and all lifetime scroll/motion events are retained. The forty
 measured wheels must each match one original slot; opposing movement and motion
-inside the conservative closed pre/post page-clock bracket still fail. Return
-scrolling outside that bracket remains visible as an outside-phase observation.
+whose creation-to-handler interval overlaps the conservative closed pre/post
+page-clock bracket still fail, including delayed handlers and equal boundaries.
+Creation timestamps must be nonnegative and no later than handler observation.
+Return scrolling with an entirely disjoint interval remains visible as an
+outside-phase observation; these intervals do not prove presentation timing.
 Tracing ends after a separate tail fixed at phase-end plus two seconds, before
 waiting for complete canonical response EOF/public idle and its mandatory closing
 tail. Neither a larger bounded export budget nor successful acquisition establishes
