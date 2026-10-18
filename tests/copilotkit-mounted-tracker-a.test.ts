@@ -1,5 +1,20 @@
 import {describe,it,expect} from 'vitest';
-import {runMountedTrackerA} from '../apps/copilotkit/runtime/mounted-tracker-a.ts';
+import {runMountedTrackerA,readTrackerAAnchorScalarEnvelope,readTrackerAGeometrySnapshot} from '../apps/copilotkit/runtime/mounted-tracker-a.ts';
+describe('actual native scalar envelope callback with fake page state',()=>{
+ it.each(['host','url','match','absent-state'] as const)('preserves the normal original G1 snapshot on diagnostic %s admission',kind=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'window'),oldLocation=Object.getOwnPropertyDescriptor(globalThis,'location'),calls:unknown[]=[],shot=frame(2,'streaming');
+  const original={readGeometrySnapshot:(purpose:unknown)=>{calls.push(purpose);return shot;},releaseAnchorDiagnostic:(reason:unknown)=>{calls.push(reason);}},replacement={readGeometrySnapshot:(purpose:unknown)=>{calls.push(purpose);return shot;}};
+  const state={anchorContext:{host:original,url:'http://original/',refused:null}};Object.defineProperty(globalThis,'window',{configurable:true,value:{__copilotkitBenchHost:kind==='host'?replacement:original,...(kind==='absent-state'?{}:{__copilotkitTrackerA:state})}});Object.defineProperty(globalThis,'location',{configurable:true,value:{href:kind==='url'?'http://changed/':'http://original/'}});
+  try{expect(readTrackerAGeometrySnapshot('tracker-a-G1-anchor-diagnostic-v1')).toBe(shot);expect(calls).toEqual(kind==='match'?['tracker-a-G1-anchor-diagnostic-v1']:kind==='absent-state'?[undefined]:[kind,undefined]);if(kind==='host'||kind==='url')expect(state.anchorContext.refused).toBe(kind);}finally{if(previous)Object.defineProperty(globalThis,'window',previous);else Reflect.deleteProperty(globalThis,'window');if(oldLocation)Object.defineProperty(globalThis,'location',oldLocation);else Reflect.deleteProperty(globalThis,'location');}
+ });
+ it.each(['outer-getter','identity-getter','extra-object','probe-throw'] as const)('preserves original scalar without invoking %s diagnostic getters',kind=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'window'),oldLocation=Object.getOwnPropertyDescriptor(globalThis,'location');let getters=0,scalars=0;
+  const diagnostic:Record<string,unknown>={status:'unavailable',reason:'source-error',identity:{sameHostObject:null,sameOwner:null,sameScroller:null,sameScope:null,sameUrl:null,connected:null,uniqueSelectors:null,contained:null,parentMatched:null},ownerToken:null,contentTopCssPx:null,relativeTopCssPx:null,nativeViewportY:null,textRectCount:0,eligible:null,scrollTopAfterProbe:null,nodesVisited:0,rectangleUnits:0,textChars:0};
+  if(kind==='outer-getter')Object.defineProperty(diagnostic,'textChars',{get(){getters++;throw Error('getter');}});if(kind==='identity-getter')Object.defineProperty(diagnostic.identity,'sameOwner',{get(){getters++;throw Error('getter');}});if(kind==='extra-object')diagnostic.textChars={get secret(){getters++;return true;}};
+  const original={retained:'raw'},host={probeAnchorDiagnostic(){if(kind==='probe-throw')throw Error('actual probe');return diagnostic;},releaseAnchorDiagnostic(){}};Object.defineProperty(globalThis,'window',{configurable:true,value:{__copilotkitBenchHost:host,__copilotkitTrackerA:{scalar(){scalars++;return original;},anchorContext:{host,url:'http://original/',refused:null}}}});Object.defineProperty(globalThis,'location',{configurable:true,value:{href:'http://original/'}});
+  try{const result=readTrackerAAnchorScalarEnvelope({id:'H0',ownerToken:1});expect(result.scalar).toBe(original);expect(getters).toBe(0);expect(scalars).toBe(1);expect(result.anchorDiagnostic).toMatchObject(kind==='probe-throw'?{status:'unavailable',reason:'source-error'}:{contractInvalid:true});JSON.stringify(result);expect(getters).toBe(0);}finally{if(previous)Object.defineProperty(globalThis,'window',previous);else Reflect.deleteProperty(globalThis,'window');if(oldLocation)Object.defineProperty(globalThis,'location',oldLocation);else Reflect.deleteProperty(globalThis,'location');}
+ });
+});
 
 describe('finite supplied tracker-A sequencer',()=>{
  it('retains a null original connection rejection through client cleanup',async()=>{
@@ -34,6 +49,35 @@ function fixture(){
 }
 
 describe('fixed two-case trajectory',()=>{
+ it.each(['malformed','getter'] as const)('anchor diagnostic preserves raw opposing-offset before %s diagnostic refusal',async kind=>{
+  const f=fixture(),read=f.history.scalar;let reads=0,getters=0;
+  Object.assign(f.ports,{anchorDiagnostic:true});
+  Object.assign(f.history,{scalar:async()=>{const s=await read();if(++reads===3)s.scrollTop+=105;const envelope:Record<string,unknown>={scalar:s,anchorDiagnostic:null};if(kind==='getter')Object.defineProperty(envelope,'anchorDiagnostic',{get(){getters++;throw Error('must not read');}});return envelope;}});
+  const r=await runMountedTrackerA(f.ports);
+  expect(r.firstFailure).toEqual({code:'opposing-offset',ordinal:3,previousOrdinal:2,slot:0});expect(r.input?.scalarObservations[2]?.value?.scrollTop).toBe(893);
+  expect(r.anchorDiagnosticError).not.toBeNull();expect(getters).toBe(0);expect(f.calls).toContain('trace-finish');expect(f.calls).toContain('close-2');
+ });
+ it('anchor diagnostic joins all82 attempted original scalars without additional scalar calls',async()=>{
+  const f=fixture(),read=f.history.scalar;let reads=0;
+  Object.assign(f.ports,{anchorDiagnostic:true});
+  Object.assign(f.history,{scalar:async(selection:{id:string;ownerToken:number})=>{const scalar=await read();reads++;expect(selection).toEqual({id:'H0',ownerToken:1});return {scalar,anchorDiagnostic:{status:'available',reason:null,pageStartMs:scalar.pageNowMs,pageEndMs:scalar.pageNowMs+1,identity:{sameHostObject:true,sameOwner:true,sameScroller:true,sameScope:true,sameUrl:true,connected:true,uniqueSelectors:true,contained:true,parentMatched:true},ownerToken:1,contentTopCssPx:10,relativeTopCssPx:10,nativeViewportY:0,textRectCount:1,eligible:true,scrollTopAfterProbe:scalar.scrollTop,nodesVisited:5,rectangleUnits:4,textChars:512}};}});
+  const r=await runMountedTrackerA(f.ports);expect(r.hasPrimary).toBe(false);expect(reads).toBe(82);expect(r.anchorDiagnosticError).toBeNull();
+  expect(r.anchorDiagnostic?.observations).toHaveLength(82);expect(r.anchorDiagnostic?.observations[0]).toMatchObject({ordinal:1,role:'pre',slot:null,jointReadStable:true});
+ });
+ it('anchor diagnostic contract failure never changes an otherwise complete original trajectory',async()=>{const f=fixture(),read=f.history.scalar;let reads=0;Object.assign(f.ports,{anchorDiagnostic:true});Object.assign(f.history,{scalar:async()=>{reads++;return {scalar:await read(),anchorDiagnostic:{malformed:true}};}});const r=await runMountedTrackerA(f.ports);expect(reads).toBe(82);expect(r.status).toBe('complete');expect(r.hasPrimary).toBe(false);expect(r.firstFailure).toBeNull();expect(r.cleanupFailures).toEqual([]);expect(r.anchorDiagnosticError).not.toBeNull();});
+ it('anchor diagnostic retains rejected attempted scalar as unavailable with no page measurements',async()=>{const f=fixture(),failure=Object.freeze({original:'rejected'});Object.assign(f.ports,{anchorDiagnostic:true});f.history.scalar=async()=>{throw failure;};const r=await runMountedTrackerA(f.ports);expect(r.primary).toBe(failure);expect(r.anchorDiagnosticError).toBeNull();expect(r.anchorDiagnostic?.observations).toEqual([expect.objectContaining({ordinal:1,role:'pre',slot:null,status:'unavailable',reason:'source-error',pageStartMs:null,pageEndMs:null,ownerToken:null,contentTopCssPx:null,relativeTopCssPx:null,jointReadStable:null,nodesVisited:0})]);});
+ it('anchor diagnostic retains the actual late original page probe after its unchanged slot timeout',async()=>{
+  const f=fixture(),read=f.history.scalar;let calls=0,resolve!:()=>void,held=false;Object.assign(f.ports,{anchorDiagnostic:true});
+  Object.assign(f.history,{scalar:async()=>{const scalar=await read();const n=++calls;if(n===2){held=true;await new Promise<void>(yes=>{resolve=yes;});}return {scalar,anchorDiagnostic:{status:'available',reason:null,pageStartMs:scalar.pageNowMs,pageEndMs:scalar.pageNowMs+1,identity:{sameHostObject:true,sameOwner:true,sameScroller:true,sameScope:true,sameUrl:true,connected:true,uniqueSelectors:true,contained:true,parentMatched:true},ownerToken:1,contentTopCssPx:10,relativeTopCssPx:10,nativeViewportY:0,textRectCount:1,eligible:true,scrollTopAfterProbe:scalar.scrollTop,nodesVisited:6,rectangleUnits:3,textChars:512}};}});
+  const run=runMountedTrackerA(f.ports);for(let i=0;i<3000&&!held;i++)await Promise.resolve();expect(held).toBe(true);f.advance(750);for(let i=0;i<40;i++)await Promise.resolve();resolve();const r=await run;
+  expect(r.hasPrimary).toBe(true);expect(r.firstFailure?.code).toBe('unclassified');expect(r.input?.scalarObservations[1]?.status).toBe('fulfilled');expect(r.anchorDiagnostic?.observations.find(row=>row.ordinal===2)).toMatchObject({status:'available',pageStartMs:r.input!.scalarObservations[1]!.value!.pageNowMs,contentTopCssPx:10,jointReadStable:true});expect(r.anchorDiagnosticError).toBeNull();
+ });
+ it.each(['malformed','getter','null-trap','undefined-trap'] as const)('anchor diagnostic latches %s copy failure after result return without replacing original failure',async kind=>{
+  const f=fixture(),read=f.history.scalar;let resolve!:(value:unknown)=>void,started=false,getters=0,original:unknown;Object.assign(f.ports,{anchorDiagnostic:true});Object.assign(f.history,{scalar:async()=>{original=await read();started=true;return new Promise<unknown>(yes=>{resolve=yes;});}});
+  const run=runMountedTrackerA(f.ports);for(let i=0;i<3000&&!started;i++)await Promise.resolve();expect(started).toBe(true);f.advance(120000);const result=await run,firstFailure=result.firstFailure;expect(result.anchorDiagnosticError).toBeNull();
+  const envelope:Record<string,unknown>={scalar:original,anchorDiagnostic:null};if(kind==='getter')Object.defineProperty(envelope,'anchorDiagnostic',{get(){getters++;throw Error('must not read');}});if(kind==='null-trap'||kind==='undefined-trap')envelope.anchorDiagnostic=new Proxy({},{getPrototypeOf(){throw kind==='null-trap'?null:undefined;}});
+  resolve(envelope);for(let i=0;i<40;i++)await Promise.resolve();expect(result.anchorDiagnosticError).toBeInstanceOf(Error);expect(result.input?.scalarObservations[0]?.value).toEqual(original);expect(result.firstFailure).toBe(firstFailure);expect(result.hasPrimary).toBe(true);expect(getters).toBe(0);
+ });
  it('does not dispatch or rebase a failure-tail wait beyond the original global deadline',async()=>{
   const f=fixture(),read=f.history.scalar,wait=f.clock.waitUntil,acquire=f.history.acquireTrace;let reads=0,tailCalls=0,finishedAt:number|null=null;
   f.clock.deadlineHostMs=4000;

@@ -31,7 +31,7 @@ export function createRestoredHistoryDiagnosticPort(write){
  }};
 }
 
-const RELEASE='hosted-copilot-react-h100-r6400-v15',REPOSITORY='cacheplane/chat-ui-bench';
+const RELEASE='hosted-copilot-react-h100-r6400-v16',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
 const MiB=1024*1024,hash=b=>createHash('sha256').update(b).digest('hex');
 const need=(ok,message='Mounted bootstrap refused')=>{if(!ok)throw new Error(message);};
@@ -39,8 +39,8 @@ const id=v=>typeof v==='string'&&/^[1-9][0-9]{0,19}$/.test(v);
 const digest=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const boundedError=e=>{try{return e instanceof Error?e.message.slice(0,512):'Original operation failed';}catch{return 'Original operation failed';}};
-const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v8',PILOT_MODE='tracker-json-a-pilot-v2';
-const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v15';
+const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v9',PILOT_MODE='tracker-json-a-pilot-v2';
+const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v16';
 let selectedBootstrapMode=null,pilotPhase=null,pilotKnown=null;
 const contextFields=['candidateSha','checkoutSha','githubSha','workflowSha','tagSha','repository','releaseId','githubRef','workflowRef','eventName','actions','platform','runnerOs','runnerMarker','attempt'];
 function ownData(value,keys){
@@ -86,7 +86,7 @@ function traceRoles(){return [
  ['native-case-1.json',2097152,'child'],['native-case-2.json',2097152,'child'],['native-child-result.json',524288,'child'],['native-parent-partial.json',524288,'parent'],['native-result.json',524288,'outer'],
  ['application-result.json',16384,'parent'],['parent-result.json',16384,'outer'],['application.stdout',262144,'parent'],['application.stderr',262144,'parent'],['parent.stdout',4194304,'outer'],['parent.stderr',4194304,'outer'],
  ['browser-stdout.bin',262144,'parent'],['browser-stderr.bin',262144,'parent'],['native-inventory.json',524288,'outer'],['phase-failure-child.json',4096,'child'],['phase-failure-parent.json',4096,'parent'],['phase-failure-run.json',4096,'outer'],['native-child-failure.json',4096,'child'],
- ['tracker-a-first-failure.json',4096,'child'],['tracker-a-failure-inventory.json',524288,'outer']
+ ['tracker-a-first-failure.json',4096,'child'],['tracker-a-failure-inventory.json',524288,'outer'],['tracker-a-anchor-scalars-v1.json',65536,'child']
  ].map(([path,cap,owner])=>({path,cap,owner}));}
 function runtimeClosedNames(phase){
  switch(phase){case 'runtime':return [];case 'runtime-registry-closed':return ['browser-registry.json'];case 'runtime-parent-started-closed':return ['browser-registry.json','parent-started.json'];case 'runtime-process-closed':return ['browser-registry.json','parent-started.json','browser-process.json'];case 'runtime-options-closed':return ['browser-registry.json','parent-started.json','browser-process.json','native-child-options.json'];default:throw Error('Unknown fixed runtime transition');}
@@ -309,7 +309,12 @@ function transportComplete(t,ref){
  const bytes=reads.reduce((sum,o)=>sum+o.bytes,0);return bytes===t.knownReadBytes&&bytes===ref.bytes;
 }
 function copyNativePilot(native){
- const r=ownData(native,['pilot','originals','browserVersion','caseEvidence']),p=ownData(r.pilot,['status','cases','caseEvidence','snapshots','input','transport','inputDrain','hasPrimary','primary','firstFailure','cleanupFailures','authority']);
+ const r=ownData(native,['pilot','originals','browserVersion','caseEvidence']),keys=['status','cases','caseEvidence','snapshots','input','transport','inputDrain','hasPrimary','primary','firstFailure','cleanupFailures','authority'];
+ // New observer data is deliberately not read or validated until every old
+ // publication and the original first-failure capsule have closed locally.
+ need(r.pilot!==null&&typeof r.pilot==='object'&&[Object.prototype,null].includes(Object.getPrototypeOf(r.pilot)));
+ need(Reflect.ownKeys(r.pilot).every(k=>typeof k==='string'&&[...keys,'anchorDiagnostic','anchorDiagnosticError'].includes(k)));
+ const originalsOnly={};for(const key of keys){const d=Object.getOwnPropertyDescriptor(r.pilot,key);need(d&&'value'in d);Object.defineProperty(originalsOnly,key,{value:d.value,enumerable:true});}const p=ownData(originalsOnly,keys);
  need(['complete','incomplete'].includes(p.status));bool(p.hasPrimary);const privateCleanup=denseData(p.cleanupFailures,128);assertAuthority(p.authority);
  const cases=copyCases(p.cases),caseEvidence=copyCases(r.caseEvidence),pureEvidence=copyCases(p.caseEvidence);need(pureEvidence.length<=caseEvidence.length&&pureEvidence.every((c,i)=>JSON.stringify(c)===JSON.stringify(caseEvidence[i])),'Native/pure original case evidence differs');
  const snapshots=copyPilotSnapshots(p.snapshots),input=copyTrackerAInput(p.input,snapshots),transport=copyTrackerATransport(p.transport);
@@ -319,6 +324,61 @@ function copyNativePilot(native){
  const firstFailure=p.firstFailure===null?null:copyTrackerAFirstFailure(p.firstFailure);
  need(p.hasPrimary===(firstFailure!==null),'First failure primary provenance differs');
  return {cases,caseEvidence,snapshots,input,transport,originals,browserVersion:r.browserVersion,drainFulfilled:drain.status==='fulfilled',hasPrivateFailure:p.hasPrimary||privateCleanup.length>0,firstFailure};
+}
+/** Fixed child publications. The late observer cannot precede any original close. */
+export async function publishTrackerAChildEvidence(result,profileRef,ports){
+ const n=copyNativePilot(result);
+ if(n.input)need(JSON.stringify(n.input.profileRef)===JSON.stringify(profileRef));if(n.transport)need(JSON.stringify(n.transport.profileRef)===JSON.stringify(profileRef));
+ for(const caseNumber of [1,2])await ports.writeJson('native-case-'+caseNumber+'.json',{caseNumber,cases:n.caseEvidence.filter(c=>c.caseNumber===caseNumber),snapshots:n.snapshots.filter(s=>s.caseNumber===caseNumber),qualification:false},2097152);
+ let inputRef=null,transportRef=null,rawRef=null;
+ if(n.input){await ports.writeJson('tracker-a-case-2-input.json',n.input,262144);inputRef=await ports.ref('tracker-a-case-2-input.json');}
+ if(n.transport){if(n.transport.raw.ref!==null&&n.transport.sink.fileClose==='fulfilled'){rawRef=await ports.ref('tracker-a-case-2-trace.json');need(JSON.stringify(rawRef)===JSON.stringify(n.transport.raw.ref));}await ports.writeJson('tracker-a-case-2-transport.json',n.transport,1048576);transportRef=await ports.ref('tracker-a-case-2-transport.json');}
+ const summary=constructTrackerAChildResult(result,{inputRef,transportRef,rawRef,snapshotFiles:['native-case-1.json','native-case-2.json']});
+ const status=await publishTrackerAInternalReport('child',summary,value=>ports.writeJson('native-child-result.json',value,524288));
+ if(n.firstFailure!==null){const capsule=copyTrackerAFirstFailureCapsule({schemaVersion:1,kind:'tracker-a-first-failure',profileRef:profileRef,childResultRef:await ports.ref('native-child-result.json'),firstFailure:n.firstFailure,qualification:false,nativeGO:false,performance:false});await ports.writeJson('tracker-a-first-failure.json',capsule,4096);}
+ const anchorScalars=constructTrackerAAnchorScalars(result,{profileRef:profileRef,childResultRef:await ports.ref('native-child-result.json'),inputRef});
+ if(anchorScalars!==null)await ports.writeJson('tracker-a-anchor-scalars-v1.json',anchorScalars,65536);
+ return status;
+}
+const anchorRowKeys=['ordinal','role','slot','status','reason','pageStartMs','pageEndMs','identity','ownerToken','contentTopCssPx','relativeTopCssPx','nativeViewportY','textRectCount','eligible','scrollTopAfterProbe','jointReadStable','nodesVisited','rectangleUnits','textChars'];
+const anchorIdentityKeys=['sameHostObject','sameOwner','sameScroller','sameScope','sameUrl','connected','uniqueSelectors','contained','parentMatched'];
+const anchorReasons=['admission','selection','owner','host','scroller','scope','url','disconnected','selector','text','style','clip','work','rect','geometry','no-positive','fully-clipped','source-error'];
+function copyAnchorScalars(value,refs,input,snapshots){
+ need(input!==null&&input.anchor!==null&&input.scalarObservations.length>0,'Anchor observations lack original selection');
+ const r=ownData(copyPublicationData(value,65536),['schemaVersion','kind','profileRef','childResultRef','inputRef','selection','observations','qualification','nativeGO','performance']);
+ need(r.schemaVersion===1&&r.kind==='tracker-a-anchor-scalars-v1'&&r.qualification===false&&r.nativeGO===false&&r.performance===false,'Anchor diagnostic authority');
+ for(const [key,path] of [['profileRef','tracker-a-profile.json'],['childResultRef','native-child-result.json'],['inputRef','tracker-a-case-2-input.json']]){need(JSON.stringify(fileRef(r[key],path))===JSON.stringify(fileRef(refs[key],path))&&r[key]!==null,'Anchor physical ref differs');}
+ const checkpoint=input.geometryCheckpoints.G1;need(checkpoint.status==='fulfilled'&&checkpoint.snapshotRef!==null,'Original G1 absent');
+ const frame=snapshots.filter(s=>s.caseNumber===2)[checkpoint.snapshotRef.index]?.snapshot;need(frame?.status==='available','Original G1 frame absent');
+ const first=evaluateMountedGeometry(frame.frame).rows.find(row=>row.id!==frame.frame.expectedResponse.id&&row.geometryEligibility==='eligible');need(first&&first.ownerToken!==null&&input.anchor.id===first.id&&input.anchor.ownerToken===first.ownerToken,'Original G1 selection differs');
+ const selection=ownData(r.selection,['snapshotRef','id','role','ownerToken','metric','contentTopCssPx','relativeTopCssPx','nativeViewportY']);boundedText(selection.id,128);
+ const expected={snapshotRef:checkpoint.snapshotRef,id:first.id,role:first.role,ownerToken:first.ownerToken,metric:'min-positive-text-rect-viewport-y',contentTopCssPx:first.contentTopCssPx,relativeTopCssPx:first.relativeTopCssPx,nativeViewportY:frame.frame.nativeViewport.y};need(JSON.stringify(selection)===JSON.stringify(expected),'Anchor selected G1 metric differs');
+ const seen=new Set(),observations=denseData(r.observations,82).map(value=>{
+  const row=ownData(value,anchorRowKeys);need(Number.isInteger(row.ordinal)&&row.ordinal>=1&&row.ordinal<=82&&!seen.has(row.ordinal),'Anchor ordinal');seen.add(row.ordinal);
+  const original=input.scalarObservations.find(s=>s.ordinal===row.ordinal);need(original&&row.role===original.role&&row.slot===original.slot,'Anchor original ordinal join');
+  const identity=ownData(row.identity,anchorIdentityKeys);for(const key of anchorIdentityKeys)need(identity[key]===null||typeof identity[key]==='boolean','Anchor identity flag');
+  for(const [key,max] of [['textRectCount',256],['nodesVisited',4096],['rectangleUnits',290],['textChars',8192]])need(Number.isInteger(row[key])&&row[key]>=0&&row[key]<=max,'Anchor work cap');
+  need(row.eligible===null||typeof row.eligible==='boolean');
+  for(const key of ['pageStartMs','pageEndMs'])if(row[key]!==null)need(Number.isFinite(row[key])&&row[key]>=0&&row[key]<=360000,'Anchor page time');
+  need((row.pageStartMs===null)===(row.pageEndMs===null),'Anchor page bracket');if(row.pageStartMs!==null)need(row.pageEndMs>=row.pageStartMs&&(!original.value||row.pageStartMs>=original.value.pageNowMs),'Anchor original page order');
+  if(row.status==='available'){
+   need(row.reason===null&&original.status==='fulfilled'&&original.value!==null&&row.pageStartMs!==null&&row.ownerToken===first.ownerToken&&row.eligible===true&&anchorIdentityKeys.every(k=>identity[k]===true),'Anchor available law');
+   for(const key of ['contentTopCssPx','nativeViewportY','scrollTopAfterProbe'])need(Number.isFinite(row[key])&&Math.abs(row[key])<=1000000,'Anchor coordinate');
+   need(row.scrollTopAfterProbe>=0&&row.relativeTopCssPx===row.contentTopCssPx-row.nativeViewportY&&row.textRectCount>0,'Anchor raw metric');
+  }else need(row.status==='unavailable'&&(row.eligible===false||row.eligible===null)&&anchorReasons.includes(row.reason)&&['ownerToken','contentTopCssPx','relativeTopCssPx','nativeViewportY','scrollTopAfterProbe'].every(k=>row[k]===null),'Anchor unavailable law');
+  need(row.jointReadStable===(original.value!==null&&row.scrollTopAfterProbe!==null?original.value.scrollTop===row.scrollTopAfterProbe:null),'Anchor original post-read stability');
+  return {...row,identity};
+ });
+ need(observations.length===input.scalarObservations.length&&input.scalarObservations.every(row=>seen.has(row.ordinal)),'Anchor attempted original coverage');
+ const result={schemaVersion:1,kind:'tracker-a-anchor-scalars-v1',profileRef:r.profileRef,childResultRef:r.childResultRef,inputRef:r.inputRef,selection,observations,qualification:false,nativeGO:false,performance:false};need(encoded(result).length<=65536,'Anchor diagnostic physical cap');return result;
+}
+/** Called only after original publications have closed; never part of old copying. */
+export function constructTrackerAAnchorScalars(native,refs){
+ const n=copyNativePilot(native),r=ownData(refs,['profileRef','childResultRef','inputRef']),pilot=Object.getOwnPropertyDescriptor(native,'pilot')?.value;
+ const error=Object.getOwnPropertyDescriptor(pilot,'anchorDiagnosticError'),candidate=Object.getOwnPropertyDescriptor(pilot,'anchorDiagnostic');
+ need(error&&'value'in error&&error.value===null&&candidate&&'value'in candidate,'Anchor diagnostic contract failed');
+ if(n.input===null||n.input.anchor===null||n.input.scalarObservations.length===0){if(candidate.value!==null){const absent=ownData(candidate.value,['selection','observations']);need(n.input!==null&&n.input.anchor!==null&&denseData(absent.observations,0).length===0,'Unexpected absent anchor diagnostic');}return null;}
+ const c=ownData(candidate.value,['selection','observations']);return copyAnchorScalars({schemaVersion:1,kind:'tracker-a-anchor-scalars-v1',...r,...c,qualification:false,nativeGO:false,performance:false},r,n.input,n.snapshots);
 }
 function trackerAEntryComplete(input){
  if(input===null)return false;
@@ -556,6 +616,15 @@ export async function writeTrackerAExceptionDiagnostic(write){
 export async function assertTrackerARuntimeAbsent(directory,known){const future=new Set(mountedTrackerAReservation('runtime',[],known).roles.map(role=>role.path));for(const name of await readdir(directory))need(!future.has(name),'Preexisting runtime writer role denied');}
 export async function admitTrackerAInventory(profileRef,ports){
  const names=await ports.names();need(names.includes('parent-started.json'),'Runtime original publication unavailable');const parentFile=await ports.read('parent-result.json',16384),parent=JSON.parse(Buffer.from(parentFile.raw).toString('utf8')),publication=await authenticateTrackerAReport(parent,'parent',profileRef,ports),partial=publication.value;need(partial.originals.filter(row=>row.label!=='parentWorkerClose').every(row=>row.status==='fulfilled')&&partial.stdio.every(row=>row.status==='fulfilled'),'Runtime original quiescence unavailable');
+ await admitAnchorInventory(profileRef,ports,names,publication.diagnostic);
+}
+async function admitAnchorInventory(profileRef,ports,names,diagnostic){
+ const read=async(name,cap,ref=null)=>{const f=ownData(await ports.read(name,cap),['raw','bytes','sha256']);need(f.raw instanceof Uint8Array&&f.bytes===f.raw.byteLength&&f.bytes<=cap&&hash(f.raw)===f.sha256,'Anchor inventory whole bytes');if(ref!==null)need(ref.path===name&&ref.bytes===f.bytes&&ref.sha256===f.sha256,'Anchor inventory transitive ref changed');return JSON.parse(Buffer.from(f.raw).toString('utf8'));};
+ const input=diagnostic?.inputRef===null||!diagnostic?null:await read('tracker-a-case-2-input.json',262144,diagnostic.inputRef);
+ const required=input!==null&&input.anchor!==null&&input.scalarObservations.length>0,name='tracker-a-anchor-scalars-v1.json';
+ need(names.includes(name)===required,'Anchor diagnostic missing or unexpected');if(!required)return;
+ const snapshots=(await Promise.all([1,2].map(async n=>copyPilotSnapshots((await read('native-case-'+n+'.json',2097152)).snapshots)))).flat();
+ const copied=copyTrackerAInput(input,snapshots);copyAnchorScalars(await read(name,65536),{profileRef,childResultRef:diagnostic.childResultRef,inputRef:diagnostic.inputRef},copied,snapshots);
 }
 function copyTrackerAFirstFailure(value){
  const r=ownData(value,['code','ordinal','previousOrdinal','slot']);need(['unclassified','baseline','timestamp-reverse','opposing-offset','end-stop'].includes(r.code),'First failure code');
@@ -591,6 +660,7 @@ export async function admitTrackerAFailureInventory(profileRef,ports){
  for(const [name,ref] of [['tracker-a-case-2-input.json',d.inputRef],['tracker-a-case-2-transport.json',d.transportRef],['tracker-a-case-2-trace.json',d.rawRef]])need(seen.has(name)===(ref!==null),'Uncreated/claimed role differs');
  if(d.inputRef!==null){const input=copyTrackerAInput(await json('tracker-a-case-2-input.json',262144),(await Promise.all([1,2].map(async n=>copyPilotSnapshots((await json('native-case-'+n+'.json',2097152)).snapshots)))).flat());need(!pending(input)&&Object.values(input.listeners).every(listenerClosed),'Failure input originals remain open');}
  if(d.transportRef!==null){const transport=copyTrackerATransport(await json('tracker-a-case-2-transport.json',1048576));need(!pending(transport)&&transportContained(transport),'Failure trace originals remain open');need(transport.sink.created===(d.rawRef!==null),'Failure raw creation publication differs');}
+ await admitAnchorInventory(profileRef,{read},names,d);
  if(seen.has('tracker-a-first-failure.json')){const capsule=copyTrackerAFirstFailureCapsule(await json('tracker-a-first-failure.json',4096));need(JSON.stringify(capsule.profileRef)===JSON.stringify(d.profileRef)&&JSON.stringify(capsule.childResultRef)===JSON.stringify(d.childResultRef),'First failure authenticated refs differ');}
  // Historical command streams also require their own original writer closures.
  for(const name of names){const match=/^(profile|extract|install|browser-install|parent|application)\.(stdout|stderr)$/.exec(name);if(match){const result=await json(match[1]+'-result.json',pilotRoleCap(match[1]+'-result.json')),s=result.streamFacts?.[match[2]];need(result.closeObserved===true&&result.original?.closed===true&&s?.readableEOF===true&&s.writerFinish===true&&s.writerClose===true&&s.writerError===false&&s.overflow===false&&s.retainedBytesKnown===true&&s.seen===s.retained,'Failure historical writer remains open');}if(/^browser-(?:stdout|stderr)\.bin$/.test(name))need(partial.stdio.some(s=>s.kind===(name==='browser-stdout.bin'?'stdout':'stderr')&&s.status==='fulfilled'),'Failure browser writer remains open');await read(name,pilotRoleCap(name));}
@@ -615,10 +685,10 @@ export function constructTrackerAProfile(intent,native,intentRef){
  accepted(evaluateMountedTrackerAAdmissionPolicy(intent));need(intent.kind==='pre-install-intent'&&selectMountedBootstrapMode(intent.context)==='tracker-a');
  const q=ownData(native,nativePrerequisiteFields);need(q.sourceSha===intent.source.commitSha&&q.sourceTreeSha===intent.source.treeSha&&q.frontendSettingsSha256===intent.prerequisite.frontendSettingsSha256&&q.attempt===1&&q.workflowId===386692729&&q.workflowPath==='.github/workflows/hosted-copilot-mounted.yml'&&q.releaseId===nativePrerequisiteRelease&&q.qualification===false);
  need(id(q.originalRunId)&&id(q.artifactId)&&Number.isSafeInteger(q.archiveBytes)&&q.archiveBytes>0&&q.archiveBytes<=33554432&&['archiveSha256','qualifiedRootReceiptSha256','qualifiedPeerReceiptSha256','frontendSettingsSha256'].every(k=>digest(q[k])));
- const file=fileRef(intentRef,'native-intent.json');need(file!==null);const result={schemaVersion:1,kind:'tracker-a-profile',mode:PILOT_MODE,sourceSha:intent.source.commitSha,sourceTree:intent.source.treeSha,releaseId:PILOT_RELEASE,staticPrerequisiteRef:{file,member:'prerequisite'},nativePrerequisite:q,trace:TRACKER_A_TRACE_CONFIG,trajectory:trackerTrajectory(),limits:trackerLimits(),qualification:false};need(encoded(result).length<=16384);return result;
+ const file=fileRef(intentRef,'native-intent.json');need(file!==null);const result={schemaVersion:2,kind:'tracker-a-profile',mode:'tracker-a-anchor-scalars-v1',strictMode:PILOT_MODE,diagnostics:{sameOwnerAnchor:{protocol:'tracker-a-anchor-scalars-v1',role:'tracker-a-anchor-scalars-v1.json',cap:65536,maxObservations:82,g1Purpose:'tracker-a-G1-anchor-diagnostic-v1',metric:'min-positive-text-rect-viewport-y'}},sourceSha:intent.source.commitSha,sourceTree:intent.source.treeSha,releaseId:PILOT_RELEASE,staticPrerequisiteRef:{file,member:'prerequisite'},nativePrerequisite:q,trace:TRACKER_A_TRACE_CONFIG,trajectory:trackerTrajectory(),limits:trackerLimits(),qualification:false};need(encoded(result).length<=16384);return result;
 }
 export function validateTrackerAProfile(profile,intent,intentRef){
- const r=copyPublicationData(profile,16384);ownData(r,['schemaVersion','kind','mode','sourceSha','sourceTree','releaseId','staticPrerequisiteRef','nativePrerequisite','trace','trajectory','limits','qualification']);const expected=constructTrackerAProfile(intent,r.nativePrerequisite,intentRef);need(JSON.stringify(r)===JSON.stringify(expected),'Disk tracker profile/source differs');return expected;
+ const r=copyPublicationData(profile,16384);ownData(r,['schemaVersion','kind','mode','strictMode','diagnostics','sourceSha','sourceTree','releaseId','staticPrerequisiteRef','nativePrerequisite','trace','trajectory','limits','qualification']);const expected=constructTrackerAProfile(intent,r.nativePrerequisite,intentRef);need(JSON.stringify(r)===JSON.stringify(expected),'Disk tracker profile/source differs');return expected;
 }
 function trackerAssets(value){const a=ownData(value,['root','files']);need(typeof a.root==='string'&&a.root.startsWith('/')&&resolve(a.root)===a.root);assertProductionOutputInventory(a.files);return copyPublicationData({root:a.root,files:a.files},524288);}
 function startupArgv(value,action){const argv=captureArgv(value);need(argv[0]===process.execPath&&argv[1]==='--experimental-import-meta-resolve'&&argv[2]===fileURLToPath(import.meta.url)&&argv[3]===action,'Fixed startup argv differs');return argv;}
@@ -650,7 +720,7 @@ export async function acquireTrackerANativePrerequisite(value,ports){
 export async function invokeTrackerAWorker(value,ports){
  const r=ownData(value,['options','prerequisites','assets','profile','intentRef']),options=validateTrackerAOptions(r.options,r.prerequisites,r.assets),profile=validateTrackerAProfile(r.profile,r.prerequisites.intent,r.intentRef);
  need(JSON.stringify(profile.nativePrerequisite)===JSON.stringify(options.prerequisites.nativePrerequisite),'Worker profile/native tuple differs');const ref=fileRef(ports.publication.profileRef,'tracker-a-profile.json'),profileBytes=encoded(profile);need(ref!==null&&ref.bytes===profileBytes.length&&ref.sha256===hash(profileBytes),'Worker physical profile ref differs');need(typeof ports.publication.reserveTraceSink==='function');
- const worker=await ports.importWorker();need(typeof worker.runNativeMountedTrackerAPilot==='function','Fixed pilot native export absent');return worker.runNativeMountedTrackerAPilot(options,ports.diagnostics,ports.publication);
+ const worker=await ports.importWorker();need(typeof worker.runNativeMountedTrackerAPilot==='function','Fixed pilot native export absent');return worker.runNativeMountedTrackerAPilot(options,ports.diagnostics,{profileRef:ref,reserveTraceSink:ports.publication.reserveTraceSink,anchorDiagnostic:profile.diagnostics.sameOwnerAnchor});
 }
 function copyFailureStrings(value){return denseData(value,16).map(v=>{need(typeof v==='string'&&v.length<=512);return v;});}
 function copyGlobalOriginals(value){const rows=denseData(value,10);need(rows.length===10);return rows.map((v,i)=>{const r=ownData(v,['label','status']);need(r.label===globalOriginalLabels[i]&&['fulfilled','pending','rejected','timed-out','unavailable'].includes(r.status));return {label:r.label,status:r.status};});}
@@ -991,16 +1061,9 @@ async function child(directory,scratch){
   try{
    const diagnostics=createRestoredHistoryDiagnosticPort((bytes,callback)=>process.stdout.write(bytes,callback)),publication={profileRef:loaded.profileRef,reserveTraceSink:()=>reserveRawSink(directory,rawState)};
    const result=await invokeTrackerAWorker({options,prerequisites,assets:plan.assets,profile:loaded.profile,intentRef:loaded.intentRef},{importWorker:async()=>{const worker=await import(pathToFileURL(join(process.cwd(),prerequisites.module.workerPath)).href);imported=true;return worker;},diagnostics,publication});
-   const current=await bundle(directory,scratch);await verifyGraph(directory,scratch,current);need(JSON.stringify(current)===JSON.stringify(prerequisites));const n=copyNativePilot(result);
-   if(n.input)need(JSON.stringify(n.input.profileRef)===JSON.stringify(loaded.profileRef));if(n.transport)need(JSON.stringify(n.transport.profileRef)===JSON.stringify(loaded.profileRef));
-   for(const caseNumber of [1,2])await writeJson(directory,'native-case-'+caseNumber+'.json',{caseNumber,cases:n.caseEvidence.filter(c=>c.caseNumber===caseNumber),snapshots:n.snapshots.filter(s=>s.caseNumber===caseNumber),qualification:false},2097152);
-   let inputRef=null,transportRef=null,rawRef=null;
-   if(n.input){await writeJson(directory,'tracker-a-case-2-input.json',n.input,262144);inputRef=await publishedFileRef(directory,'tracker-a-case-2-input.json');}
-   if(n.transport){if(n.transport.raw.ref!==null&&n.transport.sink.fileClose==='fulfilled'){rawRef=await publishedFileRef(directory,'tracker-a-case-2-trace.json');need(JSON.stringify(rawRef)===JSON.stringify(n.transport.raw.ref));}await writeJson(directory,'tracker-a-case-2-transport.json',n.transport,1048576);transportRef=await publishedFileRef(directory,'tracker-a-case-2-transport.json');}
-   const summary=constructTrackerAChildResult(result,{inputRef,transportRef,rawRef,snapshotFiles:['native-case-1.json','native-case-2.json']});
-   const status=await publishTrackerAInternalReport('child',summary,value=>writeJson(directory,'native-child-result.json',value,524288));
-   if(n.firstFailure!==null){const capsule=copyTrackerAFirstFailureCapsule({schemaVersion:1,kind:'tracker-a-first-failure',profileRef:loaded.profileRef,childResultRef:await publishedFileRef(directory,'native-child-result.json'),firstFailure:n.firstFailure,qualification:false,nativeGO:false,performance:false});await writeJson(directory,'tracker-a-first-failure.json',capsule,4096);}
-   console.log(JSON.stringify({status:summary.status,resultPath:join(directory,'native-child-result.json'),qualification:false}));return status;
+   const current=await bundle(directory,scratch);await verifyGraph(directory,scratch,current);need(JSON.stringify(current)===JSON.stringify(prerequisites));
+   const status=await publishTrackerAChildEvidence(result,loaded.profileRef,{writeJson:(name,value,cap)=>writeJson(directory,name,value,cap),ref:name=>publishedFileRef(directory,name)});
+   console.log(JSON.stringify({status,resultPath:join(directory,'native-child-result.json'),qualification:false}));return status;
   }catch(error){await handleMountedBootstrapFailure(error,code=>{process.exitCode=code;},async original=>{const failure=serializeMountedFailure('native-child',original,imported?'fulfilled':'rejected');await writeBytes(directory,failure.name,failure.raw,failure.cap);});throw error;}
  }
  const options=await jsonFile(join(directory,'native-child-options.json'),512*1024);await verifyGraph(directory,scratch,options.prerequisites);

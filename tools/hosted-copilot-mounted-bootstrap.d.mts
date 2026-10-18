@@ -112,6 +112,9 @@ export function constructTrackerAChildResult(native:unknown,persistence:unknown)
 export function constructTrackerAResult(value:unknown):TrackerAFinalResult;
 export function publishTrackerAResults(value:unknown,ports:TrackerAOuterPublicationPorts):Promise<TrackerAFinalResult>;
 export function constructTrackerAProfile(intent:unknown,native:unknown,intentRef:unknown):unknown;
+export type TrackerAAnchorScalars=Readonly<{schemaVersion:1;kind:'tracker-a-anchor-scalars-v1';profileRef:Ref<'tracker-a-profile.json'>;childResultRef:Ref<'native-child-result.json'>;inputRef:Ref<'tracker-a-case-2-input.json'>;selection:import('../apps/copilotkit/runtime/mounted-tracker-a.ts').TrackerAAnchorDiagnostic['selection'];observations:readonly import('../apps/copilotkit/runtime/mounted-tracker-a.ts').AnchorObservation[];qualification:false;nativeGO:false;performance:false}>;
+export function constructTrackerAAnchorScalars(native:unknown,refs:unknown):TrackerAAnchorScalars|null;
+export function publishTrackerAChildEvidence(native:unknown,profileRef:unknown,ports:{writeJson(name:string,value:unknown,cap:number):Promise<unknown>;ref(name:string):Promise<unknown>}):Promise<'complete'|'incomplete'>;
 export function validateTrackerAProfile(profile:unknown,intent:unknown,intentRef:unknown):unknown;
 export function planTrackerAStartup(prerequisites:unknown,assets:unknown,registryBytes:Uint8Array,parentArgv:unknown,childArgv:unknown):Readonly<{registryBytes:number;optionsBytes:number;parentStartedBytes:number;applicationStartedBytes:number}>;
 export function validateTrackerAOptions(options:unknown,prerequisites:unknown,assets:unknown):unknown;

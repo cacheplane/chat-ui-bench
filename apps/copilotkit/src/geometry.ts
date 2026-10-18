@@ -1,6 +1,6 @@
 import type { CaseContext } from './context.js';
 import type { GeometryPhase, GeometryRect, GeometryEvaluation, MountedGeometryInput } from './geometry-policy.js';
-import { GEOMETRY_LIMITS as L, evaluateMountedGeometry, projectGeometryText, type GeometryClip, type GeometryObservation } from './geometry-policy.ts';
+import { GEOMETRY_LIMITS as L, evaluateMountedGeometry, evaluateSelectedGeometryRow, projectGeometryText, type GeometryClip, type GeometryObservation } from './geometry-policy.ts';
 import type { VisibleMessage } from '../../../packages/contract/src/comparison.js';
 export const GEOMETRY_NODE_VISITS = 4096;
 export type GeometryNode = object;
@@ -24,7 +24,11 @@ export type GeometryFailure = 'disposed' | 'dom-unavailable' | 'selector' | 'wor
 export type GeometrySnapshot = Readonly<{status:'available';frame:MountedGeometryInput;evaluation:GeometryEvaluation;visibleMessages:readonly VisibleMessage[];scroll:Readonly<{scrollTop:number;scrollHeight:number;clientHeight:number}>}> | Readonly<{status:'unavailable'|'invalid';reason:GeometryFailure}>;
 export type GeometryContext = Pick<CaseContext,'history'|'response'|'ids'>;
 export interface GeometryLocators { scroller:string; messageHost(id:string):string; messageContent(id:string):string }
-export interface GeometryCollector { read(phase:GeometryPhase,progress:Readonly<{active:boolean;prefix:string}>):GeometrySnapshot; dispose():void }
+export type AnchorPurpose='tracker-a-G1-anchor-diagnostic-v1';
+export type AnchorIdentity=Readonly<{sameHostObject:boolean|null;sameOwner:boolean|null;sameScroller:boolean|null;sameScope:boolean|null;sameUrl:boolean|null;connected:boolean|null;uniqueSelectors:boolean|null;contained:boolean|null;parentMatched:boolean|null}>;
+export type AnchorReason='admission'|'selection'|'owner'|'host'|'scroller'|'scope'|'url'|'disconnected'|'selector'|'text'|'style'|'clip'|'work'|'rect'|'geometry'|'no-positive'|'fully-clipped'|'source-error';
+export interface AnchorProbe {status:'available'|'unavailable';reason:AnchorReason|null;identity:AnchorIdentity;ownerToken:number|null;contentTopCssPx:number|null;relativeTopCssPx:number|null;nativeViewportY:number|null;textRectCount:number;eligible:boolean|null;scrollTopAfterProbe:number|null;nodesVisited:number;rectangleUnits:number;textChars:number}
+export interface GeometryCollector { read(phase:GeometryPhase,progress:Readonly<{active:boolean;prefix:string}>,purpose?:AnchorPurpose):GeometrySnapshot;probeAnchor(selection:Readonly<{id:string;ownerToken:number}>):AnchorProbe;releaseAnchor(reason:'host'|'url'):void;dispose():void }
 export type HistoryContentStatus='ready'|'pending'|'unavailable'|'invalid';
 export type HistoryContentReason='content-ready'|'empty-text'|'no-mounted-history'|'selector'|'ownership'|'unknown-id'|'text-mismatch'|'node-cap'|'text-cap'|'identity-cap'|'invalid-data'|'public-history'|'public-active'|'source-error'|'admission-closed';
 export interface RestoredHistoryContentScalar {readonly status:HistoryContentStatus;readonly reason:HistoryContentReason;readonly mountedRows:number;readonly emptyRows:number;readonly firstRowId:string|null;readonly firstRowRole:'assistant'|'user'|null}
@@ -116,6 +120,46 @@ function translationOnly(value:string):boolean {
   for(const part of lexemes){const s=part.trim();if(s.length>32||!s.length||!/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/.test(s))return false;const n=Number(s);if(!Number.isFinite(n))return false;numbers.push(n);}
   return numbers[0]===1&&numbers[1]===0&&numbers[2]===0&&numbers[3]===1&&Math.abs(numbers[4]!)<=L.coordinate&&Math.abs(numbers[5]!)<=L.coordinate;
 }
+type RowBudget={text:number;clips:number;rects:number};
+function collectRow(p:GeometryPorts,content:GeometryNode,visit:()=>void,budget:RowBudget){
+let observedText='',common:GeometryNode[]|undefined,clips:GeometryClip[]=[];
+const textRects:GeometryRect[]=[];
+// Walk siblings incrementally: no descendant array or recursive JS stack.
+let n:GeometryNode|null=content;
+while(n){
+  visit();const text=p.text(n);
+  if(text!==null){
+    if(text.length>L.observedTextPerRow-observedText.length||text.length>L.observedText-budget.text)deny('geometry-cap');
+    observedText+=text;budget.text+=text.length;
+    const chain:GeometryNode[]=[],nodeClips:GeometryClip[]=[];
+    let ancestor=p.parent(n);
+    while(ancestor){
+      visit();const s=p.style(ancestor);
+      // Only none/pure 2D translation preserves this client-box math.
+      if(s.display==='none'||s.visibility!=='visible'||s.opacity!=='1'||!translationOnly(s.transform)||s.clipPath!=='none'||s.maskImage!=='none'||s.contentVisibility!=='visible'||
+        (s.zoom!=='1'&&s.zoom!=='normal')||s.scale!=='none'||s.rotate!=='none'||s.translate!=='none'||s.clip!=='auto')deny('unsupported-style');
+      const clipX=['hidden','clip','scroll','auto'].includes(s.overflowX),clipY=['hidden','clip','scroll','auto'].includes(s.overflowY);
+      if(clipX||clipY){
+        if(nodeClips.length===L.ancestorClipsPerRow)deny('geometry-cap');
+        chain.push(ancestor);nodeClips.push({rect:clientBox(p.box(ancestor)),clipX,clipY});
+      }
+      ancestor=p.parent(ancestor);
+    }
+    if(common&&(common.length!==chain.length||common.some((a,i)=>a!==chain[i])))deny('heterogeneous-clips');
+    if(!common){common=chain;clips=nodeClips;budget.clips+=clips.length;if(budget.clips>L.ancestorClips)deny('geometry-cap');}
+    const rects=p.textRects(n);
+    if(rects.length>L.textRectsPerRow-textRects.length||rects.length>L.textRects-budget.rects)deny('geometry-cap');
+    budget.rects+=rects.length;
+    for(let i=0;i<rects.length;i++)textRects.push(copyRect(rects[i]!));
+    if(budget.rects+budget.clips+2>L.rectangles)deny('geometry-cap');
+  }
+  const child=p.firstChild(n);
+  if(child){n=child;continue;}
+  while(n!==content&&!p.nextSibling(n)){visit();n=p.parent(n);if(!n)deny('selector');}
+  n=n===content?null:p.nextSibling(n);
+}
+ return {observedText,textRects,ancestorClips:clips};
+}
 /** Explicit unscored H100 observation only. Never call from scored readProgress. */
 export function createGeometryCollector(context:GeometryContext,locators:GeometryLocators,ports:GeometryPorts):GeometryCollector {
   let ownedPorts:GeometryPorts|null=ports;
@@ -123,19 +167,51 @@ export function createGeometryCollector(context:GeometryContext,locators:Geometr
   const expectedHistory=context.history.map(m=>({id:m.id,role:m.role,text:m.content}));
   const expectedResponse={id:context.response.id,role:context.response.role,text:context.response.content};
   const scopeId=context.ids.threadId;
+  type Lease={content:GeometryNode;host:GeometryNode;scroller:GeometryNode;known:typeof expectedHistory[number];ownerToken:number};
+  let lease:Lease|null=null,terminal:AnchorReason|null=null;
   return {
-    dispose(){ownedPorts=null;owners=new WeakMap();},
-    read(phase,progress){
+    releaseAnchor(reason){lease=null;terminal=reason;},
+    dispose(){ownedPorts=null;owners=new WeakMap();lease=null;terminal='admission';},
+    probeAnchor(selection){
+      const identity:Record<keyof AnchorIdentity,boolean|null>={sameHostObject:null,sameOwner:null,sameScroller:null,sameScope:null,sameUrl:null,connected:null,uniqueSelectors:null,contained:null,parentMatched:null};
+      let nodesVisited=0,geometryAccesses=0,viewportUnits=0,eligible:boolean|null=null;const budget:RowBudget={text:0,clips:0,rects:0};
+      const no=(reason:AnchorReason):AnchorProbe=>({status:'unavailable',reason,identity,ownerToken:null,contentTopCssPx:null,relativeTopCssPx:null,nativeViewportY:null,textRectCount:budget.rects,eligible:eligible===false?false:null,scrollTopAfterProbe:null,nodesVisited,rectangleUnits:budget.rects+budget.clips+viewportUnits,textChars:budget.text});
+      const stop=(reason:AnchorReason)=>{terminal=reason;lease=null;return no(reason);};
+      const p=ownedPorts,l=lease;if(!p)return no('admission');if(terminal)return no(terminal);if(!l)return no('selection');
+      try{
+        let selected:Record<string,unknown>;try{selected=historyData(selection,['id','ownerToken']);}catch{return stop('selection');}if(selected.id!==l.known.id||selected.ownerToken!==l.ownerToken)return stop('selection');
+        identity.sameScope=context.ids.threadId===scopeId;if(!identity.sameScope)return stop('scope');
+        const scrollers=p.find(locators.scroller);identity.sameScroller=scrollers.length===1&&scrollers[0]===l.scroller;if(!identity.sameScroller)return stop('scroller');
+        const hosts=p.find(locators.messageHost(l.known.id)),contents=p.find(locators.messageContent(l.known.id));
+        identity.uniqueSelectors=hosts.length===1&&contents.length===1;if(!identity.uniqueSelectors)return stop('selector');
+        identity.sameHostObject=hosts[0]===l.host;if(!identity.sameHostObject)return stop('host');
+        const owner=owners.get(l.content);identity.sameOwner=contents[0]===l.content&&owner?.id===l.known.id&&owner.role===l.known.role&&owner.token===l.ownerToken;if(!identity.sameOwner)return stop('owner');
+        identity.connected=p.connected(l.content)&&p.connected(l.host)&&p.connected(l.scroller);if(!identity.connected)return stop('disconnected');
+        identity.contained=p.contains(l.scroller,l.content);if(!identity.contained)return stop('owner');
+        identity.parentMatched=p.parent(l.content)===l.host;if(!identity.parentMatched)return stop('owner');
+        const geometryRead=()=>{if(geometryAccesses===8194)deny('geometry-cap');geometryAccesses++;};
+        const q:GeometryPorts={...p,box:n=>{geometryRead();return p.box(n);},style:n=>{geometryRead();return p.style(n);},textRects:n=>{geometryRead();return p.textRects(n);},viewport:()=>{geometryRead();return p.viewport();}};
+        const sb=q.box(l.scroller);viewportUnits++;const native=q.viewport();viewportUnits++;
+        const hostBounds=q.box(l.host).rect;
+        if(![hostBounds.x,hostBounds.y,hostBounds.width,hostBounds.height].every(Number.isFinite)||Math.abs(hostBounds.x)>L.coordinate||Math.abs(hostBounds.y)>L.coordinate||hostBounds.width<=0||hostBounds.height<=0||hostBounds.width>L.coordinate||hostBounds.height>L.coordinate||!Number.isFinite(hostBounds.x+hostBounds.width)||!Number.isFinite(hostBounds.y+hostBounds.height))return no('geometry');
+        const measured=collectRow(q,l.content,()=>{if(nodesVisited===GEOMETRY_NODE_VISITS)deny('work-cap');nodesVisited++;},budget);
+        const row=evaluateSelectedGeometryRow({id:l.known.id,role:l.known.role,presence:'mounted',ownerToken:l.ownerToken,...measured},l.known,clientBox(sb),native);
+        eligible=row.geometryEligibility==='eligible';if(!eligible)return no(row.reason==='fully-clipped'?'fully-clipped':row.reason==='no-positive-text-rects'?'no-positive':'text');
+        const scrollTop=q.box(l.scroller).scrollTop;if(!Number.isFinite(scrollTop)||scrollTop<0||scrollTop>L.coordinate)return no('geometry');
+        return {status:'available',reason:null,identity,ownerToken:l.ownerToken,contentTopCssPx:row.contentTopCssPx,relativeTopCssPx:row.relativeTopCssPx,nativeViewportY:native.y,textRectCount:budget.rects,eligible:true,scrollTopAfterProbe:scrollTop,nodesVisited,rectangleUnits:budget.rects+budget.clips+viewportUnits,textChars:budget.text};
+      }catch(error){return no(error instanceof CollectionFailure?error.reason==='work-cap'?'work':error.reason==='unsupported-style'?'style':error.reason==='heterogeneous-clips'?'clip':'geometry':'source-error');}
+    },
+    read(phase,progress,purpose){
       const p=ownedPorts;if(!p)return {status:'unavailable',reason:'disposed'};
       try {
-        let visits=0,totalRects=0,totalClips=0,totalText=0;
+        let visits=0;const budget:RowBudget={text:0,clips:0,rects:0};
         const visit=()=>{if(++visits>GEOMETRY_NODE_VISITS)deny('work-cap');};
         const matches=p.find(locators.scroller);
         if(matches.length!==1)deny('selector');
         const scroller=matches[0]!;
         if(!p.connected(scroller))deny('selector');
         const sb=p.box(scroller),bounds=new Map<string,GeometryRect>(),seen=new Set<GeometryNode>();
-        const rows:GeometryObservation[]=[];
+        const rows:GeometryObservation[]=[],retained=new Map<string,{content:GeometryNode;host:GeometryNode}>();
         for(const known of phase==='restored-history'?expectedHistory:[...expectedHistory,expectedResponse]){
           // Role-independent identity query prevents wrong-role/duplicate hosts
           // from masquerading as legitimately virtualized, unmounted content.
@@ -151,43 +227,9 @@ export function createGeometryCollector(context:GeometryContext,locators:Geometr
           let owner=owners.get(content);
           if(!owner||owner.id!==known.id||owner.role!==known.role){if(token===L.ownerToken)deny('geometry-cap');owner={id:known.id,role:known.role,token:++token};owners.set(content,owner);}
           bounds.set(known.id,copyRect(p.box(host).rect));
-          let observedText='',common:GeometryNode[]|undefined,clips:GeometryClip[]=[];
-          const textRects:GeometryRect[]=[];
-          // Walk siblings incrementally: no descendant array or recursive JS stack.
-          let n:GeometryNode|null=content;
-          while(n){
-            visit();const text=p.text(n);
-            if(text!==null){
-              if(text.length>L.observedTextPerRow-observedText.length||text.length>L.observedText-totalText)deny('geometry-cap');
-              observedText+=text;totalText+=text.length;
-              const chain:GeometryNode[]=[],nodeClips:GeometryClip[]=[];
-              let ancestor=p.parent(n);
-              while(ancestor){
-                visit();const s=p.style(ancestor);
-                // Only none/pure 2D translation preserves this client-box math.
-                if(s.display==='none'||s.visibility!=='visible'||s.opacity!=='1'||!translationOnly(s.transform)||s.clipPath!=='none'||s.maskImage!=='none'||s.contentVisibility!=='visible'||
-                  (s.zoom!=='1'&&s.zoom!=='normal')||s.scale!=='none'||s.rotate!=='none'||s.translate!=='none'||s.clip!=='auto')deny('unsupported-style');
-                const clipX=['hidden','clip','scroll','auto'].includes(s.overflowX),clipY=['hidden','clip','scroll','auto'].includes(s.overflowY);
-                if(clipX||clipY){
-                  if(nodeClips.length===L.ancestorClipsPerRow)deny('geometry-cap');
-                  chain.push(ancestor);nodeClips.push({rect:clientBox(p.box(ancestor)),clipX,clipY});
-                }
-                ancestor=p.parent(ancestor);
-              }
-              if(common&&(common.length!==chain.length||common.some((a,i)=>a!==chain[i])))deny('heterogeneous-clips');
-              if(!common){common=chain;clips=nodeClips;totalClips+=clips.length;if(totalClips>L.ancestorClips)deny('geometry-cap');}
-              const rects=p.textRects(n);
-              if(rects.length>L.textRectsPerRow-textRects.length||rects.length>L.textRects-totalRects)deny('geometry-cap');
-              totalRects+=rects.length;
-              for(let i=0;i<rects.length;i++)textRects.push(copyRect(rects[i]!));
-              if(totalRects+totalClips+2>L.rectangles)deny('geometry-cap');
-            }
-            const child=p.firstChild(n);
-            if(child){n=child;continue;}
-            while(n!==content&&!p.nextSibling(n)){visit();n=p.parent(n);if(!n)deny('selector');}
-            n=n===content?null:p.nextSibling(n);
-          }
-          rows.push({id:known.id,role:known.role,presence:'mounted',ownerToken:owner.token,observedText,textRects,ancestorClips:clips});
+          if(purpose==='tracker-a-G1-anchor-diagnostic-v1')retained.set(known.id,{content,host});
+          const {observedText,textRects,ancestorClips}=collectRow(p,content,visit,budget);
+          rows.push({id:known.id,role:known.role,presence:'mounted',ownerToken:owner.token,observedText,textRects,ancestorClips});
         }
         const frame:MountedGeometryInput={schemaVersion:1,scopeId,clockDomain:'page-performance-ms',observedAtPageMs:p.now(),phase,
           expectedHistory:expectedHistory.map(m=>({...m})),expectedResponse:{...expectedResponse},responseProgress:{...progress},
@@ -207,6 +249,10 @@ export function createGeometryCollector(context:GeometryContext,locators:Geometr
         // Stable sort retains canonical ordering for ties.
         visibleMessages.sort((a,b)=>a.topCssPx-b.topCssPx);
         if(!Number.isFinite(sb.scrollTop)||!Number.isFinite(sb.scrollHeight)||sb.scrollHeight<0||!Number.isFinite(sb.clientHeight)||sb.clientHeight<0)deny('policy-scroll-scalars');
+        if(purpose==='tracker-a-G1-anchor-diagnostic-v1'&&!terminal&&!lease&&phase==='streaming'){
+          const selected=evaluation.rows.find(r=>r.id!==expectedResponse.id&&r.geometryEligibility==='eligible');
+          if(selected){const objects=retained.get(selected.id),known=expectedHistory.find(m=>m.id===selected.id);if(objects&&known&&selected.ownerToken!==null)lease={...objects,scroller,known,ownerToken:selected.ownerToken};}
+        }
         return {status:'available',frame,evaluation,visibleMessages,scroll:{scrollTop:sb.scrollTop,scrollHeight:sb.scrollHeight,clientHeight:sb.clientHeight}};
       }catch(error){return {status:'unavailable',reason:error instanceof CollectionFailure?error.reason:'dom-unavailable'};}
     }

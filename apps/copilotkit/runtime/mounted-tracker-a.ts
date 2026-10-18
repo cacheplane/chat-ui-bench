@@ -2,7 +2,7 @@
 import {checkJourney,type MountedCaseOwner} from './mounted-conformance.ts';
 import {evaluateMountedClosurePolicy,type CaseRecord} from '../../../tests/support/hosted-copilot-mounted-policy.ts';
 import {evaluateMountedGeometry,evaluateHistoricalAnchor,type MountedGeometryInput,type HistoricalAnchorEvaluation} from '../src/geometry-policy.ts';
-import type {GeometrySnapshot} from '../src/geometry.ts';
+import type {GeometrySnapshot,AnchorPurpose,AnchorProbe} from '../src/geometry.ts';
 import type {createMountedTrackerATrace,TrackerAOriginal,TrackerAProfileRef} from './mounted-tracker-a-trace.ts';
 type Trace=ReturnType<typeof createMountedTrackerATrace>;
 type Original={status:TrackerAOriginal;startedHostMs:number|null;settledHostMs:number|null};
@@ -11,20 +11,64 @@ type ListenerFact={registration:ListenerOriginal;removal:ListenerOriginal;ownedI
 const listenerNames=['wheel','scroll','animationstart','transitionrun','navigation','contextClose','pageClose'] as const;
 type ListenerName=typeof listenerNames[number];
 export interface TrackerAScalar {pageNowMs:number;url:string;sameOriginalScroller:boolean;connected:boolean;uniqueSelector:boolean;innerWidth:number;innerHeight:number;devicePixelRatio:number;rect:{x:number;y:number;width:number;height:number};scrollTop:number;scrollHeight:number;clientHeight:number}
+
+/** Structural page-only ports keep these serialized callbacks in the pure closure. */
+interface TrackerAAnchorHost {readGeometrySnapshot(purpose?:AnchorPurpose):GeometrySnapshot;releaseAnchorDiagnostic(reason:'host'|'url'):void;probeAnchorDiagnostic(selection:Readonly<{id:string;ownerToken:number}>):unknown}
+interface TrackerAAnchorPageState {scalar():TrackerAScalar;anchorContext:{host:TrackerAAnchorHost;url:string;refused:'host'|'url'|null}}
+type TrackerAAnchorWindow=Window&{__copilotkitBenchHost?:TrackerAAnchorHost;__copilotkitTrackerA?:TrackerAAnchorPageState};
+/** Same normal full-read path; diagnostic admission can only disable a lease. */
+export function readTrackerAGeometrySnapshot(purpose:AnchorPurpose|undefined):GeometrySnapshot{
+ const w=window as TrackerAAnchorWindow,h=w.__copilotkitBenchHost;if(!h)throw Error('Original host absent');
+ if(purpose){const context=w.__copilotkitTrackerA?.anchorContext;if(context){
+  if(h!==context.host||location.href!==context.url){context.refused??=h!==context.host?'host':'url';context.host.releaseAnchorDiagnostic(context.refused);}
+  if(context.refused===null)return h.readGeometrySnapshot(purpose);
+ }}
+ return h.readGeometrySnapshot();
+}
+
+/** Closed evaluate callback: no free value bindings and no SDK work. Raw scalar
+ * stays first; malformed observer data cannot invoke getters during transport. */
+export function readTrackerAAnchorScalarEnvelope(selection:Readonly<{id:string;ownerToken:number}>|undefined):{scalar:TrackerAScalar;anchorDiagnostic:unknown}{
+ const w=window as TrackerAAnchorWindow,s=w.__copilotkitTrackerA;if(!s)throw Error('Original pilot state absent');
+ const scalar=s.scalar(),pageStartMs=performance.now();let candidate:unknown,sameHostObject:boolean|null=null,sameUrl:boolean|null=null;
+ try{
+  if(!selection)return {scalar,anchorDiagnostic:{contractInvalid:true}};
+  const context=s.anchorContext;sameHostObject=w.__copilotkitBenchHost===context.host;sameUrl=location.href===context.url;
+  if(!sameHostObject||!sameUrl){context.refused??=!sameHostObject?'host':'url';context.host.releaseAnchorDiagnostic(context.refused);}
+  candidate=context.host.probeAnchorDiagnostic(selection);
+ }catch{candidate={status:'unavailable',reason:'source-error',identity:{sameHostObject:null,sameOwner:null,sameScroller:null,sameScope:null,sameUrl:null,connected:null,uniqueSelectors:null,contained:null,parentMatched:null},ownerToken:null,contentTopCssPx:null,relativeTopCssPx:null,nativeViewportY:null,textRectCount:0,eligible:null,scrollTopAfterProbe:null,nodesVisited:0,rectangleUnits:0,textChars:0};}
+ const pageEndMs=performance.now();
+ const copy=(value:unknown,keys:readonly string[]):Record<string,unknown>=>{
+  if(typeof value!=='object'||value===null||Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('Diagnostic own record');
+  const descriptors=Object.getOwnPropertyDescriptors(value);if(Reflect.ownKeys(descriptors).length!==keys.length||Reflect.ownKeys(descriptors).some(k=>typeof k!=='string'||!keys.includes(k)))throw Error('Diagnostic keys');
+  const result:Record<string,unknown>={};for(const key of keys){const d=descriptors[key];if(!d||!('value'in d))throw Error('Diagnostic accessor');result[key]=d.value;}return result;
+ };
+ try{
+  const probe=copy(candidate,['status','reason','identity','ownerToken','contentTopCssPx','relativeTopCssPx','nativeViewportY','textRectCount','eligible','scrollTopAfterProbe','nodesVisited','rectangleUnits','textChars']);
+  const identity=copy(probe.identity,['sameHostObject','sameOwner','sameScroller','sameScope','sameUrl','connected','uniqueSelectors','contained','parentMatched']);
+  const primitive=(v:unknown)=>v===null||typeof v==='boolean'||typeof v==='string'&&v.length<=128||typeof v==='number'&&Number.isFinite(v);
+  if(Object.values(identity).some(v=>!primitive(v))||Object.entries(probe).some(([key,v])=>key!=='identity'&&!primitive(v)))throw Error('Diagnostic finite primitive');
+  identity.sameHostObject=sameHostObject===false?false:sameHostObject===true?identity.sameHostObject:null;identity.sameUrl=sameUrl;
+  return {scalar,anchorDiagnostic:{...probe,identity,pageStartMs,pageEndMs}};
+ }catch{return {scalar,anchorDiagnostic:{contractInvalid:true}};}
+}
+
 export interface TrackerAEntrySample {scalar:TrackerAScalar;active:boolean;prefixLength:number;returnControlVisible:boolean}
 type EntryRow=Original&{value:TrackerAEntrySample|null};
 export interface TrackerAHistoryOwner {
  /** Original owned topology, without a full collector or one of the82 scalars. */
  baseline:unknown;seed():Promise<void>;restore():Promise<GeometrySnapshot>;acquireTrace():Promise<Trace>;
  listeners:Record<ListenerName,{install():Promise<boolean>;remove():Promise<boolean>}>;
- startContinuation():Promise<void>;waitActivePrefix():Promise<unknown>;geometry():Promise<GeometrySnapshot>;
- movePointer(x:number,y:number):Promise<void>;entrySample():Promise<unknown>;scalar():Promise<unknown>;wheel(x:0,y:-600|-12):Promise<void>;
+ startContinuation():Promise<void>;waitActivePrefix():Promise<unknown>;geometry(purpose?:AnchorPurpose):Promise<GeometrySnapshot>;
+ movePointer(x:number,y:number):Promise<void>;entrySample():Promise<unknown>;scalar(selection?:Readonly<{id:string;ownerToken:number}>):Promise<unknown>;wheel(x:0,y:-600|-12):Promise<void>;
  returnToResponse():Promise<void>;
  /** Original canonical EOF/public-idle validation and G4, before disposal. */
  complete():Promise<GeometrySnapshot>;close():Promise<CaseRecord>;observations():unknown|Promise<unknown>;
 }
 export interface TrackerASequencerPorts {
  profileRef:TrackerAProfileRef;
+ /** Explicit supplied-test opt out; the hosted diagnostic profile always enables it. */
+ anchorDiagnostic?:boolean;
  clock:{now():number;deadlineHostMs:number;alarm(atHostMs:number,fire:()=>void):()=>void;waitUntil(atHostMs:number):Promise<void>};
  connect():Promise<void>;openFollow():Promise<MountedCaseOwner>;openHistory():Promise<TrackerAHistoryOwner>;closeClient():Promise<void>;
 }
@@ -49,7 +93,9 @@ export interface TrackerAInput extends Observations {
  outcome:{phase:{status:'not-started'|'incomplete'|'complete';reason:null|'phase'};competingMotion:'unavailable';scenarioQualification:'unavailable'};authority:ReturnType<typeof authority>;
 }
 export type TrackerAFirstFailure=Readonly<{code:'unclassified'|'baseline'|'timestamp-reverse'|'opposing-offset'|'end-stop';ordinal:number|null;previousOrdinal:number|null;slot:number|null}>;
-export interface TrackerASequencerResult {status:'complete'|'incomplete';cases:CaseRecord[];caseEvidence:CaseRecord[];snapshots:{caseNumber:1|2;snapshot:GeometrySnapshot}[];input:TrackerAInput|null;transport:ReturnType<Trace['snapshot']>|null;/** Private original receipt; never serialized into the V3 input/artifacts. */inputDrain:ListenerOriginal;hasPrimary:boolean;primary:unknown;firstFailure:TrackerAFirstFailure|null;cleanupFailures:unknown[];authority:ReturnType<typeof authority>}
+export type AnchorObservation=AnchorProbe&{ordinal:number;role:ScalarRow['role'];slot:number|null;pageStartMs:number|null;pageEndMs:number|null;jointReadStable:boolean|null};
+export interface TrackerAAnchorDiagnostic {selection:{snapshotRef:{path:'native-case-2.json';index:number};id:string;role:'user'|'assistant';ownerToken:number;metric:'min-positive-text-rect-viewport-y';contentTopCssPx:number;relativeTopCssPx:number;nativeViewportY:number};observations:AnchorObservation[]}
+export interface TrackerASequencerResult {status:'complete'|'incomplete';cases:CaseRecord[];caseEvidence:CaseRecord[];snapshots:{caseNumber:1|2;snapshot:GeometrySnapshot}[];input:TrackerAInput|null;transport:ReturnType<Trace['snapshot']>|null;/** Private original receipt; never serialized into the V3 input/artifacts. */inputDrain:ListenerOriginal;anchorDiagnostic:TrackerAAnchorDiagnostic|null;anchorDiagnosticError:unknown|null;hasPrimary:boolean;primary:unknown;firstFailure:TrackerAFirstFailure|null;cleanupFailures:unknown[];authority:ReturnType<typeof authority>}
 function data(value:unknown,keys:readonly string[]):Record<string,unknown>{
  if(typeof value!=='object'||value===null||Array.isArray(value)||(Object.getPrototypeOf(value)!==Object.prototype&&Object.getPrototypeOf(value)!==null))throw Error('Invalid owned data');
  const names=Reflect.ownKeys(value);if(names.length!==keys.length||names.some(k=>typeof k!=='string'||!keys.includes(k)))throw Error('Invalid owned keys');
@@ -71,6 +117,22 @@ function scalar(value:unknown):TrackerAScalar{
  if(width<0||height<0||scrollHeight<0||clientHeight<=0||scrollHeight<clientHeight||scrollTop<0||scrollTop>scrollHeight-clientHeight)throw Error('Invalid scalar range');
  return {...r,url,rect:{x,y,width,height}} as unknown as TrackerAScalar;
 }
+const anchorIdentityKeys=['sameHostObject','sameOwner','sameScroller','sameScope','sameUrl','connected','uniqueSelectors','contained','parentMatched'] as const;
+function absentAnchor(row:ScalarRow):AnchorObservation{return {ordinal:row.ordinal,role:row.role,slot:row.slot,status:'unavailable',reason:'source-error',pageStartMs:null,pageEndMs:null,identity:{sameHostObject:null,sameOwner:null,sameScroller:null,sameScope:null,sameUrl:null,connected:null,uniqueSelectors:null,contained:null,parentMatched:null},ownerToken:null,contentTopCssPx:null,relativeTopCssPx:null,nativeViewportY:null,textRectCount:0,eligible:null,scrollTopAfterProbe:null,jointReadStable:null,nodesVisited:0,rectangleUnits:0,textChars:0};}
+function copyAnchorObservation(value:unknown,row:ScalarRow,token:number):AnchorObservation{
+ const r=data(value,['status','reason','pageStartMs','pageEndMs','identity','ownerToken','contentTopCssPx','relativeTopCssPx','nativeViewportY','textRectCount','eligible','scrollTopAfterProbe','nodesVisited','rectangleUnits','textChars']);
+ const identity=data(r.identity,anchorIdentityKeys);for(const key of anchorIdentityKeys)if(identity[key]!==null&&typeof identity[key]!=='boolean')throw Error('Diagnostic identity');
+ for(const [key,max] of [['textRectCount',256],['nodesVisited',4096],['rectangleUnits',290],['textChars',8192]] as const)integer(r[key],0,max);
+ if(r.eligible!==null&&typeof r.eligible!=='boolean')throw Error('Diagnostic eligibility');
+ for(const key of ['pageStartMs','pageEndMs'])if(r[key]!==null&&(finite(r[key])<0||(r[key] as number)>360000))throw Error('Diagnostic page time');
+ if((r.pageStartMs===null)!==(r.pageEndMs===null)||r.pageStartMs!==null&&((r.pageEndMs as number)<(r.pageStartMs as number)||row.value!==null&&(r.pageStartMs as number)<row.value.pageNowMs))throw Error('Diagnostic page bracket');
+ if(r.status==='available'){
+  if(r.reason!==null||anchorIdentityKeys.some(k=>identity[k]!==true)||r.ownerToken!==token||r.eligible!==true||r.pageStartMs===null)throw Error('Diagnostic available law');
+  for(const key of ['contentTopCssPx','nativeViewportY','scrollTopAfterProbe'])if(Math.abs(finite(r[key]))>1000000)throw Error('Diagnostic coordinate');
+  if(finite(r.relativeTopCssPx)!==(r.contentTopCssPx as number)-(r.nativeViewportY as number)||(r.scrollTopAfterProbe as number)<0||r.textRectCount===0)throw Error('Diagnostic metric');
+ }else if(r.status!=='unavailable'||r.eligible!==false&&r.eligible!==null||!['admission','selection','owner','host','scroller','scope','url','disconnected','selector','text','style','clip','work','rect','geometry','no-positive','fully-clipped','source-error'].includes(r.reason as string)||['ownerToken','contentTopCssPx','relativeTopCssPx','nativeViewportY','scrollTopAfterProbe'].some(k=>r[k]!==null))throw Error('Diagnostic unavailable law');
+ return {...r,identity,ordinal:row.ordinal,role:row.role,slot:row.slot,jointReadStable:row.value!==null&&r.scrollTopAfterProbe!==null?row.value.scrollTop===r.scrollTopAfterProbe:null} as unknown as AnchorObservation;
+}
 function entrySample(value:unknown):TrackerAEntrySample{
  const r=data(value,['scalar','active','prefixLength','returnControlVisible']);
  return {scalar:scalar(r.scalar),active:boolean(r.active),prefixLength:integer(r.prefixLength,0,6400),returnControlVisible:boolean(r.returnControlVisible)};
@@ -91,6 +153,8 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
  const finishTrace=()=>{if(traceFinish===null){try{traceFinish=trace!.finish();}catch(error){traceFinish=Promise.reject(error);}}return traceFinish;};
  let clockInvalid=false,clockFailure:unknown;
  let firstFailure:TrackerAFirstFailure|null=null;
+ let anchorDiagnostic:TrackerAAnchorDiagnostic|null=null,anchorDiagnosticError:unknown|null=null;
+ let returnedResult:TrackerASequencerResult|null=null;
  const remember=(error:unknown,witness:TrackerAFirstFailure={code:'unclassified',ordinal:null,previousOrdinal:null,slot:null})=>{if(!hasPrimary){hasPrimary=true;primary=error;firstFailure=Object.freeze({...witness});}};
  const scalarFailure=(code:Exclude<TrackerAFirstFailure['code'],'unclassified'>,message:string,row:ScalarRow|null=null,previousOrdinal:number|null=null):never=>{const error=Error(message);remember(error,{code,ordinal:row?.ordinal??null,previousOrdinal,slot:row?.slot??null});throw error;};
  const now=()=>{
@@ -220,11 +284,13 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
    const entrySettled=await sampleEntry(current.entry.settled,entryAt+300);
    if(entryBefore.scalar.pageNowMs>=entryAfter.scalar.pageNowMs||entryAfter.scalar.pageNowMs>=entrySettled.scalar.pageNowMs||entrySettled.scalar.pageNowMs-entryAfter.scalar.pageNowMs<50||entryAfter.scalar.scrollTop>=entryBefore.scalar.scrollTop||entrySettled.scalar.scrollTop!==entryAfter.scalar.scrollTop||entryAfter.prefixLength<=entryBefore.prefixLength||entrySettled.prefixLength<=entryAfter.prefixLength||!entryAfter.returnControlVisible||!entrySettled.returnControlVisible||entrySettled.scalar.scrollHeight-entrySettled.scalar.clientHeight-entrySettled.scalar.scrollTop<entrySettled.scalar.clientHeight/2)throw Error('Original history entry unsettled');
    check();await trace.start();await wait(now()+500);
-   const first=await geometry('G1',()=>owner!.geometry(),'streaming');
+   const first=await geometry('G1',()=>owner!.geometry(ports.anchorDiagnostic?'tracker-a-G1-anchor-diagnostic-v1':undefined),'streaming');
    if(!first.responseProgress.active||first.responseProgress.prefix.length===0)throw Error('Inactive original streaming');
    const anchor=evaluateMountedGeometry(first).rows.find(r=>r.id!==first.expectedResponse.id&&r.geometryEligibility==='eligible');
    if(!anchor||anchor.ownerToken===null)throw Error('Historical anchor unavailable');
+   const selectedAnchor={id:anchor.id,ownerToken:anchor.ownerToken};
    current.anchor={id:anchor.id,ownerToken:anchor.ownerToken,selectedAtHostMs:now(),firstCheckpoint:'G1',secondCheckpoint:'G2',evaluation:null};
+   if(ports.anchorDiagnostic)anchorDiagnostic={selection:{snapshotRef:{path:'native-case-2.json',index:current.geometryCheckpoints.G1.snapshotRef!.index},id:anchor.id,role:anchor.role,ownerToken:anchor.ownerToken,metric:'min-positive-text-rect-viewport-y',contentTopCssPx:anchor.contentTopCssPx!,relativeTopCssPx:anchor.relativeTopCssPx!,nativeViewportY:first.nativeViewport.y},observations:[]};
    let priorScalar:TrackerAScalar|null=null,priorScalarOrdinal:number|null=null;
    function observe(role:ScalarRow['role'],slot:number|null,limit=deadline){
     check(Math.min(limit,deadline));if(current.scalarObservations.length>=82)throw Error('Scalar capacity');
@@ -232,11 +298,27 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
     const op=invoke(()=>{
      current.scalarObservations.push(row);
      if(role==='post'){current.phase.postBoundaryScalarOrdinal=row.ordinal;current.phase.postBoundarySettled='pending';}
-     return owner!.scalar();
+     return owner!.scalar(ports.anchorDiagnostic?selectedAnchor:undefined);
     },row,limit);
-    const retained=op.original.then(value=>{row.value=scalar(value);return row.value;});
+    let diagnostic:unknown,diagnosticReceived=false,checkedFinished=false;
+    const retained=op.original.then(value=>{
+     if(ports.anchorDiagnostic){
+      // The original scalar descriptor is copied independently. New diagnostic
+      // keys/getters cannot reject this original promise or replace its guard.
+      const descriptor=typeof value==='object'&&value!==null?Object.getOwnPropertyDescriptor(value,'scalar'):undefined;
+      if(!descriptor||!('value'in descriptor))throw Error('Original scalar data required');row.value=scalar(descriptor.value);diagnostic=value;diagnosticReceived=true;
+     }else row.value=scalar(value);return row.value;
+    });
     void retained.catch(()=>{});void op.wait.catch(()=>{});
-    const checked=async()=>{const s=await bounded(retained,limit);guard(s,row,priorScalarOrdinal);if(priorScalar!==null){if(s.pageNowMs<priorScalar.pageNowMs)scalarFailure('timestamp-reverse','Opposing or reversed scalar',row,priorScalarOrdinal);if(s.scrollTop>priorScalar.scrollTop)scalarFailure('opposing-offset','Opposing or reversed scalar',row,priorScalarOrdinal);}if(role!=='pre'&&s.scrollTop===0)scalarFailure('end-stop','Observed end stop',row,priorScalarOrdinal);priorScalar=s;priorScalarOrdinal=row.ordinal;return s;};return {row,original:retained,wait:checked()};
+    const refreshDiagnostic=()=>{
+     if(anchorDiagnostic){let observation=absentAnchor(row);if(diagnosticReceived)try{const envelope=data(diagnostic,['scalar','anchorDiagnostic']);observation=copyAnchorObservation(envelope.anchorDiagnostic,row,selectedAnchor.ownerToken);}catch{anchorDiagnosticError??=Error('Anchor diagnostic contract failed');if(returnedResult)returnedResult.anchorDiagnosticError=anchorDiagnosticError;}const index=anchorDiagnostic.observations.findIndex(r=>r.ordinal===row.ordinal);if(index<0)anchorDiagnostic.observations.push(observation);else anchorDiagnostic.observations[index]=observation;}
+    };
+    // A late original still owns its actual page probe. Updating its existing
+    // ordinal adds no wait/retry and never re-runs the original strict guard.
+    void retained.then(()=>{if(checkedFinished)refreshDiagnostic();},()=>{if(checkedFinished)refreshDiagnostic();});
+    const checked=async()=>{try{const s=await bounded(retained,limit);guard(s,row,priorScalarOrdinal);if(priorScalar!==null){if(s.pageNowMs<priorScalar.pageNowMs)scalarFailure('timestamp-reverse','Opposing or reversed scalar',row,priorScalarOrdinal);if(s.scrollTop>priorScalar.scrollTop)scalarFailure('opposing-offset','Opposing or reversed scalar',row,priorScalarOrdinal);}if(role!=='pre'&&s.scrollTop===0)scalarFailure('end-stop','Observed end stop',row,priorScalarOrdinal);priorScalar=s;priorScalarOrdinal=row.ordinal;return s;}finally{
+      checkedFinished=true;refreshDiagnostic();
+    }};return {row,original:retained,wait:checked()};
    }
    const pre=await observe('pre',null).wait;
    if(pre.pageNowMs<entrySettled.scalar.pageNowMs||pre.scrollHeight-pre.clientHeight-pre.scrollTop<pre.clientHeight/2)throw Error('Original history detached pre unavailable');
@@ -328,7 +410,7 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
    snapshots.push(...secondSnapshots.map(snapshot=>({caseNumber:2 as const,snapshot})));if(owner&&!closed){closed=true;try{await close(owner,2,secondSnapshots,semanticComplete&&inputAcquired);}catch(e){remember(e);cleanupFailures.push(e);}}
   }
  }catch(e){remember(e);}finally{if(connected)try{await dispatch(()=>ports.closeClient());}catch(e){if(!hasPrimary)remember(e);cleanupFailures.push(e);}}
- return {status:!hasPrimary&&cleanupFailures.length===0&&cases.length===2?'complete':'incomplete',cases,caseEvidence,snapshots,input,transport,inputDrain,hasPrimary,primary,firstFailure,cleanupFailures,authority:authority()};
+ returnedResult={status:!hasPrimary&&cleanupFailures.length===0&&cases.length===2?'complete':'incomplete',cases,caseEvidence,snapshots,input,transport,inputDrain,anchorDiagnostic,anchorDiagnosticError,hasPrimary,primary,firstFailure,cleanupFailures,authority:authority()};return returnedResult;
 }
 function dense(value:unknown,cap:number):unknown[]{
  if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype)throw Error('Dense population required');const d=Object.getOwnPropertyDescriptor(value,'length');if(!d||!('value'in d)||!Number.isSafeInteger(d.value)||d.value<0||d.value>cap)throw Error('Population capacity');
