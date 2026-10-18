@@ -31,7 +31,7 @@ export function createRestoredHistoryDiagnosticPort(write){
  }};
 }
 
-const RELEASE='hosted-copilot-react-h100-r6400-v13',REPOSITORY='cacheplane/chat-ui-bench';
+const RELEASE='hosted-copilot-react-h100-r6400-v14',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
 const MiB=1024*1024,hash=b=>createHash('sha256').update(b).digest('hex');
 const need=(ok,message='Mounted bootstrap refused')=>{if(!ok)throw new Error(message);};
@@ -39,8 +39,8 @@ const id=v=>typeof v==='string'&&/^[1-9][0-9]{0,19}$/.test(v);
 const digest=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const boundedError=e=>{try{return e instanceof Error?e.message.slice(0,512):'Original operation failed';}catch{return 'Original operation failed';}};
-const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v6',PILOT_MODE='tracker-json-a-pilot-v2';
-const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v13';
+const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v7',PILOT_MODE='tracker-json-a-pilot-v2';
+const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v14';
 let selectedBootstrapMode=null,pilotPhase=null,pilotKnown=null;
 const contextFields=['candidateSha','checkoutSha','githubSha','workflowSha','tagSha','repository','releaseId','githubRef','workflowRef','eventName','actions','platform','runnerOs','runnerMarker','attempt'];
 function ownData(value,keys){
@@ -85,7 +85,8 @@ function traceRoles(){return [
  ['tracker-a-case-2-trace.json',33554432,'child'],['tracker-a-case-2-input.json',262144,'child'],['tracker-a-case-2-transport.json',1048576,'child'],['tracker-a-result.json',262144,'outer'],
  ['native-case-1.json',2097152,'child'],['native-case-2.json',2097152,'child'],['native-child-result.json',524288,'child'],['native-parent-partial.json',524288,'parent'],['native-result.json',524288,'outer'],
  ['application-result.json',16384,'parent'],['parent-result.json',16384,'outer'],['application.stdout',262144,'parent'],['application.stderr',262144,'parent'],['parent.stdout',4194304,'outer'],['parent.stderr',4194304,'outer'],
- ['browser-stdout.bin',262144,'parent'],['browser-stderr.bin',262144,'parent'],['native-inventory.json',524288,'outer'],['phase-failure-child.json',4096,'child'],['phase-failure-parent.json',4096,'parent'],['phase-failure-run.json',4096,'outer'],['native-child-failure.json',4096,'child']
+ ['browser-stdout.bin',262144,'parent'],['browser-stderr.bin',262144,'parent'],['native-inventory.json',524288,'outer'],['phase-failure-child.json',4096,'child'],['phase-failure-parent.json',4096,'parent'],['phase-failure-run.json',4096,'outer'],['native-child-failure.json',4096,'child'],
+ ['tracker-a-first-failure.json',4096,'child'],['tracker-a-failure-inventory.json',524288,'outer']
  ].map(([path,cap,owner])=>({path,cap,owner}));}
 function runtimeClosedNames(phase){
  switch(phase){case 'runtime':return [];case 'runtime-registry-closed':return ['browser-registry.json'];case 'runtime-parent-started-closed':return ['browser-registry.json','parent-started.json'];case 'runtime-process-closed':return ['browser-registry.json','parent-started.json','browser-process.json'];case 'runtime-options-closed':return ['browser-registry.json','parent-started.json','browser-process.json','native-child-options.json'];default:throw Error('Unknown fixed runtime transition');}
@@ -100,8 +101,8 @@ export function mountedTrackerAReservation(phase,closed,known={}){
    add('browser-registry.json',k.registryBytes,'outer');const completed=runtimeClosedNames(phase);replacements=roles.filter(r=>completed.includes(r.path)).map(r=>[r.path,r.cap]);roles=roles.filter(r=>!completed.includes(r.path));
   }
  }else{
-  add('native-inventory.json',524288,'outer');
-  if(phase!=='inventory')add('phase-failure-'+(phase.startsWith('prepare-')?'prepare':phase==='installed'?'install':phase==='provision'?'provision':'install')+'.json',4096);
+  add(phase==='failure-inventory'?'tracker-a-failure-inventory.json':'native-inventory.json',524288,'outer');
+  if(phase!=='inventory'&&phase!=='failure-inventory')add('phase-failure-'+(phase.startsWith('prepare-')?'prepare':phase==='installed'?'install':phase==='provision'?'provision':'install')+'.json',4096);
   const command=(name,stream)=>{add(name+'-started.json',524288);add(name+'.stdout',stream);add(name+'.stderr',stream);add(name+'-result.json',524288);};
   const get=(stem,body,cap)=>{add(stem+'-intent.json',524288);add(body,cap);add(stem+'-receipt.json',524288);};
   switch(phase){
@@ -119,7 +120,7 @@ export function mountedTrackerAReservation(phase,closed,known={}){
    case 'install':command('install',4194304);add('installed-admission.json',524288);break;
    case 'installed':add('installed-admission.json',524288);break;
    case 'provision':command('browser-install',4194304);break;
-   case 'inventory':break;
+   case 'inventory':case 'failure-inventory':break;
    default:throw Error('Unknown fixed phase');
   }
  }
@@ -171,7 +172,7 @@ export async function closeTrackerAPilotFile(raw,writer,authenticate){
  try{await writer.close();}catch(error){if(!failed){failed=true;primary=error;}}if(failed)throw primary;return await authenticate();
 }
 export async function runTrackerAPilotAction(action,perform,setExit){
- setExit(1);need(['prepare','install','provision','inventory','child','parent','run'].includes(action));const result=await perform();
+ setExit(1);need(['prepare','install','provision','inventory','failure-inventory','child','parent','run'].includes(action));const result=await perform();
  if(action==='child'||action==='parent'){need(result==='complete'||result==='incomplete','Original closed publication status absent');setExit(result==='complete'?0:2);}
  else if(action==='run'){need(result==='complete'||result==='incomplete','Original run outcome absent');if(result==='complete')setExit(0);}
  else setExit(0);
@@ -308,14 +309,16 @@ function transportComplete(t,ref){
  const bytes=reads.reduce((sum,o)=>sum+o.bytes,0);return bytes===t.knownReadBytes&&bytes===ref.bytes;
 }
 function copyNativePilot(native){
- const r=ownData(native,['pilot','originals','browserVersion','caseEvidence']),p=ownData(r.pilot,['status','cases','caseEvidence','snapshots','input','transport','inputDrain','hasPrimary','primary','cleanupFailures','authority']);
+ const r=ownData(native,['pilot','originals','browserVersion','caseEvidence']),p=ownData(r.pilot,['status','cases','caseEvidence','snapshots','input','transport','inputDrain','hasPrimary','primary','firstFailure','cleanupFailures','authority']);
  need(['complete','incomplete'].includes(p.status));bool(p.hasPrimary);const privateCleanup=denseData(p.cleanupFailures,128);assertAuthority(p.authority);
  const cases=copyCases(p.cases),caseEvidence=copyCases(r.caseEvidence),pureEvidence=copyCases(p.caseEvidence);need(pureEvidence.length<=caseEvidence.length&&pureEvidence.every((c,i)=>JSON.stringify(c)===JSON.stringify(caseEvidence[i])),'Native/pure original case evidence differs');
  const snapshots=copyPilotSnapshots(p.snapshots),input=copyTrackerAInput(p.input,snapshots),transport=copyTrackerATransport(p.transport);
  const originals=denseData(r.originals,3).map((value,i)=>{const row=ownData(value,['label','status']);need(row.label===['browserConnect','clientClose','clientDisconnected'][i]&&['fulfilled','pending','rejected','timed-out','unavailable'].includes(row.status));return {label:row.label,status:row.status};});need(originals.length===3);if(r.browserVersion!==null)boundedText(r.browserVersion,4096);
  // Read only the finite private drain receipt; never place it on disk.
  const drain=ownData(p.inputDrain,['status','requestedHostMs','settledHostMs']);assertReceipt(drain);
- return {cases,caseEvidence,snapshots,input,transport,originals,browserVersion:r.browserVersion,drainFulfilled:drain.status==='fulfilled',hasPrivateFailure:p.hasPrimary||privateCleanup.length>0};
+ const firstFailure=p.firstFailure===null?null:copyTrackerAFirstFailure(p.firstFailure);
+ need(p.hasPrimary===(firstFailure!==null),'First failure primary provenance differs');
+ return {cases,caseEvidence,snapshots,input,transport,originals,browserVersion:r.browserVersion,drainFulfilled:drain.status==='fulfilled',hasPrivateFailure:p.hasPrimary||privateCleanup.length>0,firstFailure};
 }
 function trackerAEntryComplete(input){
  if(input===null)return false;
@@ -554,6 +557,57 @@ export async function assertTrackerARuntimeAbsent(directory,known){const future=
 export async function admitTrackerAInventory(profileRef,ports){
  const names=await ports.names();need(names.includes('parent-started.json'),'Runtime original publication unavailable');const parentFile=await ports.read('parent-result.json',16384),parent=JSON.parse(Buffer.from(parentFile.raw).toString('utf8')),publication=await authenticateTrackerAReport(parent,'parent',profileRef,ports),partial=publication.value;need(partial.originals.filter(row=>row.label!=='parentWorkerClose').every(row=>row.status==='fulfilled')&&partial.stdio.every(row=>row.status==='fulfilled'),'Runtime original quiescence unavailable');
 }
+function copyTrackerAFirstFailure(value){
+ const r=ownData(value,['code','ordinal','previousOrdinal','slot']);need(['unclassified','baseline','timestamp-reverse','opposing-offset','end-stop'].includes(r.code),'First failure code');
+ for(const key of ['ordinal','previousOrdinal'])if(r[key]!==null)need(Number.isInteger(r[key])&&r[key]>=1&&r[key]<=82,'First failure ordinal');
+ if(r.slot!==null)need(Number.isInteger(r.slot)&&r.slot>=0&&r.slot<40,'First failure slot');
+ if(r.code==='unclassified')need(r.ordinal===null&&r.previousOrdinal===null&&r.slot===null,'Unclassified failure context');
+ else if(r.ordinal===null)need(r.code==='baseline'&&r.previousOrdinal===null&&r.slot===null,'Initial baseline context');
+ else{need(r.previousOrdinal===null||r.previousOrdinal<r.ordinal,'First failure previous ordinal');if(r.code!=='baseline')need(r.previousOrdinal!==null,'Compared scalar context');}
+ return {code:r.code,ordinal:r.ordinal,previousOrdinal:r.previousOrdinal,slot:r.slot};
+}
+export function copyTrackerAFirstFailureCapsule(value){
+ const r=ownData(value,['schemaVersion','kind','profileRef','childResultRef','firstFailure','qualification','nativeGO','performance']);
+ need(r.schemaVersion===1&&r.kind==='tracker-a-first-failure'&&r.qualification===false&&r.nativeGO===false&&r.performance===false,'First failure capsule schema');
+ const profileRef=fileRef(r.profileRef,'tracker-a-profile.json'),childResultRef=fileRef(r.childResultRef,'native-child-result.json');need(profileRef!==null&&childResultRef!==null);
+ const result={schemaVersion:1,kind:'tracker-a-first-failure',profileRef,childResultRef,firstFailure:copyTrackerAFirstFailure(r.firstFailure),qualification:false,nativeGO:false,performance:false};need(encoded(result).length<=4096,'First failure capsule cap');return result;
+}
+/** Diagnostic retention only. Closed incomplete originals grant no success authority. */
+export async function admitTrackerAFailureInventory(profileRef,ports){
+ const names=denseData(await ports.names(),127),seen=new Set();
+ for(const name of names){need(typeof name==='string'&&ordinaryPath(name)&&!seen.has(name)&&name!=='native-inventory.json'&&name!=='tracker-a-failure-inventory.json','Failure inventory namespace');pilotRoleCap(name);seen.add(name);}
+ need(seen.has('parent-started.json'),'Runtime original publication unavailable');
+ const files=new Map();let total=0;
+ const read=async(name,cap)=>{need(seen.has(name),'Claimed publication missing');if(files.has(name))return files.get(name);const limit=Math.min(cap,pilotRoleCap(name)),f=ownData(await ports.read(name,limit),['raw','bytes','sha256']);need(f.raw instanceof Uint8Array&&f.raw.byteLength===f.bytes&&f.bytes<=limit&&digest(f.sha256)&&hash(f.raw)===f.sha256,'Failure original physical binding');total+=f.bytes;need(total+524288<=134217728,'Failure inventory union capacity');files.set(name,f);return f;};
+ const json=async(name,cap)=>JSON.parse(Buffer.from((await read(name,cap)).raw).toString('utf8'));
+ const command=await json('parent-result.json',16384),publication=await authenticateTrackerAReport(command,'parent',profileRef,{read}),partial=publication.value,d=publication.diagnostic;
+ need(partial.status==='incomplete'&&d!==null,'Closed incomplete child publication required');
+ need(partial.originals.filter(row=>row.label!=='parentWorkerClose').every(row=>row.status==='fulfilled')&&partial.stdio.every(row=>row.status==='fulfilled'),'Failure original global quiescence unavailable');
+ // Case witnesses can remain incomplete: the authenticated child process has
+ // closed, and the parent's browser/client/server/stdio originals are closed.
+ // Their diagnostic failure does not grant any normal case-cleanup authority.
+ const pending=value=>value!==null&&typeof value==='object'&&(value.status==='pending'||Object.values(value).some(pending));
+ const listenerClosed=value=>value.registration.status==='not-started'?value.removal.status==='not-started'&&value.ownedIdentityMatch===null:closedListener(value);
+ for(const [name,ref] of [['tracker-a-case-2-input.json',d.inputRef],['tracker-a-case-2-transport.json',d.transportRef],['tracker-a-case-2-trace.json',d.rawRef]])need(seen.has(name)===(ref!==null),'Uncreated/claimed role differs');
+ if(d.inputRef!==null){const input=copyTrackerAInput(await json('tracker-a-case-2-input.json',262144),(await Promise.all([1,2].map(async n=>copyPilotSnapshots((await json('native-case-'+n+'.json',2097152)).snapshots)))).flat());need(!pending(input)&&Object.values(input.listeners).every(listenerClosed),'Failure input originals remain open');}
+ if(d.transportRef!==null){const transport=copyTrackerATransport(await json('tracker-a-case-2-transport.json',1048576));need(!pending(transport)&&transportContained(transport),'Failure trace originals remain open');need(transport.sink.created===(d.rawRef!==null),'Failure raw creation publication differs');}
+ if(seen.has('tracker-a-first-failure.json')){const capsule=copyTrackerAFirstFailureCapsule(await json('tracker-a-first-failure.json',4096));need(JSON.stringify(capsule.profileRef)===JSON.stringify(d.profileRef)&&JSON.stringify(capsule.childResultRef)===JSON.stringify(d.childResultRef),'First failure authenticated refs differ');}
+ // Historical command streams also require their own original writer closures.
+ for(const name of names){const match=/^(profile|extract|install|browser-install|parent|application)\.(stdout|stderr)$/.exec(name);if(match){const result=await json(match[1]+'-result.json',pilotRoleCap(match[1]+'-result.json')),s=result.streamFacts?.[match[2]];need(result.closeObserved===true&&result.original?.closed===true&&s?.readableEOF===true&&s.writerFinish===true&&s.writerClose===true&&s.writerError===false&&s.overflow===false&&s.retainedBytesKnown===true&&s.seen===s.retained,'Failure historical writer remains open');}if(/^browser-(?:stdout|stderr)\.bin$/.test(name))need(partial.stdio.some(s=>s.kind===(name==='browser-stdout.bin'?'stdout':'stderr')&&s.status==='fulfilled'),'Failure browser writer remains open');await read(name,pilotRoleCap(name));}
+ let native=null;
+ if(seen.has('native-result.json')){native=constructTrackerANativeResult(await json('native-result.json',524288));need(JSON.stringify(native.tracker.childResultRef)===JSON.stringify(d.childResultRef)&&JSON.stringify(native.tracker.parentPartialRef)===JSON.stringify(publication.ref)&&JSON.stringify(native.parentCommand)===JSON.stringify(constructMountedCaptureResult(command))&&native.originals.every(o=>o.status==='fulfilled')&&native.stdio.every(s=>s.status==='fulfilled'),'Failure outer publication refs/closure differ');}
+ if(seen.has('application-result.json'))need(JSON.stringify(constructMountedCaptureResult(await json('application-result.json',16384)))===JSON.stringify(partial.applicationCommand),'Failure application command differs');
+ if(seen.has('tracker-a-result.json')){
+  need(native!==null,'Claimed native publication missing');const n=files.get('native-result.json'),child=await authenticateTrackerAReport(partial.applicationCommand,'child',profileRef,{read}),transport=d.transportRef===null?null:await json('tracker-a-case-2-transport.json',1048576);
+  const expected=constructTrackerAResult({profileRef,inputRef:d.inputRef,transportRef:d.transportRef,childResultRef:d.childResultRef,parentPartialRef:publication.ref,nativeResultRef:{path:'native-result.json',bytes:n.bytes,sha256:n.sha256},childResult:child.value,parentPartial:partial,nativeResult:native,transport,rawCreated:seen.has('tracker-a-case-2-trace.json'),rawRef:d.rawRef});
+  need(JSON.stringify(await json('tracker-a-result.json',262144))===JSON.stringify(expected),'Failure final publication differs');
+ }
+ const records=[...files].map(([path,f])=>({path,bytes:f.bytes,sha256:f.sha256,regular:true,contained:true,symlink:false}));for(const record of records)assertInventory([record]);
+ const after=denseData(await ports.names(),127);need(after.length===names.length&&after.every(name=>seen.has(name))&&new Set(after).size===after.length,'Failure inventory namespace changed');
+ for(const record of records){const f=ownData(await ports.read(record.path,pilotRoleCap(record.path)),['raw','bytes','sha256']);need(f.raw instanceof Uint8Array&&f.bytes===record.bytes&&f.raw.byteLength===record.bytes&&f.sha256===record.sha256&&hash(f.raw)===record.sha256,'Failure original changed before publication');}
+ const absent=traceRoles().map(r=>r.path).filter(name=>name!=='native-inventory.json'&&name!=='tracker-a-failure-inventory.json'&&!seen.has(name));
+ const result={schemaVersion:1,kind:'tracker-a-failure-inventory',status:'unqualified-runtime-failure',profileRef:fileRef(profileRef,'tracker-a-profile.json'),childResultRef:d.childResultRef,files:records,absent,bytesBeforeInventory:total,qualification:false,nativeGO:false,performance:false};need(encoded(result).length<=524288&&total+encoded(result).length<=134217728&&records.length+1<=128,'Failure inventory bound');return result;
+}
 const nativePrerequisiteFields=['sourceSha','sourceTreeSha','originalRunId','attempt','workflowId','workflowPath','releaseId','artifactId','archiveSha256','archiveBytes','qualifiedRootReceiptSha256','qualifiedPeerReceiptSha256','frontendSettingsSha256','qualification'];
 const trackerTrajectory=()=>({caseNumber:2,entry:{deltaX:0,deltaY:-600,sampleCount:3,sampleOffsetsMs:[100,200],sampleBucketMs:100,minSettlementPageMs:50,minimumBottomGapClientHeights:0.5,activeAdvancingPrefix:true,returnControl:'visible-after-and-settled',pointer:'once-before-entry'},prephaseMs:500,durationMs:2000,wheelCount:40,slotMs:50,deltaX:0,deltaY:-12,captureTail:{relativeTo:'hostT1Ms',offsetMs:2000,endRequestBucketMs:50,before:'G4'},tailMs:2000,tailRelativeTo:'canonical-completion',scalarLimit:82,wheelAttribution:'unique-closed-page-brackets',motionScope:'closed-creation-to-observation-overlap-with-pre-post-page-bracket',eventTimestampConstraint:'0<=eventTimeStampMs<=pageNowMs-for-every-retained-event'});
 const trackerLimits=()=>({archiveFiles:128,archiveBytes:134217728,rawBytes:33554432,reads:513,readBytes:65536,collectorPortCalls:1031,wheelEvents:41,scrollEvents:256,motionEvents:32,projectionBytes:262144,transportBytes:1048576,knownHandles:2});
@@ -691,8 +745,8 @@ async function checkPilotPhase(directory){
   need(entry.isFile()&&!entry.isSymbolicLink()&&ordinaryPath(entry.name));const cap=pilotRoleCap(entry.name);if(excluded.has(entry.name))continue;
   const command=/^(profile|extract|install|browser-install|parent|application)\.(stdout|stderr)$/.exec(entry.name);
   if(command){const result=await jsonFile(join(directory,command[1]+'-result.json'),524288),fact=result.streamFacts?.[command[2]];need(result.closeObserved===true&&fact?.readableEOF===true&&fact.writerFinish===true&&fact.writerClose===true,'Original historical writer closure unavailable');}
-  if(pilotPhase==='inventory'&&/^browser-(?:stdout|stderr)\.bin$/.test(entry.name)){const partial=await jsonFile(join(directory,'native-parent-partial.json'),524288),kind=entry.name==='browser-stdout.bin'?'stdout':'stderr';need(partial.stdio.some(row=>row.kind===kind&&['fulfilled','rejected'].includes(row.status)),'Browser original physical writer close unavailable');}
-  if(pilotPhase==='inventory'&&entry.name==='tracker-a-case-2-trace.json'){const transport=copyTrackerATransport(await jsonFile(join(directory,'tracker-a-case-2-transport.json'),1048576));need(transport.sink.fileClose==='fulfilled','Raw original physical close unavailable');}
+  if(['inventory','failure-inventory'].includes(pilotPhase)&&/^browser-(?:stdout|stderr)\.bin$/.test(entry.name)){const partial=await jsonFile(join(directory,'native-parent-partial.json'),524288),kind=entry.name==='browser-stdout.bin'?'stdout':'stderr';need(partial.stdio.some(row=>row.kind===kind&&['fulfilled','rejected'].includes(row.status)),'Browser original physical writer close unavailable');}
+  if(['inventory','failure-inventory'].includes(pilotPhase)&&entry.name==='tracker-a-case-2-trace.json'){const transport=copyTrackerATransport(await jsonFile(join(directory,'tracker-a-case-2-transport.json'),1048576));need(transport.sink.fileClose==='fulfilled','Raw original physical close unavailable');}
   const physicalFile=await physical(join(directory,entry.name),cap);closed.push({path:entry.name,bytes:physicalFile.bytes});
  }
  return mountedTrackerAReservation(pilotPhase,closed,pilotKnown);
@@ -945,6 +999,7 @@ async function child(directory,scratch){
    if(n.transport){if(n.transport.raw.ref!==null&&n.transport.sink.fileClose==='fulfilled'){rawRef=await publishedFileRef(directory,'tracker-a-case-2-trace.json');need(JSON.stringify(rawRef)===JSON.stringify(n.transport.raw.ref));}await writeJson(directory,'tracker-a-case-2-transport.json',n.transport,1048576);transportRef=await publishedFileRef(directory,'tracker-a-case-2-transport.json');}
    const summary=constructTrackerAChildResult(result,{inputRef,transportRef,rawRef,snapshotFiles:['native-case-1.json','native-case-2.json']});
    const status=await publishTrackerAInternalReport('child',summary,value=>writeJson(directory,'native-child-result.json',value,524288));
+   if(n.firstFailure!==null){const capsule=copyTrackerAFirstFailureCapsule({schemaVersion:1,kind:'tracker-a-first-failure',profileRef:loaded.profileRef,childResultRef:await publishedFileRef(directory,'native-child-result.json'),firstFailure:n.firstFailure,qualification:false,nativeGO:false,performance:false});await writeJson(directory,'tracker-a-first-failure.json',capsule,4096);}
    console.log(JSON.stringify({status:summary.status,resultPath:join(directory,'native-child-result.json'),qualification:false}));return status;
   }catch(error){await handleMountedBootstrapFailure(error,code=>{process.exitCode=code;},async original=>{const failure=serializeMountedFailure('native-child',original,imported?'fulfilled':'rejected');await writeBytes(directory,failure.name,failure.raw,failure.cap);});throw error;}
  }
@@ -1055,9 +1110,15 @@ async function inventory(directory){
  for(const entry of await readdir(directory,{withFileTypes:true})){need(entry.isFile()&&!entry.isSymbolicLink()&&ordinaryPath(entry.name)&&(selectedBootstrapMode==='tracker-a'?pilotRoleCap(entry.name)>0:allowed(entry.name)));need(records.length<127);const f=await physical(join(directory,entry.name),selectedBootstrapMode==='tracker-a'?pilotRoleCap(entry.name):32*MiB);total+=f.bytes;need(total<=inventoryBytes);records.push({path:entry.name,bytes:f.bytes,sha256:f.sha256,regular:true,contained:true,symlink:false});}
  if(selectedBootstrapMode==='tracker-a'){for(const record of records)assertInventory([record]);}else assertInventory(records);const payload={files:records,bytesBeforeInventory:total,qualification:false};const encoded=Buffer.from(JSON.stringify(payload)+'\n');need(total+encoded.length<=inventoryBytes);await writeBytes(directory,'native-inventory.json',encoded,512*1024);
 }
+async function failureInventory(directory){
+ const current=await checkContext();need(selectedBootstrapMode==='tracker-a','Diagnostic inventory is pilot only');
+ const intent=await jsonFile(join(directory,'native-intent.json'),524288);accepted(evaluateMountedTrackerAAdmissionPolicy(intent));need(JSON.stringify(current.selected)===JSON.stringify(intent.source)&&JSON.stringify(current.context)===JSON.stringify(intent.context));const loaded=await loadTrackerAProfile(directory,intent);
+ const result=await admitTrackerAFailureInventory(loaded.profileRef,{names:()=>readdir(directory),read:(name,cap)=>physical(join(directory,name),cap)});
+ await beginPilotPhase(directory,'failure-inventory');await writeJson(directory,'tracker-a-failure-inventory.json',result,524288);
+}
 async function main(){
  const action=process.argv[2],mode=environmentMode();
- const perform=async()=>{need(process.argv.length===3&&['prepare','install','provision','run','parent','child','inventory'].includes(action));const {directory,scratch}=paths();return await performAction(action,directory,scratch);};
+ const perform=async()=>{need(process.argv.length===3&&['prepare','install','provision','run','parent','child','inventory','failure-inventory'].includes(action));const {directory,scratch}=paths();return await performAction(action,directory,scratch);};
  if(mode==='tracker-a')return await runTrackerAPilotAction(action,perform,code=>{process.exitCode=code;});await perform();
 }
 async function performAction(action,directory,scratch){
@@ -1067,6 +1128,7 @@ async function performAction(action,directory,scratch){
  else if(process.argv[2]==='run')return await run(directory,scratch);
  else if(process.argv[2]==='parent')return await parent(directory,scratch);
  else if(process.argv[2]==='child')return await child(directory,scratch);
+ else if(process.argv[2]==='failure-inventory')await failureInventory(directory);
  else await inventory(directory);
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>handleMountedBootstrapFailure(error,code=>{process.exitCode=code;},async error=>{const reason=boundedError(error);console.error(reason);if(selectedBootstrapMode==='tracker-a'&&process.argv[2]==='run'){try{await writeTrackerAExceptionDiagnostic(process.stderr.write.bind(process.stderr));}catch{}}try{const action=process.argv[2];if(selectedBootstrapMode!==null&&['prepare','install','provision','run','parent','child'].includes(action)){await checkContext();if(selectedBootstrapMode==='tracker-a'){const failure=serializeMountedFailure(action,error);await writeBytes(paths().directory,failure.name,failure.raw,failure.cap);}else await writeJson(paths().directory,'phase-failure-'+action+'.json',{action,reason,status:'incomplete',qualification:false});}}catch{}}));

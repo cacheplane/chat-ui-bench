@@ -1,5 +1,5 @@
 name: Hosted Copilot Tracker JSON A pilot
-run-name: hosted-copilot-react-tracker-json-a-v6
+run-name: hosted-copilot-react-tracker-json-a-v7
 on:
   workflow_dispatch:
     inputs:
@@ -32,15 +32,15 @@ on:
         required: true
         type: string
       native_run_id:
-        description: Independently qualified successful same-source ordinary-native V13 original run attempt 1
+        description: Independently qualified successful same-source ordinary-native V14 original run attempt 1
         required: true
         type: string
       native_artifact_id:
-        description: Independently qualified successful same-source ordinary-native V13 original artifact ID
+        description: Independently qualified successful same-source ordinary-native V14 original artifact ID
         required: true
         type: string
       native_archive_sha256:
-        description: Actual whole qualified ordinary-native V13 archive SHA256
+        description: Actual whole qualified ordinary-native V14 archive SHA256
         required: true
         type: string
       native_root_sha256:
@@ -109,6 +109,19 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: copilot-tracker-a-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/copilot-tracker-a-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+      - name: Admit unqualified diagnostic inventory after original runtime failure
+        id: failure_artifacts
+        if: always() && steps.runtime.outcome == 'failure'
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-mounted-bootstrap.mjs failure-inventory
+      - name: Retain separately named unqualified failure originals after diagnostic admission
+        if: always() && steps.failure_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: copilot-tracker-a-failure-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/copilot-tracker-a-${{ github.run_id }}-${{ github.run_attempt }}/
           if-no-files-found: error
           include-hidden-files: true

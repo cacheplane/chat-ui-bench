@@ -178,7 +178,7 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v52`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v53`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
@@ -213,7 +213,7 @@ bare-root importer to selected SOURCE hashes and actual static resolved edges,
 with at least one such importer present. Resolved edges and authenticated source
 intent are separate facts; the profile does not claim an observed raw resolver
 request or query/fragment exclusion. The unchanged nine-origin Zod gate covers
-all original rows, including unrendered modules. V52 requires fresh full frontend
+all original rows, including unrendered modules. V53 requires fresh full frontend
 and worker inspection under this profile.
 Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
@@ -254,12 +254,12 @@ stdout, each including LF≤4096 bytes. Awaited child write callbacks do not pro
 parent retention or stream closure. These diagnostics share the existing stdout and
 archive caps, and cannot promote geometry or lifecycle success. Default Chat,
 canonical workload, strict geometry and its4/5 read budgets remain unchanged.
-Fresh native preparation uses `hosted-copilot-react-h100-r6400-v13` only after
-independent qualification of same-source full STATIC V52. Neither pure checks nor
+Fresh native preparation uses `hosted-copilot-react-h100-r6400-v14` only after
+independent qualification of same-source full STATIC V53. Neither pure checks nor
 content readiness establish recovery, native conformance, FPS or ranking.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v6` workflow requires
-independently qualified same-source STATIC V52 and successful ordinary-native V13
+The separate experimental `hosted-copilot-react-tracker-json-a-v7` workflow requires
+independently qualified same-source STATIC V53 and successful ordinary-native V14
 original artifacts. Pilot startup uses the shared capture helper; serialized
 `capture` stage keys remain unchanged. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
@@ -269,14 +269,29 @@ stays bounded to 32 MiB, 513 reads and 1,031 operations, with EOF still required
 the pilot's complete physical union is bounded to 128 MiB. A separate pure projection
 requires the complete raw file to fit 256 KiB. Child/parent exit code 2 denotes an
 originally closed incomplete report; required incompleteness keeps the outer
-runtime unsuccessful. Pilot inventory runs only after actual runtime success,
-and upload only after inventory success, so incomplete or early-failure pilot
-artifacts are not uploaded; original workflow logs remain diagnostic evidence.
+runtime unsuccessful. Normal pilot inventory runs only after actual runtime
+success, and normal upload only after that inventory succeeds. A separate
+`tracker-a-failure-inventory.json` can admit closed incomplete child/parent
+publications after runtime failure, retaining the safe original subset as
+`copilot-tracker-a-failure-<run>-<attempt>`. Its qualification, native GO and
+performance flags are false; it cannot satisfy normal artifact or prerequisite
+identities. Missing claimed originals, unknown paths, open writers or absent
+authenticated child closure refuse diagnostic retention. Explicitly uncreated
+input/transport/raw roles may remain absent. Both paths retain the same per-role
+caps and 128 MiB/128-file union, with exclusive creation and no retries.
 After required outer reports are published, an incomplete run emits one diagnostic
 line of at most 16 KiB with finite stages, original-command facts and receipt
 statuses. It excludes message content, URLs, arbitrary errors and raw trace data.
 An exception marker of at most 512 bytes leaves publication unestablished;
-diagnostic writes do not change the failure exit or artifact gates.
+diagnostic writes do not change the failure exit or normal artifact gates.
+A separate authenticated `tracker-a-first-failure.json` capsule is at most 4 KiB.
+It preserves the first owned scalar guard's closed code, ordinal, previous
+ordinal and slot. Earlier external or timeout failures remain unclassified,
+including when a later scalar guard fails. It excludes arbitrary errors and
+stacks, and grants no qualification or performance authority. Case witnesses
+can remain incomplete while authenticated child/browser/process/stdio and file
+writer closures independently establish diagnostic retention safety. Failures
+before authenticated closed child publication remain available only in logs.
 
 Incomplete diagnostics may also show selected observed scalar/timing relations,
 last-read EOF and byte facts, and original session-close ordering. These facts

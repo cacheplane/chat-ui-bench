@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V52
+`runNativeMountedConformance` worker export now prepare a fresh V53
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v13`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v14`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -660,12 +660,12 @@ validated scalars and actual attempted count, without text or arbitrary error
 details. An awaited write callback is separate from parent retained bytes and
 original EOF/writer-close; partial/missing diagnostics or publication failure do
 not supply successful case closure. All existing stdout/archive caps apply.
-Fresh native V13 must independently complete both original serial cases after
-qualification of same-source full STATIC V52. Content readiness and pure tests
+Fresh native V14 must independently complete both original serial cases after
+qualification of same-source full STATIC V53. Content readiness and pure tests
 establish no geometry, runtime conformance, FPS or ranking result.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v6` workflow requires
-independently qualified same-source STATIC V52 and successful ordinary-native V13
+The separate experimental `hosted-copilot-react-tracker-json-a-v7` workflow requires
+independently qualified same-source STATIC V53 and successful ordinary-native V14
 original artifacts. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
 `tracker-a-case-2-input.json`, `tracker-a-case-2-trace.json`,
@@ -674,14 +674,19 @@ stays bounded to 32 MiB, 513 reads and 1,031 operations, with EOF still required
 the pilot's complete physical union is bounded to 128 MiB. A separate pure projection
 requires the complete raw file to fit 256 KiB. Child/parent exit code 2 denotes an
 originally closed incomplete report; required incompleteness keeps the outer
-runtime unsuccessful. Pilot inventory runs only after actual runtime success,
-and upload only after inventory success, so incomplete or early-failure pilot
-artifacts are not uploaded; original workflow logs remain diagnostic evidence.
+runtime unsuccessful. Normal pilot inventory runs only after actual runtime
+success, and normal upload only after that inventory succeeds. A separate
+`copilot-tracker-a-failure-<run>-<attempt>` artifact can retain an authenticated,
+safely closed incomplete subset after diagnostic inventory admission. Missing
+claimed files or open writers refuse retention, and failures before authenticated
+child closure remain available only in logs. The failure inventory and separate
+first-failure capsule grant no qualification or performance authority; see the
+[failure evidence contract](../../README.md) for caps and provenance rules.
 After required outer reports are published, an incomplete run emits one diagnostic
 line of at most 16 KiB with finite stages, original-command facts and receipt
 statuses. It excludes message content, URLs, arbitrary errors and raw trace data.
 An exception marker of at most 512 bytes leaves publication unestablished;
-diagnostic writes do not change the failure exit or artifact gates.
+diagnostic writes do not change the failure exit or normal artifact gates.
 
 Incomplete diagnostics may also show selected observed scalar/timing relations,
 last-read EOF and byte facts, and original session-close ordering. These facts
