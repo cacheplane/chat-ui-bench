@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V53
+`runNativeMountedConformance` worker export now prepare a fresh V54
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v14`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v15`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -660,12 +660,12 @@ validated scalars and actual attempted count, without text or arbitrary error
 details. An awaited write callback is separate from parent retained bytes and
 original EOF/writer-close; partial/missing diagnostics or publication failure do
 not supply successful case closure. All existing stdout/archive caps apply.
-Fresh native V14 must independently complete both original serial cases after
-qualification of same-source full STATIC V53. Content readiness and pure tests
+Fresh native V15 must independently complete both original serial cases after
+qualification of same-source full STATIC V54. Content readiness and pure tests
 establish no geometry, runtime conformance, FPS or ranking result.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v7` workflow requires
-independently qualified same-source STATIC V53 and successful ordinary-native V14
+The separate experimental `hosted-copilot-react-tracker-json-a-v8` workflow requires
+independently qualified same-source STATIC V54 and successful ordinary-native V15
 original artifacts. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
 `tracker-a-case-2-input.json`, `tracker-a-case-2-trace.json`,
@@ -707,6 +707,14 @@ Tracing ends after a separate tail fixed at phase-end plus two seconds, before
 waiting for complete canonical response EOF/public idle and its mandatory closing
 tail. Neither a larger bounded export budget nor successful acquisition establishes
 FPS. This is a new history-entry workload, not a pass for V5's live-edge escape.
+
+After a guard failure, the pilot attempts the already fixed capture-tail target
+when no native original remains unresolved and tracing has not begun finishing.
+It retains the original failure, missing checkpoints and unsuccessful scenario.
+The original deadline and 50 ms end-request bucket still apply. A pending,
+rejected or completed tail is never retried; an unsafe wait records a separate
+cleanup failure and trace closure is still attempted. This retains diagnostic
+time after a refusal without treating transport closure as scenario completion.
 
 Timing, scenario, FPS, ratio and ranking claims remain unavailable. Dispatch is
 held until fresh immutable-source prerequisites and independent qualification

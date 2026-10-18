@@ -60,8 +60,8 @@ const required = ['package-lock.json', '.github/workflows/hosted-copilot-mounted
 const file = (path: string) => ({ path, bytes: 1, sha256: path === 'package-lock.json' ? lock : hash, regular: true, contained: true, symlink: false });
 const intent = () => ({ schemaVersion: 1, kind: 'pre-install-intent', purpose: 'hosted-copilot-mounted-default-react-only',
   context: { candidateSha: sha, checkoutSha: sha, githubSha: sha, workflowSha: sha, tagSha: sha, repository: 'cacheplane/chat-ui-bench',
-    releaseId: 'hosted-copilot-react-h100-r6400-v14', githubRef: 'refs/tags/hosted-copilot-react-h100-r6400-v14',
-    workflowRef: 'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@refs/tags/hosted-copilot-react-h100-r6400-v14',
+    releaseId: 'hosted-copilot-react-h100-r6400-v15', githubRef: 'refs/tags/hosted-copilot-react-h100-r6400-v15',
+    workflowRef: 'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-mounted.yml@refs/tags/hosted-copilot-react-h100-r6400-v15',
     eventName: 'workflow_dispatch', actions: 'true', platform: 'linux', runnerOs: 'Linux', runnerMarker: 'ubuntu-24.04-hosted-copilot-mounted', attempt: '1' },
   source: { commitSha: sha, treeSha: 'c'.repeat(40), lockSha256: lock, files: required.map(file) },
   prerequisite: { originalRunId: '1', attempt: 1, sourceSha: 'd'.repeat(40), artifactId: '2', archiveSha256: hash,
@@ -106,7 +106,7 @@ type Evaluation = { status: string; reason: string | null; facts: unknown; autho
 const pilotRequired = ['.github/workflows/hosted-copilot-tracker-a.yml','apps/copilotkit/runtime/mounted-tracker-a.ts',
   'apps/copilotkit/runtime/mounted-tracker-a-trace.ts','tests/copilotkit-mounted-tracker-a.test.ts','tests/copilotkit-mounted-tracker-a-trace.test.ts'];
 const pilotIntent = () => {
-  const v=intent();v.purpose='hosted-copilot-mounted-tracker-json-a-pilot-only';v.context.releaseId='hosted-copilot-react-tracker-json-a-v7';
+  const v=intent();v.purpose='hosted-copilot-mounted-tracker-json-a-pilot-only';v.context.releaseId='hosted-copilot-react-tracker-json-a-v8';
   v.context.githubRef='refs/tags/'+v.context.releaseId;v.context.workflowRef='cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-tracker-a.yml@'+v.context.githubRef;
   v.context.runnerMarker='ubuntu-24.04-hosted-copilot-tracker-a';v.source.files.push(...pilotRequired.map(file));return v;
 };
@@ -114,7 +114,7 @@ const pilotPost = () => ({...post(),intent:pilotIntent()});
 const pilotBundle = () => {
   const v=pilotIntent(),m=moduleInput();m.runId=v.prerequisite.originalRunId;m.workerPath=`apps/copilotkit/.hosted-mounted/${m.runId}-1/worker.mjs`;m.emitted[0]!.path=m.workerPath;
   return {intent:v,installed:pilotPost(),module:m,nativePrerequisite:{sourceSha:sha,sourceTreeSha:v.source.treeSha,originalRunId:'4',attempt:1,
-    workflowId:386692729,workflowPath:'.github/workflows/hosted-copilot-mounted.yml',releaseId:'hosted-copilot-react-h100-r6400-v14',artifactId:'5',
+    workflowId:386692729,workflowPath:'.github/workflows/hosted-copilot-mounted.yml',releaseId:'hosted-copilot-react-h100-r6400-v15',artifactId:'5',
     archiveSha256:hash,archiveBytes:1,qualifiedRootReceiptSha256:hash,qualifiedPeerReceiptSha256:hash,frontendSettingsSha256:hash,qualification:false}};
 };
 describe('fixed Tracker A supplied-data pilot gates',()=>{
@@ -208,8 +208,8 @@ const expectFailure = (result: Evaluation, reason: string, status = 'invalid') =
 };
 
 describe('bounded shape precedence across the four supplied-data policies', () => {
-  it('admits the fresh native V14 identity with the same supplied authority limits', () => {
-    const v=intent();expect(v.context.releaseId).toBe('hosted-copilot-react-h100-r6400-v14');
+  it('admits the fresh native V15 identity with the same supplied authority limits', () => {
+    const v=intent();expect(v.context.releaseId).toBe('hosted-copilot-react-h100-r6400-v15');
     expect(admission(v)).toMatchObject({status:'accepted',reason:null,facts:{phase:'pre-install',sourceFiles:5,sourceBytes:5},authority:flags});
     expect(admission(post())).toMatchObject({status:'accepted',reason:null,authority:flags});
   });

@@ -31,7 +31,7 @@ export function createRestoredHistoryDiagnosticPort(write){
  }};
 }
 
-const RELEASE='hosted-copilot-react-h100-r6400-v14',REPOSITORY='cacheplane/chat-ui-bench';
+const RELEASE='hosted-copilot-react-h100-r6400-v15',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
 const MiB=1024*1024,hash=b=>createHash('sha256').update(b).digest('hex');
 const need=(ok,message='Mounted bootstrap refused')=>{if(!ok)throw new Error(message);};
@@ -39,8 +39,8 @@ const id=v=>typeof v==='string'&&/^[1-9][0-9]{0,19}$/.test(v);
 const digest=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const boundedError=e=>{try{return e instanceof Error?e.message.slice(0,512):'Original operation failed';}catch{return 'Original operation failed';}};
-const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v7',PILOT_MODE='tracker-json-a-pilot-v2';
-const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v14';
+const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v8',PILOT_MODE='tracker-json-a-pilot-v2';
+const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v15';
 let selectedBootstrapMode=null,pilotPhase=null,pilotKnown=null;
 const contextFields=['candidateSha','checkoutSha','githubSha','workflowSha','tagSha','repository','releaseId','githubRef','workflowRef','eventName','actions','platform','runnerOs','runnerMarker','attempt'];
 function ownData(value,keys){
