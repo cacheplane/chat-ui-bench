@@ -100,7 +100,7 @@ export function createMountedTrackerATrace(ports:TrackerATracePorts) {
  };
  async function listener(row:ListenerOriginal,call:()=>void|Promise<void>){row.requestedHostMs=hostNow();row.status='pending';try{await call();row.status='fulfilled';}catch(error){row.status='rejected';remember(error);throw error;}finally{row.settledHostMs=hostNow();}}
  function invoke<T>(kind:OperationKind,call:()=>Promise<T>,handleOrdinal:1|2|null=null,bytes:number|null=null,readOperationOrdinal:number|null=null):Promise<T>{
-  if(operations.length>=133)return Promise.reject(refuse('Collector port capacity'));
+  if(operations.length>=1031)return Promise.reject(refuse('Collector port capacity'));
   const row:TrackerATraceOperation={ordinal:operations.length+1,kind,requestedHostMs:hostNow(),settledHostMs:null,status:'pending',timedOut:false,handleOrdinal,bytes:null,eof:null,readOperationOrdinal};operations.push(row);if(kind==='read')readCalls++;
   let original:Promise<T>;
   try{original=call();if(kind==='sink-finish')observeSink();}catch(error){row.status='rejected';remember(error);try{row.settledHostMs=hostNow();}catch{}return Promise.reject(error);}
@@ -124,7 +124,7 @@ export function createMountedTrackerATrace(ports:TrackerATracePorts) {
    }
    if(endRequested&&operations.find(row=>row.kind==='end')?.status==='fulfilled')await completed;
    await closeHandles();
-   if(sink.created&&sink.finish==='not-started'&&operations.length<133){
+   if(sink.created&&sink.finish==='not-started'&&operations.length<1031){
     sink.finish='pending';let result:TrackerAFileRef|null=null;
     try{result=await invoke('sink-finish',()=>ports.sink.finish());sink.finish='fulfilled';}catch{sink.finish='rejected';}
     observeSink();if(fsyncObserved)await fsyncObserved;await Promise.resolve();observeSink();if(fileCloseObserved)await fileCloseObserved;
@@ -132,7 +132,7 @@ export function createMountedTrackerATrace(ports:TrackerATracePorts) {
     const closedRef=sink.fileClose==='fulfilled'?copyRawRef(result):null;
     if(closedRef!==null)ref=closedRef;else if(result!==null)refuse('Invalid raw file reference');
    }
-   if(!detachRequested&&operations.length<133){safeDetach=eof&&handles.every(h=>h.closeOperationOrdinal!==null&&operations[h.closeOperationOrdinal-1]?.status==='fulfilled')&&sink.finish==='fulfilled'&&sink.fsync==='fulfilled'&&sink.fileClose==='fulfilled';detachRequested=true;try{await invoke('detach',()=>ports.detach());if(listeners.sessionClose.registration.status!=='not-started')await closed;}catch{}}
+   if(!detachRequested&&operations.length<1031){safeDetach=eof&&handles.every(h=>h.closeOperationOrdinal!==null&&operations[h.closeOperationOrdinal-1]?.status==='fulfilled')&&sink.finish==='fulfilled'&&sink.fsync==='fulfilled'&&sink.fileClose==='fulfilled';detachRequested=true;try{await invoke('detach',()=>ports.detach());if(listeners.sessionClose.registration.status!=='not-started')await closed;}catch{}}
    await closeHandles();
    if(listeners.tracingComplete.registration.status!=='not-started')try{await listener(listeners.tracingComplete.removal,()=>ports.removeTracingComplete(onCompletion));}catch{}
    if(listeners.sessionClose.registration.status!=='not-started')try{await listener(listeners.sessionClose.removal,()=>ports.removeSessionClose(onClose));}catch{}
@@ -141,7 +141,7 @@ export function createMountedTrackerATrace(ports:TrackerATracePorts) {
  async function closeHandles(){
   for(let i=0;i<handles.length;i++){
    const handle=handles[i]!;if(handle.closeOperationOrdinal!==null)continue;
-   if(operations.length>=133){refuse('Pending handle close: port capacity');continue;}
+   if(operations.length>=1031){refuse('Pending handle close: port capacity');continue;}
    handle.closeOperationOrdinal=operations.length+1;try{await invoke('io-close',()=>ports.closeIO(handleValues[i]!),handle.ordinal);}catch{}
   }
  }
@@ -163,10 +163,10 @@ export function createMountedTrackerATrace(ports:TrackerATracePorts) {
    if(!startPromise)throw refuse('Trace not started');await startPromise;check();endRequested=true;await invoke('end',()=>ports.end());await completed;check();
    const accepted=handles.findIndex(h=>h.role==='accepted');if(accepted<0)throw refuse('No accepted handle');
    for(;;){
-    check();if(readCalls>=64)throw refuse('Trace read capacity');
+    check();if(readCalls>=513)throw refuse('Trace read capacity');
     const data=await invoke('read',()=>ports.read(handleValues[accepted]!,65536),(accepted+1) as 1|2),read=operations.at(-1)!;
     if(typeof data.eof==='boolean')read.eof=data.eof;
-    const bytes=decodeRead(data);read.bytes=bytes.length;knownReadBytes+=bytes.length;if(knownReadBytes>4194304)throw refuse('Raw byte capacity');
+    const bytes=decodeRead(data);read.bytes=bytes.length;knownReadBytes+=bytes.length;if(knownReadBytes>33554432)throw refuse('Raw byte capacity');
     check();if(bytes.length){await invoke('write',()=>ports.sink.write(bytes),(accepted+1) as 1|2,bytes.length,read.ordinal);writtenBytes+=bytes.length;}
     check();if(data.eof===true){eof=true;break;}
    }
@@ -180,7 +180,7 @@ export function createMountedTrackerATrace(ports:TrackerATracePorts) {
   const containment=clockValid&&finished&&handles.every(h=>h.closeOperationOrdinal!==null&&operations[h.closeOperationOrdinal-1]?.status==='fulfilled')&&handleOverflow===null&&sink.fileClose==='fulfilled'&&operations.find(row=>row.kind==='detach')?.status==='fulfilled'&&sessionClose.originalSessionMatch===true&&removed;
   const rawRef=ref===null?null:{...ref};
   const raw=!sink.created?{status:'absent' as const,ref:null,extent:'unobserved' as const}:complete?{status:'complete-raw' as const,ref:rawRef,extent:'complete' as const}:{status:'known-prefix' as const,ref:rawRef,extent:'unknown' as const};
-  return {schemaVersion:1 as const,kind:'tracker-a-transport' as const,mode:'tracker-json-a-pilot-v1' as const,profileRef:{...profileRef},raw,listeners:structuredClone(listeners),operations:structuredClone(operations),completion:{...completion},sessionClose:{...sessionClose},handles:structuredClone(handles),handleOverflow:handleOverflow===null?null:{...handleOverflow},sink:{...sink},portCalls:operations.length,readCalls,knownReadBytes,outcome:{capture:{status:complete?'complete' as const:'incomplete' as const,reason:complete?null:'transport' as const},containment:containment?'verified' as const:'unverified' as const},authority:{qualification:false as const,fps:'unavailable' as const,ratio:'unavailable' as const,scoring:false as const,ranking:false as const}};
+  return {schemaVersion:1 as const,kind:'tracker-a-transport' as const,mode:'tracker-json-a-pilot-v2' as const,profileRef:{...profileRef},raw,listeners:structuredClone(listeners),operations:structuredClone(operations),completion:{...completion},sessionClose:{...sessionClose},handles:structuredClone(handles),handleOverflow:handleOverflow===null?null:{...handleOverflow},sink:{...sink},portCalls:operations.length,readCalls,knownReadBytes,outcome:{capture:{status:complete?'complete' as const:'incomplete' as const,reason:complete?null:'transport' as const},containment:containment?'verified' as const:'unverified' as const},authority:{qualification:false as const,fps:'unavailable' as const,ratio:'unavailable' as const,scoring:false as const,ranking:false as const}};
  };
  return {start,finish,snapshot};
 }

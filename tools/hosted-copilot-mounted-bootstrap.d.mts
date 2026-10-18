@@ -79,17 +79,17 @@ export type TrackerAChildPublicReport = Readonly<{
  status:'complete'|'incomplete';cases:readonly CaseRecord[];nativeInputs:readonly Readonly<{caseNumber:1;wheel:null}>[];
  primaryFailure:'prerequisite'|'browser-connect'|'case-conformance'|null;cleanupFailures:readonly ('case-close'|'client-close')[];
  qualification:false;fps:'unavailable';originals:readonly Readonly<{label:'browserConnect'|'clientClose'|'clientDisconnected';status:OriginalState}>[];
- browserVersion:string|null;caseEvidence:readonly CaseRecord[];workerImport:'fulfilled';snapshotFiles:readonly ['native-case-1.json','native-case-2.json'];mode:'tracker-json-a-pilot-v1';
+ browserVersion:string|null;caseEvidence:readonly CaseRecord[];workerImport:'fulfilled';snapshotFiles:readonly ['native-case-1.json','native-case-2.json'];mode:'tracker-json-a-pilot-v2';
  tracker:Readonly<{inputRef:Ref<'tracker-a-case-2-input.json'>|null;transportRef:Ref<'tracker-a-case-2-transport.json'>|null;semantic:Stage;capture:Stage;cleanup:Stage}>;
 }>;
 export type TrackerAParentPublicReport = Readonly<{
  status:'complete'|'incomplete';applicationCommand:MountedCaptureResult|null;cases:readonly CaseRecord[];caseEvidence:readonly CaseRecord[];browserVersion:string|null;
  originals:readonly Readonly<{label:GlobalOriginalLabel;status:OriginalState}>[];stdio:readonly StdioFact[];failures:readonly string[];
- qualification:false;fps:'unavailable';scope:string;mode:'tracker-json-a-pilot-v1';
+ qualification:false;fps:'unavailable';scope:string;mode:'tracker-json-a-pilot-v2';
  tracker:Readonly<{childResultRef:Ref<'native-child-result.json'>|null;semantic:Stage;capture:Stage;cleanup:Stage}>;
 }>;
 export type TrackerAFinalResult = Readonly<{
- schemaVersion:1;kind:'tracker-a-result';mode:'tracker-json-a-pilot-v1';profileRef:Ref<'tracker-a-profile.json'>|null;
+ schemaVersion:1;kind:'tracker-a-result';mode:'tracker-json-a-pilot-v2';profileRef:Ref<'tracker-a-profile.json'>|null;
  inputRef:Ref<'tracker-a-case-2-input.json'>|null;transportRef:Ref<'tracker-a-case-2-transport.json'>|null;
  raw:Readonly<{status:RawStatus;ref:Ref<'tracker-a-case-2-trace.json'>|null;extent:Extent}>;
  childResultRef:Ref<'native-child-result.json'>|null;parentPartialRef:Ref<'native-parent-partial.json'>|null;nativeResultRef:TrackerANativeResultRef|null;

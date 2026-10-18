@@ -31,7 +31,7 @@ export function createRestoredHistoryDiagnosticPort(write){
  }};
 }
 
-const RELEASE='hosted-copilot-react-h100-r6400-v12',REPOSITORY='cacheplane/chat-ui-bench';
+const RELEASE='hosted-copilot-react-h100-r6400-v13',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
 const MiB=1024*1024,hash=b=>createHash('sha256').update(b).digest('hex');
 const need=(ok,message='Mounted bootstrap refused')=>{if(!ok)throw new Error(message);};
@@ -39,8 +39,8 @@ const id=v=>typeof v==='string'&&/^[1-9][0-9]{0,19}$/.test(v);
 const digest=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const boundedError=e=>{try{return e instanceof Error?e.message.slice(0,512):'Original operation failed';}catch{return 'Original operation failed';}};
-const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v5',PILOT_MODE='tracker-json-a-pilot-v1';
-const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v12';
+const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v6',PILOT_MODE='tracker-json-a-pilot-v2';
+const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v13';
 let selectedBootstrapMode=null,pilotPhase=null,pilotKnown=null;
 const contextFields=['candidateSha','checkoutSha','githubSha','workflowSha','tagSha','repository','releaseId','githubRef','workflowRef','eventName','actions','platform','runnerOs','runnerMarker','attempt'];
 function ownData(value,keys){
@@ -82,7 +82,7 @@ export function serializeMountedFailure(action,error,workerImport){
 }
 // Literal finite role unions, never a spendable shared remainder or persisted ledger.
 function traceRoles(){return [
- ['tracker-a-case-2-trace.json',4194304,'child'],['tracker-a-case-2-input.json',262144,'child'],['tracker-a-case-2-transport.json',262144,'child'],['tracker-a-result.json',262144,'outer'],
+ ['tracker-a-case-2-trace.json',33554432,'child'],['tracker-a-case-2-input.json',262144,'child'],['tracker-a-case-2-transport.json',1048576,'child'],['tracker-a-result.json',262144,'outer'],
  ['native-case-1.json',2097152,'child'],['native-case-2.json',2097152,'child'],['native-child-result.json',524288,'child'],['native-parent-partial.json',524288,'parent'],['native-result.json',524288,'outer'],
  ['application-result.json',16384,'parent'],['parent-result.json',16384,'outer'],['application.stdout',262144,'parent'],['application.stderr',262144,'parent'],['parent.stdout',4194304,'outer'],['parent.stderr',4194304,'outer'],
  ['browser-stdout.bin',262144,'parent'],['browser-stderr.bin',262144,'parent'],['native-inventory.json',524288,'outer'],['phase-failure-child.json',4096,'child'],['phase-failure-parent.json',4096,'parent'],['phase-failure-run.json',4096,'outer'],['native-child-failure.json',4096,'child']
@@ -126,7 +126,7 @@ export function mountedTrackerAReservation(phase,closed,known={}){
  const seen=new Set(),rows=denseData(closed,128);let bytes=roles.reduce((sum,r)=>sum+r.cap,0),files=roles.length;
  for(const value of rows){const row=ownData(value,['path','bytes']);need(typeof row.path==='string'&&ordinaryPath(row.path)&&!seen.has(row.path));seen.add(row.path);count(row.bytes);need(row.bytes<=33554432);if(roles.some(role=>role.path===row.path))continue;const previous=replacements.find(([path])=>path===row.path);if(previous)need(row.path==='browser-registry.json'?row.bytes===previous[1]:row.bytes<=previous[1],'Original startup replacement differs');bytes+=row.bytes;files++;}
  for(const [path] of replacements)need(seen.has(path),'Original registry physical close absent');
- need(Number.isSafeInteger(bytes)&&bytes<=33554432&&files<=128,'Pilot phase union capacity refused');return {roles,bytes,files};
+ need(Number.isSafeInteger(bytes)&&bytes<=134217728&&files<=128,'Pilot phase union capacity refused');return {roles,bytes,files};
 }
 function providerField(value,key){need(value!==null&&typeof value==='object'&&!Array.isArray(value));const d=Object.getOwnPropertyDescriptor(value,key);need(d&&'value'in d,'Provider own data required');return d.value;}
 export function validateOrdinaryNativePrerequisiteProvider(value,run,artifact){
@@ -191,8 +191,8 @@ export async function authenticateTrackerAReport(command,action,profileRef,ports
  const bind=async(ref,name,limit)=>{const r=fileRef(ref,name);if(r===null)return null;const original=await read(name,limit);need(r.bytes===original.bytes&&r.sha256===original.sha256,'Transitive publication bytes differ');return JSON.parse(Buffer.from(original.raw).toString('utf8'));};
  const ref={path:name,bytes:f.bytes,sha256:f.sha256};let diagnostic=null;
  if(action==='child'){
-  const snapshots=[];for(const number of [1,2]){const caseFile=await read('native-case-'+number+'.json',2097152),record=ownData(JSON.parse(Buffer.from(caseFile.raw).toString('utf8')),['caseNumber','cases','snapshots','qualification']);need(record.caseNumber===number&&record.qualification===false&&JSON.stringify(record.cases)===JSON.stringify(value.caseEvidence.filter(c=>c.caseNumber===number)));snapshots.push(...copyPilotSnapshots(record.snapshots));}const input=copyTrackerAInput(await bind(value.tracker.inputRef,'tracker-a-case-2-input.json',262144),snapshots),transport=copyTrackerATransport(await bind(value.tracker.transportRef,'tracker-a-case-2-transport.json',262144));
-  if(input)need(JSON.stringify(input.profileRef)===JSON.stringify(profile),'Input profile differs');if(transport){need(JSON.stringify(transport.profileRef)===JSON.stringify(profile),'Transport profile differs');if(transport.raw.ref!==null){need(transport.sink.fileClose==='fulfilled','Raw original close absent');const raw=await read('tracker-a-case-2-trace.json',4194304);need(transport.raw.ref.bytes===raw.bytes&&transport.raw.ref.sha256===raw.sha256,'Raw original binding differs');}}
+  const snapshots=[];for(const number of [1,2]){const caseFile=await read('native-case-'+number+'.json',2097152),record=ownData(JSON.parse(Buffer.from(caseFile.raw).toString('utf8')),['caseNumber','cases','snapshots','qualification']);need(record.caseNumber===number&&record.qualification===false&&JSON.stringify(record.cases)===JSON.stringify(value.caseEvidence.filter(c=>c.caseNumber===number)));snapshots.push(...copyPilotSnapshots(record.snapshots));}const input=copyTrackerAInput(await bind(value.tracker.inputRef,'tracker-a-case-2-input.json',262144),snapshots),transport=copyTrackerATransport(await bind(value.tracker.transportRef,'tracker-a-case-2-transport.json',1048576));
+  if(input)need(JSON.stringify(input.profileRef)===JSON.stringify(profile),'Input profile differs');if(transport){need(JSON.stringify(transport.profileRef)===JSON.stringify(profile),'Transport profile differs');if(transport.raw.ref!==null){need(transport.sink.fileClose==='fulfilled','Raw original close absent');const raw=await read('tracker-a-case-2-trace.json',33554432);need(transport.raw.ref.bytes===raw.bytes&&transport.raw.ref.sha256===raw.sha256,'Raw original binding differs');}}
   diagnostic={profileRef:profile,childResultRef:ref,inputRef:value.tracker.inputRef,transportRef:value.tracker.transportRef,rawRef:transport?.raw.ref??null,input:input===null?null:trackerAInputDiagnostic(input),transport:transport===null?null:trackerATransportDiagnostic(transport),relations:trackerADiagnosticRelations(input,transport)};
  }else if(value.tracker.childResultRef!==null){const child=await authenticateTrackerAReport(value.applicationCommand,'child',profile,ports);need(JSON.stringify(child.ref)===JSON.stringify(value.tracker.childResultRef),'Parent child reference differs');need(JSON.stringify(value.cases)===JSON.stringify(child.value.cases)&&JSON.stringify(value.caseEvidence)===JSON.stringify(child.value.caseEvidence)&&value.browserVersion===child.value.browserVersion,'Parent child facts differ');diagnostic=child.diagnostic;}
  return {value,ref,diagnostic};
@@ -201,7 +201,7 @@ export async function createTrackerATraceSink(ports){
  await ports.reserve();const writer=await ports.open();let retained=0,writing=false,lastWrite=Promise.resolve(),finishOriginal=null,failed=false,primary;
  const remember=error=>{if(!failed){failed=true;primary=error;}};
  const sink={created:true,fsync:null,fileClose:null,write(bytes){
-  if(finishOriginal!==null||writing||failed||!(bytes instanceof Uint8Array)||bytes.byteLength===0||retained+bytes.byteLength>4194304)return Promise.reject(Error('Raw sink write bound/ownership'));
+  if(finishOriginal!==null||writing||failed||!(bytes instanceof Uint8Array)||bytes.byteLength===0||retained+bytes.byteLength>33554432)return Promise.reject(Error('Raw sink write bound/ownership'));
   retained+=bytes.byteLength;writing=true;let original;try{original=Promise.resolve(writer.write(bytes));}catch(error){original=Promise.reject(error);}
   lastWrite=original.then(()=>{writing=false;},error=>{writing=false;remember(error);throw error;});void lastWrite.catch(()=>{});return lastWrite;
  },finish(){
@@ -255,31 +255,45 @@ function semanticCase(cases,snapshots,n){
   if(n===1)checkJourney('follow',{samples:rows.slice(1,3),anchorId:null,returned:null,wheel:null});else{need(rows.slice(1,4).every(s=>s.frame.phase==='streaming'));need(rows[3].evaluation.rows.some(r=>r.id===rows[3].frame.expectedResponse.id&&r.geometryEligibility==='eligible'));}return true;
  }catch{return false;}
 }
+function assertTrackerAScalar(value){
+ const s=ownData(value,['pageNowMs','url','sameOriginalScroller','connected','uniqueSelector','innerWidth','innerHeight','devicePixelRatio','rect','scrollTop','scrollHeight','clientHeight']);boundedText(s.url,4096);for(const k of ['sameOriginalScroller','connected','uniqueSelector'])bool(s[k]);for(const k of ['pageNowMs','innerWidth','innerHeight','devicePixelRatio','scrollTop','scrollHeight','clientHeight'])finite(s[k]);Object.values(ownData(s.rect,['x','y','width','height'])).forEach(finite);
+}
 function copyTrackerAInput(value,snapshots){
- if(value===null)return null;const r=copyPublicationData(value,262144);ownData(r,['schemaVersion','kind','mode','caseNumber','profileRef','phase','geometryCheckpoints','anchor','listeners','pointer','scalarObservations','wheelRequests','wheelEvents','scrollEvents','motionEvents','losses','overflows','outcome','authority']);
+ if(value===null)return null;const r=copyPublicationData(value,262144);ownData(r,['schemaVersion','kind','mode','caseNumber','profileRef','entry','phase','geometryCheckpoints','anchor','listeners','pointer','scalarObservations','wheelRequests','wheelEvents','scrollEvents','motionEvents','losses','overflows','outcome','authority']);
  need(r.schemaVersion===1&&r.kind==='tracker-a-case-input'&&r.mode===PILOT_MODE&&r.caseNumber===2);fileRef(r.profileRef,'tracker-a-profile.json');assertAuthority(r.authority);
- const p=ownData(r.phase,['hostT0Ms','hostT1Ms','postBoundaryScalarOrdinal','postBoundarySettled','returnClick','completion','tail']);for(const k of ['hostT0Ms','hostT1Ms'])if(p[k]!==null)finite(p[k]);if(p.postBoundaryScalarOrdinal!==null)count(p.postBoundaryScalarOrdinal);need(originalStates.includes(p.postBoundarySettled));for(const k of ['returnClick','completion','tail'])assertReceipt(p[k],'startedHostMs');if(p.hostT0Ms!==null&&p.hostT1Ms!==null)need(p.hostT1Ms===p.hostT0Ms+2000);
+ const p=ownData(r.phase,['hostT0Ms','hostT1Ms','postBoundaryScalarOrdinal','postBoundarySettled','returnClick','captureTail','completion','tail']);for(const k of ['hostT0Ms','hostT1Ms'])if(p[k]!==null)finite(p[k]);if(p.postBoundaryScalarOrdinal!==null)count(p.postBoundaryScalarOrdinal);need(originalStates.includes(p.postBoundarySettled));for(const k of ['returnClick','completion','tail'])assertReceipt(p[k],'startedHostMs');if(p.hostT0Ms!==null&&p.hostT1Ms!==null)need(p.hostT1Ms===p.hostT0Ms+2000);
+ const capture=ownData(p.captureTail,['status','startedHostMs','settledHostMs','targetHostMs']);assertReceipt({status:capture.status,startedHostMs:capture.startedHostMs,settledHostMs:capture.settledHostMs},'startedHostMs');if(capture.targetHostMs!==null)finite(capture.targetHostMs);
+ const entry=ownData(r.entry,['before','wheel','afterWait','after','settledWait','settled']);
+ for(const name of ['wheel','afterWait','settledWait'])assertReceipt(entry[name],'startedHostMs');
+ for(const name of ['before','after','settled']){
+  const row=ownData(entry[name],['status','startedHostMs','settledHostMs','value']);assertReceipt({status:row.status,startedHostMs:row.startedHostMs,settledHostMs:row.settledHostMs},'startedHostMs');
+  if(row.value!==null){const sample=ownData(row.value,['scalar','active','prefixLength','returnControlVisible']);bool(sample.active);bool(sample.returnControlVisible);count(sample.prefixLength);need(sample.prefixLength<=6400);assertTrackerAScalar(sample.scalar);}
+ }
  const checkpoints=ownData(r.geometryCheckpoints,['G0','G1','G2','G3','G4']);let index=0;for(const c of Object.values(checkpoints)){const q=ownData(c,['status','requestedHostMs','settledHostMs','snapshotRef']);assertReceipt({status:q.status,requestedHostMs:q.requestedHostMs,settledHostMs:q.settledHostMs});if(q.snapshotRef!==null){const ref=ownData(q.snapshotRef,['path','index']);need(ref.path==='native-case-2.json'&&ref.index===index&&snapshots.filter(s=>s.caseNumber===2)[index]!==undefined);}index++;}
  const listeners=ownData(r.listeners,['wheel','scroll','animationstart','transitionrun','navigation','contextClose','pageClose']);for(const l of Object.values(listeners))assertListener(l);
  if(r.anchor!==null){const a=ownData(r.anchor,['id','ownerToken','selectedAtHostMs','firstCheckpoint','secondCheckpoint','evaluation']);boundedText(a.id,128);count(a.ownerToken);finite(a.selectedAtHostMs);need(a.firstCheckpoint==='G1'&&a.secondCheckpoint==='G2');if(a.evaluation!==null){const frames=snapshots.filter(s=>s.caseNumber===2);need(frames[1]?.snapshot.status==='available'&&frames[2]?.snapshot.status==='available');need(JSON.stringify(evaluateHistoricalAnchor({schemaVersion:1,anchorId:a.id,first:frames[1].snapshot.frame,second:frames[2].snapshot.frame}))===JSON.stringify(a.evaluation));}}
  if(r.pointer!==null){const q=ownData(r.pointer,['requestedHostMs','settledHostMs','status','x','y']);assertReceipt({status:q.status,requestedHostMs:q.requestedHostMs,settledHostMs:q.settledHostMs});finite(q.x);finite(q.y);}
  for(const q of denseData(r.scalarObservations,82)){ownData(q,['ordinal','role','slot','requestedHostMs','settledHostMs','status','value']);count(q.ordinal);need(['pre','before','after','post'].includes(q.role));assertReceipt({status:q.status,requestedHostMs:q.requestedHostMs,settledHostMs:q.settledHostMs});if(q.slot!==null)need(Number.isInteger(q.slot)&&q.slot>=0&&q.slot<40);if(q.value!==null){const s=ownData(q.value,['pageNowMs','url','sameOriginalScroller','connected','uniqueSelector','innerWidth','innerHeight','devicePixelRatio','rect','scrollTop','scrollHeight','clientHeight']);boundedText(s.url,4096);for(const k of ['sameOriginalScroller','connected','uniqueSelector'])bool(s[k]);for(const k of ['pageNowMs','innerWidth','innerHeight','devicePixelRatio','scrollTop','scrollHeight','clientHeight'])finite(s[k]);const rect=ownData(s.rect,['x','y','width','height']);Object.values(rect).forEach(finite);}}
  for(const q of denseData(r.wheelRequests,40)){ownData(q,['slot','nominalHostMs','requestedHostMs','settledHostMs','status','beforeOrdinal','afterOrdinal']);need(Number.isInteger(q.slot)&&q.slot>=0&&q.slot<40);finite(q.nominalHostMs);assertReceipt({status:q.status,requestedHostMs:q.requestedHostMs,settledHostMs:q.settledHostMs});count(q.beforeOrdinal);if(q.afterOrdinal!==null)count(q.afterOrdinal);}
- for(const [key,cap,fields] of [['wheelEvents',40,['ordinal','receivedHostMs','pageNowMs','eventTimeStampMs','isTrusted','deltaX','deltaY','deltaMode','targetContained','currentTargetIsScroller']],['scrollEvents',256,['ordinal','receivedHostMs','pageNowMs','eventTimeStampMs','currentTargetIsScroller','scrollTop','scrollHeight','clientHeight']],['motionEvents',32,['ordinal','kind','receivedHostMs','pageNowMs','eventTimeStampMs','targetContained']]])for(const q of denseData(r[key],cap)){ownData(q,fields);for(const name of fields){if(name==='kind')need(['animationstart','transitionrun'].includes(q[name]));else if(['isTrusted','targetContained','currentTargetIsScroller'].includes(name))bool(q[name]);else finite(q[name]);}}
+ for(const [key,cap,fields] of [['wheelEvents',41,['ordinal','receivedHostMs','pageNowMs','eventTimeStampMs','isTrusted','deltaX','deltaY','deltaMode','targetContained','currentTargetIsScroller']],['scrollEvents',256,['ordinal','receivedHostMs','pageNowMs','eventTimeStampMs','currentTargetIsScroller','scrollTop','scrollHeight','clientHeight']],['motionEvents',32,['ordinal','kind','receivedHostMs','pageNowMs','eventTimeStampMs','targetContained']]])for(const q of denseData(r[key],cap)){ownData(q,fields);for(const name of fields){if(name==='kind')need(['animationstart','transitionrun'].includes(q[name]));else if(['isTrusted','targetContained','currentTargetIsScroller'].includes(name))bool(q[name]);else finite(q[name]);}}
  for(const q of Object.values(ownData(r.losses,['navigation','context','page','session'])))if(q!==null){ownData(q,['firstHostMs','firstOverflowHostMs']);finite(q.firstHostMs);if(q.firstOverflowHostMs!==null)finite(q.firstOverflowHostMs);}
  for(const q of Object.values(ownData(r.overflows,['wheel','scroll','motion'])))if(q!==null){ownData(q,['firstHostMs','ordinal']);finite(q.firstHostMs);count(q.ordinal);}
  ownData(r.outcome,['phase','competingMotion','scenarioQualification']);assertStage(r.outcome.phase,['phase']);need(r.outcome.competingMotion==='unavailable'&&r.outcome.scenarioQualification==='unavailable');return r;
 }
 function copyTrackerATransport(value){
- if(value===null)return null;const r=copyPublicationData(value,262144);ownData(r,['schemaVersion','kind','mode','profileRef','raw','listeners','operations','completion','sessionClose','handles','handleOverflow','sink','portCalls','readCalls','knownReadBytes','outcome','authority']);need(r.schemaVersion===1&&r.kind==='tracker-a-transport'&&r.mode===PILOT_MODE);fileRef(r.profileRef,'tracker-a-profile.json');assertAuthority(r.authority);
+ // Each closed operation row is <512 UTF-8 bytes: fixed ASCII keys/enums,
+ // at most32 characters per finite clock and16 per safe integer, no raw data.
+ // 1031*512 +65536 for all fixed non-operation fields =593408 <1MiB.
+ // The explicit serialized-byte check still refuses any larger publication.
+ if(value===null)return null;const r=copyPublicationData(value,1048576);ownData(r,['schemaVersion','kind','mode','profileRef','raw','listeners','operations','completion','sessionClose','handles','handleOverflow','sink','portCalls','readCalls','knownReadBytes','outcome','authority']);need(r.schemaVersion===1&&r.kind==='tracker-a-transport'&&r.mode===PILOT_MODE);fileRef(r.profileRef,'tracker-a-profile.json');assertAuthority(r.authority);
  ownData(r.raw,['status','ref','extent']);need(['absent','known-prefix','complete-raw'].includes(r.raw.status));if(r.raw.status==='absent')need(r.raw.ref===null&&r.raw.extent==='unobserved');else{fileRef(r.raw.ref,'tracker-a-case-2-trace.json');need(r.raw.extent===(r.raw.status==='complete-raw'?'complete':'unknown'));if(r.raw.status==='complete-raw')need(r.raw.ref!==null);}
  for(const l of Object.values(ownData(r.listeners,['tracingComplete','sessionClose'])))assertListener(l);
- for(const [i,q] of denseData(r.operations,133).entries()){ownData(q,['ordinal','kind','requestedHostMs','settledHostMs','status','timedOut','handleOrdinal','bytes','eof','readOperationOrdinal']);need(q.ordinal===i+1&&['start','end','read','write','io-close','sink-finish','detach'].includes(q.kind));assertReceipt({status:q.status,requestedHostMs:q.requestedHostMs,settledHostMs:q.settledHostMs});bool(q.timedOut);need([null,1,2].includes(q.handleOrdinal));if(q.bytes!==null)count(q.bytes);need(q.eof===null||typeof q.eof==='boolean');if(q.readOperationOrdinal!==null)count(q.readOperationOrdinal);}
+ for(const [i,q] of denseData(r.operations,1031).entries()){ownData(q,['ordinal','kind','requestedHostMs','settledHostMs','status','timedOut','handleOrdinal','bytes','eof','readOperationOrdinal']);need(q.ordinal===i+1&&['start','end','read','write','io-close','sink-finish','detach'].includes(q.kind));assertReceipt({status:q.status,requestedHostMs:q.requestedHostMs,settledHostMs:q.settledHostMs});bool(q.timedOut);need([null,1,2].includes(q.handleOrdinal));if(q.bytes!==null)count(q.bytes);need(q.eof===null||typeof q.eof==='boolean');if(q.readOperationOrdinal!==null)count(q.readOperationOrdinal);}
  ownData(r.completion,['firstHostMs','overflowHostMs','format','compression','dataLoss']);for(const k of ['firstHostMs','overflowHostMs'])if(r.completion[k]!==null)finite(r.completion[k]);need([null,'json','other'].includes(r.completion.format)&&[null,'none','other'].includes(r.completion.compression)&&(r.completion.dataLoss===null||typeof r.completion.dataLoss==='boolean'));
  ownData(r.sessionClose,['firstHostMs','overflowHostMs','originalSessionMatch','timing']);for(const k of ['firstHostMs','overflowHostMs'])if(r.sessionClose[k]!==null)finite(r.sessionClose[k]);need([null,true,false].includes(r.sessionClose.originalSessionMatch)&&['unobserved','expected-detach','unexpected-loss'].includes(r.sessionClose.timing));
  for(const [i,h] of denseData(r.handles,2).entries()){ownData(h,['ordinal','firstHostMs','role','closeOperationOrdinal']);need(h.ordinal===i+1&&['accepted','unexpected'].includes(h.role));finite(h.firstHostMs);if(h.closeOperationOrdinal!==null)count(h.closeOperationOrdinal);}
  if(r.handleOverflow!==null){ownData(r.handleOverflow,['firstHostMs','ordinal']);finite(r.handleOverflow.firstHostMs);need(r.handleOverflow.ordinal===3);}
- const sink=ownData(r.sink,['created','finish','fsync','fileClose']);bool(sink.created);for(const k of ['finish','fsync','fileClose'])need(originalStates.includes(sink[k]));for(const k of ['portCalls','readCalls','knownReadBytes'])count(r[k]);need(r.portCalls===r.operations.length&&r.readCalls<=64&&r.knownReadBytes<=4194304);
+ const sink=ownData(r.sink,['created','finish','fsync','fileClose']);bool(sink.created);for(const k of ['finish','fsync','fileClose'])need(originalStates.includes(sink[k]));for(const k of ['portCalls','readCalls','knownReadBytes'])count(r[k]);need(r.portCalls===r.operations.length&&r.readCalls<=513&&r.knownReadBytes<=33554432);
  ownData(r.outcome,['capture','containment']);assertStage(r.outcome.capture,['transport']);need(['verified','unverified'].includes(r.outcome.containment));return r;
 }
 function transportContained(t){
@@ -289,7 +303,7 @@ function transportComplete(t,ref){
  if(t===null||ref===null||!transportContained(t)||t.outcome.capture.status!=='complete'||t.raw.status!=='complete-raw'||JSON.stringify(t.raw.ref)!==JSON.stringify(ref)||t.operations.some(o=>o.status!=='fulfilled'||o.timedOut)||t.sink.finish!=='fulfilled'||t.sink.fsync!=='fulfilled'||t.sessionClose.timing!=='expected-detach'||t.sessionClose.overflowHostMs!==null)return false;
  if(t.completion.firstHostMs===null||t.completion.overflowHostMs!==null||t.completion.format!=='json'||t.completion.compression!=='none'||t.completion.dataLoss!==false||t.handles.length!==1||t.handles[0].role!=='accepted')return false;
  for(const kind of ['start','end','io-close','sink-finish','detach'])if(t.operations.filter(o=>o.kind===kind).length!==1)return false;
- const reads=t.operations.filter(o=>o.kind==='read'),writes=t.operations.filter(o=>o.kind==='write');if(reads.length===0||reads.length!==t.readCalls||reads.length>64||reads.some((o,i)=>o.handleOrdinal!==1||!Number.isSafeInteger(o.bytes)||o.bytes<0||o.bytes>65536||o.eof!==(i===reads.length-1)||o.bytes===0&&o.eof!==true))return false;
+ const reads=t.operations.filter(o=>o.kind==='read'),writes=t.operations.filter(o=>o.kind==='write');if(reads.length===0||reads.length!==t.readCalls||reads.length>513||reads.some((o,i)=>o.handleOrdinal!==1||!Number.isSafeInteger(o.bytes)||o.bytes<0||o.bytes>65536||o.eof!==(i===reads.length-1)||o.bytes===0&&o.eof!==true))return false;
  const nonempty=reads.filter(o=>o.bytes>0);if(writes.length!==nonempty.length||writes.some((o,i)=>o.handleOrdinal!==1||o.readOperationOrdinal!==nonempty[i].ordinal||o.bytes!==nonempty[i].bytes||o.ordinal<=nonempty[i].ordinal))return false;
  const bytes=reads.reduce((sum,o)=>sum+o.bytes,0);return bytes===t.knownReadBytes&&bytes===ref.bytes;
 }
@@ -303,10 +317,62 @@ function copyNativePilot(native){
  const drain=ownData(p.inputDrain,['status','requestedHostMs','settledHostMs']);assertReceipt(drain);
  return {cases,caseEvidence,snapshots,input,transport,originals,browserVersion:r.browserVersion,drainFulfilled:drain.status==='fulfilled',hasPrivateFailure:p.hasPrimary||privateCleanup.length>0};
 }
+function trackerAEntryComplete(input){
+ if(input===null)return false;
+ const e=input.entry,rows=[e.before,e.wheel,e.afterWait,e.after,e.settledWait,e.settled];
+ if(rows.some(row=>row.status!=='fulfilled'||row.startedHostMs===null||row.settledHostMs===null||row.settledHostMs<row.startedHostMs)||rows.some((row,i)=>i>0&&row.startedHostMs<rows[i-1].settledHostMs))return false;
+ const samples=[e.before.value,e.after.value,e.settled.value];if(samples.some(s=>s===null||s.active!==true||s.prefixLength<=0))return false;
+ const [before,after,settled]=samples,base=before.scalar;
+ const owned=s=>s.sameOriginalScroller&&s.connected&&s.uniqueSelector&&s.url===base.url&&s.innerWidth===1280&&s.innerHeight===800&&s.devicePixelRatio===1&&JSON.stringify(s.rect)===JSON.stringify(base.rect)&&s.clientHeight>0&&s.scrollHeight>=s.clientHeight&&s.scrollTop>=0&&s.scrollTop<=s.scrollHeight-s.clientHeight;
+ if(!samples.every(s=>owned(s.scalar))||base.pageNowMs>=after.scalar.pageNowMs||after.scalar.pageNowMs>=settled.scalar.pageNowMs||settled.scalar.pageNowMs-after.scalar.pageNowMs<50||after.scalar.scrollTop>=base.scrollTop||after.scalar.scrollTop!==settled.scalar.scrollTop||after.prefixLength<=before.prefixLength||settled.prefixLength<=after.prefixLength||!after.returnControlVisible||!settled.returnControlVisible||settled.scalar.scrollHeight-settled.scalar.clientHeight-settled.scalar.scrollTop<settled.scalar.clientHeight/2)return false;
+ const at=e.wheel.settledHostMs,pointer=input.pointer;
+ return pointer!==null&&pointer.status==='fulfilled'&&pointer.settledHostMs!==null&&pointer.settledHostMs<=e.before.startedHostMs&&e.afterWait.settledHostMs>=at+100&&e.afterWait.settledHostMs<at+200&&e.after.startedHostMs>=e.afterWait.settledHostMs&&e.after.settledHostMs<at+200&&e.settledWait.settledHostMs>=at+200&&e.settledWait.settledHostMs<at+300&&e.settled.startedHostMs>=e.settledWait.settledHostMs&&e.settled.settledHostMs<at+300;
+}
+function trackerACaptureBoundaryComplete(input,transport){
+ if(input===null||transport===null)return false;
+ const p=input.phase,c=p.captureTail,g3=input.geometryCheckpoints.G3,g4=input.geometryCheckpoints.G4;
+ if(p.hostT1Ms===null||c.targetHostMs!==p.hostT1Ms+2000||c.status!=='fulfilled'||c.startedHostMs===null||c.settledHostMs===null||g3.status!=='fulfilled'||g3.settledHostMs===null||c.startedHostMs<g3.settledHostMs||c.startedHostMs>c.settledHostMs||c.settledHostMs<c.targetHostMs||c.settledHostMs>=c.targetHostMs+50)return false;
+ const start=transport.operations.filter(row=>row.kind==='start'),g1=input.geometryCheckpoints.G1;
+ if(start.length!==1||start[0].status!=='fulfilled'||start[0].settledHostMs===null||input.entry.settled.settledHostMs===null||start[0].requestedHostMs<input.entry.settled.settledHostMs||g1.requestedHostMs===null||g1.requestedHostMs<start[0].settledHostMs+500)return false;
+ const end=transport.operations.filter(row=>row.kind==='end');
+ if(end.length!==1||end[0].status!=='fulfilled'||end[0].timedOut||end[0].requestedHostMs<c.settledHostMs||end[0].requestedHostMs>=c.targetHostMs+50||g4.requestedHostMs===null)return false;
+ if(transport.operations.some(row=>row.status!=='fulfilled'||row.settledHostMs===null||row.settledHostMs>g4.requestedHostMs)||Object.values(transport.listeners).some(row=>row.removal.status!=='fulfilled'||row.removal.settledHostMs===null||row.removal.settledHostMs>g4.requestedHostMs))return false;
+ const completion=p.completion,tail=p.tail;
+ return completion.status==='fulfilled'&&completion.settledHostMs!==null&&g4.settledHostMs!==null&&tail.status==='fulfilled'&&tail.startedHostMs!==null&&tail.settledHostMs!==null&&tail.startedHostMs>=completion.settledHostMs&&tail.startedHostMs>=g4.settledHostMs&&tail.settledHostMs>=tail.startedHostMs+2000;
+}
+function trackerAPhaseComplete(input){
+ if(input===null||!trackerAEntryComplete(input))return false;
+ const p=input.phase,scalars=input.scalarObservations,requests=input.wheelRequests,events=input.wheelEvents;
+ if(p.hostT0Ms===null||p.hostT1Ms!==p.hostT0Ms+2000||p.postBoundarySettled!=='fulfilled'||scalars.length!==82||requests.length!==40||events.length!==41||Object.values(input.losses).some(v=>v!==null)||Object.values(input.overflows).some(v=>v!==null))return false;
+ const pre=scalars[0],post=scalars[81],base=input.entry.before.value.scalar;
+ if(pre.role!=='pre'||pre.slot!==null||post.role!=='post'||post.slot!==null||p.postBoundaryScalarOrdinal!==post.ordinal||pre.settledHostMs===null||pre.settledHostMs>p.hostT0Ms||post.requestedHostMs<p.hostT1Ms)return false;
+ for(const [i,row] of scalars.entries()){
+  const s=row.value,prior=i===0?null:scalars[i-1].value;
+  if(row.ordinal!==i+1||row.status!=='fulfilled'||s===null||row.settledHostMs===null||row.settledHostMs<row.requestedHostMs||!s.sameOriginalScroller||!s.connected||!s.uniqueSelector||s.url!==base.url||s.innerWidth!==1280||s.innerHeight!==800||s.devicePixelRatio!==1||JSON.stringify(s.rect)!==JSON.stringify(base.rect)||s.clientHeight<=0||s.scrollHeight<s.clientHeight||s.scrollTop<0||s.scrollTop>s.scrollHeight-s.clientHeight||i>0&&(s.scrollTop===0||s.pageNowMs<prior.pageNowMs||s.scrollTop>prior.scrollTop))return false;
+ }
+ if(pre.value.pageNowMs<input.entry.settled.value.scalar.pageNowMs||pre.value.scrollHeight-pre.value.clientHeight-pre.value.scrollTop<pre.value.clientHeight/2||post.value.scrollTop>=pre.value.scrollTop)return false;
+ const brackets=[];
+ for(const [slot,w] of requests.entries()){
+  const before=scalars[1+2*slot],after=scalars[2+2*slot],lower=p.hostT0Ms+slot*50,upper=lower+50;
+  if(w.slot!==slot||w.nominalHostMs!==lower||w.status!=='fulfilled'||w.settledHostMs===null||w.requestedHostMs<lower||w.settledHostMs<w.requestedHostMs||w.settledHostMs>=upper||before.role!=='before'||after.role!=='after'||before.slot!==slot||after.slot!==slot||w.beforeOrdinal!==before.ordinal||w.afterOrdinal!==after.ordinal||before.requestedHostMs<lower||before.settledHostMs>w.requestedHostMs||after.requestedHostMs<w.settledHostMs||after.settledHostMs>=upper)return false;
+  brackets.push([before.value.pageNowMs,after.value.pageNowMs]);
+ }
+ for(const population of [events,input.scrollEvents,input.motionEvents])for(const [i,row] of population.entries())if(row.ordinal!==i+1||row.eventTimeStampMs<0||row.eventTimeStampMs>row.pageNowMs||i>0&&(row.pageNowMs<population[i-1].pageNowMs||row.receivedHostMs<population[i-1].receivedHostMs||row.eventTimeStampMs<population[i-1].eventTimeStampMs))return false;
+ const inside=at=>at>=pre.value.pageNowMs&&at<=post.value.pageNowMs;
+ const possibleInside=event=>event.eventTimeStampMs<=post.value.pageNowMs&&event.pageNowMs>=pre.value.pageNowMs;
+ for(const [i,event] of events.entries()){
+  if(!event.isTrusted||event.deltaX!==0||event.deltaY!==(i===0?-600:-12)||event.deltaMode!==0||!event.targetContained||!event.currentTargetIsScroller)return false;
+  if(i===0){if(event.pageNowMs<base.pageNowMs||event.pageNowMs>input.entry.after.value.scalar.pageNowMs||event.pageNowMs>=pre.value.pageNowMs)return false;}
+  else{const slots=brackets.flatMap(([a,b],slot)=>event.pageNowMs>=a&&event.pageNowMs<=b?[slot]:[]);if(!inside(event.pageNowMs)||slots.length!==1||slots[0]!==i-1)return false;}
+ }
+ let previous=pre.value.scrollTop;
+ for(const event of input.scrollEvents){if(!event.currentTargetIsScroller||event.clientHeight<=0||event.scrollHeight<event.clientHeight||event.scrollTop<0||event.scrollTop>event.scrollHeight-event.clientHeight)return false;if(possibleInside(event)){if(event.scrollTop===0||event.scrollTop>previous)return false;previous=event.scrollTop;}}
+ return !input.motionEvents.some(event=>event.targetContained&&possibleInside(event));
+}
 export function constructTrackerAChildResult(native,persistence){
  const n=copyNativePilot(native),p=ownData(persistence,['inputRef','transportRef','rawRef','snapshotFiles']);const inputRef=fileRef(p.inputRef,'tracker-a-case-2-input.json'),transportRef=fileRef(p.transportRef,'tracker-a-case-2-transport.json'),rawRef=fileRef(p.rawRef,'tracker-a-case-2-trace.json');need(JSON.stringify(denseData(p.snapshotFiles,2))===JSON.stringify(['native-case-1.json','native-case-2.json']),'Original case publications absent');
- const first=semanticCase(n.cases,n.snapshots,1),second=semanticCase(n.cases,n.snapshots,2)&&n.input!==null&&n.input.anchor?.evaluation?.status==='accepted'&&n.input.anchor.ownerToken===n.input.anchor.evaluation.firstOwnerToken&&Object.values(n.input.geometryCheckpoints).every(c=>c.status==='fulfilled'&&c.snapshotRef!==null)&&n.input.phase.returnClick.status==='fulfilled'&&n.input.phase.completion.status==='fulfilled',semantic=trackerStage(first&&second,'semantic');
- const inputClosed=n.input!==null&&n.drainFulfilled&&Object.values(n.input.listeners).every(closedListener),phase=inputClosed&&n.input.outcome.phase.status==='complete';
+ const first=semanticCase(n.cases,n.snapshots,1),second=semanticCase(n.cases,n.snapshots,2)&&n.input!==null&&trackerAEntryComplete(n.input)&&trackerACaptureBoundaryComplete(n.input,n.transport)&&n.input.anchor?.evaluation?.status==='accepted'&&n.input.anchor.ownerToken===n.input.anchor.evaluation.firstOwnerToken&&Object.values(n.input.geometryCheckpoints).every(c=>c.status==='fulfilled'&&c.snapshotRef!==null)&&n.input.phase.returnClick.status==='fulfilled'&&n.input.phase.completion.status==='fulfilled',semantic=trackerStage(first&&second,'semantic');
+ const inputClosed=n.input!==null&&n.drainFulfilled&&Object.values(n.input.listeners).every(closedListener),phase=inputClosed&&n.input.outcome.phase.status==='complete'&&trackerAPhaseComplete(n.input)&&trackerACaptureBoundaryComplete(n.input,n.transport);
  const transportClosed=transportContained(n.transport),rawComplete=transportComplete(n.transport,rawRef);
  const persisted=inputRef!==null&&transportRef!==null&&rawRef!==null&&n.input!==null&&n.transport!==null;
  const capture=trackerStage(persisted&&phase&&rawComplete&&transportClosed,!persisted?'persistence':!phase?'phase':'transport');
@@ -434,17 +500,21 @@ function copyInputDiagnostic(value){
  const anchor=r.anchor===null?null:diagnosticTuple(r.anchor,[diagnosticNullable(diagnosticEnum(['accepted','invalid','unavailable'])),diagnosticBoolOrNull]);if(anchor)need((anchor[0]===null)===(anchor[1]===null),'Diagnostic anchor relation');
  const scalars=diagnosticRows(r.scalars,82,v=>diagnosticTuple(v,[count,diagnosticEnum([0,1,2,3]),diagnosticNullable(diagnosticSlot),diagnosticReceipt,bool]));
  const wheels=diagnosticRows(r.wheels,40,v=>{const row=diagnosticTuple(v,[diagnosticSlot,diagnosticReceipt,finite,diagnosticFiniteOrNull,diagnosticFiniteOrNull,count,diagnosticCountOrNull,bool,bool]);need(row[7]===scalars.some(s=>s[0]===row[5])&&row[8]===(row[6]!==null&&scalars.some(s=>s[0]===row[6])),'Diagnostic ordinal join');return row;});
- return {phase,checkpoints:diagnosticRows(r.checkpoints,5,v=>diagnosticTuple(v,[diagnosticReceipt,bool]),true),anchor,pointer:diagnosticNullable(diagnosticReceipt)(r.pointer),listeners:diagnosticRows(r.listeners,7,copyDiagnosticListener,true),scalars,wheels,events:diagnosticTuple(r.events,[diagnosticBound(40),diagnosticBound(256),diagnosticBound(32)]),losses:diagnosticRows(r.losses,4,diagnosticNullable(v=>diagnosticTuple(v,[diagnosticLiteralTrue,bool])),true),overflows:diagnosticRows(r.overflows,3,diagnosticNullable(v=>diagnosticTuple(v,[diagnosticLiteralTrue,count])),true),outcome:copyDiagnosticStage(r.outcome,['phase'])};
+ return {phase,checkpoints:diagnosticRows(r.checkpoints,5,v=>diagnosticTuple(v,[diagnosticReceipt,bool]),true),anchor,pointer:diagnosticNullable(diagnosticReceipt)(r.pointer),listeners:diagnosticRows(r.listeners,7,copyDiagnosticListener,true),scalars,wheels,events:diagnosticTuple(r.events,[diagnosticBound(41),diagnosticBound(256),diagnosticBound(32)]),losses:diagnosticRows(r.losses,4,diagnosticNullable(v=>diagnosticTuple(v,[diagnosticLiteralTrue,bool])),true),overflows:diagnosticRows(r.overflows,3,diagnosticNullable(v=>diagnosticTuple(v,[diagnosticLiteralTrue,count])),true),outcome:copyDiagnosticStage(r.outcome,['phase'])};
 }
 function copyTransportDiagnostic(value){
+ // The existing16317-byte diagnostic envelope gains at most48 bytes:
+ // seven six-cell operation summaries +42, counts +3, tail index +1,
+ // raw/transport reference widths +2. 16365 remains below16384; keys,
+ // phase tuple and row counts are unchanged, and41 still has two digits.
  const r=ownData(value,diagnosticTransportKeys),raw=diagnosticTuple(r.raw,[diagnosticEnum(['absent','known-prefix','complete-raw']),diagnosticEnum(['unobserved','unknown','complete'])]);need(raw[1]===(raw[0]==='absent'?'unobserved':raw[0]==='known-prefix'?'unknown':'complete'),'Diagnostic raw extent');
- const operations=diagnosticRows(r.operations,7,v=>{const row=diagnosticTuple(v,[diagnosticBound(133),diagnosticBound(133),diagnosticBound(133),diagnosticBound(133),diagnosticBound(133),diagnosticNullable(v=>{count(v);need(v>=1&&v<=133);return v;})]);const total=row.slice(0,4).reduce((n,v)=>n+v,0);need(total<=133&&row[4]<=total&&(row[5]===null)===(row[0]+row[1]+row[3]+row[4]===0),'Diagnostic operation census');return row;},true);
- const counts=diagnosticTuple(r.counts,[diagnosticBound(133),diagnosticBound(64),diagnosticBound(4194304)]);need(operations.reduce((n,row)=>n+row.slice(0,4).reduce((sum,v)=>sum+v,0),0)===counts[0],'Diagnostic operation total');
+ const operations=diagnosticRows(r.operations,7,v=>{const row=diagnosticTuple(v,[diagnosticBound(1031),diagnosticBound(1031),diagnosticBound(1031),diagnosticBound(1031),diagnosticBound(1031),diagnosticNullable(v=>{count(v);need(v>=1&&v<=1031);return v;})]);const total=row.slice(0,4).reduce((n,v)=>n+v,0);need(total<=1031&&row[4]<=total&&(row[5]===null)===(row[0]+row[1]+row[3]+row[4]===0),'Diagnostic operation census');return row;},true);
+ const counts=diagnosticTuple(r.counts,[diagnosticBound(1031),diagnosticBound(513),diagnosticBound(33554432)]);need(operations.reduce((n,row)=>n+row.slice(0,4).reduce((sum,v)=>sum+v,0),0)===counts[0],'Diagnostic operation total');
  const handles=diagnosticRows(r.handles,2,v=>diagnosticTuple(v,[diagnosticEnum([1,2]),diagnosticEnum(['accepted','unexpected']),diagnosticCountOrNull]));handles.forEach((row,i)=>need(row[0]===i+1,'Diagnostic handle order'));
  return {raw,listeners:diagnosticRows(r.listeners,2,copyDiagnosticListener,true),operations,completion:diagnosticTuple(r.completion,[bool,bool,diagnosticNullable(diagnosticEnum(['json','other'])),diagnosticNullable(diagnosticEnum(['none','other'])),diagnosticBoolOrNull]),sessionClose:diagnosticTuple(r.sessionClose,[bool,bool,diagnosticBoolOrNull,diagnosticEnum(['unobserved','expected-detach','unexpected-loss'])]),handles,handleOverflow:bool(r.handleOverflow),sink:diagnosticTuple(r.sink,[bool,diagnosticReceipt,diagnosticReceipt,diagnosticReceipt]),counts,outcome:diagnosticTuple(r.outcome,[v=>copyDiagnosticStage(v,['transport']),diagnosticEnum(['verified','unverified'])])};
 }
 function copyDiagnosticRelations(value,input,transport){
- const relation=diagnosticTuple(value,[diagnosticNullable(v=>diagnosticTuple(v,[diagnosticEnum([1,2,3,4,5,6]),diagnosticBound(81),diagnosticNullable(diagnosticBound(81)),finite,finite])),diagnosticNullable(v=>diagnosticTuple(v,[diagnosticBound(132),diagnosticBoolOrNull,diagnosticCountOrNull])),diagnosticEnum([0,1,2,3,4,5,6,7,8])]);
+ const relation=diagnosticTuple(value,[diagnosticNullable(v=>diagnosticTuple(v,[diagnosticEnum([1,2,3,4,5,6]),diagnosticBound(81),diagnosticNullable(diagnosticBound(81)),finite,finite])),diagnosticNullable(v=>diagnosticTuple(v,[diagnosticBound(1030),diagnosticBoolOrNull,diagnosticCountOrNull])),diagnosticEnum([0,1,2,3,4,5,6,7,8])]);
  const [check,readTail,closeOrder]=relation;
  if(check!==null){need(input!==null&&check[1]<input.scalars.length,'Diagnostic scalar index');need([1,2,4].includes(check[0])?check[2]!==null:check[2]===null,'Diagnostic scalar other index presence');if(check[2]!==null)need(check[2]<input.scalars.length,'Diagnostic scalar other index');}
  if(transport===null)need(readTail===null&&closeOrder===0,'Diagnostic transport relation presence');
@@ -485,8 +555,8 @@ export async function admitTrackerAInventory(profileRef,ports){
  const names=await ports.names();need(names.includes('parent-started.json'),'Runtime original publication unavailable');const parentFile=await ports.read('parent-result.json',16384),parent=JSON.parse(Buffer.from(parentFile.raw).toString('utf8')),publication=await authenticateTrackerAReport(parent,'parent',profileRef,ports),partial=publication.value;need(partial.originals.filter(row=>row.label!=='parentWorkerClose').every(row=>row.status==='fulfilled')&&partial.stdio.every(row=>row.status==='fulfilled'),'Runtime original quiescence unavailable');
 }
 const nativePrerequisiteFields=['sourceSha','sourceTreeSha','originalRunId','attempt','workflowId','workflowPath','releaseId','artifactId','archiveSha256','archiveBytes','qualifiedRootReceiptSha256','qualifiedPeerReceiptSha256','frontendSettingsSha256','qualification'];
-const trackerTrajectory=()=>({caseNumber:2,prephaseMs:500,durationMs:2000,wheelCount:40,slotMs:50,deltaX:0,deltaY:-12,tailMs:2000,scalarLimit:82});
-const trackerLimits=()=>({archiveFiles:128,archiveBytes:33554432,rawBytes:4194304,reads:64,readBytes:65536,collectorPortCalls:133,wheelEvents:40,scrollEvents:256,motionEvents:32,projectionBytes:262144,knownHandles:2});
+const trackerTrajectory=()=>({caseNumber:2,entry:{deltaX:0,deltaY:-600,sampleCount:3,sampleOffsetsMs:[100,200],sampleBucketMs:100,minSettlementPageMs:50,minimumBottomGapClientHeights:0.5,activeAdvancingPrefix:true,returnControl:'visible-after-and-settled',pointer:'once-before-entry'},prephaseMs:500,durationMs:2000,wheelCount:40,slotMs:50,deltaX:0,deltaY:-12,captureTail:{relativeTo:'hostT1Ms',offsetMs:2000,endRequestBucketMs:50,before:'G4'},tailMs:2000,tailRelativeTo:'canonical-completion',scalarLimit:82,wheelAttribution:'unique-closed-page-brackets',motionScope:'closed-creation-to-observation-overlap-with-pre-post-page-bracket',eventTimestampConstraint:'0<=eventTimeStampMs<=pageNowMs-for-every-retained-event'});
+const trackerLimits=()=>({archiveFiles:128,archiveBytes:134217728,rawBytes:33554432,reads:513,readBytes:65536,collectorPortCalls:1031,wheelEvents:41,scrollEvents:256,motionEvents:32,projectionBytes:262144,transportBytes:1048576,knownHandles:2});
 export function constructTrackerAProfile(intent,native,intentRef){
  accepted(evaluateMountedTrackerAAdmissionPolicy(intent));need(intent.kind==='pre-install-intent'&&selectMountedBootstrapMode(intent.context)==='tracker-a');
  const q=ownData(native,nativePrerequisiteFields);need(q.sourceSha===intent.source.commitSha&&q.sourceTreeSha===intent.source.treeSha&&q.frontendSettingsSha256===intent.prerequisite.frontendSettingsSha256&&q.attempt===1&&q.workflowId===386692729&&q.workflowPath==='.github/workflows/hosted-copilot-mounted.yml'&&q.releaseId===nativePrerequisiteRelease&&q.qualification===false);
@@ -622,7 +692,7 @@ async function checkPilotPhase(directory){
   const command=/^(profile|extract|install|browser-install|parent|application)\.(stdout|stderr)$/.exec(entry.name);
   if(command){const result=await jsonFile(join(directory,command[1]+'-result.json'),524288),fact=result.streamFacts?.[command[2]];need(result.closeObserved===true&&fact?.readableEOF===true&&fact.writerFinish===true&&fact.writerClose===true,'Original historical writer closure unavailable');}
   if(pilotPhase==='inventory'&&/^browser-(?:stdout|stderr)\.bin$/.test(entry.name)){const partial=await jsonFile(join(directory,'native-parent-partial.json'),524288),kind=entry.name==='browser-stdout.bin'?'stdout':'stderr';need(partial.stdio.some(row=>row.kind===kind&&['fulfilled','rejected'].includes(row.status)),'Browser original physical writer close unavailable');}
-  if(pilotPhase==='inventory'&&entry.name==='tracker-a-case-2-trace.json'){const transport=copyTrackerATransport(await jsonFile(join(directory,'tracker-a-case-2-transport.json'),262144));need(transport.sink.fileClose==='fulfilled','Raw original physical close unavailable');}
+  if(pilotPhase==='inventory'&&entry.name==='tracker-a-case-2-trace.json'){const transport=copyTrackerATransport(await jsonFile(join(directory,'tracker-a-case-2-transport.json'),1048576));need(transport.sink.fileClose==='fulfilled','Raw original physical close unavailable');}
   const physicalFile=await physical(join(directory,entry.name),cap);closed.push({path:entry.name,bytes:physicalFile.bytes});
  }
  return mountedTrackerAReservation(pilotPhase,closed,pilotKnown);
@@ -854,7 +924,7 @@ async function authenticateStartupFiles(directory,prerequisites,plan){
 async function publishedFileRef(directory,name){const original=await physical(join(directory,name),pilotRoleCap(name));return {path:name,bytes:original.bytes,sha256:original.sha256};}
 async function reserveRawSink(directory,state){
  need(!state.attempted,'Raw sink acquisition already attempted');state.attempted=true;
- return createTrackerATraceSink({reserve:async()=>{need(await beforePilotMutation(directory,'tracker-a-case-2-trace.json')===4194304);},open:async()=>{
+ return createTrackerATraceSink({reserve:async()=>{need(await beforePilotMutation(directory,'tracker-a-case-2-trace.json')===33554432);},open:async()=>{
   const handle=await open(join(directory,'tracker-a-case-2-trace.json'),constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);state.created=true;state.handle=handle;
   return {write:bytes=>handle.writeFile(bytes),fsync:()=>handle.sync(),close:()=>handle.close()};
  },authenticate:()=>publishedFileRef(directory,'tracker-a-case-2-trace.json')});
@@ -872,7 +942,7 @@ async function child(directory,scratch){
    for(const caseNumber of [1,2])await writeJson(directory,'native-case-'+caseNumber+'.json',{caseNumber,cases:n.caseEvidence.filter(c=>c.caseNumber===caseNumber),snapshots:n.snapshots.filter(s=>s.caseNumber===caseNumber),qualification:false},2097152);
    let inputRef=null,transportRef=null,rawRef=null;
    if(n.input){await writeJson(directory,'tracker-a-case-2-input.json',n.input,262144);inputRef=await publishedFileRef(directory,'tracker-a-case-2-input.json');}
-   if(n.transport){if(n.transport.raw.ref!==null&&n.transport.sink.fileClose==='fulfilled'){rawRef=await publishedFileRef(directory,'tracker-a-case-2-trace.json');need(JSON.stringify(rawRef)===JSON.stringify(n.transport.raw.ref));}await writeJson(directory,'tracker-a-case-2-transport.json',n.transport,262144);transportRef=await publishedFileRef(directory,'tracker-a-case-2-transport.json');}
+   if(n.transport){if(n.transport.raw.ref!==null&&n.transport.sink.fileClose==='fulfilled'){rawRef=await publishedFileRef(directory,'tracker-a-case-2-trace.json');need(JSON.stringify(rawRef)===JSON.stringify(n.transport.raw.ref));}await writeJson(directory,'tracker-a-case-2-transport.json',n.transport,1048576);transportRef=await publishedFileRef(directory,'tracker-a-case-2-transport.json');}
    const summary=constructTrackerAChildResult(result,{inputRef,transportRef,rawRef,snapshotFiles:['native-case-1.json','native-case-2.json']});
    const status=await publishTrackerAInternalReport('child',summary,value=>writeJson(directory,'native-child-result.json',value,524288));
    console.log(JSON.stringify({status:summary.status,resultPath:join(directory,'native-child-result.json'),qualification:false}));return status;
@@ -963,11 +1033,11 @@ async function runTrackerA(directory,scratch,prerequisites){
  const command=await capture(directory,'parent',fixedWorkerArgv('parent'),4194304,cleanChildEnvironment(),180000),loaded=await loadTrackerAProfile(directory,prerequisites.intent);
  let partial=null,parentPartialRef=null,child=null,childResultRef=null,inputRef=null,transportRef=null,transport=null,rawRef=null,globalInput=null,policy=null,diagnostic=null;const failures=[];
  try{const publication=await authenticateTrackerAReport(command,'parent',loaded.profileRef,{read:(name,cap)=>physical(join(directory,name),cap)});partial=publication.value;parentPartialRef=publication.ref;
-  if(partial.tracker.childResultRef!==null){const publishedChild=await authenticateTrackerAReport(partial.applicationCommand,'child',loaded.profileRef,{read:(name,cap)=>physical(join(directory,name),cap)});child=publishedChild.value;childResultRef=publishedChild.ref;need(JSON.stringify(childResultRef)===JSON.stringify(partial.tracker.childResultRef));inputRef=child.tracker.inputRef;transportRef=child.tracker.transportRef;if(transportRef!==null){transport=copyTrackerATransport(await jsonFile(join(directory,'tracker-a-case-2-transport.json'),262144));rawRef=transport.raw.ref;}need(JSON.stringify(publication.diagnostic)===JSON.stringify(publishedChild.diagnostic),'Authenticated diagnostic consumptions differ');diagnostic=publishedChild.diagnostic;}
+  if(partial.tracker.childResultRef!==null){const publishedChild=await authenticateTrackerAReport(partial.applicationCommand,'child',loaded.profileRef,{read:(name,cap)=>physical(join(directory,name),cap)});child=publishedChild.value;childResultRef=publishedChild.ref;need(JSON.stringify(childResultRef)===JSON.stringify(partial.tracker.childResultRef));inputRef=child.tracker.inputRef;transportRef=child.tracker.transportRef;if(transportRef!==null){transport=copyTrackerATransport(await jsonFile(join(directory,'tracker-a-case-2-transport.json'),1048576));rawRef=transport.raw.ref;}need(JSON.stringify(publication.diagnostic)===JSON.stringify(publishedChild.diagnostic),'Authenticated diagnostic consumptions differ');diagnostic=publishedChild.diagnostic;}
   globalInput=nativeGlobalClosureInput(command,partial);policy=evaluateMountedClosurePolicy(globalInput);
  }catch(error){failures.push(boundedError(error));}
  try{successful(command);}catch(error){failures.push(boundedError(error));}
- let rawCreated=false;try{const raw=await lstat(join(directory,'tracker-a-case-2-trace.json'));need(command.spawned&&raw.isFile()&&!raw.isSymbolicLink()&&raw.size<=4194304,'Assigned raw creation differs');rawCreated=true;}catch(error){if(error?.code!=='ENOENT')throw error;}
+ let rawCreated=false;try{const raw=await lstat(join(directory,'tracker-a-case-2-trace.json'));need(command.spawned&&raw.isFile()&&!raw.isSymbolicLink()&&raw.size<=33554432,'Assigned raw creation differs');rawCreated=true;}catch(error){if(error?.code!=='ENOENT')throw error;}
  const current=await bundle(directory,scratch);await verifyGraph(directory,scratch,current);need(JSON.stringify(current)===JSON.stringify(prerequisites));
  const semantic=partial?.tracker.semantic??trackerStage(false,'missing-parent'),captureOutcome=partial?.tracker.capture??trackerStage(false,'missing-parent'),cleanup=trackerStage(policy?.status==='accepted'&&partial?.tracker.cleanup.status==='complete'&&parentPartialRef!==null&&childResultRef!==null,'cleanup');
  const status=failures.length===0&&partial?.status==='complete'&&policy?.status==='accepted'&&[semantic,captureOutcome,cleanup].every(stage=>stage.status==='complete')?'complete':'incomplete';
@@ -980,10 +1050,10 @@ async function inventory(directory){
   await admitTrackerAInventory(loaded.profileRef,{names:()=>readdir(directory),read:(name,cap)=>physical(join(directory,name),cap)});
   await beginPilotPhase(directory,'inventory');
  }
- const records=[];let total=0;
+ const records=[];let total=0;const inventoryBytes=selectedBootstrapMode==='tracker-a'?128*MiB:32*MiB;
  const allowed=name=>/^(?:profile|extract|install|browser-install|parent|application)(?:-(?:started|result)\.json|\.(?:stdout|stderr))$/.test(name)||/^(?:prerequisite-run|prerequisite-artifact|static-prerequisite)-(?:intent|receipt)\.json$/.test(name)||/^(?:prerequisite-run|prerequisite-artifact|frontend-settings|native-intent|prerequisite|installed-admission|browser-process|browser-registry|native-child-options|native-child-result|native-child-failure|native-parent-partial|native-result|phase-failure-(?:prepare|install|provision|run|parent|child))\.json$/.test(name)||/^native-case-[12]\.json$/.test(name)||/^browser-(?:stdout|stderr)\.bin$/.test(name)||name==='static-prerequisite.zip';
- for(const entry of await readdir(directory,{withFileTypes:true})){need(entry.isFile()&&!entry.isSymbolicLink()&&ordinaryPath(entry.name)&&(selectedBootstrapMode==='tracker-a'?pilotRoleCap(entry.name)>0:allowed(entry.name)));need(records.length<127);const f=await physical(join(directory,entry.name),selectedBootstrapMode==='tracker-a'?pilotRoleCap(entry.name):32*MiB);total+=f.bytes;need(total<=32*MiB);records.push({path:entry.name,bytes:f.bytes,sha256:f.sha256,regular:true,contained:true,symlink:false});}
- assertInventory(records);const payload={files:records,bytesBeforeInventory:total,qualification:false};const encoded=Buffer.from(JSON.stringify(payload)+'\n');need(total+encoded.length<=32*MiB);await writeBytes(directory,'native-inventory.json',encoded,512*1024);
+ for(const entry of await readdir(directory,{withFileTypes:true})){need(entry.isFile()&&!entry.isSymbolicLink()&&ordinaryPath(entry.name)&&(selectedBootstrapMode==='tracker-a'?pilotRoleCap(entry.name)>0:allowed(entry.name)));need(records.length<127);const f=await physical(join(directory,entry.name),selectedBootstrapMode==='tracker-a'?pilotRoleCap(entry.name):32*MiB);total+=f.bytes;need(total<=inventoryBytes);records.push({path:entry.name,bytes:f.bytes,sha256:f.sha256,regular:true,contained:true,symlink:false});}
+ if(selectedBootstrapMode==='tracker-a'){for(const record of records)assertInventory([record]);}else assertInventory(records);const payload={files:records,bytesBeforeInventory:total,qualification:false};const encoded=Buffer.from(JSON.stringify(payload)+'\n');need(total+encoded.length<=inventoryBytes);await writeBytes(directory,'native-inventory.json',encoded,512*1024);
 }
 async function main(){
  const action=process.argv[2],mode=environmentMode();

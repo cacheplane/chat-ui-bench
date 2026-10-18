@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V51
+`runNativeMountedConformance` worker export now prepare a fresh V52
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v12`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v13`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -660,17 +660,18 @@ validated scalars and actual attempted count, without text or arbitrary error
 details. An awaited write callback is separate from parent retained bytes and
 original EOF/writer-close; partial/missing diagnostics or publication failure do
 not supply successful case closure. All existing stdout/archive caps apply.
-Fresh native V12 must independently complete both original serial cases after
-qualification of same-source full STATIC V51. Content readiness and pure tests
+Fresh native V13 must independently complete both original serial cases after
+qualification of same-source full STATIC V52. Content readiness and pure tests
 establish no geometry, runtime conformance, FPS or ranking result.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v5` workflow requires
-independently qualified same-source STATIC V51 and successful ordinary-native V12
+The separate experimental `hosted-copilot-react-tracker-json-a-v6` workflow requires
+independently qualified same-source STATIC V52 and successful ordinary-native V13
 original artifacts. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
 `tracker-a-case-2-input.json`, `tracker-a-case-2-trace.json`,
 `tracker-a-case-2-transport.json`, and `tracker-a-result.json`. Raw JSON capture
-stays bounded to 4 MiB, 64 reads and 133 operations; a separate pure projection
+stays bounded to 32 MiB, 513 reads and 1,031 operations, with EOF still required;
+the pilot's complete physical union is bounded to 128 MiB. A separate pure projection
 requires the complete raw file to fit 256 KiB. Child/parent exit code 2 denotes an
 originally closed incomplete report; required incompleteness keeps the outer
 runtime unsuccessful. Pilot inventory runs only after actual runtime success,
@@ -686,6 +687,21 @@ Incomplete diagnostics may also show selected observed scalar/timing relations,
 last-read EOF and byte facts, and original session-close ordering. These facts
 do not establish the first functional cause, complete trace, clock or presentation
 qualification, or performance.
+
+Pilot mode `tracker-json-a-pilot-v2` records one trusted −600 history-entry wheel
+and three entry samples separately from the eighty-two measured scalars. The
+entry must settle away from the live edge while the public response advances.
+All 41 wheel events and all lifetime scroll/motion events are retained. The forty
+measured wheels must each match one original slot; opposing movement and motion
+whose creation-to-handler interval overlaps the conservative closed pre/post
+page-clock bracket still fail, including delayed handlers and equal boundaries.
+Creation timestamps must be nonnegative and no later than handler observation.
+Return scrolling with an entirely disjoint interval remains visible as an
+outside-phase observation; these intervals do not prove presentation timing.
+Tracing ends after a separate tail fixed at phase-end plus two seconds, before
+waiting for complete canonical response EOF/public idle and its mandatory closing
+tail. Neither a larger bounded export budget nor successful acquisition establishes
+FPS. This is a new history-entry workload, not a pass for V5's live-edge escape.
 
 Timing, scenario, FPS, ratio and ranking claims remain unavailable. Dispatch is
 held until fresh immutable-source prerequisites and independent qualification
