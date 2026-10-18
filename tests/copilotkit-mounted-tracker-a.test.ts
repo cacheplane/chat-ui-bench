@@ -34,6 +34,23 @@ function fixture(){
 }
 
 describe('fixed two-case trajectory',()=>{
+ it.each(['baseline','timestamp-reverse','opposing-offset','end-stop'] as const)('latches exact first owned scalar %s witness at the throwing call',async code=>{
+  const f=fixture(),read=f.history.scalar;let n=0;
+  f.history.scalar=async()=>{const s=await read();if(++n===3){if(code==='baseline')s.connected=false;if(code==='timestamp-reverse')s.pageNowMs=0;if(code==='opposing-offset')s.scrollTop+=105;if(code==='end-stop')s.scrollTop=0;}return s;};
+  const r=await runMountedTrackerA(f.ports);expect(r.status).toBe('incomplete');expect(r.firstFailure).toEqual({code,ordinal:3,previousOrdinal:2,slot:0});expect(Object.isFrozen(r.firstFailure)).toBe(true);
+ });
+ it('keeps an earlier external rejection unclassified after a later owned scalar guard',async()=>{
+  const f=fixture(),wheel=f.history.wheel,read=f.history.scalar,primary=Object.freeze({private:'never serialize'});let n=0;
+  f.history.wheel=async(x,y)=>{if(y===-12)throw primary;return wheel(x,y);};
+  f.history.scalar=async()=>{const s=await read();if(++n===3)s.scrollTop+=105;return s;};
+  const r=await runMountedTrackerA(f.ports);expect(r.primary).toBe(primary);expect(r.firstFailure).toEqual({code:'unclassified',ordinal:null,previousOrdinal:null,slot:null});
+ });
+ it('keeps an earlier slot timeout unclassified after a late scalar triggers an owned guard',async()=>{
+  const f=fixture(),read=f.history.scalar;let n=0;
+  f.history.scalar=async()=>{const s=await read();if(++n===2)f.advance(750);if(n>=2)s.scrollTop+=105;return s;};
+  const r=await runMountedTrackerA(f.ports);expect(r.hasPrimary).toBe(true);expect(r.firstFailure).toEqual({code:'unclassified',ordinal:null,previousOrdinal:null,slot:null});
+ });
+ it('publishes no first failure witness when all original work succeeds',async()=>{const r=await runMountedTrackerA(fixture().ports);expect(r.firstFailure).toBe(null);});
  it.each(['before','after','settled'] as const)('retains original %s entry sample rejection identity through cleanup',async point=>{const f=fixture(),sample=f.history.entrySample,failure=Object.freeze({entry:point});let n=0;f.history.entrySample=async()=>{if(++n===(['before','after','settled'].indexOf(point)+1))throw failure;return sample();};const r=await runMountedTrackerA(f.ports);expect(r.hasPrimary).toBe(true);expect(r.primary).toBe(failure);expect(r.input?.wheelRequests).toHaveLength(0);expect(f.calls).not.toContain('trace-start');expect(f.calls).toContain('trace-finish');expect(f.calls).toContain('close-2');});
  it.each(['malformed','getter'] as const)('refuses %s entry sample without reading accessors or dispatching measured wheels',async kind=>{const f=fixture(),sample=f.history.entrySample;let getters=0;Object.assign(f.history,{entrySample:async()=>{const row:Record<string,unknown>=await sample();if(kind==='malformed')row.prefixLength=NaN;else Object.defineProperty(row,'active',{get(){getters++;throw Error('must not evaluate');}});return row;}});const r=await runMountedTrackerA(f.ports);expect(r.hasPrimary).toBe(true);expect(getters).toBe(0);expect(r.input?.wheelRequests).toHaveLength(0);expect(f.calls).not.toContain('trace-start');expect(f.calls).toContain('close-2');});
  it('rejects wrong entry delta independently of the forty correct measured events',async()=>{const f=fixture(),observe=f.history.observations;Object.assign(f.history,{observations:()=>({...observe(),wheelEvents:f.events.map((e,i)=>i===0?{...e,deltaY:-12}:e)})});const r=await runMountedTrackerA(f.ports);expect(r.hasPrimary).toBe(true);expect(r.input?.wheelEvents).toHaveLength(41);expect(r.input?.wheelEvents.slice(1).every(e=>e.deltaY===-12)).toBe(true);expect(r.input?.outcome.phase.status).toBe('incomplete');});
