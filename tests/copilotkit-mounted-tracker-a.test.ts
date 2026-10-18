@@ -34,6 +34,45 @@ function fixture(){
 }
 
 describe('fixed two-case trajectory',()=>{
+ it('does not dispatch or rebase a failure-tail wait beyond the original global deadline',async()=>{
+  const f=fixture(),read=f.history.scalar,wait=f.clock.waitUntil,acquire=f.history.acquireTrace;let reads=0,tailCalls=0,finishedAt:number|null=null;
+  f.clock.deadlineHostMs=4000;
+  f.history.scalar=async()=>{const s=await read();if(++reads>=16)s.scrollTop+=100;return s;};
+  f.clock.waitUntil=async at=>{if(at===4700)tailCalls++;await wait(at);};
+  f.history.acquireTrace=async()=>{const trace=await acquire(),finish=trace.finish;trace.finish=async()=>{finishedAt??=f.now;await finish();};return trace;};
+  const r=await runMountedTrackerA(f.ports);expect(tailCalls).toBe(0);expect(finishedAt).toBe(2700);expect(r.input?.phase.captureTail).toEqual({status:'rejected',startedHostMs:2700,settledHostMs:2700,targetHostMs:4700});expect(r.firstFailure).toEqual({code:'opposing-offset',ordinal:16,previousOrdinal:15,slot:7});expect(r.cleanupFailures.length).toBeGreaterThan(0);expect(r.status).toBe('incomplete');
+ });
+ it('closes the trace once when the failure-tail original remains pending through its deadline',async()=>{
+  const f=fixture(),read=f.history.scalar,wait=f.clock.waitUntil,acquire=f.history.acquireTrace;let reads=0,tailCalls=0,finishes=0,resolve!:()=>void;
+  f.history.scalar=async()=>{const s=await read();if(++reads>=16)s.scrollTop+=100;return s;};
+  f.clock.waitUntil=at=>{if(at===4700){tailCalls++;return new Promise<void>(yes=>{resolve=yes;});}return wait(at);};
+  f.history.acquireTrace=async()=>{const trace=await acquire(),finish=trace.finish;trace.finish=async()=>{finishes++;await finish();};return trace;};
+  const run=runMountedTrackerA(f.ports);for(let i=0;i<3000&&tailCalls===0;i++)await Promise.resolve();expect(tailCalls).toBe(1);expect(finishes).toBe(0);
+  f.advance(4750);const r=await run;expect(finishes).toBe(1);expect(r.input?.phase.captureTail).toEqual({status:'pending',startedHostMs:2700,settledHostMs:null,targetHostMs:4700});expect(r.firstFailure).toEqual({code:'opposing-offset',ordinal:16,previousOrdinal:15,slot:7});expect(r.status).toBe('incomplete');expect(r.cleanupFailures.length).toBeGreaterThan(0);
+  resolve();for(let i=0;i<30;i++)await Promise.resolve();expect(r.input?.phase.captureTail.status).toBe('rejected');expect(tailCalls).toBe(1);expect(finishes).toBe(1);expect(r.firstFailure?.code).toBe('opposing-offset');
+ });
+ it.each(['early','late','rejected'] as const)('does not retry a %s failure-path capture tail or replace the original opposing-offset witness',async kind=>{
+  const f=fixture(),read=f.history.scalar,wait=f.clock.waitUntil,acquire=f.history.acquireTrace;let reads=0,tailCalls=0,finishes=0;
+  f.history.scalar=async()=>{const s=await read();if(++reads>=16)s.scrollTop+=100;return s;};
+  f.clock.waitUntil=async at=>{if(at===4700){tailCalls++;if(kind==='late')f.advance(4750);if(kind==='rejected')throw null;return;}await wait(at);};
+  f.history.acquireTrace=async()=>{const trace=await acquire(),finish=trace.finish;trace.finish=async()=>{finishes++;await finish();};return trace;};
+  const r=await runMountedTrackerA(f.ports);
+  expect(tailCalls).toBe(1);expect(finishes).toBe(1);expect(r.input?.phase.captureTail).toMatchObject({status:'rejected',targetHostMs:4700});expect(r.firstFailure).toEqual({code:'opposing-offset',ordinal:16,previousOrdinal:15,slot:7});expect(r.status).toBe('incomplete');expect(r.cleanupFailures.length).toBeGreaterThan(0);if(kind==='rejected')expect(r.cleanupFailures).toContain(null);expect(f.calls).not.toContain('G2');
+ });
+ it.each(['opposing-offset','post-rejection','G2-rejection','G3-rejection','return-rejection'] as const)('retains the original fixed capture tail after %s without promoting the failed phase',async failure=>{
+  const f=fixture(),read=f.history.scalar,acquire=f.history.acquireTrace,geometry=f.history.geometry,primary=Object.freeze({failure});let reads=0,geometryReads=0,finishedAt:number|null=null;
+  f.history.acquireTrace=async()=>{const trace=await acquire(),finish=trace.finish;trace.finish=async()=>{finishedAt??=f.now;await finish();};return trace;};
+  f.history.scalar=async()=>{const s=await read();reads++;if(failure==='opposing-offset'&&reads>=16)s.scrollTop+=100;if(failure==='post-rejection'&&reads===82)throw primary;return s;};
+  f.history.geometry=async()=>{geometryReads++;if((geometryReads===2&&failure==='G2-rejection')||(geometryReads===3&&failure==='G3-rejection'))throw primary;return geometry();};
+  f.history.returnToResponse=async()=>{f.calls.push('return');if(failure==='return-rejection')throw primary;};
+  const r=await runMountedTrackerA(f.ports);
+  expect(r.status).toBe('incomplete');expect(r.input?.outcome.phase.status).toBe('incomplete');expect(r.hasPrimary).toBe(true);
+  if(failure==='opposing-offset'){expect(r.firstFailure).toEqual({code:'opposing-offset',ordinal:16,previousOrdinal:15,slot:7});expect(r.input?.wheelRequests).toHaveLength(7);expect(r.input?.scalarObservations).toHaveLength(17);}
+  else expect(r.primary).toBe(primary);
+  expect(r.input?.phase.captureTail).toEqual({status:'fulfilled',startedHostMs:2700,settledHostMs:4700,targetHostMs:4700});expect(finishedAt).toBe(4700);
+  expect(r.input?.geometryCheckpoints.G4.status).toBe('not-started');expect(r.input?.phase.completion.status).toBe('not-started');expect(r.input?.phase.tail.status).toBe('not-started');expect(r.cases).toHaveLength(1);
+  expect(f.calls.filter(c=>c==='trace-finish')).toHaveLength(1);expect(f.calls).toContain('close-2');expect(r.authority.fps).toBe('unavailable');
+ });
  it.each(['baseline','timestamp-reverse','opposing-offset','end-stop'] as const)('latches exact first owned scalar %s witness at the throwing call',async code=>{
   const f=fixture(),read=f.history.scalar;let n=0;
   f.history.scalar=async()=>{const s=await read();if(++n===3){if(code==='baseline')s.connected=false;if(code==='timestamp-reverse')s.pageNowMs=0;if(code==='opposing-offset')s.scrollTop+=105;if(code==='end-stop')s.scrollTop=0;}return s;};

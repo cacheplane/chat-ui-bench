@@ -178,7 +178,7 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v53`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v54`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
@@ -213,7 +213,7 @@ bare-root importer to selected SOURCE hashes and actual static resolved edges,
 with at least one such importer present. Resolved edges and authenticated source
 intent are separate facts; the profile does not claim an observed raw resolver
 request or query/fragment exclusion. The unchanged nine-origin Zod gate covers
-all original rows, including unrendered modules. V53 requires fresh full frontend
+all original rows, including unrendered modules. V54 requires fresh full frontend
 and worker inspection under this profile.
 Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
@@ -254,12 +254,12 @@ stdout, each including LF≤4096 bytes. Awaited child write callbacks do not pro
 parent retention or stream closure. These diagnostics share the existing stdout and
 archive caps, and cannot promote geometry or lifecycle success. Default Chat,
 canonical workload, strict geometry and its4/5 read budgets remain unchanged.
-Fresh native preparation uses `hosted-copilot-react-h100-r6400-v14` only after
-independent qualification of same-source full STATIC V53. Neither pure checks nor
+Fresh native preparation uses `hosted-copilot-react-h100-r6400-v15` only after
+independent qualification of same-source full STATIC V54. Neither pure checks nor
 content readiness establish recovery, native conformance, FPS or ranking.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v7` workflow requires
-independently qualified same-source STATIC V53 and successful ordinary-native V14
+The separate experimental `hosted-copilot-react-tracker-json-a-v8` workflow requires
+independently qualified same-source STATIC V54 and successful ordinary-native V15
 original artifacts. Pilot startup uses the shared capture helper; serialized
 `capture` stage keys remain unchanged. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
@@ -308,6 +308,13 @@ around the measured phase. Impossible creation timestamps fail globally. A separ
 capture tail ends two seconds after the fixed phase boundary; full response
 completion and its own closing tail remain mandatory. This changes the workload
 from V5's immediate live-edge escape; it does not retroactively pass that failure.
+
+If a measurement guard fails after the fixed capture target is established, the
+pilot still attempts that same capture-tail wait before ending tracing. It keeps
+the original failure and missing scenario work; retaining the tail cannot pass a
+failed phase. An unresolved native operation, unsafe clock, expired deadline or
+failed tail wait still refuses coverage and triggers trace cleanup. Tail waits
+are never retried or rebased.
 
 Timing, scenario, FPS, ratio and ranking claims remain unavailable. Dispatch is
 held until fresh immutable-source prerequisites and independent qualification

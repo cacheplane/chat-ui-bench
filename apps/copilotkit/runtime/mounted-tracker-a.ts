@@ -144,6 +144,12 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
  }
  const original=():Original=>({status:'not-started',startedHostMs:null,settledHostMs:null});
  const wait=async(at:number)=>{if(!Number.isFinite(at)||at>=deadline)throw Error('Original deadline unavailable');await dispatch(()=>ports.clock.waitUntil(at));if(now()<at)throw Error('Early host wake');};
+ async function captureTail(){
+  const row=input?.phase.captureTail;
+  if(!row||row.targetHostMs===null||row.status!=='not-started')throw Error('Original capture tail unavailable');
+  const target=row.targetHostMs;
+  await invoke(async()=>{await wait(target);if(now()>=target+50)throw Error('Late capture wake');},row,target+50).wait;
+ }
  async function close(owner:{close():Promise<CaseRecord>},n:1|2,caseSnapshots:GeometrySnapshot[],semantic=true){
   const current=await dispatch(()=>owner.close());caseEvidence.push(current);
   if(current.caseNumber!==n||current.journey!==(n===1?'follow':'history-reading')||caseSnapshots.some(s=>s.status!=='available'||s.frame.scopeId!==current.threadId)||evaluateMountedClosurePolicy({schemaVersion:1,kind:'case-boundary',priorCase:n===1?null:cases[0],currentCase:current,secondStarted:n===2}).status!=='accepted')throw Error('Original case boundary incomplete');if(semantic)cases.push(current);
@@ -271,7 +277,7 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
    await invoke(()=>owner!.returnToResponse(),current.phase.returnClick).wait;
    responseVisible(await geometry('G3',()=>owner!.geometry(),'streaming'));
    const captureTarget=current.phase.captureTail.targetHostMs!;
-   await invoke(async()=>{await wait(captureTarget);if(now()>=captureTarget+50)throw Error('Late capture wake');},current.phase.captureTail,captureTarget+50).wait;
+   await captureTail();
    check(captureTarget+50);await finishTrace();
    const finalFrame=await geometry('G4',()=>{
     const completion=invoke(()=>owner!.complete(),current.phase.completion);
@@ -282,6 +288,15 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
    await invoke(()=>wait(current.phase.tail.startedHostMs!+2000),current.phase.tail).wait;
    if(!slotFailure)current.outcome.phase={status:'complete',reason:null};
   }catch(e){remember(e);}finally{
+   // Preserve the fixed capture tail after a semantic refusal. Do not retry a
+   // charged wait, overlap an unresolved native original, or delay trace closure
+   // after the clock/deadline refuses the original target. This never completes
+   // the missing scenario work or changes the remembered primary failure.
+   if(trace&&traceFinish===null&&input&&input.phase.captureTail.targetHostMs!==null&&input.phase.captureTail.status==='not-started'
+     &&!input.scalarObservations.some(row=>row.status==='pending')&&!input.wheelRequests.some(row=>row.status==='pending')
+     &&!Object.values(input.geometryCheckpoints).some(row=>row.status==='pending')&&input.phase.returnClick.status!=='pending'&&input.phase.completion.status!=='pending'){
+    try{await captureTail();}catch(e){remember(e);cleanupFailures.push(e);}
+   }
    if(trace){try{await finishTrace();}catch(e){remember(e);cleanupFailures.push(e);}try{transport=trace.snapshot();if(transport.outcome.capture.status!=='complete'||transport.outcome.containment!=='verified')remember(Error('Trace closure incomplete'));}catch(e){remember(e);}}
    if(owner&&input){
     for(const name of listenerNames){
