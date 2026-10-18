@@ -1,4 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
+import {createHash} from 'node:crypto';
 import {createMountedTrackerATrace,type TrackerATracePorts,type TrackerACompletion} from '../apps/copilotkit/runtime/mounted-tracker-a-trace.ts';
 
 function fixture() {
@@ -22,11 +23,20 @@ function deferred<T>(){let resolve!:(value:T)=>void,reject!:(error:unknown)=>voi
 async function turns(){for(let i=0;i<40;i++)await Promise.resolve();}
 function virtualClock(deadlineHostMs=30000){let now=0;const alarms=new Set<{at:number;fire:()=>void}>();return {now:()=>now,deadlineHostMs,alarm:(at:number,fire:()=>void)=>{const item={at,fire};alarms.add(item);return()=>{alarms.delete(item);};},jump:(time:number)=>{now=time;},advance:(time:number)=>{now=time;for(const item of [...alarms])if(item.at<=now){alarms.delete(item);item.fire();}}};}
 describe('fixed Tracker-A trace transport',()=>{
+ it.each(['empty-eof','byte-plus-one','missing-eof'] as const)('retains 32MiB exactly and closes original handles for %s',async kind=>{
+  const f=fixture();let reads=0;f.ports.read=async()=>{reads++;return reads<=512?{data:'x'.repeat(65536),eof:false}:{data:kind==='byte-plus-one'?'x':'',eof:kind!=='missing-eof'};};
+  const finish=f.ports.sink.finish;f.ports.sink.finish=()=>{finish();return Promise.resolve({path:'tracker-a-case-2-trace.json',bytes:33554432,sha256:createHash('sha256').update('x'.repeat(33554432)).digest('hex')});};
+  const owner=createMountedTrackerATrace(f.ports);await owner.start();if(kind==='empty-eof')await owner.finish();else await expect(owner.finish()).rejects.toThrow();
+  const report=owner.snapshot();expect(reads).toBe(513);expect(f.writes).toHaveLength(512);expect(f.writes.reduce((sum,row)=>sum+row.length,0)).toBe(33554432);expect(report.readCalls).toBe(513);expect(report.portCalls).toBeLessThanOrEqual(1031);
+  expect(report.raw.status).toBe(kind==='empty-eof'?'complete-raw':'known-prefix');expect(f.calls.filter(row=>row==='io-close')).toHaveLength(1);expect(f.calls.filter(row=>row==='detach')).toHaveLength(1);
+  if(kind==='empty-eof'){expect(report.portCalls).toBe(1030);expect(report.operations.filter(row=>row.kind==='read').at(-1)).toMatchObject({bytes:0,eof:true});}
+ });
  it('registers before the exact JSON/none start and retains EOF with data through original closure',async()=>{
   const f=fixture(),owner=createMountedTrackerATrace(f.ports);await owner.start();await owner.finish();
   expect(f.configs).toEqual([{transferMode:'ReturnAsStream',streamFormat:'json',streamCompression:'none',traceConfig:{recordMode:'recordUntilFull',traceBufferSizeInKb:32768,includedCategories:['cc','benchmark','blink.user_timing','devtools.timeline','disabled-by-default-devtools.timeline']}}]);
   expect(f.calls).toEqual(['install-complete','install-close','start','end','read:65536','write','io-close','finish','detach','remove-complete','remove-close']);
   expect([...f.writes[0]!]).toEqual([123,125]);
+  expect(owner.snapshot().mode).toBe('tracker-json-a-pilot-v2');
   expect(owner.snapshot()).toMatchObject({portCalls:7,readCalls:1,knownReadBytes:2,raw:{status:'complete-raw',extent:'complete'},outcome:{capture:{status:'complete',reason:null},containment:'verified'},sink:{finish:'fulfilled',fsync:'fulfilled',fileClose:'fulfilled'}});
  });
  it.each([
@@ -57,10 +67,10 @@ describe('fixed Tracker-A trace transport',()=>{
   const owner=createMountedTrackerATrace(f.ports);snapshot=owner.snapshot;await expect(owner.start()).rejects.toBe(reason);
   expect(owner.snapshot().operations[0]).toMatchObject({kind:'start',status:'rejected'});
  });
- it('does not admit the 65th read and preserves all 64 successful read/write rows',async()=>{
-  const f=fixture();let n=0;f.ports.read=async()=>({data:'x',eof:++n===65});const owner=createMountedTrackerATrace(f.ports);await owner.start();
-  await expect(owner.finish()).rejects.toThrow();expect(n).toBe(64);expect(f.writes).toHaveLength(64);
-  expect(owner.snapshot()).toMatchObject({readCalls:64,knownReadBytes:64,portCalls:133,raw:{status:'known-prefix'}});
+ it('does not admit the 514th read and preserves all 513 successful read/write rows',async()=>{
+  const f=fixture();let n=0;f.ports.read=async()=>({data:'x',eof:++n===514});const owner=createMountedTrackerATrace(f.ports);await owner.start();
+  await expect(owner.finish()).rejects.toThrow();expect(n).toBe(513);expect(f.writes).toHaveLength(513);
+  expect(owner.snapshot()).toMatchObject({readCalls:513,knownReadBytes:513,portCalls:1031,raw:{status:'known-prefix'}});
  });
  it('refuses a completion before end and never reads that handle',async()=>{
   const f=fixture();f.ports.start=async()=>{f.completion({stream:'early',traceFormat:'json',streamCompression:'none',dataLossOccurred:false});};
@@ -122,20 +132,20 @@ describe('fixed Tracker-A trace transport',()=>{
  it.each([false,true])('rejects public close before safe detach (identity %s)',async match=>{
   const f=fixture();f.ports.read=async()=>{f.close(match);return {data:'{}',eof:true};};const owner=createMountedTrackerATrace(f.ports);await owner.start();await expect(owner.finish()).rejects.toThrow();expect(owner.snapshot().sessionClose.timing).toBe('unexpected-loss');
  });
- it('captures the 64th EOF-with-data at exactly 4MiB and 133 charged calls',async()=>{
-  const f=fixture();let reads=0;f.ports.read=async()=>({data:'x'.repeat(65536),eof:++reads===64});const finish=f.ports.sink.finish;
-  f.ports.sink.finish=()=>{finish();return Promise.resolve({path:'tracker-a-case-2-trace.json',bytes:4194304,sha256:'baa7a6d36ffa957552df230235c2d51d735f28d49c58a5f3438a3a973a25a37d'});};
+ it('captures the 512th EOF-with-data at exactly 32MiB and 1029 charged calls',async()=>{
+  const f=fixture();let reads=0;f.ports.read=async()=>({data:'x'.repeat(65536),eof:++reads===512});const finish=f.ports.sink.finish;
+  f.ports.sink.finish=()=>{finish();return Promise.resolve({path:'tracker-a-case-2-trace.json',bytes:33554432,sha256:createHash('sha256').update('x'.repeat(33554432)).digest('hex')});};
   const owner=createMountedTrackerATrace(f.ports);await owner.start();const pending=owner.finish();expect(owner.finish()).toBe(pending);await pending;
-  const report=owner.snapshot();expect(report).toMatchObject({portCalls:133,readCalls:64,knownReadBytes:4194304,raw:{status:'complete-raw',ref:{bytes:4194304}},outcome:{containment:'verified'}});
-  expect(report.operations.filter(row=>row.kind==='read').at(-1)).toMatchObject({ordinal:129,bytes:65536,eof:true});
+  const report=owner.snapshot();expect(report).toMatchObject({portCalls:1029,readCalls:512,knownReadBytes:33554432,raw:{status:'complete-raw',ref:{bytes:33554432}},outcome:{containment:'verified'}});
+  expect(report.operations.filter(row=>row.kind==='read').at(-1)).toMatchObject({ordinal:1025,bytes:65536,eof:true});
   expect(report.operations.filter(row=>row.kind==='write').map(row=>row.readOperationOrdinal)).toEqual(report.operations.filter(row=>row.kind==='read').map(row=>row.ordinal));
  });
- it('leaves an unexpected second handle honestly unclosed at call 133 without a 134th dispatch',async()=>{
-  const f=fixture(),closed:string[]=[];let n=0;f.ports.read=async()=>({data:'x',eof:++n===64});const finish=f.ports.sink.finish;
-  f.ports.sink.finish=()=>{finish();return Promise.resolve({path:'tracker-a-case-2-trace.json',bytes:64,sha256:'7ce100971f64e7001e8fe5a51973ecdfe1ced42befe7ee8d5fd6219506b5393c'});};
+ it('leaves an unexpected second handle honestly unclosed at call 1031 without a 1032nd dispatch',async()=>{
+  const f=fixture(),closed:string[]=[];let n=0;f.ports.read=async()=>({data:'x',eof:++n===513});const finish=f.ports.sink.finish;
+  f.ports.sink.finish=()=>{finish();return Promise.resolve({path:'tracker-a-case-2-trace.json',bytes:513,sha256:createHash('sha256').update('x'.repeat(513)).digest('hex')});};
   f.ports.closeIO=async handle=>{closed.push(handle);};f.ports.detach=async()=>{f.completion({stream:'unexpected',traceFormat:'json',streamCompression:'none',dataLossOccurred:false});f.close(true);};
   const owner=createMountedTrackerATrace(f.ports);await owner.start();await expect(owner.finish()).rejects.toThrow();
-  expect(closed).toEqual(['trace']);expect(owner.snapshot()).toMatchObject({portCalls:133,handles:[{ordinal:1,closeOperationOrdinal:131},{ordinal:2,role:'unexpected',closeOperationOrdinal:null}],outcome:{containment:'unverified'},raw:{status:'known-prefix'}});
+  expect(closed).toEqual(['trace']);expect(owner.snapshot()).toMatchObject({portCalls:1031,handles:[{ordinal:1,closeOperationOrdinal:1029},{ordinal:2,role:'unexpected',closeOperationOrdinal:null}],outcome:{containment:'unverified'},raw:{status:'known-prefix'}});
  });
  it('closes a second handle arriving during detach exactly once while the ledger still has room',async()=>{
   const f=fixture(),closed:string[]=[];f.ports.closeIO=async handle=>{closed.push(handle);};f.ports.detach=async()=>{f.completion({stream:'second',traceFormat:'json',streamCompression:'none',dataLossOccurred:false});f.close(true);};

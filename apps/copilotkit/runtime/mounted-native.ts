@@ -213,7 +213,7 @@ type PilotWheel={ordinal:number;pageNowMs:number;eventTimeStampMs:number;isTrust
 type PilotScroll={ordinal:number;pageNowMs:number;eventTimeStampMs:number;currentTargetIsScroller:boolean;scrollTop:number;scrollHeight:number;clientHeight:number};
 type PilotMotion={ordinal:number;kind:'animationstart'|'transitionrun';pageNowMs:number;eventTimeStampMs:number;targetContained:boolean};
 type PilotDOMName='wheel'|'scroll'|'animationstart'|'transitionrun';
-type PilotPageState={baseline:TrackerAScalar;scalar():TrackerAScalar;install(name:PilotDOMName):boolean;remove(name:PilotDOMName):boolean;drain():{wheelEvents:PilotWheel[];scrollEvents:PilotScroll[];motionEvents:PilotMotion[];overflows:{wheel:{ordinal:41}|null;scroll:{ordinal:257}|null;motion:{ordinal:33}|null}}};
+type PilotPageState={baseline:TrackerAScalar;scalar():TrackerAScalar;install(name:PilotDOMName):boolean;remove(name:PilotDOMName):boolean;drain():{wheelEvents:PilotWheel[];scrollEvents:PilotScroll[];motionEvents:PilotMotion[];overflows:{wheel:{ordinal:42}|null;scroll:{ordinal:257}|null;motion:{ordinal:33}|null}}};
 type PilotWindow=Window&{__copilotkitBenchHost?:OwnedFrontendHost;__copilotkitTrackerA?:PilotPageState};
 type PrivateOriginal={status:'not-started'|'pending'|'fulfilled'|'rejected';requestedHostMs:number|null;settledHostMs:number|null;promise:Promise<unknown>|null;value:unknown};
 /** Fixed SDK JSON protocol responses only: no arbitrary JS object/parser claim.
@@ -258,7 +258,7 @@ function bindNativeTrackerA(ports:{page():Page|undefined;context():BrowserContex
  const clock=nativeClock(ports.deadline),fresh=():PrivateOriginal=>({status:'not-started',requestedHostMs:null,settledHostMs:null,promise:null,value:undefined});
  const baselineOriginal=fresh(),reservationOriginal=fresh(),sessionOriginal=fresh(),sessionCloseRegistration=fresh(),sessionCloseRemoval=fresh(),targetOriginal=fresh(),frameOriginal=fresh(),drainOriginal=fresh();
  let targetDiagnostic:unknown,frameDiagnostic:unknown,session:CDPSession|undefined,sink:TrackerATracePorts['sink']|undefined,trace:ReturnType<typeof createMountedTrackerATrace>|undefined;
- let acquisition:Promise<ReturnType<typeof createMountedTrackerATrace>>|undefined,cleanup:Promise<void>|undefined,cleanupRequested=false,drained=false,pointerMoved=false,scalarCalls=0;
+ let acquisition:Promise<ReturnType<typeof createMountedTrackerATrace>>|undefined,cleanup:Promise<void>|undefined,cleanupRequested=false,drained=false,pointerMoved=false,scalarCalls=0,entryCalls=0,wheelCalls=0;
  let publicCloseInstalled=false,publicCloseRemoved=false,sessionDidClose=false,completionRemovalAttempted=false,detachAttempted=false,detachOriginal:Promise<void>|undefined;
  let firstSessionCloseMatch:boolean|null=null,consumerAttempted=false,consumerEverBound=false,detachStatus:'not-started'|'pending'|'fulfilled'|'rejected'='not-started',physicalOffOriginal:Promise<void>|undefined;
  let completeCallback:Parameters<TrackerATracePorts['installTracingComplete']>[0]|undefined,closeCallback:Parameters<TrackerATracePorts['installSessionClose']>[0]|undefined;
@@ -315,8 +315,17 @@ function bindNativeTrackerA(ports:{page():Page|undefined;context():BrowserContex
  const listeners={wheel:listener('wheel'),scroll:listener('scroll'),animationstart:listener('animationstart'),transitionrun:listener('transitionrun'),navigation:listener('navigation'),contextClose:listener('contextClose'),pageClose:listener('pageClose')};
  const history:TrackerAHistoryOwner={baseline:undefined,seed:()=>ports.owner.seed(),restore:()=>ports.owner.restore(),listeners,startContinuation:()=>ports.owner.startContinuation(),waitActivePrefix:()=>ports.active(),geometry:()=>ports.geometry(),complete:()=>ports.owner.complete(),close:()=>ports.owner.close(),returnToResponse:()=>ports.returned(),
   movePointer(x,y){admitted();if(pointerMoved)throw Error('Original pointer already charged');pointerMoved=true;return page().mouse.move(x,y);},
+  entrySample(){
+   admitted();if(entryCalls>=3)throw Error('Original entry sample capacity');entryCalls++;
+   return page().evaluate(()=>{
+    const w=window as PilotWindow,s=w.__copilotkitTrackerA,h=w.__copilotkitBenchHost;if(!s||!h)throw Error('Original entry state absent');
+    const scalar=s.scalar(),p=h.readProgress(),selector=h.locators.returnToResponse,controls=selector?document.querySelectorAll<HTMLElement>(selector):[],control=controls[0],box=control?.getBoundingClientRect(),style=control?getComputedStyle(control):null;
+    const returnControlVisible=Boolean(controls.length===1&&control?.isConnected&&box&&box.width>0&&box.height>0&&box.bottom>0&&box.top<innerHeight&&box.right>0&&box.left<innerWidth&&style&&style.display!=='none'&&style.visibility!=='hidden'&&style.visibility!=='collapse'&&Number(style.opacity)>0);
+    return {scalar,active:p.loading&&p.delivery==='streaming'&&p.activeMessage!==null&&p.error===null,prefixLength:p.activeMessage?.text.length??0,returnControlVisible};
+   });
+  },
   scalar(){admitted();if(scalarCalls>=82)throw Error('Original scalar capacity');scalarCalls++;return page().evaluate(()=>{const s=(window as PilotWindow).__copilotkitTrackerA;if(!s)throw Error('Original pilot state absent');return s.scalar();});},
-  wheel(x,y){admitted();if(x!==0||y!==-12)throw Error('Original pilot wheel denied');return page().mouse.wheel(0,-12);},
+  wheel(x,y){admitted();if(!pointerMoved||x!==0||wheelCalls>=41||y!==(wheelCalls===0?-600:-12))throw Error('Original pilot wheel denied');wheelCalls++;return page().mouse.wheel(0,y);},
   acquireTrace(){
    if(acquisition)return acquisition;
    acquisition=(async()=>{
@@ -354,8 +363,8 @@ function bindNativeTrackerA(ports:{page():Page|undefined;context():BrowserContex
    const result=await retain(()=>page().evaluate(()=>{const s=(window as PilotWindow).__copilotkitTrackerA;if(!s)throw Error('Original pilot state absent');return s.drain();}),drainOriginal) as ReturnType<PilotPageState['drain']>,receivedHostMs=drainOriginal.settledHostMs!;
    // Refuse oversized/absent transferred populations before native mapping;
    // Task2 independently performs its closed own-data copier and validation.
-   if(!result||!Array.isArray(result.wheelEvents)||result.wheelEvents.length>40||!Array.isArray(result.scrollEvents)||result.scrollEvents.length>256||!Array.isArray(result.motionEvents)||result.motionEvents.length>32||!result.overflows)throw Error('Original drain population capacity');
-   if((result.overflows.wheel!==null&&result.overflows.wheel.ordinal!==41)||(result.overflows.scroll!==null&&result.overflows.scroll.ordinal!==257)||(result.overflows.motion!==null&&result.overflows.motion.ordinal!==33))throw Error('Original drain overflow capacity');
+   if(!result||!Array.isArray(result.wheelEvents)||result.wheelEvents.length>41||!Array.isArray(result.scrollEvents)||result.scrollEvents.length>256||!Array.isArray(result.motionEvents)||result.motionEvents.length>32||!result.overflows)throw Error('Original drain population capacity');
+   if((result.overflows.wheel!==null&&result.overflows.wheel.ordinal!==42)||(result.overflows.scroll!==null&&result.overflows.scroll.ordinal!==257)||(result.overflows.motion!==null&&result.overflows.motion.ordinal!==33))throw Error('Original drain overflow capacity');
    return {wheelEvents:result.wheelEvents.map(row=>({...row,receivedHostMs})),scrollEvents:result.scrollEvents.map(row=>({...row,receivedHostMs})),motionEvents:result.motionEvents.map(row=>({...row,receivedHostMs})),losses:{navigation:losses.navigation,context:losses.context,page:losses.page,session:losses.session},overflows:{wheel:result.overflows.wheel===null?null:{firstHostMs:receivedHostMs,ordinal:result.overflows.wheel.ordinal},scroll:result.overflows.scroll===null?null:{firstHostMs:receivedHostMs,ordinal:result.overflows.scroll.ordinal},motion:result.overflows.motion===null?null:{firstHostMs:receivedHostMs,ordinal:result.overflows.motion.ordinal}}};
   }
  };
@@ -369,7 +378,7 @@ function bindNativeTrackerA(ports:{page():Page|undefined;context():BrowserContex
    const wheelEvents:PilotWheel[]=[],scrollEvents:PilotScroll[]=[],motionEvents:PilotMotion[]=[],overflows:ReturnType<PilotPageState['drain']>['overflows']={wheel:null,scroll:null,motion:null};
    let wheelCount=0,scrollCount=0,motionCount=0,drainAttempted=false;
    const contained=(target:EventTarget|null)=>target instanceof Node&&(target===scroller||scroller.contains(target));
-   const wheel=(event:WheelEvent)=>{if(wheelCount>=40){if(overflows.wheel===null)overflows.wheel={ordinal:41};return;}const ordinal=++wheelCount;wheelEvents.push({ordinal,pageNowMs:performance.now(),eventTimeStampMs:event.timeStamp,isTrusted:event.isTrusted,deltaX:event.deltaX,deltaY:event.deltaY,deltaMode:event.deltaMode,targetContained:contained(event.target),currentTargetIsScroller:event.currentTarget===scroller});};
+   const wheel=(event:WheelEvent)=>{if(wheelCount>=41){if(overflows.wheel===null)overflows.wheel={ordinal:42};return;}const ordinal=++wheelCount;wheelEvents.push({ordinal,pageNowMs:performance.now(),eventTimeStampMs:event.timeStamp,isTrusted:event.isTrusted,deltaX:event.deltaX,deltaY:event.deltaY,deltaMode:event.deltaMode,targetContained:contained(event.target),currentTargetIsScroller:event.currentTarget===scroller});};
    const scroll=(event:Event)=>{if(scrollCount>=256){if(overflows.scroll===null)overflows.scroll={ordinal:257};return;}const ordinal=++scrollCount;scrollEvents.push({ordinal,pageNowMs:performance.now(),eventTimeStampMs:event.timeStamp,currentTargetIsScroller:event.currentTarget===scroller,scrollTop:scroller.scrollTop,scrollHeight:scroller.scrollHeight,clientHeight:scroller.clientHeight});};
    const motion=(kind:'animationstart'|'transitionrun',event:Event)=>{if(motionCount>=32){if(overflows.motion===null)overflows.motion={ordinal:33};return;}const ordinal=++motionCount;motionEvents.push({ordinal,kind,pageNowMs:performance.now(),eventTimeStampMs:event.timeStamp,targetContained:contained(event.target)});};
    const animationstart=(event:Event)=>motion('animationstart',event),transitionrun=(event:Event)=>motion('transitionrun',event);

@@ -11,12 +11,14 @@ type ListenerFact={registration:ListenerOriginal;removal:ListenerOriginal;ownedI
 const listenerNames=['wheel','scroll','animationstart','transitionrun','navigation','contextClose','pageClose'] as const;
 type ListenerName=typeof listenerNames[number];
 export interface TrackerAScalar {pageNowMs:number;url:string;sameOriginalScroller:boolean;connected:boolean;uniqueSelector:boolean;innerWidth:number;innerHeight:number;devicePixelRatio:number;rect:{x:number;y:number;width:number;height:number};scrollTop:number;scrollHeight:number;clientHeight:number}
+export interface TrackerAEntrySample {scalar:TrackerAScalar;active:boolean;prefixLength:number;returnControlVisible:boolean}
+type EntryRow=Original&{value:TrackerAEntrySample|null};
 export interface TrackerAHistoryOwner {
  /** Original owned topology, without a full collector or one of the82 scalars. */
  baseline:unknown;seed():Promise<void>;restore():Promise<GeometrySnapshot>;acquireTrace():Promise<Trace>;
  listeners:Record<ListenerName,{install():Promise<boolean>;remove():Promise<boolean>}>;
  startContinuation():Promise<void>;waitActivePrefix():Promise<unknown>;geometry():Promise<GeometrySnapshot>;
- movePointer(x:number,y:number):Promise<void>;scalar():Promise<unknown>;wheel(x:0,y:-12):Promise<void>;
+ movePointer(x:number,y:number):Promise<void>;entrySample():Promise<unknown>;scalar():Promise<unknown>;wheel(x:0,y:-600|-12):Promise<void>;
  returnToResponse():Promise<void>;
  /** Original canonical EOF/public-idle validation and G4, before disposal. */
  complete():Promise<GeometrySnapshot>;close():Promise<CaseRecord>;observations():unknown|Promise<unknown>;
@@ -36,8 +38,9 @@ type Loss={firstHostMs:number;firstOverflowHostMs:number|null};type Overflow={fi
 type Observations={wheelEvents:WheelEvent[];scrollEvents:ScrollEvent[];motionEvents:MotionEvent[];losses:Record<'navigation'|'context'|'page'|'session',Loss|null>;overflows:Record<'wheel'|'scroll'|'motion',Overflow|null>};
 const authority=()=>({qualification:false as const,fps:'unavailable' as const,ratio:'unavailable' as const,scoring:false as const,ranking:false as const});
 export interface TrackerAInput extends Observations {
- schemaVersion:1;kind:'tracker-a-case-input';mode:'tracker-json-a-pilot-v1';caseNumber:2;profileRef:TrackerAProfileRef;
- phase:{hostT0Ms:number|null;hostT1Ms:number|null;postBoundaryScalarOrdinal:number|null;postBoundarySettled:TrackerAOriginal;returnClick:Original;completion:Original;tail:Original};
+ schemaVersion:1;kind:'tracker-a-case-input';mode:'tracker-json-a-pilot-v2';caseNumber:2;profileRef:TrackerAProfileRef;
+ entry:{before:EntryRow;wheel:Original;afterWait:Original;after:EntryRow;settledWait:Original;settled:EntryRow};
+ phase:{hostT0Ms:number|null;hostT1Ms:number|null;postBoundaryScalarOrdinal:number|null;postBoundarySettled:TrackerAOriginal;returnClick:Original;captureTail:Original&{targetHostMs:number|null};completion:Original;tail:Original};
  geometryCheckpoints:Record<'G0'|'G1'|'G2'|'G3'|'G4',Checkpoint>;
  anchor:{id:string;ownerToken:number;selectedAtHostMs:number;firstCheckpoint:'G1';secondCheckpoint:'G2';evaluation:HistoricalAnchorEvaluation|null}|null;
  listeners:Record<ListenerName,ListenerFact>;
@@ -67,6 +70,10 @@ function scalar(value:unknown):TrackerAScalar{
  if(width<0||height<0||scrollHeight<0||clientHeight<=0||scrollHeight<clientHeight||scrollTop<0||scrollTop>scrollHeight-clientHeight)throw Error('Invalid scalar range');
  return {...r,url,rect:{x,y,width,height}} as unknown as TrackerAScalar;
 }
+function entrySample(value:unknown):TrackerAEntrySample{
+ const r=data(value,['scalar','active','prefixLength','returnControlVisible']);
+ return {scalar:scalar(r.scalar),active:boolean(r.active),prefixLength:integer(r.prefixLength,0,6400),returnControlVisible:boolean(r.returnControlVisible)};
+}
 function frame(snapshot:GeometrySnapshot,phase:MountedGeometryInput['phase']):MountedGeometryInput{
  if(snapshot.status!=='available')throw Error('Geometry unavailable');const f=snapshot.frame,e=evaluateMountedGeometry(f);
  if(e.status!=='evaluated'||f.phase!==phase||!e.rows.some(r=>r.geometryEligibility==='eligible')||e.rows.some(r=>r.presence!=='unmounted'&&r.geometryEligibility!=='eligible'&&r.reason!=='fully-clipped'))throw Error('Geometry invalid');return f;
@@ -79,6 +86,8 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
  const cases:CaseRecord[]=[],caseEvidence:CaseRecord[]=[],snapshots:TrackerASequencerResult['snapshots']=[],cleanupFailures:unknown[]=[];
  const inputDrain:ListenerOriginal={status:'not-started',requestedHostMs:null,settledHostMs:null};
  let hasPrimary=false,primary:unknown,input:TrackerAInput|null=null,trace:Trace|null=null,transport:TrackerASequencerResult['transport']=null,connected=false,lastNow=-Infinity;
+ let traceFinish:Promise<void>|null=null;
+ const finishTrace=()=>{if(traceFinish===null){try{traceFinish=trace!.finish();}catch(error){traceFinish=Promise.reject(error);}}return traceFinish;};
  let clockInvalid=false,clockFailure:unknown;
  const remember=(error:unknown)=>{if(!hasPrimary){hasPrimary=true;primary=error;}};
  const now=()=>{
@@ -161,7 +170,7 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
    const h=await dispatch(()=>ports.openHistory());owner=h;
    const checkpoint=():Checkpoint=>({status:'not-started',requestedHostMs:null,settledHostMs:null,snapshotRef:null});
    const listener=():ListenerFact=>({registration:{status:'not-started',requestedHostMs:null,settledHostMs:null},removal:{status:'not-started',requestedHostMs:null,settledHostMs:null},ownedIdentityMatch:null});
-   input={schemaVersion:1,kind:'tracker-a-case-input',mode:'tracker-json-a-pilot-v1',caseNumber:2,profileRef:{path:'tracker-a-profile.json',bytes:p.bytes,sha256:p.sha256},phase:{hostT0Ms:null,hostT1Ms:null,postBoundaryScalarOrdinal:null,postBoundarySettled:'not-started',returnClick:original(),completion:original(),tail:original()},geometryCheckpoints:{G0:checkpoint(),G1:checkpoint(),G2:checkpoint(),G3:checkpoint(),G4:checkpoint()},anchor:null,listeners:{wheel:listener(),scroll:listener(),animationstart:listener(),transitionrun:listener(),navigation:listener(),contextClose:listener(),pageClose:listener()},pointer:null,scalarObservations:[],wheelRequests:[],wheelEvents:[],scrollEvents:[],motionEvents:[],losses:{navigation:null,context:null,page:null,session:null},overflows:{wheel:null,scroll:null,motion:null},outcome:{phase:{status:'not-started',reason:null},competingMotion:'unavailable',scenarioQualification:'unavailable'},authority:authority()};const current=input;
+   input={schemaVersion:1,kind:'tracker-a-case-input',mode:'tracker-json-a-pilot-v2',caseNumber:2,profileRef:{path:'tracker-a-profile.json',bytes:p.bytes,sha256:p.sha256},entry:{before:{...original(),value:null},wheel:original(),afterWait:original(),after:{...original(),value:null},settledWait:original(),settled:{...original(),value:null}},phase:{hostT0Ms:null,hostT1Ms:null,postBoundaryScalarOrdinal:null,postBoundarySettled:'not-started',returnClick:original(),captureTail:{...original(),targetHostMs:null},completion:original(),tail:original()},geometryCheckpoints:{G0:checkpoint(),G1:checkpoint(),G2:checkpoint(),G3:checkpoint(),G4:checkpoint()},anchor:null,listeners:{wheel:listener(),scroll:listener(),animationstart:listener(),transitionrun:listener(),navigation:listener(),contextClose:listener(),pageClose:listener()},pointer:null,scalarObservations:[],wheelRequests:[],wheelEvents:[],scrollEvents:[],motionEvents:[],losses:{navigation:null,context:null,page:null,session:null},overflows:{wheel:null,scroll:null,motion:null},outcome:{phase:{status:'not-started',reason:null},competingMotion:'unavailable',scenarioQualification:'unavailable'},authority:authority()};const current=input;
    async function geometry(name:keyof TrackerAInput['geometryCheckpoints'],call:()=>Promise<GeometrySnapshot>,phase:MountedGeometryInput['phase']){
     check();const row=current.geometryCheckpoints[name];
     if(row.status!=='not-started')throw Error('Checkpoint already charged');
@@ -180,17 +189,33 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
     fact.ownedIdentityMatch=match===true;
     if(match!==true)throw Error('Listener ownership mismatch');
    }
-   check();await trace.start();await wait(now()+500);
    await dispatch(()=>h.startContinuation());
    const progress=data(await dispatch(()=>h.waitActivePrefix()),['active','prefixLength']);
    if(progress.active!==true||typeof progress.prefixLength!=='number'||!Number.isSafeInteger(progress.prefixLength)||progress.prefixLength<=0||progress.prefixLength>6400)throw Error('No original public advancement');
+   const pointer={requestedHostMs:now(),settledHostMs:null as number|null,status:'not-started' as TrackerAOriginal,x:baseline.rect.x+baseline.rect.width/2,y:baseline.rect.y+baseline.rect.height/2};
+   await invoke(()=>{current.pointer=pointer;return owner!.movePointer(pointer.x,pointer.y);},pointer).wait;
+   async function sampleEntry(row:EntryRow,limit=deadline){
+    const op=invoke(()=>owner!.entrySample(),row,limit);
+    const retained=op.original.then(value=>{row.value=entrySample(value);return row.value;});
+    void retained.catch(()=>{});void op.wait.catch(()=>{});
+    const s=await bounded(retained,limit);guard(s.scalar);
+    if(!s.active||s.prefixLength<=0)throw Error('Inactive original entry');return s;
+   }
+   const entryBefore=await sampleEntry(current.entry.before);
+   await invoke(()=>owner!.wheel(0,-600),current.entry.wheel).wait;
+   const entryAt=current.entry.wheel.settledHostMs!;
+   const entryWait=(row:Original,target:number,upper:number)=>invoke(async()=>{await wait(target);if(now()>=upper)throw Error('Late entry wake');},row,upper).wait;
+   await entryWait(current.entry.afterWait,entryAt+100,entryAt+200);
+   const entryAfter=await sampleEntry(current.entry.after,entryAt+200);
+   await entryWait(current.entry.settledWait,entryAt+200,entryAt+300);
+   const entrySettled=await sampleEntry(current.entry.settled,entryAt+300);
+   if(entryBefore.scalar.pageNowMs>=entryAfter.scalar.pageNowMs||entryAfter.scalar.pageNowMs>=entrySettled.scalar.pageNowMs||entrySettled.scalar.pageNowMs-entryAfter.scalar.pageNowMs<50||entryAfter.scalar.scrollTop>=entryBefore.scalar.scrollTop||entrySettled.scalar.scrollTop!==entryAfter.scalar.scrollTop||entryAfter.prefixLength<=entryBefore.prefixLength||entrySettled.prefixLength<=entryAfter.prefixLength||!entryAfter.returnControlVisible||!entrySettled.returnControlVisible||entrySettled.scalar.scrollHeight-entrySettled.scalar.clientHeight-entrySettled.scalar.scrollTop<entrySettled.scalar.clientHeight/2)throw Error('Original history entry unsettled');
+   check();await trace.start();await wait(now()+500);
    const first=await geometry('G1',()=>owner!.geometry(),'streaming');
    if(!first.responseProgress.active||first.responseProgress.prefix.length===0)throw Error('Inactive original streaming');
    const anchor=evaluateMountedGeometry(first).rows.find(r=>r.id!==first.expectedResponse.id&&r.geometryEligibility==='eligible');
    if(!anchor||anchor.ownerToken===null)throw Error('Historical anchor unavailable');
    current.anchor={id:anchor.id,ownerToken:anchor.ownerToken,selectedAtHostMs:now(),firstCheckpoint:'G1',secondCheckpoint:'G2',evaluation:null};
-   const pointer={requestedHostMs:now(),settledHostMs:null as number|null,status:'not-started' as TrackerAOriginal,x:baseline.rect.x+baseline.rect.width/2,y:baseline.rect.y+baseline.rect.height/2};
-   await invoke(()=>{current.pointer=pointer;return owner!.movePointer(pointer.x,pointer.y);},pointer).wait;
    let priorScalar:TrackerAScalar|null=null;
    function observe(role:ScalarRow['role'],slot:number|null,limit=deadline){
     check(Math.min(limit,deadline));if(current.scalarObservations.length>=82)throw Error('Scalar capacity');
@@ -204,7 +229,9 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
     void retained.catch(()=>{});void op.wait.catch(()=>{});
     const checked=async()=>{const s=await bounded(retained,limit);guard(s);if(priorScalar!==null&&(s.pageNowMs<priorScalar.pageNowMs||s.scrollTop>priorScalar.scrollTop))throw Error('Opposing or reversed scalar');if(role!=='pre'&&s.scrollTop===0)throw Error('Observed end stop');priorScalar=s;return s;};return {row,original:retained,wait:checked()};
    }
-   const pre=await observe('pre',null).wait;const t0=now(),t1=t0+2000;current.phase.hostT0Ms=t0;current.phase.hostT1Ms=t1;current.outcome.phase={status:'incomplete',reason:'phase'};
+   const pre=await observe('pre',null).wait;
+   if(pre.pageNowMs<entrySettled.scalar.pageNowMs||pre.scrollHeight-pre.clientHeight-pre.scrollTop<pre.clientHeight/2)throw Error('Original history detached pre unavailable');
+   const t0=now(),t1=t0+2000;current.phase.hostT0Ms=t0;current.phase.hostT1Ms=t1;current.phase.captureTail.targetHostMs=t1+2000;current.outcome.phase={status:'incomplete',reason:'phase'};
    let slotFailure=false,pending:Promise<unknown>|null=null;
    try{
     for(let slot=0;slot<40;slot++){
@@ -240,6 +267,9 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
    if(current.anchor.evaluation.status!=='accepted')throw Error('Historical comparison unavailable');
    await invoke(()=>owner!.returnToResponse(),current.phase.returnClick).wait;
    responseVisible(await geometry('G3',()=>owner!.geometry(),'streaming'));
+   const captureTarget=current.phase.captureTail.targetHostMs!;
+   await invoke(async()=>{await wait(captureTarget);if(now()>=captureTarget+50)throw Error('Late capture wake');},current.phase.captureTail,captureTarget+50).wait;
+   check(captureTarget+50);await finishTrace();
    const finalFrame=await geometry('G4',()=>{
     const completion=invoke(()=>owner!.complete(),current.phase.completion);
     void completion.wait.catch(()=>{});
@@ -249,7 +279,7 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
    await invoke(()=>wait(current.phase.tail.startedHostMs!+2000),current.phase.tail).wait;
    if(!slotFailure)current.outcome.phase={status:'complete',reason:null};
   }catch(e){remember(e);}finally{
-   if(trace){try{await trace.finish();}catch(e){remember(e);cleanupFailures.push(e);}try{transport=trace.snapshot();if(transport.outcome.capture.status!=='complete'||transport.outcome.containment!=='verified')remember(Error('Trace closure incomplete'));}catch(e){remember(e);}}
+   if(trace){try{await finishTrace();}catch(e){remember(e);cleanupFailures.push(e);}try{transport=trace.snapshot();if(transport.outcome.capture.status!=='complete'||transport.outcome.containment!=='verified')remember(Error('Trace closure incomplete'));}catch(e){remember(e);}}
    if(owner&&input){
     for(const name of listenerNames){
      const fact=input.listeners[name];
@@ -291,21 +321,38 @@ function boolean(value:unknown):boolean{if(typeof value!=='boolean')throw Error(
 function copyObservations(value:unknown):Observations {
  const r=data(value,['wheelEvents','scrollEvents','motionEvents','losses','overflows']);
  // All populations are preflighted before walking or copying any entry.
- const wheels=dense(r.wheelEvents,40),scrolls=dense(r.scrollEvents,256),motions=dense(r.motionEvents,32),loss=data(r.losses,['navigation','context','page','session']),over=data(r.overflows,['wheel','scroll','motion']);
+ const wheels=dense(r.wheelEvents,41),scrolls=dense(r.scrollEvents,256),motions=dense(r.motionEvents,32),loss=data(r.losses,['navigation','context','page','session']),over=data(r.overflows,['wheel','scroll','motion']);
  const base=(row:Record<string,unknown>)=>({ordinal:integer(row.ordinal,1),receivedHostMs:finite(row.receivedHostMs),pageNowMs:finite(row.pageNowMs),eventTimeStampMs:finite(row.eventTimeStampMs)});
  const wheelEvents=wheels.map(value=>{const row=data(value,['ordinal','receivedHostMs','pageNowMs','eventTimeStampMs','isTrusted','deltaX','deltaY','deltaMode','targetContained','currentTargetIsScroller']);return {...base(row),isTrusted:boolean(row.isTrusted),deltaX:finite(row.deltaX),deltaY:finite(row.deltaY),deltaMode:finite(row.deltaMode),targetContained:boolean(row.targetContained),currentTargetIsScroller:boolean(row.currentTargetIsScroller)};});
  const scrollEvents=scrolls.map(value=>{const row=data(value,['ordinal','receivedHostMs','pageNowMs','eventTimeStampMs','currentTargetIsScroller','scrollTop','scrollHeight','clientHeight']);const scrollTop=finite(row.scrollTop),scrollHeight=finite(row.scrollHeight),clientHeight=finite(row.clientHeight);if(clientHeight<=0||scrollHeight<clientHeight||scrollTop<0||scrollTop>scrollHeight-clientHeight)throw Error('Scroll event range');return {...base(row),currentTargetIsScroller:boolean(row.currentTargetIsScroller),scrollTop,scrollHeight,clientHeight};});
  const motionEvents=motions.map(value=>{const row=data(value,['ordinal','kind','receivedHostMs','pageNowMs','eventTimeStampMs','targetContained']);if(row.kind!=='animationstart'&&row.kind!=='transitionrun')throw Error('Motion kind');return {...base(row),kind:row.kind,targetContained:boolean(row.targetContained)};});
  const losses:Observations['losses']={navigation:null,context:null,page:null,session:null};for(const key of ['navigation','context','page','session'] as const){if(loss[key]===null)continue;const row=data(loss[key],['firstHostMs','firstOverflowHostMs']),firstHostMs=finite(row.firstHostMs),firstOverflowHostMs=row.firstOverflowHostMs===null?null:finite(row.firstOverflowHostMs);if(firstOverflowHostMs!==null&&firstOverflowHostMs<firstHostMs)throw Error('Reversed loss');losses[key]={firstHostMs,firstOverflowHostMs};}
- const overflows:Observations['overflows']={wheel:null,scroll:null,motion:null};for(const key of ['wheel','scroll','motion'] as const){if(over[key]===null)continue;const row=data(over[key],['firstHostMs','ordinal']);overflows[key]={firstHostMs:finite(row.firstHostMs),ordinal:integer(row.ordinal,key==='wheel'?41:key==='scroll'?257:33,key==='wheel'?41:key==='scroll'?257:33)};}
+ const overflows:Observations['overflows']={wheel:null,scroll:null,motion:null};for(const key of ['wheel','scroll','motion'] as const){if(over[key]===null)continue;const row=data(over[key],['firstHostMs','ordinal']);overflows[key]={firstHostMs:finite(row.firstHostMs),ordinal:integer(row.ordinal,key==='wheel'?42:key==='scroll'?257:33,key==='wheel'?42:key==='scroll'?257:33)};}
  return {wheelEvents,scrollEvents,motionEvents:motionEvents as MotionEvent[],losses,overflows};
 }
 function checkObservations(input:TrackerAInput):void {
  for(const population of [input.wheelEvents,input.scrollEvents,input.motionEvents]){let lastHost=-Infinity,lastPage=-Infinity,lastEvent=-Infinity;for(let i=0;i<population.length;i++){const row=population[i]!;if(row.ordinal!==i+1||row.receivedHostMs<lastHost||row.pageNowMs<lastPage||row.eventTimeStampMs<lastEvent)throw Error('Observation ordering unavailable');lastHost=row.receivedHostMs;lastPage=row.pageNowMs;lastEvent=row.eventTimeStampMs;}}
- if(Object.values(input.losses).some(v=>v!==null)||Object.values(input.overflows).some(v=>v!==null)||input.wheelRequests.length!==40||input.wheelEvents.length!==40)throw Error('Observation coverage incomplete');
- if(input.wheelEvents.some(e=>!e.isTrusted||e.deltaX!==0||e.deltaY!==-12||e.deltaMode!==0||!e.targetContained||!e.currentTargetIsScroller))throw Error('Original trusted wheel facts unavailable');
- let previous:number|null=null;for(const event of input.scrollEvents){if(!event.currentTargetIsScroller||event.scrollTop===0||(previous!==null&&event.scrollTop>previous))throw Error('Scroll direction unavailable');previous=event.scrollTop;}
- // Page/host membership and absence of competing autoscroll are unresolved.
- // Retained motion cannot be assigned favorably outside the declared interval.
- if(input.motionEvents.some(e=>e.targetContained))throw Error('Competing motion observed');
+ if(Object.values(input.losses).some(v=>v!==null)||Object.values(input.overflows).some(v=>v!==null)||input.wheelRequests.length!==40||input.wheelEvents.length!==41)throw Error('Observation coverage incomplete');
+ if(input.wheelEvents.some((e,i)=>!e.isTrusted||e.deltaX!==0||e.deltaY!==(i===0?-600:-12)||e.deltaMode!==0||!e.targetContained||!e.currentTargetIsScroller))throw Error('Original trusted wheel facts unavailable');
+ const preRows=input.scalarObservations.filter(r=>r.role==='pre'),postRows=input.scalarObservations.filter(r=>r.role==='post');
+ const pre=preRows[0]?.value,post=postRows[0]?.value;
+ if(preRows.length!==1||postRows.length!==1||!pre||!post||preRows[0]!.status!=='fulfilled'||postRows[0]!.status!=='fulfilled'||input.phase.postBoundaryScalarOrdinal!==postRows[0]!.ordinal||pre.pageNowMs>post.pageNowMs)throw Error('Original phase bracket unavailable');
+ const inside=(at:number)=>at>=pre.pageNowMs&&at<=post.pageNowMs;
+ const before=input.entry.before.value?.scalar,after=input.entry.after.value?.scalar,entry=input.wheelEvents[0]!;
+ if(!before||!after||entry.pageNowMs<before.pageNowMs||entry.pageNowMs>after.pageNowMs||entry.pageNowMs>=pre.pageNowMs)throw Error('Original entry wheel bracket unavailable');
+ const brackets=input.wheelRequests.map((request,i)=>{
+  const before=input.scalarObservations.find(row=>row.ordinal===request.beforeOrdinal),after=input.scalarObservations.find(row=>row.ordinal===request.afterOrdinal);
+  if(request.slot!==i||request.status!=='fulfilled'||!before?.value||!after?.value||before.role!=='before'||after.role!=='after'||before.slot!==i||after.slot!==i||before.status!=='fulfilled'||after.status!=='fulfilled'||before.value.pageNowMs>after.value.pageNowMs)throw Error('Original slot bracket unavailable');
+  return {before:before.value.pageNowMs,after:after.value.pageNowMs};
+ });
+ for(const [i,event] of input.wheelEvents.slice(1).entries()){
+  const eligible=brackets.flatMap((b,slot)=>event.pageNowMs>=b.before&&event.pageNowMs<=b.after?[slot]:[]);
+  if(!inside(event.pageNowMs)||eligible.length!==1||eligible[0]!==i)throw Error('Original wheel slot attribution unavailable');
+ }
+ let previous=pre.scrollTop;
+ for(const event of input.scrollEvents){
+  if(!event.currentTargetIsScroller)throw Error('Original scroll ownership unavailable');
+  if(inside(event.pageNowMs)){if(event.scrollTop===0||event.scrollTop>previous)throw Error('Scroll direction unavailable');previous=event.scrollTop;}
+ }
+ if(input.motionEvents.some(e=>e.targetContained&&inside(e.pageNowMs)))throw Error('Competing motion observed');
 }
