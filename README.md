@@ -178,7 +178,7 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v55`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v56`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
@@ -213,7 +213,7 @@ bare-root importer to selected SOURCE hashes and actual static resolved edges,
 with at least one such importer present. Resolved edges and authenticated source
 intent are separate facts; the profile does not claim an observed raw resolver
 request or query/fragment exclusion. The unchanged nine-origin Zod gate covers
-all original rows, including unrendered modules. V55 requires fresh full frontend
+all original rows, including unrendered modules. V56 requires fresh full frontend
 and worker inspection under this profile.
 Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
@@ -254,12 +254,12 @@ stdout, each including LF≤4096 bytes. Awaited child write callbacks do not pro
 parent retention or stream closure. These diagnostics share the existing stdout and
 archive caps, and cannot promote geometry or lifecycle success. Default Chat,
 canonical workload, strict geometry and its4/5 read budgets remain unchanged.
-Fresh native preparation uses `hosted-copilot-react-h100-r6400-v16` only after
-independent qualification of same-source full STATIC V55. Neither pure checks nor
+Fresh native preparation uses `hosted-copilot-react-h100-r6400-v17` only after
+independent qualification of same-source full STATIC V56. Neither pure checks nor
 content readiness establish recovery, native conformance, FPS or ranking.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v9` workflow requires
-independently qualified same-source STATIC V55 and successful ordinary-native V16
+The separate experimental `hosted-copilot-react-tracker-json-a-v10` workflow requires
+independently qualified same-source STATIC V56 and successful ordinary-native V17
 original artifacts. Pilot startup uses the shared capture helper; serialized
 `capture` stage keys remain unchanged. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
@@ -298,8 +298,26 @@ last-read EOF and byte facts, and original session-close ordering. These facts
 do not establish the first functional cause, complete trace, clock or presentation
 qualification, or performance.
 
-The V9 diagnostic profile uses schema 2 and mode
-`tracker-a-anchor-scalars-v1`, with the unchanged strict mode recorded separately.
+The V10 handler gate profile uses schema 3 and mode
+`tracker-a-anchor-handler-gate-v1`, with the unchanged strict mode recorded separately.
+Each measured BEFORE arms its gate inside the existing scalar evaluation. The
+existing AFTER evaluation waits for the same retained original wheel handler
+before taking its one raw scalar; wheel API completion still means dispatch
+completion. Entry is unchanged. Input schema 2 retains at most forty
+`handlerGates` rows joined to the actual raw events. Success requires forty
+observed, claimed gates, timely original AFTER fulfillment and the unchanged
+strict handler-in-scalar bracket and offset laws. The child report's
+`tracker.inputDrain` copies the original final drain receipt. Both archive paths
+require that drain to fulfill and refuse any armed gate; partial closed evidence
+cannot supply successful phase coverage.
+
+The wait changes sampling timing and consumes the original slot budget; anchor
+probes retain their DOM observer cost. Gate sampling adds no evaluation, listener,
+DOM read, timer, polling or clock read. The original 82 measured scalars, forty
+50 ms measured slots, 41 total wheel dispatches and 4/5 full geometry reads remain
+fixed, with the same global deadline and phase boundary. These observations grant
+no compensation, presentation or FPS authority.
+
 One child-owned `tracker-a-anchor-scalars-v1.json` file is bounded to 64 KiB
 inside the existing 128 MiB/128-file union. It joins each attempted scalar to
 the original G1-selected text owner and records the minimum viewport Y of

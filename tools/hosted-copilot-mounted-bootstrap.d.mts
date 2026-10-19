@@ -80,7 +80,7 @@ export type TrackerAChildPublicReport = Readonly<{
  primaryFailure:'prerequisite'|'browser-connect'|'case-conformance'|null;cleanupFailures:readonly ('case-close'|'client-close')[];
  qualification:false;fps:'unavailable';originals:readonly Readonly<{label:'browserConnect'|'clientClose'|'clientDisconnected';status:OriginalState}>[];
  browserVersion:string|null;caseEvidence:readonly CaseRecord[];workerImport:'fulfilled';snapshotFiles:readonly ['native-case-1.json','native-case-2.json'];mode:'tracker-json-a-pilot-v2';
- tracker:Readonly<{inputRef:Ref<'tracker-a-case-2-input.json'>|null;transportRef:Ref<'tracker-a-case-2-transport.json'>|null;semantic:Stage;capture:Stage;cleanup:Stage}>;
+ tracker:Readonly<{inputRef:Ref<'tracker-a-case-2-input.json'>|null;transportRef:Ref<'tracker-a-case-2-transport.json'>|null;inputDrain:Readonly<{status:ReceiptState;requestedHostMs:number|null;settledHostMs:number|null}>;semantic:Stage;capture:Stage;cleanup:Stage}>;
 }>;
 export type TrackerAParentPublicReport = Readonly<{
  status:'complete'|'incomplete';applicationCommand:MountedCaptureResult|null;cases:readonly CaseRecord[];caseEvidence:readonly CaseRecord[];browserVersion:string|null;
@@ -111,11 +111,14 @@ export function createTrackerATraceSink(ports:{reserve():Promise<void>;open():Pr
 export function constructTrackerAChildResult(native:unknown,persistence:unknown):unknown;
 export function constructTrackerAResult(value:unknown):TrackerAFinalResult;
 export function publishTrackerAResults(value:unknown,ports:TrackerAOuterPublicationPorts):Promise<TrackerAFinalResult>;
-export function constructTrackerAProfile(intent:unknown,native:unknown,intentRef:unknown):unknown;
+export type TrackerAWheelHandlerAfterGateCapability=Readonly<{protocol:'tracker-a-wheel-handler-after-gate-v1';maxGates:40;entry:'unchanged';arm:'measured-before-existing-evaluate';wait:'measured-after-existing-evaluate';event:'same-original-wheel-listener'}>;
+export type TrackerAHandlerGate=import('../apps/copilotkit/runtime/mounted-tracker-a.ts').TrackerAHandlerGate;
+export type TrackerAProfile=Readonly<{schemaVersion:3;kind:'tracker-a-profile';mode:'tracker-a-anchor-handler-gate-v1';strictMode:'tracker-json-a-pilot-v2';wheelHandlerAfterGate:TrackerAWheelHandlerAfterGateCapability}&Record<string,unknown>>;
+export function constructTrackerAProfile(intent:unknown,native:unknown,intentRef:unknown):TrackerAProfile;
 export type TrackerAAnchorScalars=Readonly<{schemaVersion:1;kind:'tracker-a-anchor-scalars-v1';profileRef:Ref<'tracker-a-profile.json'>;childResultRef:Ref<'native-child-result.json'>;inputRef:Ref<'tracker-a-case-2-input.json'>;selection:import('../apps/copilotkit/runtime/mounted-tracker-a.ts').TrackerAAnchorDiagnostic['selection'];observations:readonly import('../apps/copilotkit/runtime/mounted-tracker-a.ts').AnchorObservation[];qualification:false;nativeGO:false;performance:false}>;
 export function constructTrackerAAnchorScalars(native:unknown,refs:unknown):TrackerAAnchorScalars|null;
 export function publishTrackerAChildEvidence(native:unknown,profileRef:unknown,ports:{writeJson(name:string,value:unknown,cap:number):Promise<unknown>;ref(name:string):Promise<unknown>}):Promise<'complete'|'incomplete'>;
-export function validateTrackerAProfile(profile:unknown,intent:unknown,intentRef:unknown):unknown;
+export function validateTrackerAProfile(profile:unknown,intent:unknown,intentRef:unknown):TrackerAProfile;
 export function planTrackerAStartup(prerequisites:unknown,assets:unknown,registryBytes:Uint8Array,parentArgv:unknown,childArgv:unknown):Readonly<{registryBytes:number;optionsBytes:number;parentStartedBytes:number;applicationStartedBytes:number}>;
 export function validateTrackerAOptions(options:unknown,prerequisites:unknown,assets:unknown):unknown;
 export function authenticateTrackerARegistry(directory:string,sourceRoot:string):Promise<Readonly<{raw:Uint8Array;bytes:number;sha256:string}>>;

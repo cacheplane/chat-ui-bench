@@ -31,7 +31,7 @@ export function createRestoredHistoryDiagnosticPort(write){
  }};
 }
 
-const RELEASE='hosted-copilot-react-h100-r6400-v16',REPOSITORY='cacheplane/chat-ui-bench';
+const RELEASE='hosted-copilot-react-h100-r6400-v17',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
 const MiB=1024*1024,hash=b=>createHash('sha256').update(b).digest('hex');
 const need=(ok,message='Mounted bootstrap refused')=>{if(!ok)throw new Error(message);};
@@ -39,8 +39,8 @@ const id=v=>typeof v==='string'&&/^[1-9][0-9]{0,19}$/.test(v);
 const digest=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const boundedError=e=>{try{return e instanceof Error?e.message.slice(0,512):'Original operation failed';}catch{return 'Original operation failed';}};
-const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v9',PILOT_MODE='tracker-json-a-pilot-v2';
-const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v16';
+const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v10',PILOT_MODE='tracker-json-a-pilot-v2';
+const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v17';
 let selectedBootstrapMode=null,pilotPhase=null,pilotKnown=null;
 const contextFields=['candidateSha','checkoutSha','githubSha','workflowSha','tagSha','repository','releaseId','githubRef','workflowRef','eventName','actions','platform','runnerOs','runnerMarker','attempt'];
 function ownData(value,keys){
@@ -192,8 +192,11 @@ export async function authenticateTrackerAReport(command,action,profileRef,ports
  const bind=async(ref,name,limit)=>{const r=fileRef(ref,name);if(r===null)return null;const original=await read(name,limit);need(r.bytes===original.bytes&&r.sha256===original.sha256,'Transitive publication bytes differ');return JSON.parse(Buffer.from(original.raw).toString('utf8'));};
  const ref={path:name,bytes:f.bytes,sha256:f.sha256};let diagnostic=null;
  if(action==='child'){
+  if(value.tracker.inputRef!==null){const drain=value.tracker.inputDrain;need(drain.status==='fulfilled'&&drain.requestedHostMs!==null&&drain.settledHostMs!==null&&drain.settledHostMs>=drain.requestedHostMs,'Original input drain remains open');}
   const snapshots=[];for(const number of [1,2]){const caseFile=await read('native-case-'+number+'.json',2097152),record=ownData(JSON.parse(Buffer.from(caseFile.raw).toString('utf8')),['caseNumber','cases','snapshots','qualification']);need(record.caseNumber===number&&record.qualification===false&&JSON.stringify(record.cases)===JSON.stringify(value.caseEvidence.filter(c=>c.caseNumber===number)));snapshots.push(...copyPilotSnapshots(record.snapshots));}const input=copyTrackerAInput(await bind(value.tracker.inputRef,'tracker-a-case-2-input.json',262144),snapshots),transport=copyTrackerATransport(await bind(value.tracker.transportRef,'tracker-a-case-2-transport.json',1048576));
+  if(input)need(input.handlerGates.every(g=>g.state!=='armed'),'Original handler gate remains armed');
   if(input)need(JSON.stringify(input.profileRef)===JSON.stringify(profile),'Input profile differs');if(transport){need(JSON.stringify(transport.profileRef)===JSON.stringify(profile),'Transport profile differs');if(transport.raw.ref!==null){need(transport.sink.fileClose==='fulfilled','Raw original close absent');const raw=await read('tracker-a-case-2-trace.json',33554432);need(transport.raw.ref.bytes===raw.bytes&&transport.raw.ref.sha256===raw.sha256,'Raw original binding differs');}}
+  need(value.tracker.capture.status!=='complete'||trackerAPhaseComplete(input),'Complete input gate phase differs');
   diagnostic={profileRef:profile,childResultRef:ref,inputRef:value.tracker.inputRef,transportRef:value.tracker.transportRef,rawRef:transport?.raw.ref??null,input:input===null?null:trackerAInputDiagnostic(input),transport:transport===null?null:trackerATransportDiagnostic(transport),relations:trackerADiagnosticRelations(input,transport)};
  }else if(value.tracker.childResultRef!==null){const child=await authenticateTrackerAReport(value.applicationCommand,'child',profile,ports);need(JSON.stringify(child.ref)===JSON.stringify(value.tracker.childResultRef),'Parent child reference differs');need(JSON.stringify(value.cases)===JSON.stringify(child.value.cases)&&JSON.stringify(value.caseEvidence)===JSON.stringify(child.value.caseEvidence)&&value.browserVersion===child.value.browserVersion,'Parent child facts differ');diagnostic=child.diagnostic;}
  return {value,ref,diagnostic};
@@ -221,7 +224,7 @@ const trackerStage=(complete,reason)=>({status:complete?'complete':'incomplete',
 const originalStates=['not-started','pending','fulfilled','rejected'];
 function finite(value){need(typeof value==='number'&&Number.isFinite(value));return value;}
 function boundedText(value,cap){need(typeof value==='string'&&value.length<=cap&&Buffer.byteLength(value)<=cap);return value;}
-// Only finite public records reach this copier. Private errors/drain never do.
+// Only finite public records reach this copier. Private errors never do.
 function copyPublicationData(value,cap){
  let visits=0;const active=new Set();
  function copy(v,depth){need(++visits<=65536&&depth<=24,'Publication shape capacity');if(v===null||typeof v==='boolean')return v;if(typeof v==='number')return finite(v);if(typeof v==='string')return boundedText(v,65536);
@@ -234,6 +237,13 @@ function fileRef(value,path){if(value===null)return null;const r=ownData(value,[
 function assertAuthority(value){need(JSON.stringify(ownData(value,['qualification','fps','ratio','scoring','ranking']))===JSON.stringify(trackerAuthority()),'Pilot authority differs');}
 function assertStage(value,reasons){const r=ownData(value,['status','reason']);need(['not-started','incomplete','complete'].includes(r.status)&&((r.status==='complete'||r.status==='not-started')?r.reason===null:reasons.includes(r.reason)),'Pilot stage differs');}
 function assertReceipt(value,requested='requestedHostMs'){const r=ownData(value,['status',requested,'settledHostMs']);need(originalStates.includes(r.status));if(r[requested]!==null)finite(r[requested]);if(r.settledHostMs!==null)finite(r.settledHostMs);}
+function copyTrackerAInputDrain(value){
+ const r=ownData(value,['status','requestedHostMs','settledHostMs']);assertReceipt(r);
+ // Two 32-byte finite lexemes and the longest fixed status bound the new
+ // child tracker field, including its joining comma and key, to 138 bytes.
+ for(const key of ['requestedHostMs','settledHostMs'])if(r[key]!==null)need(Buffer.byteLength(JSON.stringify(r[key]),'ascii')<=32,'Input drain number width');
+ need(Buffer.byteLength(',"inputDrain":'+JSON.stringify(r),'utf8')<=138,'Input drain field width');return r;
+}
 function assertListener(value){const r=ownData(value,['registration','removal','ownedIdentityMatch']);assertReceipt(r.registration);assertReceipt(r.removal);need(r.ownedIdentityMatch===null||typeof r.ownedIdentityMatch==='boolean');}
 function closedListener(value){return value.registration.status==='fulfilled'&&value.removal.status==='fulfilled'&&value.ownedIdentityMatch===true;}
 function copyCases(value){return denseData(value,2).map((v,i)=>{
@@ -259,9 +269,26 @@ function semanticCase(cases,snapshots,n){
 function assertTrackerAScalar(value){
  const s=ownData(value,['pageNowMs','url','sameOriginalScroller','connected','uniqueSelector','innerWidth','innerHeight','devicePixelRatio','rect','scrollTop','scrollHeight','clientHeight']);boundedText(s.url,4096);for(const k of ['sameOriginalScroller','connected','uniqueSelector'])bool(s[k]);for(const k of ['pageNowMs','innerWidth','innerHeight','devicePixelRatio','scrollTop','scrollHeight','clientHeight'])finite(s[k]);Object.values(ownData(s.rect,['x','y','width','height'])).forEach(finite);
 }
+function copyTrackerAHandlerGates(value,events){
+ const fields=['slot','beforeOrdinal','afterOrdinal','expectedEventOrdinal','state','waitClaimed','listenerOwnedIdentity','eventOrdinal','eventPageNowMs','eventTimeStampMs','cancellationReason','refusalCode'];
+ return denseData(value,40).map((value,i)=>{
+  const row=ownData(value,fields);need(row.slot===i&&row.beforeOrdinal===2+2*i&&row.afterOrdinal===3+2*i&&row.expectedEventOrdinal===i+2,'Gate ordinal tuple differs');
+  bool(row.waitClaimed);need(['armed','observed','cancelled','refused'].includes(row.state),'Gate state');
+  const tuple=[row.listenerOwnedIdentity,row.eventOrdinal,row.eventPageNowMs,row.eventTimeStampMs],absent=tuple.every(v=>v===null);need(absent||tuple.every(v=>v!==null),'Gate partial event tuple');
+  let event=null;
+  if(!absent){bool(row.listenerOwnedIdentity);need(Number.isInteger(row.eventOrdinal)&&row.eventOrdinal>=1&&row.eventOrdinal<=41);for(const k of ['eventPageNowMs','eventTimeStampMs']){finite(row[k]);need(Buffer.byteLength(JSON.stringify(row[k]),'ascii')<=32,'Gate finite number width');}
+   event=events.find(e=>e.ordinal===row.eventOrdinal);need(event!==undefined&&event.pageNowMs===row.eventPageNowMs&&event.eventTimeStampMs===row.eventTimeStampMs&&row.listenerOwnedIdentity===event.currentTargetIsScroller,'Gate original event differs');
+  }
+  if(row.state==='observed')need(!absent&&row.eventOrdinal===row.expectedEventOrdinal&&row.cancellationReason===null&&row.refusalCode===null&&event.isTrusted&&event.deltaX===0&&event.deltaY===-12&&event.deltaMode===0&&event.targetContained&&event.currentTargetIsScroller&&event.eventTimeStampMs>=0&&event.eventTimeStampMs<=event.pageNowMs,'Observed gate tuple');
+  else if(row.state==='armed')need(absent&&row.cancellationReason===null&&row.refusalCode===null,'Armed gate tuple');
+  else if(row.state==='cancelled')need(absent&&row.cancellationReason==='listener-remove'&&row.refusalCode===null,'Cancelled gate tuple');
+  else need(row.cancellationReason===null&&['arm-state','unexpected-order','duplicate-event','event-invalid','event-copy-invalid','source-error'].includes(row.refusalCode),'Refused gate tuple');
+  need(Buffer.byteLength(JSON.stringify(row),'utf8')<=340,'Gate row width');return row;
+ });
+}
 function copyTrackerAInput(value,snapshots){
- if(value===null)return null;const r=copyPublicationData(value,262144);ownData(r,['schemaVersion','kind','mode','caseNumber','profileRef','entry','phase','geometryCheckpoints','anchor','listeners','pointer','scalarObservations','wheelRequests','wheelEvents','scrollEvents','motionEvents','losses','overflows','outcome','authority']);
- need(r.schemaVersion===1&&r.kind==='tracker-a-case-input'&&r.mode===PILOT_MODE&&r.caseNumber===2);fileRef(r.profileRef,'tracker-a-profile.json');assertAuthority(r.authority);
+ if(value===null)return null;const r=copyPublicationData(value,262144);ownData(r,['schemaVersion','kind','mode','caseNumber','profileRef','entry','phase','geometryCheckpoints','anchor','listeners','pointer','scalarObservations','wheelRequests','handlerGates','wheelEvents','scrollEvents','motionEvents','losses','overflows','outcome','authority']);
+ need(r.schemaVersion===2&&r.kind==='tracker-a-case-input'&&r.mode===PILOT_MODE&&r.caseNumber===2);fileRef(r.profileRef,'tracker-a-profile.json');assertAuthority(r.authority);
  const p=ownData(r.phase,['hostT0Ms','hostT1Ms','postBoundaryScalarOrdinal','postBoundarySettled','returnClick','captureTail','completion','tail']);for(const k of ['hostT0Ms','hostT1Ms'])if(p[k]!==null)finite(p[k]);if(p.postBoundaryScalarOrdinal!==null)count(p.postBoundaryScalarOrdinal);need(originalStates.includes(p.postBoundarySettled));for(const k of ['returnClick','completion','tail'])assertReceipt(p[k],'startedHostMs');if(p.hostT0Ms!==null&&p.hostT1Ms!==null)need(p.hostT1Ms===p.hostT0Ms+2000);
  const capture=ownData(p.captureTail,['status','startedHostMs','settledHostMs','targetHostMs']);assertReceipt({status:capture.status,startedHostMs:capture.startedHostMs,settledHostMs:capture.settledHostMs},'startedHostMs');if(capture.targetHostMs!==null)finite(capture.targetHostMs);
  const entry=ownData(r.entry,['before','wheel','afterWait','after','settledWait','settled']);
@@ -279,6 +306,7 @@ function copyTrackerAInput(value,snapshots){
  for(const [key,cap,fields] of [['wheelEvents',41,['ordinal','receivedHostMs','pageNowMs','eventTimeStampMs','isTrusted','deltaX','deltaY','deltaMode','targetContained','currentTargetIsScroller']],['scrollEvents',256,['ordinal','receivedHostMs','pageNowMs','eventTimeStampMs','currentTargetIsScroller','scrollTop','scrollHeight','clientHeight']],['motionEvents',32,['ordinal','kind','receivedHostMs','pageNowMs','eventTimeStampMs','targetContained']]])for(const q of denseData(r[key],cap)){ownData(q,fields);for(const name of fields){if(name==='kind')need(['animationstart','transitionrun'].includes(q[name]));else if(['isTrusted','targetContained','currentTargetIsScroller'].includes(name))bool(q[name]);else finite(q[name]);}}
  for(const q of Object.values(ownData(r.losses,['navigation','context','page','session'])))if(q!==null){ownData(q,['firstHostMs','firstOverflowHostMs']);finite(q.firstHostMs);if(q.firstOverflowHostMs!==null)finite(q.firstOverflowHostMs);}
  for(const q of Object.values(ownData(r.overflows,['wheel','scroll','motion'])))if(q!==null){ownData(q,['firstHostMs','ordinal']);finite(q.firstHostMs);count(q.ordinal);}
+ copyTrackerAHandlerGates(r.handlerGates,r.wheelEvents);
  ownData(r.outcome,['phase','competingMotion','scenarioQualification']);assertStage(r.outcome.phase,['phase']);need(r.outcome.competingMotion==='unavailable'&&r.outcome.scenarioQualification==='unavailable');return r;
 }
 function copyTrackerATransport(value){
@@ -309,7 +337,7 @@ function transportComplete(t,ref){
  const bytes=reads.reduce((sum,o)=>sum+o.bytes,0);return bytes===t.knownReadBytes&&bytes===ref.bytes;
 }
 function copyNativePilot(native){
- const r=ownData(native,['pilot','originals','browserVersion','caseEvidence']),keys=['status','cases','caseEvidence','snapshots','input','transport','inputDrain','hasPrimary','primary','firstFailure','cleanupFailures','authority'];
+ const r=ownData(native,['pilot','originals','browserVersion','caseEvidence']),keys=['status','cases','caseEvidence','snapshots','input','transport','inputDrain','hasPrimary','primary','firstFailure','cleanupFailures','authority','handlerGateError'];
  // New observer data is deliberately not read or validated until every old
  // publication and the original first-failure capsule have closed locally.
  need(r.pilot!==null&&typeof r.pilot==='object'&&[Object.prototype,null].includes(Object.getPrototypeOf(r.pilot)));
@@ -320,10 +348,11 @@ function copyNativePilot(native){
  const snapshots=copyPilotSnapshots(p.snapshots),input=copyTrackerAInput(p.input,snapshots),transport=copyTrackerATransport(p.transport);
  const originals=denseData(r.originals,3).map((value,i)=>{const row=ownData(value,['label','status']);need(row.label===['browserConnect','clientClose','clientDisconnected'][i]&&['fulfilled','pending','rejected','timed-out','unavailable'].includes(row.status));return {label:row.label,status:row.status};});need(originals.length===3);if(r.browserVersion!==null)boundedText(r.browserVersion,4096);
  // Read only the finite private drain receipt; never place it on disk.
- const drain=ownData(p.inputDrain,['status','requestedHostMs','settledHostMs']);assertReceipt(drain);
+ const drain=copyTrackerAInputDrain(p.inputDrain);
  const firstFailure=p.firstFailure===null?null:copyTrackerAFirstFailure(p.firstFailure);
  need(p.hasPrimary===(firstFailure!==null),'First failure primary provenance differs');
- return {cases,caseEvidence,snapshots,input,transport,originals,browserVersion:r.browserVersion,drainFulfilled:drain.status==='fulfilled',hasPrivateFailure:p.hasPrimary||privateCleanup.length>0,firstFailure};
+ need(p.handlerGateError===null,'Gate protocol copy failure');
+ return {cases,caseEvidence,snapshots,input,transport,originals,browserVersion:r.browserVersion,drain,drainFulfilled:drain.status==='fulfilled',hasPrivateFailure:p.hasPrimary||privateCleanup.length>0,firstFailure};
 }
 /** Fixed child publications. The late observer cannot precede any original close. */
 export async function publishTrackerAChildEvidence(result,profileRef,ports){
@@ -406,7 +435,7 @@ function trackerACaptureBoundaryComplete(input,transport){
 function trackerAPhaseComplete(input){
  if(input===null||!trackerAEntryComplete(input))return false;
  const p=input.phase,scalars=input.scalarObservations,requests=input.wheelRequests,events=input.wheelEvents;
- if(p.hostT0Ms===null||p.hostT1Ms!==p.hostT0Ms+2000||p.postBoundarySettled!=='fulfilled'||scalars.length!==82||requests.length!==40||events.length!==41||Object.values(input.losses).some(v=>v!==null)||Object.values(input.overflows).some(v=>v!==null))return false;
+ if(p.hostT0Ms===null||p.hostT1Ms!==p.hostT0Ms+2000||p.postBoundarySettled!=='fulfilled'||scalars.length!==82||requests.length!==40||events.length!==41||input.handlerGates.length!==40||input.handlerGates.some(g=>g.state!=='observed'||!g.waitClaimed||g.listenerOwnedIdentity!==true)||Object.values(input.losses).some(v=>v!==null)||Object.values(input.overflows).some(v=>v!==null))return false;
  const pre=scalars[0],post=scalars[81],base=input.entry.before.value.scalar;
  if(pre.role!=='pre'||pre.slot!==null||post.role!=='post'||post.slot!==null||p.postBoundaryScalarOrdinal!==post.ordinal||pre.settledHostMs===null||pre.settledHostMs>p.hostT0Ms||post.requestedHostMs<p.hostT1Ms)return false;
  for(const [i,row] of scalars.entries()){
@@ -444,7 +473,7 @@ export function constructTrackerAChildResult(native,persistence){
  const distinguishable=!connected||semantic.status!=='complete'||capture.status!=='complete'||!caseCleanup||!clientCleanup;need(!n.hasPrivateFailure||distinguishable,'Unrepresentable private-only pilot refusal');
  const primaryFailure=!connected&&n.hasPrivateFailure?'browser-connect':semantic.status!=='complete'||capture.status!=='complete'||!caseCleanup?'case-conformance':null;
  const cleanup=trackerStage(caseCleanup&&clientCleanup,'cleanup'),status=semantic.status==='complete'&&capture.status==='complete'&&cleanup.status==='complete'&&connected?'complete':'incomplete';
- return {status,cases:n.cases,nativeInputs:first?[{caseNumber:1,wheel:null}]:[],primaryFailure,cleanupFailures,qualification:false,fps:'unavailable',originals:n.originals,browserVersion:n.browserVersion,caseEvidence:n.caseEvidence,workerImport:'fulfilled',snapshotFiles:['native-case-1.json','native-case-2.json'],mode:PILOT_MODE,tracker:{inputRef,transportRef,semantic,capture,cleanup}};
+ return {status,cases:n.cases,nativeInputs:first?[{caseNumber:1,wheel:null}]:[],primaryFailure,cleanupFailures,qualification:false,fps:'unavailable',originals:n.originals,browserVersion:n.browserVersion,caseEvidence:n.caseEvidence,workerImport:'fulfilled',snapshotFiles:['native-case-1.json','native-case-2.json'],mode:PILOT_MODE,tracker:{inputRef,transportRef,inputDrain:n.drain,semantic,capture,cleanup}};
 }
 const finalProjectionKeys=['profileRef','inputRef','transportRef','childResultRef','parentPartialRef','nativeResultRef','childResult','parentPartial','nativeResult','transport','rawCreated','rawRef'];
 function childStages(value){
@@ -454,7 +483,7 @@ function childStages(value){
  const inputs=denseData(c.nativeInputs,1);for(const v of inputs){const input=ownData(v,['caseNumber','wheel']);need(input.caseNumber===1&&input.wheel===null);}
  const originals=denseData(c.originals,3);need(originals.length===3);originals.forEach((v,i)=>{const o=ownData(v,['label','status']);need(o.label===['browserConnect','clientClose','clientDisconnected'][i]&&['fulfilled','pending','rejected','timed-out','unavailable'].includes(o.status));});
  if(c.browserVersion!==null)boundedText(c.browserVersion,4096);need(c.workerImport==='fulfilled'&&JSON.stringify(denseData(c.snapshotFiles,2))===JSON.stringify(['native-case-1.json','native-case-2.json']));
- const t=ownData(c.tracker,['inputRef','transportRef','semantic','capture','cleanup']);fileRef(t.inputRef,'tracker-a-case-2-input.json');fileRef(t.transportRef,'tracker-a-case-2-transport.json');assertStage(t.semantic,['semantic']);assertStage(t.capture,['persistence','phase','transport']);assertStage(t.cleanup,['cleanup']);return c;
+ const t=ownData(c.tracker,['inputRef','transportRef','inputDrain','semantic','capture','cleanup']);copyTrackerAInputDrain(t.inputDrain);fileRef(t.inputRef,'tracker-a-case-2-input.json');fileRef(t.transportRef,'tracker-a-case-2-transport.json');assertStage(t.semantic,['semantic']);assertStage(t.capture,['persistence','phase','transport']);assertStage(t.cleanup,['cleanup']);return c;
 }
 export function constructTrackerAResult(value){
  const r=ownData(value,finalProjectionKeys),profileRef=fileRef(r.profileRef,'tracker-a-profile.json'),inputRef=fileRef(r.inputRef,'tracker-a-case-2-input.json'),transportRef=fileRef(r.transportRef,'tracker-a-case-2-transport.json'),childResultRef=fileRef(r.childResultRef,'native-child-result.json'),parentPartialRef=fileRef(r.parentPartialRef,'native-parent-partial.json'),nativeResultRef=fileRef(r.nativeResultRef,'native-result.json'),rawRef=fileRef(r.rawRef,'tracker-a-case-2-trace.json');
@@ -658,7 +687,7 @@ export async function admitTrackerAFailureInventory(profileRef,ports){
  const pending=value=>value!==null&&typeof value==='object'&&(value.status==='pending'||Object.values(value).some(pending));
  const listenerClosed=value=>value.registration.status==='not-started'?value.removal.status==='not-started'&&value.ownedIdentityMatch===null:closedListener(value);
  for(const [name,ref] of [['tracker-a-case-2-input.json',d.inputRef],['tracker-a-case-2-transport.json',d.transportRef],['tracker-a-case-2-trace.json',d.rawRef]])need(seen.has(name)===(ref!==null),'Uncreated/claimed role differs');
- if(d.inputRef!==null){const input=copyTrackerAInput(await json('tracker-a-case-2-input.json',262144),(await Promise.all([1,2].map(async n=>copyPilotSnapshots((await json('native-case-'+n+'.json',2097152)).snapshots)))).flat());need(!pending(input)&&Object.values(input.listeners).every(listenerClosed),'Failure input originals remain open');}
+ if(d.inputRef!==null){const input=copyTrackerAInput(await json('tracker-a-case-2-input.json',262144),(await Promise.all([1,2].map(async n=>copyPilotSnapshots((await json('native-case-'+n+'.json',2097152)).snapshots)))).flat());need(!pending(input)&&input.handlerGates.every(g=>g.state!=='armed')&&Object.values(input.listeners).every(listenerClosed),'Failure input originals remain open');}
  if(d.transportRef!==null){const transport=copyTrackerATransport(await json('tracker-a-case-2-transport.json',1048576));need(!pending(transport)&&transportContained(transport),'Failure trace originals remain open');need(transport.sink.created===(d.rawRef!==null),'Failure raw creation publication differs');}
  await admitAnchorInventory(profileRef,{read},names,d);
  if(seen.has('tracker-a-first-failure.json')){const capsule=copyTrackerAFirstFailureCapsule(await json('tracker-a-first-failure.json',4096));need(JSON.stringify(capsule.profileRef)===JSON.stringify(d.profileRef)&&JSON.stringify(capsule.childResultRef)===JSON.stringify(d.childResultRef),'First failure authenticated refs differ');}
@@ -685,10 +714,10 @@ export function constructTrackerAProfile(intent,native,intentRef){
  accepted(evaluateMountedTrackerAAdmissionPolicy(intent));need(intent.kind==='pre-install-intent'&&selectMountedBootstrapMode(intent.context)==='tracker-a');
  const q=ownData(native,nativePrerequisiteFields);need(q.sourceSha===intent.source.commitSha&&q.sourceTreeSha===intent.source.treeSha&&q.frontendSettingsSha256===intent.prerequisite.frontendSettingsSha256&&q.attempt===1&&q.workflowId===386692729&&q.workflowPath==='.github/workflows/hosted-copilot-mounted.yml'&&q.releaseId===nativePrerequisiteRelease&&q.qualification===false);
  need(id(q.originalRunId)&&id(q.artifactId)&&Number.isSafeInteger(q.archiveBytes)&&q.archiveBytes>0&&q.archiveBytes<=33554432&&['archiveSha256','qualifiedRootReceiptSha256','qualifiedPeerReceiptSha256','frontendSettingsSha256'].every(k=>digest(q[k])));
- const file=fileRef(intentRef,'native-intent.json');need(file!==null);const result={schemaVersion:2,kind:'tracker-a-profile',mode:'tracker-a-anchor-scalars-v1',strictMode:PILOT_MODE,diagnostics:{sameOwnerAnchor:{protocol:'tracker-a-anchor-scalars-v1',role:'tracker-a-anchor-scalars-v1.json',cap:65536,maxObservations:82,g1Purpose:'tracker-a-G1-anchor-diagnostic-v1',metric:'min-positive-text-rect-viewport-y'}},sourceSha:intent.source.commitSha,sourceTree:intent.source.treeSha,releaseId:PILOT_RELEASE,staticPrerequisiteRef:{file,member:'prerequisite'},nativePrerequisite:q,trace:TRACKER_A_TRACE_CONFIG,trajectory:trackerTrajectory(),limits:trackerLimits(),qualification:false};need(encoded(result).length<=16384);return result;
+ const file=fileRef(intentRef,'native-intent.json');need(file!==null);const result={schemaVersion:3,kind:'tracker-a-profile',mode:'tracker-a-anchor-handler-gate-v1',strictMode:PILOT_MODE,diagnostics:{sameOwnerAnchor:{protocol:'tracker-a-anchor-scalars-v1',role:'tracker-a-anchor-scalars-v1.json',cap:65536,maxObservations:82,g1Purpose:'tracker-a-G1-anchor-diagnostic-v1',metric:'min-positive-text-rect-viewport-y'}},wheelHandlerAfterGate:{protocol:'tracker-a-wheel-handler-after-gate-v1',maxGates:40,entry:'unchanged',arm:'measured-before-existing-evaluate',wait:'measured-after-existing-evaluate',event:'same-original-wheel-listener'},sourceSha:intent.source.commitSha,sourceTree:intent.source.treeSha,releaseId:PILOT_RELEASE,staticPrerequisiteRef:{file,member:'prerequisite'},nativePrerequisite:q,trace:TRACKER_A_TRACE_CONFIG,trajectory:trackerTrajectory(),limits:trackerLimits(),qualification:false};need(encoded(result).length<=16384);return result;
 }
 export function validateTrackerAProfile(profile,intent,intentRef){
- const r=copyPublicationData(profile,16384);ownData(r,['schemaVersion','kind','mode','strictMode','diagnostics','sourceSha','sourceTree','releaseId','staticPrerequisiteRef','nativePrerequisite','trace','trajectory','limits','qualification']);const expected=constructTrackerAProfile(intent,r.nativePrerequisite,intentRef);need(JSON.stringify(r)===JSON.stringify(expected),'Disk tracker profile/source differs');return expected;
+ const r=copyPublicationData(profile,16384);ownData(r,['schemaVersion','kind','mode','strictMode','diagnostics','wheelHandlerAfterGate','sourceSha','sourceTree','releaseId','staticPrerequisiteRef','nativePrerequisite','trace','trajectory','limits','qualification']);const expected=constructTrackerAProfile(intent,r.nativePrerequisite,intentRef);need(JSON.stringify(r)===JSON.stringify(expected),'Disk tracker profile/source differs');return expected;
 }
 function trackerAssets(value){const a=ownData(value,['root','files']);need(typeof a.root==='string'&&a.root.startsWith('/')&&resolve(a.root)===a.root);assertProductionOutputInventory(a.files);return copyPublicationData({root:a.root,files:a.files},524288);}
 function startupArgv(value,action){const argv=captureArgv(value);need(argv[0]===process.execPath&&argv[1]==='--experimental-import-meta-resolve'&&argv[2]===fileURLToPath(import.meta.url)&&argv[3]===action,'Fixed startup argv differs');return argv;}
@@ -720,7 +749,7 @@ export async function acquireTrackerANativePrerequisite(value,ports){
 export async function invokeTrackerAWorker(value,ports){
  const r=ownData(value,['options','prerequisites','assets','profile','intentRef']),options=validateTrackerAOptions(r.options,r.prerequisites,r.assets),profile=validateTrackerAProfile(r.profile,r.prerequisites.intent,r.intentRef);
  need(JSON.stringify(profile.nativePrerequisite)===JSON.stringify(options.prerequisites.nativePrerequisite),'Worker profile/native tuple differs');const ref=fileRef(ports.publication.profileRef,'tracker-a-profile.json'),profileBytes=encoded(profile);need(ref!==null&&ref.bytes===profileBytes.length&&ref.sha256===hash(profileBytes),'Worker physical profile ref differs');need(typeof ports.publication.reserveTraceSink==='function');
- const worker=await ports.importWorker();need(typeof worker.runNativeMountedTrackerAPilot==='function','Fixed pilot native export absent');return worker.runNativeMountedTrackerAPilot(options,ports.diagnostics,{profileRef:ref,reserveTraceSink:ports.publication.reserveTraceSink,anchorDiagnostic:profile.diagnostics.sameOwnerAnchor});
+ const worker=await ports.importWorker();need(typeof worker.runNativeMountedTrackerAPilot==='function','Fixed pilot native export absent');return worker.runNativeMountedTrackerAPilot(options,ports.diagnostics,{profileRef:ref,reserveTraceSink:ports.publication.reserveTraceSink,anchorDiagnostic:profile.diagnostics.sameOwnerAnchor,wheelHandlerAfterGate:profile.wheelHandlerAfterGate});
 }
 function copyFailureStrings(value){return denseData(value,16).map(v=>{need(typeof v==='string'&&v.length<=512);return v;});}
 function copyGlobalOriginals(value){const rows=denseData(value,10);need(rows.length===10);return rows.map((v,i)=>{const r=ownData(v,['label','status']);need(r.label===globalOriginalLabels[i]&&['fulfilled','pending','rejected','timed-out','unavailable'].includes(r.status));return {label:r.label,status:r.status};});}
