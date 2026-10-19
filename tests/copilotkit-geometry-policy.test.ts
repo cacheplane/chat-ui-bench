@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateHistoricalAnchor, evaluateMountedGeometry, GEOMETRY_LIMITS } from '../apps/copilotkit/src/geometry-policy.js';
+import { evaluateHistoricalAnchor, evaluateMountedGeometry, evaluateSelectedGeometryRow, GEOMETRY_LIMITS } from '../apps/copilotkit/src/geometry-policy.js';
 
 type Rect = { x: number; y: number; width: number; height: number };
 const rect = (x = 5, y = 10, width = 20, height = 10): Rect => ({ x, y, width, height });
@@ -10,6 +10,14 @@ const frame = () => ({ schemaVersion: 1, scopeId: 'scope-1', clockDomain: 'page-
   phase: 'streaming', expectedHistory: Array.from({ length: 100 }, (_, i) => canonical(`H${i}`)),
   expectedResponse: canonical('R', 'assistant', 'R'.repeat(6400)), responseProgress: { active: true, prefix: 'R' },
   viewport: rect(0, 0, 100, 100), nativeViewport: rect(0, 0, 100, 100), rows: [row()] });
+describe('selected historical row shares the full metric',()=>{
+ it.each(['raw-top','clip','native-viewport','empty','mismatch','nonpositive','fully-clipped'] as const)('is exactly the full evaluator row for %s',kind=>{
+  const f=frame(),r=f.rows[0]!;if(kind==='raw-top'){r.textRects=[rect(0,-5),rect(0,20)];}if(kind==='clip')r.ancestorClips=[{rect:rect(0,15,100,10),clipX:false,clipY:true}];if(kind==='native-viewport')f.nativeViewport=rect(0,12,100,100);if(kind==='empty')r.observedText='';if(kind==='mismatch')r.observedText='wrong';if(kind==='nonpositive')r.textRects=[rect(0,10,0,20)];if(kind==='fully-clipped')r.textRects=[rect(0,200)];
+  expect(evaluateSelectedGeometryRow(r,f.expectedHistory[0],f.viewport,f.nativeViewport)).toEqual(evaluateMountedGeometry(f).rows[0]);
+ });
+ it('preflights overlong text before walking supplied rectangles or invoking accessors',()=>{const f=frame(),r=f.rows[0]!;let getters=0;const rectangles=[rect()];Object.defineProperty(rectangles,0,{get(){getters++;throw Error('must not inspect');}});expect(()=>evaluateSelectedGeometryRow({...r,observedText:'x'.repeat(8193),textRects:rectangles},f.expectedHistory[0],f.viewport,f.nativeViewport)).toThrow();expect(getters).toBe(0);});
+ it('accepts exact retained text and rectangle caps and refuses their next item',()=>{const f=frame(),r=f.rows[0]!;r.observedText='H'.repeat(512)+' '.repeat(7680);r.textRects=Array.from({length:256},()=>rect());expect(evaluateSelectedGeometryRow(r,f.expectedHistory[0],f.viewport,f.nativeViewport).geometryEligibility).toBe('eligible');r.textRects.push(rect());expect(()=>evaluateSelectedGeometryRow(r,f.expectedHistory[0],f.viewport,f.nativeViewport)).toThrow();});
+});
 const pair = () => { const first = frame(); const second = frame(); second.observedAtPageMs = 800;
   second.responseProgress.prefix = 'RR'; second.rows[0]!.textRects[0]!.y = 14;
   return { schemaVersion: 1, anchorId: 'H0', first, second }; };

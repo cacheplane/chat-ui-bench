@@ -4,18 +4,18 @@ import {evaluateMountedOriginPolicy,MOUNTED_CASE_WITNESS_LABELS,type CaseRecord,
 import {assertProductionOutputInventory,ordinaryPath,type FileFact} from '../../../tests/support/hosted-copilot-contract.ts';
 import type {NativeCaseObservation,NativeCaseWitness} from './ownership.ts';
 import {boundedWait} from './ownership.ts';
-import type {GeometrySnapshot,RestoredHistoryDiagnosticPort} from '../src/geometry.ts';
+import type {GeometrySnapshot,RestoredHistoryDiagnosticPort,AnchorPurpose} from '../src/geometry.ts';
 import type {OwnedFrontendHost} from '../src/host.ts';
 import type {CDPSession,Page,BrowserContext,Frame} from 'playwright';
 import {evaluateMountedTrackerAPilotPrerequisites,type MountedTrackerAPilotPrerequisites} from '../../../tests/support/hosted-copilot-mounted-policy.ts';
-import {runMountedTrackerA,type TrackerAHistoryOwner,type TrackerASequencerResult,type TrackerAScalar} from './mounted-tracker-a.ts';
+import {runMountedTrackerA,readTrackerAAnchorScalarEnvelope,readTrackerAGeometrySnapshot,type TrackerAHistoryOwner,type TrackerASequencerResult,type TrackerAScalar} from './mounted-tracker-a.ts';
 import {createMountedTrackerATrace,TRACKER_A_TRACE_CONFIG,type TrackerATracePorts,type TrackerAProfileRef} from './mounted-tracker-a-trace.ts';
 
 export interface NativeMountedOptions {prerequisites:MountedPrerequisites;browserEndpoint:string;assets:Readonly<{root:string;files:readonly FileFact[]}>}
 export interface NativeMountedResult extends MountedConformanceResult {originals:readonly Witness[];browserVersion:string|null;caseEvidence:readonly CaseRecord[]}
 export interface NativeMountedTrackerAPilotOptions extends Omit<NativeMountedOptions,'prerequisites'> {prerequisites:MountedTrackerAPilotPrerequisites}
 /** Owned closures are passed directly by the application bootstrap, never serialized. */
-export interface NativeMountedTrackerAPublication {profileRef:TrackerAProfileRef;reserveTraceSink():Promise<TrackerATracePorts['sink']>}
+export interface NativeMountedTrackerAPublication {profileRef:TrackerAProfileRef;anchorDiagnostic:Readonly<{protocol:'tracker-a-anchor-scalars-v1';role:'tracker-a-anchor-scalars-v1.json';cap:65536;maxObservations:82;g1Purpose:'tracker-a-G1-anchor-diagnostic-v1';metric:'min-positive-text-rect-viewport-y'}>;reserveTraceSink():Promise<TrackerATracePorts['sink']>}
 export interface NativeMountedTrackerAPilotResult {pilot:TrackerASequencerResult;originals:readonly Witness[];browserVersion:string|null;caseEvidence:readonly CaseRecord[]}
 /** Caller bootstrap must authenticate source/provider/archive/physical graph
  * BEFORE importing the emitted worker. These policies remain supplied-data only. */
@@ -26,10 +26,16 @@ export async function runNativeMountedConformance(options:NativeMountedOptions,d
 }
 export async function runNativeMountedTrackerAPilot(options:NativeMountedTrackerAPilotOptions,diagnostics:RestoredHistoryDiagnosticPort,publication:NativeMountedTrackerAPublication):Promise<NativeMountedTrackerAPilotResult>{
  if(evaluateMountedTrackerAPilotPrerequisites(options.prerequisites).status!=='accepted')throw Error('Fixed pilot prerequisites denied before SDK imports');
- const descriptors=Object.getOwnPropertyDescriptors(publication.profileRef);
+ const publicationDescriptors=Object.getOwnPropertyDescriptors(publication),capability=publicationDescriptors.anchorDiagnostic,profileDescriptor=publicationDescriptors.profileRef,reserveDescriptor=publicationDescriptors.reserveTraceSink;
+ if(![Object.prototype,null].includes(Object.getPrototypeOf(publication))||Reflect.ownKeys(publicationDescriptors).length!==3||!capability||!('value'in capability)||!profileDescriptor||!('value'in profileDescriptor)||!reserveDescriptor||!('value'in reserveDescriptor)||typeof reserveDescriptor.value!=='function')throw Error('Diagnostic publication denied before SDK imports');
+ const expected={protocol:'tracker-a-anchor-scalars-v1',role:'tracker-a-anchor-scalars-v1.json',cap:65536,maxObservations:82,g1Purpose:'tracker-a-G1-anchor-diagnostic-v1',metric:'min-positive-text-rect-viewport-y'} as const;
+ if(typeof capability.value!=='object'||capability.value===null)throw Error('Diagnostic capability absent');
+ const fields=Object.getOwnPropertyDescriptors(capability.value);if(Reflect.ownKeys(fields).length!==6||Object.entries(expected).some(([k,v])=>!fields[k]||!('value'in fields[k]!)||fields[k]!.value!==v))throw Error('Diagnostic capability differs before SDK imports');
+ const descriptors=Object.getOwnPropertyDescriptors(profileDescriptor.value);
  const bytes=descriptors.bytes?.value;
- if(Reflect.ownKeys(descriptors).length!==3||descriptors.path?.value!=='tracker-a-profile.json'||typeof bytes!=='number'||!Number.isSafeInteger(bytes)||bytes<0||bytes>16384||typeof descriptors.sha256?.value!=='string'||!/^[0-9a-f]{64}$/.test(descriptors.sha256.value)||typeof publication.reserveTraceSink!=='function')throw Error('Pilot publication denied before SDK imports');
- return runNativeMountedOwner(options,diagnostics,{kind:'pilot',publication});
+ if(Reflect.ownKeys(descriptors).length!==3||descriptors.path?.value!=='tracker-a-profile.json'||typeof bytes!=='number'||!Number.isSafeInteger(bytes)||bytes<0||bytes>16384||typeof descriptors.sha256?.value!=='string'||!/^[0-9a-f]{64}$/.test(descriptors.sha256.value))throw Error('Pilot publication denied before SDK imports');
+ const copied:NativeMountedTrackerAPublication={profileRef:{path:'tracker-a-profile.json',bytes,sha256:descriptors.sha256.value},anchorDiagnostic:{...expected},reserveTraceSink:reserveDescriptor.value};
+ return runNativeMountedOwner(options,diagnostics,{kind:'pilot',publication:copied});
 }
 type NativeMode={kind:'ordinary'}|{kind:'pilot';publication:NativeMountedTrackerAPublication};
 function runNativeMountedOwner(options:NativeMountedOptions,diagnostics:RestoredHistoryDiagnosticPort,mode:{kind:'ordinary'}):Promise<NativeMountedResult>;
@@ -104,7 +110,7 @@ async function runNativeMountedOwner(options:NativeMountedOptions|NativeMountedT
    }};
    const server=await createCaseServer({fixture,ids,repetition,mountedOwner,assets,hooks:{observe}});
    const rawRecord=():CaseRecord=>({caseNumber:number,journey,threadId:ids.threadId,seedRunId:ids.seedRunId,continuationRunId:ids.continuationRunId,repetition,completed,publicIdle,storeEmpty:witnesses.find(w=>w.label==='publicStoreEmpty')!.status==='fulfilled',domainReleased:witnesses.find(w=>w.label==='caseDomainRelease')!.status==='fulfilled',originals:witnesses.map(w=>({...w}))});
-   const read=createMountedSnapshotReader(journey,async():Promise<GeometrySnapshot>=>{checkDeadline();if(localClosed||recordingFailed||!page)throw Error('Case admission closed');return page.evaluate(()=>{const h=(window as Window&{__copilotkitBenchHost?:OwnedFrontendHost}).__copilotkitBenchHost;if(!h)throw Error('Original host absent');return h.readGeometrySnapshot();});},()=>awaitRestoredHistorySnapshot({caseNumber:number,journey,threadId:ids.threadId,history:fixture.history},{
+   const read=createMountedSnapshotReader(journey,async(purpose):Promise<GeometrySnapshot>=>{checkDeadline();if(localClosed||recordingFailed||!page)throw Error('Case admission closed');return page.evaluate(readTrackerAGeometrySnapshot,purpose);},()=>awaitRestoredHistorySnapshot({caseNumber:number,journey,threadId:ids.threadId,history:fixture.history},{
     check:()=>performance.now()>=overallDeadline?'deadline':localClosed?'admission-closed':recordingFailed?'source-error':null,
     observe:()=>page!.evaluate(()=>{
      const h=(window as Window&{__copilotkitBenchHost?:OwnedFrontendHost}).__copilotkitBenchHost;if(!h)throw Error('Original host absent');
@@ -198,7 +204,7 @@ async function runNativeMountedOwner(options:NativeMountedOptions|NativeMountedT
   async closeClient(){if(browser){const original=browser.close();await boundedWait(original,10000,'Original browser client close');markGlobal('clientClose');if(!disconnect)throw Error('Original disconnect listener absent');await boundedWait(disconnect,10000,'Original browser disconnect');}}
  };
  if(mode.kind==='pilot'){
-  const pilot=await runMountedTrackerA({profileRef:mode.publication.profileRef,clock:nativeClock(overallDeadline),connect:nativePorts.connect,openFollow:()=>nativePorts.openCase('follow',1),openHistory:async()=>{const owner=await nativePorts.openCase('history-reading',2);if(!owner.pilot)throw Error('Original pilot owner absent');return owner.pilot;},closeClient:nativePorts.closeClient});
+  const pilot=await runMountedTrackerA({profileRef:mode.publication.profileRef,anchorDiagnostic:true,clock:nativeClock(overallDeadline),connect:nativePorts.connect,openFollow:()=>nativePorts.openCase('follow',1),openHistory:async()=>{const owner=await nativePorts.openCase('history-reading',2);if(!owner.pilot)throw Error('Original pilot owner absent');return owner.pilot;},closeClient:nativePorts.closeClient});
   return {pilot,originals,browserVersion,caseEvidence};
  }
  const result=await runMountedConformance(p,nativePorts);
@@ -213,8 +219,9 @@ type PilotWheel={ordinal:number;pageNowMs:number;eventTimeStampMs:number;isTrust
 type PilotScroll={ordinal:number;pageNowMs:number;eventTimeStampMs:number;currentTargetIsScroller:boolean;scrollTop:number;scrollHeight:number;clientHeight:number};
 type PilotMotion={ordinal:number;kind:'animationstart'|'transitionrun';pageNowMs:number;eventTimeStampMs:number;targetContained:boolean};
 type PilotDOMName='wheel'|'scroll'|'animationstart'|'transitionrun';
-type PilotPageState={baseline:TrackerAScalar;scalar():TrackerAScalar;install(name:PilotDOMName):boolean;remove(name:PilotDOMName):boolean;drain():{wheelEvents:PilotWheel[];scrollEvents:PilotScroll[];motionEvents:PilotMotion[];overflows:{wheel:{ordinal:42}|null;scroll:{ordinal:257}|null;motion:{ordinal:33}|null}}};
+type PilotPageState={baseline:TrackerAScalar;scalar():TrackerAScalar;anchorContext:{host:OwnedFrontendHost;url:string;refused:'host'|'url'|null};install(name:PilotDOMName):boolean;remove(name:PilotDOMName):boolean;drain():{wheelEvents:PilotWheel[];scrollEvents:PilotScroll[];motionEvents:PilotMotion[];overflows:{wheel:{ordinal:42}|null;scroll:{ordinal:257}|null;motion:{ordinal:33}|null}}};
 type PilotWindow=Window&{__copilotkitBenchHost?:OwnedFrontendHost;__copilotkitTrackerA?:PilotPageState};
+
 type PrivateOriginal={status:'not-started'|'pending'|'fulfilled'|'rejected';requestedHostMs:number|null;settledHostMs:number|null;promise:Promise<unknown>|null;value:unknown};
 /** Fixed SDK JSON protocol responses only: no arbitrary JS object/parser claim.
  * Bounds cover retained data and explicit copies, not SDK/engine heap internals.
@@ -254,7 +261,7 @@ function boundedPrivateTopology(value:unknown):void{
  if(new TextEncoder().encode(JSON.stringify(value)).length!==bytes)throw Error('Private topology serialized extent');
 }
 function topologyText(value:unknown,cap:number,allowEmpty=false):string{if(typeof value!=='string'||(!allowEmpty&&value.length===0)||value.length>cap||new TextEncoder().encode(value).length>cap)throw Error('Private topology selected field capacity');return value;}
-function bindNativeTrackerA(ports:{page():Page|undefined;context():BrowserContext|undefined;deadline:number;publication:NativeMountedTrackerAPublication;check():void;owner:MountedCaseOwner;geometry():Promise<GeometrySnapshot>;active():Promise<unknown>;returned():Promise<void>}){
+function bindNativeTrackerA(ports:{page():Page|undefined;context():BrowserContext|undefined;deadline:number;publication:NativeMountedTrackerAPublication;check():void;owner:MountedCaseOwner;geometry(purpose?:AnchorPurpose):Promise<GeometrySnapshot>;active():Promise<unknown>;returned():Promise<void>}){
  const clock=nativeClock(ports.deadline),fresh=():PrivateOriginal=>({status:'not-started',requestedHostMs:null,settledHostMs:null,promise:null,value:undefined});
  const baselineOriginal=fresh(),reservationOriginal=fresh(),sessionOriginal=fresh(),sessionCloseRegistration=fresh(),sessionCloseRemoval=fresh(),targetOriginal=fresh(),frameOriginal=fresh(),drainOriginal=fresh();
  let targetDiagnostic:unknown,frameDiagnostic:unknown,session:CDPSession|undefined,sink:TrackerATracePorts['sink']|undefined,trace:ReturnType<typeof createMountedTrackerATrace>|undefined;
@@ -313,7 +320,7 @@ function bindNativeTrackerA(ports:{page():Page|undefined;context():BrowserContex
   }};
  }
  const listeners={wheel:listener('wheel'),scroll:listener('scroll'),animationstart:listener('animationstart'),transitionrun:listener('transitionrun'),navigation:listener('navigation'),contextClose:listener('contextClose'),pageClose:listener('pageClose')};
- const history:TrackerAHistoryOwner={baseline:undefined,seed:()=>ports.owner.seed(),restore:()=>ports.owner.restore(),listeners,startContinuation:()=>ports.owner.startContinuation(),waitActivePrefix:()=>ports.active(),geometry:()=>ports.geometry(),complete:()=>ports.owner.complete(),close:()=>ports.owner.close(),returnToResponse:()=>ports.returned(),
+ const history:TrackerAHistoryOwner={baseline:undefined,seed:()=>ports.owner.seed(),restore:()=>ports.owner.restore(),listeners,startContinuation:()=>ports.owner.startContinuation(),waitActivePrefix:()=>ports.active(),geometry:purpose=>ports.geometry(purpose),complete:()=>ports.owner.complete(),close:()=>ports.owner.close(),returnToResponse:()=>ports.returned(),
   movePointer(x,y){admitted();if(pointerMoved)throw Error('Original pointer already charged');pointerMoved=true;return page().mouse.move(x,y);},
   entrySample(){
    admitted();if(entryCalls>=3)throw Error('Original entry sample capacity');entryCalls++;
@@ -324,7 +331,7 @@ function bindNativeTrackerA(ports:{page():Page|undefined;context():BrowserContex
     return {scalar,active:p.loading&&p.delivery==='streaming'&&p.activeMessage!==null&&p.error===null,prefixLength:p.activeMessage?.text.length??0,returnControlVisible};
    });
   },
-  scalar(){admitted();if(scalarCalls>=82)throw Error('Original scalar capacity');scalarCalls++;return page().evaluate(()=>{const s=(window as PilotWindow).__copilotkitTrackerA;if(!s)throw Error('Original pilot state absent');return s.scalar();});},
+  scalar(selection){admitted();if(scalarCalls>=82)throw Error('Original scalar capacity');scalarCalls++;return page().evaluate(readTrackerAAnchorScalarEnvelope,selection);},
   wheel(x,y){admitted();if(!pointerMoved||x!==0||wheelCalls>=41||y!==(wheelCalls===0?-600:-12))throw Error('Original pilot wheel denied');wheelCalls++;return page().mouse.wheel(0,y);},
   acquireTrace(){
    if(acquisition)return acquisition;
@@ -384,7 +391,7 @@ function bindNativeTrackerA(ports:{page():Page|undefined;context():BrowserContex
    const animationstart=(event:Event)=>motion('animationstart',event),transitionrun=(event:Event)=>motion('transitionrun',event);
    const names={wheel:{owner:scroller,callback:wheel as EventListener},scroll:{owner:scroller,callback:scroll},animationstart:{owner:document,callback:animationstart},transitionrun:{owner:document,callback:transitionrun}};
    const installed={wheel:false,scroll:false,animationstart:false,transitionrun:false},removed={wheel:false,scroll:false,animationstart:false,transitionrun:false};
-   w.__copilotkitTrackerA={baseline,scalar(){
+   w.__copilotkitTrackerA={baseline,anchorContext:{host:h,url:originalURL,refused:null},scalar(){
     const matches=document.querySelectorAll(selector),current=scroller.getBoundingClientRect(),url=location.href;
     const value:TrackerAScalar={pageNowMs:performance.now(),url,sameOriginalScroller:matches[0]===scroller,connected:scroller.isConnected,uniqueSelector:matches.length===1,innerWidth,innerHeight,devicePixelRatio,rect:{x:current.x,y:current.y,width:current.width,height:current.height},scrollTop:scroller.scrollTop,scrollHeight:scroller.scrollHeight,clientHeight:scroller.clientHeight};
     // Return actual finite observations; the sequencer retains them before guards.

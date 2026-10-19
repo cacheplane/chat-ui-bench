@@ -87,9 +87,9 @@ export interface MountedConformancePorts {
 }
 export interface MountedPrerequisites {intent:PreInstallIntent;installed:PostInstallAdmission;module:MountedModuleInput}
 /** Charges attempts before the full H100 collector runs, including failures. */
-export function createMountedSnapshotReader(journey:CaseJourney,read:()=>Promise<GeometrySnapshot>,restored?:()=>Promise<GeometrySnapshot>):()=>Promise<GeometrySnapshot>{
+export function createMountedSnapshotReader(journey:CaseJourney,read:(purpose?:'tracker-a-G1-anchor-diagnostic-v1')=>Promise<GeometrySnapshot>,restored?:()=>Promise<GeometrySnapshot>):(purpose?:'tracker-a-G1-anchor-diagnostic-v1')=>Promise<GeometrySnapshot>{
  let calls=0;const limit=journey==='follow'?4:5;
- return async()=>{if(calls===limit)throw Error('Full geometry call budget exhausted');calls++;return calls===1&&restored?restored():read();};
+ return async purpose=>{if(calls===limit)throw Error('Full geometry call budget exhausted');calls++;if(purpose!==undefined&&(purpose!=='tracker-a-G1-anchor-diagnostic-v1'||journey!=='history-reading'||calls!==2))throw Error('Diagnostic purpose is only the charged history G1');return calls===1&&restored?restored():read(purpose);};
 }
 export interface MountedConformanceResult {status:'complete'|'incomplete';cases:readonly CaseRecord[];snapshots:readonly Readonly<{caseNumber:1|2;snapshot:GeometrySnapshot}>[];nativeInputs:readonly Readonly<{caseNumber:1|2;wheel:JourneyObservations['wheel']}>[];primaryFailure:string|null;cleanupFailures:readonly string[];qualification:false;fps:'unavailable'}
 function own(value:unknown,key:string):unknown {

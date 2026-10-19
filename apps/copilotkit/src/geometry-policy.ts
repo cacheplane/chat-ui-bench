@@ -145,7 +145,7 @@ function intersect(source: GeometryRect, bound: GeometryRect, clipX = true, clip
   const bottom = clipY ? Math.min(source.y + source.height, bound.y + bound.height) : source.y + source.height;
   return right <= x || bottom <= y ? null : { x, y, width: right - x, height: bottom - y };
 }
-function evaluateRow(row: GeometryObservation, frame: MountedGeometryInput, known: ExpectedGeometryMessage): EvaluatedGeometryRow {
+function evaluateRow(row: GeometryObservation, frame: Pick<MountedGeometryInput,'viewport'|'nativeViewport'>, known: ExpectedGeometryMessage,streamingResponse=false): EvaluatedGeometryRow {
   const base = { id: row.id, role: row.role, presence: row.presence, ownerToken: row.ownerToken };
   if (row.presence !== 'mounted') return { ...base, textRelation: 'not-evaluated', geometryEligibility: 'unavailable', reason: row.presence === 'unmounted' ? 'unmounted' : 'unavailable-observation', clippedTextRects: [], contentTopCssPx: null, relativeTopCssPx: null };
   const originals = row.textRects.filter(positive); let contentTopCssPx: number | null = null;
@@ -156,11 +156,23 @@ function evaluateRow(row: GeometryObservation, frame: MountedGeometryInput, know
     for (const ancestor of row.ancestorClips) { if (!clipped) break; clipped = intersect(clipped, ancestor.rect, ancestor.clipX, ancestor.clipY); }
     if (clipped) clippedTextRects.push(clipped);
   }
-  const observed = projectGeometryText(row.observedText), canonical = projectGeometryText(known.text), streamingResponse = row.id === frame.expectedResponse.id && frame.phase === 'streaming';
+  const observed = projectGeometryText(row.observedText), canonical = projectGeometryText(known.text);
   const conforms = streamingResponse ? canonical.startsWith(observed) : canonical === observed;
   const reason: RowReason | null = !observed ? 'empty-text' : !conforms ? 'text-mismatch' : !originals.length ? 'no-positive-text-rects' : !clippedTextRects.length ? 'fully-clipped' : null;
   return { ...base, textRelation: !observed ? 'not-evaluated' : !conforms ? 'mismatch' : streamingResponse ? 'canonical-prefix' : 'exact', geometryEligibility: reason === null ? 'eligible' : 'ineligible', reason,
     clippedTextRects, contentTopCssPx, relativeTopCssPx: contentTopCssPx === null ? null : contentTopCssPx - frame.nativeViewport.y };
+}
+/** One bounded historical row, with the exact full-frame text/clip metric. */
+export function evaluateSelectedGeometryRow(input:unknown,expected:unknown,viewport:unknown,nativeViewport:unknown):EvaluatedGeometryRow {
+ const r=record(input,['id','role','presence','ownerToken','observedText','textRects','ancestorClips']);
+ if(typeof r.observedText!=='string'||r.observedText.length>GEOMETRY_LIMITS.observedTextPerRow)return fail('cardinality-cap');
+ const k=record(expected,['id','role','text']),known=message(k,GEOMETRY_LIMITS.historyText);
+ const rects=array(r.textRects,GEOMETRY_LIMITS.textRectsPerRow).map(rectangle);
+ const clips=array(r.ancestorClips,GEOMETRY_LIMITS.ancestorClipsPerRow).map(value=>{const c=record(value,['rect','clipX','clipY']);if(typeof c.clipX!=='boolean'||typeof c.clipY!=='boolean')return fail('invalid-scalar');return {rect:rectangle(c.rect),clipX:c.clipX,clipY:c.clipY};});
+ if(r.id!==known.id||r.role!==known.role||r.presence!=='mounted'||typeof r.ownerToken!=='number'||!Number.isInteger(r.ownerToken)||r.ownerToken<1||r.ownerToken>GEOMETRY_LIMITS.ownerToken)return fail('invalid-scalar');
+ const text=ascii(r.observedText,undefined,true);
+ const v=rectangle(viewport),n=rectangle(nativeViewport);if(!positive(v)||!positive(n))return fail('invalid-rect');
+ return freeze(evaluateRow({id:known.id,role:known.role,presence:'mounted',ownerToken:r.ownerToken,observedText:text,textRects:rects,ancestorClips:clips},{viewport:v,nativeViewport:n},known));
 }
 function invalidGeometry(code: GlobalGeometryReason): GeometryEvaluation {
   return freeze({ schemaVersion: 1, status: 'invalid', scopeId: null, phase: null, observedAtPageMs: null, rows: [], diagnostics: [{ code, rowIndex: null }], omittedDiagnostics: 0, authority: authority() });
@@ -170,7 +182,7 @@ function evaluateParsed(frame: MountedGeometryInput): GeometryEvaluation {
   if (!positive(frame.viewport) || !positive(frame.nativeViewport)) return freeze({ ...scoped, status: 'unavailable', rows: [], diagnostics: [{ code: 'unavailable-viewport', rowIndex: null }], omittedDiagnostics: 0 });
   const known = new Map([...frame.expectedHistory, frame.expectedResponse].map(m => [m.id, m]));
   const diagnostics: GeometryDiagnostic[] = []; let omittedDiagnostics = 0;
-  const rows = frame.rows.map((row, rowIndex) => { const evaluated = evaluateRow(row, frame, known.get(row.id)!);
+  const rows = frame.rows.map((row, rowIndex) => { const evaluated = evaluateRow(row, frame, known.get(row.id)!,row.id===frame.expectedResponse.id&&frame.phase==='streaming');
     if (evaluated.reason !== null) { if (diagnostics.length < GEOMETRY_LIMITS.diagnostics) diagnostics.push({ code: evaluated.reason, rowIndex }); else omittedDiagnostics++; }
     return evaluated; });
   return freeze({ ...scoped, status: 'evaluated', rows, diagnostics, omittedDiagnostics });

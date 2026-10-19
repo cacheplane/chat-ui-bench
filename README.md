@@ -178,7 +178,7 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v54`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v55`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
@@ -213,7 +213,7 @@ bare-root importer to selected SOURCE hashes and actual static resolved edges,
 with at least one such importer present. Resolved edges and authenticated source
 intent are separate facts; the profile does not claim an observed raw resolver
 request or query/fragment exclusion. The unchanged nine-origin Zod gate covers
-all original rows, including unrendered modules. V54 requires fresh full frontend
+all original rows, including unrendered modules. V55 requires fresh full frontend
 and worker inspection under this profile.
 Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
@@ -254,12 +254,12 @@ stdout, each including LF≤4096 bytes. Awaited child write callbacks do not pro
 parent retention or stream closure. These diagnostics share the existing stdout and
 archive caps, and cannot promote geometry or lifecycle success. Default Chat,
 canonical workload, strict geometry and its4/5 read budgets remain unchanged.
-Fresh native preparation uses `hosted-copilot-react-h100-r6400-v15` only after
-independent qualification of same-source full STATIC V54. Neither pure checks nor
+Fresh native preparation uses `hosted-copilot-react-h100-r6400-v16` only after
+independent qualification of same-source full STATIC V55. Neither pure checks nor
 content readiness establish recovery, native conformance, FPS or ranking.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v8` workflow requires
-independently qualified same-source STATIC V54 and successful ordinary-native V15
+The separate experimental `hosted-copilot-react-tracker-json-a-v9` workflow requires
+independently qualified same-source STATIC V55 and successful ordinary-native V16
 original artifacts. Pilot startup uses the shared capture helper; serialized
 `capture` stage keys remain unchanged. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
@@ -297,6 +297,21 @@ Incomplete diagnostics may also show selected observed scalar/timing relations,
 last-read EOF and byte facts, and original session-close ordering. These facts
 do not establish the first functional cause, complete trace, clock or presentation
 qualification, or performance.
+
+The V9 diagnostic profile uses schema 2 and mode
+`tracker-a-anchor-scalars-v1`, with the unchanged strict mode recorded separately.
+One child-owned `tracker-a-anchor-scalars-v1.json` file is bounded to 64 KiB
+inside the existing 128 MiB/128-file union. It joins each attempted scalar to
+the original G1-selected text owner and records the minimum viewport Y of
+positive-area text rectangles, page-clock probe bounds and whether the original
+raw offset equals the post-probe offset. Raw scalar retention and the original
+strict guard run before diagnostic validation. Identity changes release the
+original lease; unavailable samples and malformed diagnostic contracts remain
+distinct. Original case, input, transport, child and first-failure publications
+close before the diagnostic copier runs. Both inventory paths authenticate the
+new role; missing or malformed claimed evidence still refuses an artifact.
+These additional DOM reads have observer cost. Samples do not establish
+compensation causality, continuous visual stability, presentation timing or FPS.
 
 Pilot mode `tracker-json-a-pilot-v2` explicitly enters history reading with one
 trusted −600 wheel before the forty measured −12 wheels. It retains entry samples

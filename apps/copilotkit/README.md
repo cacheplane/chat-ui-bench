@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V54
+`runNativeMountedConformance` worker export now prepare a fresh V55
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v15`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v16`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -660,12 +660,12 @@ validated scalars and actual attempted count, without text or arbitrary error
 details. An awaited write callback is separate from parent retained bytes and
 original EOF/writer-close; partial/missing diagnostics or publication failure do
 not supply successful case closure. All existing stdout/archive caps apply.
-Fresh native V15 must independently complete both original serial cases after
-qualification of same-source full STATIC V54. Content readiness and pure tests
+Fresh native V16 must independently complete both original serial cases after
+qualification of same-source full STATIC V55. Content readiness and pure tests
 establish no geometry, runtime conformance, FPS or ranking result.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v8` workflow requires
-independently qualified same-source STATIC V54 and successful ordinary-native V15
+The separate experimental `hosted-copilot-react-tracker-json-a-v9` workflow requires
+independently qualified same-source STATIC V55 and successful ordinary-native V16
 original artifacts. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
 `tracker-a-case-2-input.json`, `tracker-a-case-2-trace.json`,
@@ -692,6 +692,21 @@ Incomplete diagnostics may also show selected observed scalar/timing relations,
 last-read EOF and byte facts, and original session-close ordering. These facts
 do not establish the first functional cause, complete trace, clock or presentation
 qualification, or performance.
+
+The V9 diagnostic profile uses schema 2 and mode
+`tracker-a-anchor-scalars-v1`, with the unchanged strict mode recorded separately.
+One child-owned `tracker-a-anchor-scalars-v1.json` file is bounded to 64 KiB
+inside the existing 128 MiB/128-file union. It joins each attempted scalar to
+the original G1-selected text owner and records the minimum viewport Y of
+positive-area text rectangles, page-clock probe bounds and whether the original
+raw offset equals the post-probe offset. Raw scalar retention and the original
+strict guard run before diagnostic validation. Identity changes release the
+original lease; unavailable samples and malformed diagnostic contracts remain
+distinct. Original case, input, transport, child and first-failure publications
+close before the diagnostic copier runs. Both inventory paths authenticate the
+new role; missing or malformed claimed evidence still refuses an artifact.
+These additional DOM reads have observer cost. Samples do not establish
+compensation causality, continuous visual stability, presentation timing or FPS.
 
 Pilot mode `tracker-json-a-pilot-v2` records one trusted −600 history-entry wheel
 and three entry samples separately from the eighty-two measured scalars. The
