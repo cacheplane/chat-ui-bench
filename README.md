@@ -178,7 +178,7 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v56`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v57`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
@@ -213,7 +213,7 @@ bare-root importer to selected SOURCE hashes and actual static resolved edges,
 with at least one such importer present. Resolved edges and authenticated source
 intent are separate facts; the profile does not claim an observed raw resolver
 request or query/fragment exclusion. The unchanged nine-origin Zod gate covers
-all original rows, including unrendered modules. V56 requires fresh full frontend
+all original rows, including unrendered modules. V57 requires fresh full frontend
 and worker inspection under this profile.
 Existing loader denials and resource bounds remain in force. These STATIC
 checks grant no native execution or FPS eligibility by themselves.
@@ -254,12 +254,12 @@ stdout, each including LF≤4096 bytes. Awaited child write callbacks do not pro
 parent retention or stream closure. These diagnostics share the existing stdout and
 archive caps, and cannot promote geometry or lifecycle success. Default Chat,
 canonical workload, strict geometry and its4/5 read budgets remain unchanged.
-Fresh native preparation uses `hosted-copilot-react-h100-r6400-v17` only after
-independent qualification of same-source full STATIC V56. Neither pure checks nor
+Fresh native preparation uses `hosted-copilot-react-h100-r6400-v18` only after
+independent qualification of same-source full STATIC V57. Neither pure checks nor
 content readiness establish recovery, native conformance, FPS or ranking.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v10` workflow requires
-independently qualified same-source STATIC V56 and successful ordinary-native V17
+The separate experimental `hosted-copilot-react-tracker-json-a-v11` workflow requires
+independently qualified same-source STATIC V57 and successful ordinary-native V18
 original artifacts. Pilot startup uses the shared capture helper; serialized
 `capture` stage keys remain unchanged. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
@@ -279,6 +279,22 @@ identities. Missing claimed originals, unknown paths, open writers or absent
 authenticated child closure refuse diagnostic retention. Explicitly uncreated
 input/transport/raw roles may remain absent. Both paths retain the same per-role
 caps and 128 MiB/128-file union, with exclusive creation and no retries.
+
+After runtime failure, independent command-forensic admission can retain the eight
+`parent` and `application` started/result JSON and stdout/stderr files, even when
+child publication is absent. It authenticates direct command closure, exact argv,
+exit facts, stream byte counts and whole-file hashes, then copies only those files
+into a fresh sibling `copilot-tracker-a-forensic-<run>-<attempt>` artifact. Its
+`tracker-a-command-forensics.json` manifest is published last. Each command JSON
+file and the manifest have a 16 KiB cap; parent streams have a 4 MiB cap each and
+application streams a 256 KiB cap each. Admission conservatively reserves the
+maximum 8,978,432 copied bytes plus 16 KiB for the manifest, alongside the entire
+original namespace, within the existing 128 MiB/128-file union. Changed files,
+links, open writers and interrupted staging refuse upload. The original job stays
+failed; cases, descendants and trace remain unknown, and all qualification and
+performance authority stays false. This cannot recover artifacts lost in earlier
+runs.
+
 After required outer reports are published, an incomplete run emits one diagnostic
 line of at most 16 KiB with finite stages, original-command facts and receipt
 statuses. It excludes message content, URLs, arbitrary errors and raw trace data.

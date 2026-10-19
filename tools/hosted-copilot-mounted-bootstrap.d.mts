@@ -127,7 +127,7 @@ export function invokeTrackerAWorker(value:unknown,ports:{importWorker():Promise
 export function constructTrackerAParentPartial(value:unknown):unknown;
 export function constructTrackerANativeResult(value:unknown):unknown;
 export function closeTrackerAPilotFile<T>(raw:Uint8Array,writer:{write(raw:Uint8Array):Promise<void>;fsync():Promise<void>;close():Promise<void>},authenticate:()=>Promise<T>):Promise<T>;
-export function runTrackerAPilotAction(action:'prepare'|'install'|'provision'|'inventory'|'failure-inventory'|'child'|'parent'|'run',perform:()=>Promise<unknown>,setExit:(code:number)=>void):Promise<void>;
+export function runTrackerAPilotAction(action:'prepare'|'install'|'provision'|'inventory'|'failure-inventory'|'forensic-inventory'|'child'|'parent'|'run',perform:()=>Promise<unknown>,setExit:(code:number)=>void):Promise<void>;
 export function handleMountedBootstrapFailure(error:unknown,setExit:(code:number)=>void,report:(error:unknown)=>Promise<void>):Promise<void>;
 export function publishTrackerAInternalReport(action:'child'|'parent',value:unknown,publish:(value:unknown)=>Promise<unknown>):Promise<'complete'|'incomplete'>;
 export function authenticateTrackerAReport(command:unknown,action:'child',profileRef:unknown,ports:TrackerAReportReadPorts):Promise<TrackerAAuthenticatedReport<TrackerAChildPublicReport>>;
@@ -138,6 +138,13 @@ export function publishTrackerAOuterResult(value:unknown,ports:TrackerAOuterPubl
 export function writeTrackerAExceptionDiagnostic(write:TrackerADiagnosticWrite):Promise<void>;
 export function assertTrackerARuntimeAbsent(directory:string,known:unknown):Promise<void>;
 export function admitTrackerAInventory(profileRef:unknown,ports:{names():Promise<string[]>;read(name:string,cap:number):Promise<{raw:Uint8Array;bytes:number;sha256:string}>}):Promise<void>;
+export type TrackerAForensicIdentity=Readonly<{path:string;bytes:number;dev:number;ino:number;mode:number;mtimeMs:number;ctimeMs:number;nlink:number;regular:boolean;contained:boolean;symlink:boolean}>;
+/** Conservative reservation: eight fixed role caps plus the full finite manifest cap. */
+export function planTrackerACommandEvidenceBudget(originalBytes:number,originalFiles:number):Readonly<{bytes:number;files:number;visitedEntries:number}>;
+export type TrackerACommandEvidenceAdmission=Readonly<{kind:'admitted-tracker-a-command-evidence'}>;
+/** Unqualified direct-command evidence only; the stage validates its private, once-use admission. */
+export function admitTrackerACommandEvidence(context:unknown,supplied:unknown,ports:TrackerAReportReadPorts&{census():Promise<readonly TrackerAForensicIdentity[]>}):Promise<TrackerACommandEvidenceAdmission>;
+export function stageTrackerACommandEvidence(admitted:TrackerACommandEvidenceAdmission,ports:{directory:string;stageDirectory:string}):Promise<{stageDirectory:string;manifest:Record<string,unknown>}>;
 import type {TrackerAFirstFailure} from '../apps/copilotkit/runtime/mounted-tracker-a.ts';
 export type TrackerAFirstFailureCapsule=Readonly<{schemaVersion:1;kind:'tracker-a-first-failure';profileRef:Ref<'tracker-a-profile.json'>;childResultRef:Ref<'native-child-result.json'>;firstFailure:TrackerAFirstFailure;qualification:false;nativeGO:false;performance:false}>;
 export function copyTrackerAFirstFailureCapsule(value:unknown):TrackerAFirstFailureCapsule;

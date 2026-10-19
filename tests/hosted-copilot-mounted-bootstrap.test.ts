@@ -3,7 +3,7 @@ import * as tool from '../tools/hosted-copilot-mounted-bootstrap.mjs';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {mkdtemp as temporaryDirectory,realpath,rm,lstat,symlink,writeFile,readFile,mkdir,open,rename} from 'node:fs/promises';
+import {mkdtemp as temporaryDirectory,realpath,rm,lstat,symlink,writeFile,readFile,mkdir,open,rename,readdir,link} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {evaluateMountedGeometry} from '../apps/copilotkit/src/geometry-policy.ts';
@@ -15,6 +15,189 @@ import type {GeometrySnapshot} from '../apps/copilotkit/src/geometry.ts';
 const bootstrapPath=fileURLToPath(new URL('../tools/hosted-copilot-mounted-bootstrap.mjs',import.meta.url));
 const mkdtemp=async(prefix:string)=>realpath(await temporaryDirectory(prefix));
 const sha='a'.repeat(40),digest='b'.repeat(64);
+test('forensic command retention preserves closed failed sentinel bytes without child publication',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'tracker-a-command-forensics-'));
+ const directory=join(root,'copilot-tracker-a-123-1'),stageDirectory=join(root,'copilot-tracker-a-forensic-123-1');
+ try{
+  await mkdir(directory);
+  const originals=new Map<string,Buffer>(),bundle=bootstrapBundle(),reads:string[]=[];
+  const put=async(name:string,value:unknown,raw=false)=>{
+   const bytes=raw?Buffer.from(value as Uint8Array):Buffer.from(JSON.stringify(value)+'\n');
+   originals.set(name,bytes);await writeFile(join(directory,name),bytes,{flag:'wx'});
+   return {path:name,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
+  };
+  const intentRef=await put('native-intent.json',bundle.intent);
+  const profile=tool.constructTrackerAProfile(bundle.intent,bundle.nativePrerequisite,intentRef),actualProfileRef=await put('tracker-a-profile.json',profile);
+  const roles=['parent-started.json','parent-result.json','parent.stdout','parent.stderr','application-started.json','application-result.json','application.stdout','application.stderr'];
+  for(const [owner,action,exitCode] of [['parent','parent',2],['application','child',1]] as const){
+   const stdout=Buffer.from([0,255,13,10,...Buffer.from(owner+' stdout sentinel\n')]);
+   const stderr=Buffer.from('warning: '+owner+' original failure sentinel\r\n\u0000');
+   const capture=completedCommand(action);capture.original.exitCode=exitCode;capture.exit!.exitCode=exitCode;
+   Object.assign(capture.original,{stdoutBytes:stdout.length,stderrBytes:stderr.length,stdoutRetainedBytes:stdout.length,stderrRetainedBytes:stderr.length});
+   Object.assign(capture.streamFacts.stdout,{seen:stdout.length,retained:stdout.length});
+   Object.assign(capture.streamFacts.stderr,{seen:stderr.length,retained:stderr.length});
+   await put(owner+'-started.json',{argv:capture.argv,qualification:false,originalClosed:false,startedUtc:'2026-10-19T00:00:00.000Z'});
+   await put(owner+'-result.json',capture);await put(owner+'.stdout',stdout,true);await put(owner+'.stderr',stderr,true);
+  }
+  // A physical unqualified trace exists, but its payload is never forensic input.
+  await put('tracker-a-case-2-trace.json',Buffer.from('not JSON; unqualified trace sentinel\u0000'),true);
+  const read=async(name:string,cap:number)=>{
+   if(/(?:native-child|native-parent|tracker-a-case|native-case)/.test(name))throw Error('Poisoned semantic/trace payload reader: '+name);
+   reads.push(name);const raw=await readFile(join(directory,name));expect(raw.length).toBeLessThanOrEqual(cap);
+   return {raw,bytes:raw.length,sha256:createHash('sha256').update(raw).digest('hex')};
+  };
+  const names=()=>readdir(directory);
+  await expect(tool.admitTrackerAInventory(actualProfileRef,{names,read})).rejects.toThrow();
+  await expect(tool.admitTrackerAFailureInventory(actualProfileRef,{names,read})).rejects.toThrow();
+  const census=async()=>Promise.all((await names()).map(async path=>{
+   const stat=await lstat(join(directory,path));return {path,bytes:stat.size,dev:stat.dev,ino:stat.ino,mode:stat.mode,mtimeMs:stat.mtimeMs,ctimeMs:stat.ctimeMs,nlink:stat.nlink,regular:stat.isFile(),contained:true,symlink:stat.isSymbolicLink()};
+  }));
+  // Local structural typing permits a meaningful missing-export RED without editing production declarations.
+  const forensic=tool as unknown as {
+   admitTrackerACommandEvidence:(context:unknown,supplied:unknown,ports:{read:typeof read;census:typeof census})=>Promise<unknown>;
+   stageTrackerACommandEvidence:(admitted:unknown,ports:{directory:string;stageDirectory:string})=>Promise<{stageDirectory:string;manifest:Record<string,unknown>}>;
+  };
+  expect(forensic.admitTrackerACommandEvidence,'separate command forensic admission export').toBeTypeOf('function');
+  expect(forensic.stageTrackerACommandEvidence,'separate physical forensic stage export').toBeTypeOf('function');
+  const admitted=await forensic.admitTrackerACommandEvidence(modeContext(),{intent:bundle.intent,intentRef,profile,profileRef:actualProfileRef,runId:'123',attempt:1,parentArgv:[process.execPath,'--experimental-import-meta-resolve',bootstrapPath,'parent'],applicationArgv:[process.execPath,'--experimental-import-meta-resolve',bootstrapPath,'child']},{read,census});
+  const staged=await forensic.stageTrackerACommandEvidence(admitted,{directory,stageDirectory});
+  expect(staged.stageDirectory).toBe(stageDirectory);
+  expect((await readdir(stageDirectory)).sort()).toEqual([...roles,'tracker-a-command-forensics.json'].sort());
+  for(const name of roles){expect(await readFile(join(stageDirectory,name))).toEqual(originals.get(name));expect(await readFile(join(directory,name))).toEqual(originals.get(name));}
+  const manifest=JSON.parse(await readFile(join(stageDirectory,'tracker-a-command-forensics.json'),'utf8'));
+  expect(manifest).toEqual(staged.manifest);
+  expect(manifest).toMatchObject({schemaVersion:1,kind:'tracker-a-command-forensics',status:'unqualified-command-forensics',sourceSha:sha,runId:'123',attempt:1,qualification:false,nativeGO:false,performance:false,fps:'unavailable',descendantClosure:'unqualified'});
+  expect(manifest.files).toEqual(roles.map(path=>({path,bytes:originals.get(path)!.length,sha256:createHash('sha256').update(originals.get(path)!).digest('hex')})));
+  expect(JSON.parse(await readFile(join(stageDirectory,'parent-result.json'),'utf8')).original.exitCode).toBe(2);
+  expect(JSON.parse(await readFile(join(stageDirectory,'application-result.json'),'utf8')).original.exitCode).toBe(1);
+  expect(reads.every(name=>roles.includes(name)||name==='native-intent.json'||name==='tracker-a-profile.json')).toBe(true);
+  expect((await readdir(directory)).sort()).toEqual([...originals.keys()].sort());
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+async function forensicFixture(){
+ const root=await mkdtemp(join(tmpdir(),'tracker-a-command-matrix-')),directory=join(root,'copilot-tracker-a-123-1'),stageDirectory=join(root,'copilot-tracker-a-forensic-123-1');await mkdir(directory);
+ const originals=new Map<string,Buffer>();
+ const put=async(path:string,value:unknown,raw=false)=>{const bytes=raw?Buffer.from(value as Uint8Array):Buffer.from(JSON.stringify(value)+'\n');originals.set(path,bytes);await writeFile(join(directory,path),bytes);return {path,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};};
+ const b=bootstrapBundle(),intentRef=await put('native-intent.json',b.intent),profile=tool.constructTrackerAProfile(b.intent,b.nativePrerequisite,intentRef),ref=await put('tracker-a-profile.json',profile);
+ for(const [owner,action,exit] of [['parent','parent',2],['application','child',1]] as const){const c=completedCommand(action);c.original.exitCode=exit;c.exit!.exitCode=exit;await put(owner+'-started.json',{argv:c.argv,qualification:false,originalClosed:false,startedUtc:'2026-10-19T00:00:00.000Z'});await put(owner+'-result.json',c);await put(owner+'.stdout',new Uint8Array(),true);await put(owner+'.stderr',new Uint8Array(),true);}
+ const supplied={intent:b.intent,intentRef,profile,profileRef:ref,runId:'123',attempt:1,parentArgv:[process.execPath,'--experimental-import-meta-resolve',bootstrapPath,'parent'],applicationArgv:[process.execPath,'--experimental-import-meta-resolve',bootstrapPath,'child']};
+ const read=async(name:string,_cap:number)=>{if(!originals.has(name)||/native-child|native-parent|tracker-a-case|native-case/.test(name))throw Error('Forbidden payload '+name);const raw=await readFile(join(directory,name));return {raw,bytes:raw.length,sha256:createHash('sha256').update(raw).digest('hex')};};
+ const census=async()=>Promise.all((await readdir(directory)).map(async path=>{const s=await lstat(join(directory,path));return {path,bytes:s.size,dev:s.dev,ino:s.ino,mode:s.mode,mtimeMs:s.mtimeMs,ctimeMs:s.ctimeMs,nlink:s.nlink,regular:s.isFile(),contained:true,symlink:s.isSymbolicLink()};}));
+ const admit=()=>tool.admitTrackerACommandEvidence(modeContext(),supplied,{read,census});
+ const stage=(admitted:tool.TrackerACommandEvidenceAdmission)=>tool.stageTrackerACommandEvidence(admitted,{directory,stageDirectory});
+ const json=(name:string)=>JSON.parse(originals.get(name)!.toString());
+ return {root,directory,stageDirectory,originals,put,supplied,read,census,admit,stage,json,close:()=>rm(root,{recursive:true,force:true})};
+}
+test.each(['owner','started-argv','result-argv','started-closed','exit-code','exit-signal','no-exit','no-close','original-open','streams-incomplete','spawn-error','not-spawned','timeout','termination','EOF','finish','writer-close','writer-error','overflow','unknown-retained','seen','retained','original-seen','original-retained','physical-bytes'] as const)('forensic refuses %s before a sibling stage exists',async kind=>{
+ const f=await forensicFixture();try{
+  const c=f.json('application-result.json'),started=f.json('application-started.json');
+  if(kind==='owner')f.supplied.applicationArgv[3]='parent';if(kind==='started-argv')started.argv[3]='parent';if(kind==='result-argv')c.argv[3]='parent';if(kind==='started-closed')started.originalClosed=true;
+  if(kind==='exit-code')c.original.exitCode=2;if(kind==='exit-signal')c.original.signal='SIGTERM';if(kind==='no-exit')c.exitObserved=false;if(kind==='no-close')c.closeObserved=false;if(kind==='original-open')c.original.closed=false;if(kind==='streams-incomplete')c.original.streamsComplete=false;
+  if(kind==='spawn-error')c.spawnError='original spawn failed';if(kind==='not-spawned')c.spawned=false;if(kind==='timeout')c.timedOut=true;if(kind==='termination')c.terminationRequested=true;
+  if(kind==='EOF')c.streamFacts.stderr.readableEOF=false;if(kind==='finish')c.streamFacts.stderr.writerFinish=false;if(kind==='writer-close')c.streamFacts.stderr.writerClose=false;if(kind==='writer-error')c.streamFacts.stderr.writerError=true;if(kind==='overflow')c.streamFacts.stderr.overflow=true;if(kind==='unknown-retained')c.streamFacts.stderr.retainedBytesKnown=false;
+  if(kind==='seen')c.streamFacts.stderr.seen=1;if(kind==='retained')c.streamFacts.stderr.retained=1;if(kind==='original-seen')c.original.stderrBytes=1;if(kind==='original-retained')c.original.stderrRetainedBytes=1;if(kind==='physical-bytes')await f.put('application.stderr',Buffer.from('unjoined'),true);
+  await f.put('application-started.json',started);await f.put('application-result.json',c);
+  await expect(f.admit()).rejects.toThrow();await expect(lstat(f.stageDirectory)).rejects.toMatchObject({code:'ENOENT'});
+ }finally{await f.close();}
+});
+test.each(['hardlink','symlink','directory','missing','unknown-role'] as const)('forensic refuses real %s source namespace',async kind=>{
+ const f=await forensicFixture();try{const path=join(f.directory,'application.stderr');
+  if(kind==='hardlink'){await link(path,join(f.root,'outside-hardlink'));}
+  if(['symlink','directory','missing'].includes(kind))await rm(path);
+  if(kind==='symlink')await symlink(join(f.directory,'application.stdout'),path);if(kind==='directory')await mkdir(path);if(kind==='unknown-role')await writeFile(join(f.directory,'unowned.log'),'forbidden');
+  await expect(f.admit()).rejects.toThrow();await expect(lstat(f.stageDirectory)).rejects.toMatchObject({code:'ENOENT'});
+ }finally{await f.close();}
+});
+test.each(['source-bytes','source-replace','source-add','hardlink-after-admission','preexisting-stage','forged-token','duplicate-stage'] as const)('forensic stage refuses %s without a published manifest',async kind=>{
+ const f=await forensicFixture();try{const admitted=await f.admit(),path=join(f.directory,'application.stderr');
+  if(kind==='source-bytes')await writeFile(path,'changed');if(kind==='source-replace'){await rename(path,join(f.root,'old'));await writeFile(path,'');}if(kind==='source-add')await writeFile(join(f.directory,'phase-failure-run.json'),'{}');if(kind==='hardlink-after-admission')await link(path,join(f.root,'alias'));if(kind==='preexisting-stage')await mkdir(f.stageDirectory);
+  if(kind==='duplicate-stage'){await f.stage(admitted);await expect(f.stage(admitted)).rejects.toThrow('already consumed');return;}
+  await expect(f.stage(kind==='forged-token'?{kind:'admitted-tracker-a-command-evidence'}:admitted)).rejects.toThrow();await expect(lstat(join(f.stageDirectory,'tracker-a-command-forensics.json'))).rejects.toMatchObject({code:'ENOENT'});
+ }finally{await f.close();}
+});
+test.each(['metadata','parent-stream','application-stream'] as const)('forensic %s exact role cap passes and cap plus one refuses',async kind=>{
+ for(const extra of [0,1]){const f=await forensicFixture();try{
+  const name=kind==='metadata'?'application-result.json':kind==='parent-stream'?'parent.stderr':'application.stderr',cap=kind==='metadata'?16384:kind==='parent-stream'?4194304:262144;
+  if(kind==='metadata'){const raw=f.originals.get(name)!;await f.put(name,Buffer.concat([raw,Buffer.alloc(cap-raw.length+extra,32)]),true);}
+  else{const owner=kind==='parent-stream'?'parent':'application',c=f.json(owner+'-result.json');Object.assign(c.original,{stderrBytes:cap+extra,stderrRetainedBytes:cap+extra});Object.assign(c.streamFacts.stderr,{seen:cap+extra,retained:cap+extra});await f.put(owner+'-result.json',c);await f.put(name,Buffer.alloc(cap+extra,255),true);}
+  if(extra)await expect(f.admit()).rejects.toThrow();else{const result=await f.stage(await f.admit());expect((await readFile(join(result.stageDirectory,name))).length).toBe(cap);}
+ }finally{await f.close();}}
+});
+test('forensic workflow retains only the admitted sibling after failed diagnostic admission and preserves job failure',async()=>{
+ const workflow=await readFile(new URL('../.github/workflows/hosted-copilot-tracker-a.yml',import.meta.url),'utf8');
+ const run=async(runtime:'success'|'failure',forensic:'success'|'failure')=>{
+  const outcomes:Record<string,string>={runtime},actions:string[]=[],uploads:{name:string;path:string}[]=[];
+  for(const block of workflow.split('\n      - name: ').slice(1)){
+   const condition=/\n        if: always\(\) && steps\.(\w+)\.outcome == '(success|failure)'/.exec(block);if(!condition||outcomes[condition[1]!]!==condition[2])continue;
+   const action=/bootstrap\.mjs ([a-z-]+)(?:\n|$)/.exec(block)?.[1],id=/\n        id: (\w+)/.exec(block)?.[1];
+   if(action){actions.push(action);const result=action==='failure-inventory'?'failure':action==='forensic-inventory'?forensic:'success';if(id)outcomes[id]=result;}
+   else if(block.includes('actions/upload-artifact@'))uploads.push({name:/\n          name: (.+)/.exec(block)![1]!,path:/\n          path: (.+)/.exec(block)![1]!});
+  }
+  return {actions,uploads,failed:Object.values(outcomes).includes('failure')};
+ };
+ const retained=await run('failure','success');expect(retained.actions).toEqual(['failure-inventory','forensic-inventory']);expect(retained.failed).toBe(true);
+ expect(retained.uploads).toEqual([{name:'copilot-tracker-a-forensic-${{ github.run_id }}-${{ github.run_attempt }}',path:'${{ runner.temp }}/copilot-tracker-a-forensic-${{ github.run_id }}-${{ github.run_attempt }}/'}]);
+ expect((await run('failure','failure')).uploads).toEqual([]);expect((await run('failure','failure')).failed).toBe(true);
+ const success=await run('success','failure');expect(success.actions).toEqual(['inventory']);expect(success.failed).toBe(false);expect(success.uploads).toEqual([{name:'copilot-tracker-a-${{ github.run_id }}-${{ github.run_attempt }}',path:'${{ runner.temp }}/copilot-tracker-a-${{ github.run_id }}-${{ github.run_attempt }}/'}]);
+});
+test('forensic conservative reservation includes eight copies and manifest at exact byte and file unions',()=>{
+ const plan=(tool as unknown as {planTrackerACommandEvidenceBudget?:(bytes:number,files:number)=>{bytes:number;files:number;visitedEntries:number}}).planTrackerACommandEvidenceBudget;
+ expect(plan,'finite forensic copy and manifest reservation export').toBeTypeOf('function');
+ const copies=8978432,manifest=16384,remaining=134217728-copies-manifest;
+ expect(plan!(remaining,119)).toEqual({bytes:134217728,files:128,visitedEntries:130});
+ expect(()=>plan!(remaining+1,119)).toThrow();expect(()=>plan!(remaining,120)).toThrow();
+ expect(()=>plan!(-1,0)).toThrow();expect(()=>plan!(0,NaN)).toThrow();
+});
+test('forensic childless parent remains authenticated while existing inventories specifically refuse unestablished descendants',async()=>{
+ const f=await forensicFixture();try{
+  const original=await parentEnvelope(),partial={...original,status:'incomplete',applicationCommand:f.json('application-result.json'),tracker:{childResultRef:null,semantic:{status:'incomplete',reason:'missing-child'},capture:{status:'incomplete',reason:'missing-child'},cleanup:{status:'incomplete',reason:'missing-child'}}};partial.originals.find(row=>row.label==='workerImport')!.status='pending';
+  const ref=await f.put('native-parent-partial.json',partial),read=async(name:string,cap:number)=>name===ref.path?{raw:f.originals.get(name)!,bytes:ref.bytes,sha256:ref.sha256}:f.read(name,cap),parent=f.json('parent-result.json');
+  const authenticated=await tool.authenticateTrackerAReport(parent,'parent',f.supplied.profileRef,{read});expect(authenticated.value.status).toBe('incomplete');expect(authenticated.diagnostic).toBeNull();
+  await expect(tool.admitTrackerAInventory(f.supplied.profileRef,{names:()=>readdir(f.directory),read})).rejects.toThrow('Runtime original quiescence unavailable');
+  await expect(tool.admitTrackerAFailureInventory(f.supplied.profileRef,{names:()=>readdir(f.directory),read})).rejects.toThrow('Closed incomplete child publication required');
+  expect((await f.stage(await f.admit())).manifest).toMatchObject({workerImport:'unknown',client:'unknown',cases:'unknown',trace:'unknown'});
+ }finally{await f.close();}
+});
+test.each(['read-replace','read-hardlink','after-copies-source','after-copies-namespace','staged-replace','staged-hardlink','write-failure','fsync-failure','close-failure','source-directory-replace'] as const)('forensic physical lifetime refuses %s and never publishes the manifest',async kind=>{
+ const f=await forensicFixture();let spy:ReturnType<typeof vi.spyOn>|undefined;try{
+  const admitted=await f.admit(),target=join(f.directory,'application.stderr'),sourceStat=await lstat(target),handle=await open(target,'r'),prototype=Object.getPrototypeOf(handle);await handle.close();let injected=false,writes=0;
+  const method=kind.startsWith('read-')?'read':kind==='fsync-failure'||kind==='close-failure'?'sync':'writeFile',original=prototype[method];
+  spy=vi.spyOn(prototype,method).mockImplementation(async function(this:{stat():Promise<{ino:number}>;close():Promise<void>},...args:unknown[]){
+   if(kind.startsWith('read-')){const stat=await this.stat();if(!injected&&stat.ino===sourceStat.ino){injected=true;if(kind==='read-hardlink')await link(target,join(f.root,'race-alias'));else{await rename(target,join(f.root,'old-source'));await writeFile(target,'');}}return Reflect.apply(original,this,args);}
+   if(kind==='close-failure'){const close=this.close;Object.defineProperty(this,'close',{configurable:true,writable:true,value:async()=>{await close.call(this);injected=true;throw Error('original close failure');}});return Reflect.apply(original,this,args);}
+   if(kind==='fsync-failure'&&!injected){injected=true;throw Error('original fsync failure');}
+   if(method==='writeFile'){
+    writes++;if(kind==='write-failure'&&writes===2){injected=true;throw Error('original copy failure');}
+    const result=await Reflect.apply(original,this,args);
+    if(!injected&&writes===(kind==='after-copies-source'||kind==='after-copies-namespace'?8:2)){
+     injected=true;if(kind==='after-copies-source')await writeFile(target,'mutated');if(kind==='after-copies-namespace')await writeFile(join(f.directory,'phase-failure-run.json'),'{}');
+     if(kind==='staged-replace'){await rename(join(f.stageDirectory,'parent-started.json'),join(f.root,'old-stage'));await writeFile(join(f.stageDirectory,'parent-started.json'),f.originals.get('parent-started.json')!);}
+     if(kind==='staged-hardlink')await link(join(f.stageDirectory,'parent-started.json'),join(f.root,'stage-alias'));
+     if(kind==='source-directory-replace'){await rename(f.directory,join(f.root,'old-directory'));await mkdir(f.directory);}
+    }return result;
+   }
+   return Reflect.apply(original,this,args);
+  });
+  await expect(f.stage(admitted)).rejects.toThrow();expect(injected).toBe(true);
+  await expect(lstat(join(f.stageDirectory,'tracker-a-command-forensics.json'))).rejects.toMatchObject({code:'ENOENT'});
+ }finally{spy?.mockRestore();await f.close();}
+});
+test.each(['original','staged-manifest'] as const)('forensic action refuses after-manifest %s mutation despite a physically present manifest',async kind=>{
+ const f=await forensicFixture();let spy:ReturnType<typeof vi.spyOn>|undefined;try{
+  const admitted=await f.admit(),handle=await open(join(f.directory,'application.stderr'),'r'),prototype=Object.getPrototypeOf(handle);await handle.close();
+  const write=prototype.writeFile;let writes=0,injected=false,exit=0,uploadEligible=false;
+  spy=vi.spyOn(prototype,'writeFile').mockImplementation(async function(this:unknown,...args:unknown[]){
+   const result=await Reflect.apply(write,this,args);
+   if(++writes===9){injected=true;await writeFile(kind==='original'?join(f.directory,'application.stderr'):join(f.stageDirectory,'tracker-a-command-forensics.json'),'mutated after manifest write');}
+   return result;
+  });
+  const action=tool.runTrackerAPilotAction('forensic-inventory',()=>f.stage(admitted),code=>{exit=code;});
+  await expect(action).rejects.toThrow();expect(injected).toBe(true);expect(exit).toBe(1);
+  expect((await lstat(join(f.stageDirectory,'tracker-a-command-forensics.json'))).isFile()).toBe(true);
+  // The workflow admits an upload only after this action exits successfully.
+  uploadEligible=exit===0;expect(uploadEligible).toBe(false);
+ }finally{spy?.mockRestore();await f.close();}
+});
 test('child publication retains its unchanged 524288 byte cap inclusively',async()=>{
  const directory=await mkdtemp(join(tmpdir(),'tracker-a-child-cap-'));try{
   await expect(tool.writeTrackerAPilotFile(directory,'native-child-result.json',new Uint8Array(524289))).rejects.toThrow();
@@ -235,7 +418,7 @@ test.each(extractionCases)('embedded extractor: %s',name=>{
  const result=JSON.parse(original.stdout);expect(result.name).toBe(name);expect(result.passed).toBe(true);expect(result.syntheticOnly).toBe(true);
 },20000);
 
-function modeContext(pilot=true){const release=pilot?'hosted-copilot-react-tracker-json-a-v10':'hosted-copilot-react-h100-r6400-v17',ref='refs/tags/'+release;return {candidateSha:sha,checkoutSha:sha,githubSha:sha,workflowSha:sha,tagSha:sha,repository:'cacheplane/chat-ui-bench',releaseId:release,githubRef:ref,workflowRef:'cacheplane/chat-ui-bench/.github/workflows/'+(pilot?'hosted-copilot-tracker-a.yml':'hosted-copilot-mounted.yml')+'@'+ref,eventName:'workflow_dispatch',actions:'true',platform:'linux',runnerOs:'Linux',runnerMarker:pilot?'ubuntu-24.04-hosted-copilot-tracker-a':'ubuntu-24.04-hosted-copilot-mounted',attempt:'1'};}
+function modeContext(pilot=true){const release=pilot?'hosted-copilot-react-tracker-json-a-v11':'hosted-copilot-react-h100-r6400-v18',ref='refs/tags/'+release;return {candidateSha:sha,checkoutSha:sha,githubSha:sha,workflowSha:sha,tagSha:sha,repository:'cacheplane/chat-ui-bench',releaseId:release,githubRef:ref,workflowRef:'cacheplane/chat-ui-bench/.github/workflows/'+(pilot?'hosted-copilot-tracker-a.yml':'hosted-copilot-mounted.yml')+'@'+ref,eventName:'workflow_dispatch',actions:'true',platform:'linux',runnerOs:'Linux',runnerMarker:pilot?'ubuntu-24.04-hosted-copilot-tracker-a':'ubuntu-24.04-hosted-copilot-mounted',attempt:'1'};}
 test.each([true,false])('fixed authenticated bootstrap selector admits profile %s',pilot=>{expect(tool.selectMountedBootstrapMode(modeContext(pilot))).toBe(pilot?'tracker-a':'ordinary');});
 test('new history-entry cohort refuses old V5 and V12 authenticated release tuples',()=>{for(const pilot of [true,false]){const context=modeContext(pilot),releaseId=pilot?'hosted-copilot-react-tracker-json-a-v5':'hosted-copilot-react-h100-r6400-v12',ref='refs/tags/'+releaseId;expect(()=>tool.selectMountedBootstrapMode({...context,releaseId,githubRef:ref,workflowRef:'cacheplane/chat-ui-bench/.github/workflows/'+(pilot?'hosted-copilot-tracker-a.yml':'hosted-copilot-mounted.yml')+'@'+ref})).toThrow();}});
 test.each(['releaseId','githubRef','workflowRef','runnerMarker','candidateSha','checkoutSha','githubSha','workflowSha','tagSha','repository','attempt'])('bootstrap selector refuses changed %s with no ordinary fallback',key=>{expect(()=>tool.selectMountedBootstrapMode({...modeContext(),[key]:'wrong'})).toThrow();});
@@ -256,7 +439,7 @@ test('capacity admits exact bytes/files and rejects +1 without borrowing active 
 test('registry exact closed replacement preserves runtime union charge and never duplicates a slot',()=>{const a=tool.mountedTrackerAReservation('runtime',[],runtimeKnown());const b=tool.mountedTrackerAReservation('runtime-registry-closed',[{path:'browser-registry.json',bytes:1}],runtimeKnown());expect(b.bytes).toBe(a.bytes);expect(b.files).toBe(a.files);expect(b.roles).toHaveLength(29);expect(()=>tool.mountedTrackerAReservation('runtime-registry-closed',[{path:'browser-registry.json',bytes:2}],runtimeKnown())).toThrow();});
 test('all five original startup closures replace only their own fixed reservations monotonically',()=>{const k=runtimeKnown(),closed:{path:string;bytes:number}[]=[{path:'browser-registry.json',bytes:1}],before=tool.mountedTrackerAReservation('runtime-registry-closed',closed,k);let prior=before;for(const [phase,path,bytes,remaining] of [['runtime-parent-started-closed','parent-started.json',2,28],['runtime-process-closed','browser-process.json',5,27],['runtime-options-closed','native-child-options.json',1,26],['trace','application-started.json',3,25]] as const){closed.push({path,bytes});const next=tool.mountedTrackerAReservation(phase,closed,k);expect(next.files).toBe(before.files);expect(next.roles).toHaveLength(remaining);expect(next.bytes).toBeLessThanOrEqual(prior.bytes);prior=next;}});
 
-function nativeProvider(){const source='a'.repeat(40),archive=new Uint8Array([0,255,1]),archiveSha256=createHash('sha256').update(archive).digest('hex');return {archive,expected:{sourceSha:source,originalRunId:'123',artifactId:'456',archiveSha256},run:{name:'hosted-copilot-react-h100-r6400-v17',id:123,run_attempt:1,head_sha:source,event:'workflow_dispatch',workflow_id:386692729,path:'.github/workflows/hosted-copilot-mounted.yml',head_branch:'hosted-copilot-react-h100-r6400-v17',display_title:'hosted-copilot-react-h100-r6400-v17',status:'completed',conclusion:'success',repository:{full_name:'cacheplane/chat-ui-bench'}},artifact:{id:456,name:'copilot-mounted-123-1',expired:false,size_in_bytes:3,digest:'sha256:'+archiveSha256,workflow_run:{id:123,head_sha:source}},receipt:{url:'https://api.github.com/repos/cacheplane/chat-ui-bench/actions/artifacts/456/zip',status:200,bytes:3,observedBytes:3,bodyComplete:true,sha256:archiveSha256,qualification:false}};}
+function nativeProvider(){const source='a'.repeat(40),archive=new Uint8Array([0,255,1]),archiveSha256=createHash('sha256').update(archive).digest('hex');return {archive,expected:{sourceSha:source,originalRunId:'123',artifactId:'456',archiveSha256},run:{name:'hosted-copilot-react-h100-r6400-v18',id:123,run_attempt:1,head_sha:source,event:'workflow_dispatch',workflow_id:386692729,path:'.github/workflows/hosted-copilot-mounted.yml',head_branch:'hosted-copilot-react-h100-r6400-v18',display_title:'hosted-copilot-react-h100-r6400-v18',status:'completed',conclusion:'success',repository:{full_name:'cacheplane/chat-ui-bench'}},artifact:{id:456,name:'copilot-mounted-123-1',expired:false,size_in_bytes:3,digest:'sha256:'+archiveSha256,workflow_run:{id:123,head_sha:source}},receipt:{url:'https://api.github.com/repos/cacheplane/chat-ui-bench/actions/artifacts/456/zip',status:200,bytes:3,observedBytes:3,bodyComplete:true,sha256:archiveSha256,qualification:false}};}
 test('native prerequisite binds arbitrary opaque bytes using original native provider success and EOF only',()=>{const f=nativeProvider();expect(tool.validateOrdinaryNativePrerequisiteProvider(f.expected,f.run,f.artifact)).toEqual({sourceSha:sha,qualification:false});expect(tool.bindOpaqueNativePrerequisite({...f.expected,archiveBytes:3},f.receipt,f.archive)).toEqual({bytes:3,sha256:f.expected.archiveSha256,qualification:false});});
 test.each([{id:9007199254740992},{run_attempt:2},{workflow_id:384492100},{path:'wrong'},{head_branch:'wrong'},{conclusion:'failure'},{repository:{full_name:'wrong'}}])('native provider refuses mismatched original %#',change=>{const f=nativeProvider();expect(()=>tool.validateOrdinaryNativePrerequisiteProvider(f.expected,{...f.run,...change},f.artifact)).toThrow();});
 test.each([{bodyComplete:false},{observedBytes:4},{bytes:2},{status:500},{sha256:'c'.repeat(64)}])('opaque native byte binding refuses original response mismatch %#',change=>{const f=nativeProvider();expect(()=>tool.bindOpaqueNativePrerequisite({...f.expected,archiveBytes:3},{...f.receipt,...change},f.archive)).toThrow();});
@@ -328,7 +511,7 @@ function bootstrapBundle(){
  const installed={schemaVersion:1,kind:'post-install-admission',intent:structuredClone(intent),originalInstall:{exitCode:0,signal:null,stdoutBytes:0,stderrBytes:0,stdoutRetainedBytes:0,stderrRetainedBytes:0,closed:true,streamsComplete:true},installedProfile:{sourceSha:sha,lockSha256:lock,originalInstallReceiptSha256:digest,hiddenLockReceiptSha256:digest,checkedInstalledRecords:19,packages:Object.entries(MOUNTED_PACKAGE_PINS).map(([path,p])=>({path,version:p.version,integrity:p.integrity,manifestSha256:digest,regular:true,contained:true,symlink:false}))}};
  const path='apps/copilotkit/.hosted-mounted/3-1/worker.mjs',pin=MOUNTED_PACKAGE_PINS['apps/copilotkit/node_modules/@copilotkit/runtime'];
  const module={schemaVersion:1,sourceSha:sha,runId:'3',workerPath:path,emitted:[{path,kind:'chunk',format:'es',entry:true,bytes:20,sha256:digest}],imports:[{specifier:'@copilotkit/runtime/v2',kind:'static',resolutionIndex:0},{specifier:'node:http',kind:'static',resolutionIndex:null}],resolutions:[{specifier:'@copilotkit/runtime/v2',publicSpecifier:'@copilotkit/runtime/v2',publicEntryPath:'apps/copilotkit/node_modules/@copilotkit/runtime/dist/v2/index.mjs',packagePath:'apps/copilotkit/node_modules/@copilotkit/runtime',version:pin.version,integrity:pin.integrity,entryPath:'apps/copilotkit/node_modules/@copilotkit/runtime/dist/v2/index.mjs',regular:true,contained:true,symlink:false}],executedCopySha256:digest};
- const nativePrerequisite={sourceSha:sha,sourceTreeSha:'c'.repeat(40),originalRunId:'123',attempt:1,workflowId:386692729,workflowPath:'.github/workflows/hosted-copilot-mounted.yml',releaseId:'hosted-copilot-react-h100-r6400-v17',artifactId:'456',archiveSha256:digest,archiveBytes:3,qualifiedRootReceiptSha256:digest,qualifiedPeerReceiptSha256:digest,frontendSettingsSha256:digest,qualification:false};
+ const nativePrerequisite={sourceSha:sha,sourceTreeSha:'c'.repeat(40),originalRunId:'123',attempt:1,workflowId:386692729,workflowPath:'.github/workflows/hosted-copilot-mounted.yml',releaseId:'hosted-copilot-react-h100-r6400-v18',artifactId:'456',archiveSha256:digest,archiveBytes:3,qualifiedRootReceiptSha256:digest,qualifiedPeerReceiptSha256:digest,frontendSettingsSha256:digest,qualification:false};
  return {intent,installed,module,nativePrerequisite};
 }
 test('new profile refuses prior pilot v1 mode without reinterpreting old workload evidence',()=>{const b=bootstrapBundle(),ref=namedRef('native-intent.json'),profile=tool.constructTrackerAProfile(b.intent,b.nativePrerequisite,ref);expect(profile).toMatchObject({mode:'tracker-a-anchor-handler-gate-v1',strictMode:'tracker-json-a-pilot-v2'});expect(()=>tool.validateTrackerAProfile({...profile as object,mode:'tracker-json-a-pilot-v1'},b.intent,ref)).toThrow();});
@@ -712,9 +895,11 @@ function assertTrackerWorkflowBoundary(source:string){
  expect(blocks.find(block=>block.includes('uses: actions/upload-artifact@'))).toContain("if: always() && steps.artifacts.outcome == 'success'\n");
  expect(source).not.toMatch(/continue-on-error|\|\||&&\s*(?:true|:)|set\s+\+e|exit\s+0|HOSTED_.*(?:ELIGIB|SUCCESS)/);
  const runs=blocks.filter(block=>block.includes('run: '));
- expect(runs.map(block=>block.match(/bootstrap\.mjs ([\w-]+)\n/)?.[1])).toEqual(['prepare','install','provision','run','inventory','failure-inventory']);
+ expect(runs.map(block=>block.match(/bootstrap\.mjs ([\w-]+)\n/)?.[1])).toEqual(['prepare','install','provision','run','inventory','failure-inventory','forensic-inventory']);
+ expect(blocks.find(block=>block.includes('id: forensic_artifacts\n'))).toContain("if: always() && steps.runtime.outcome == 'failure'\n");
+ expect(blocks.find(block=>block.includes('name: copilot-tracker-a-forensic-'))).toContain("if: always() && steps.forensic_artifacts.outcome == 'success'\n");
  for(const block of runs.slice(0,3))expect(block).not.toMatch(/^        if:/m);
- expect(source).toContain('run-name: hosted-copilot-react-tracker-json-a-v10\n');
+ expect(source).toContain('run-name: hosted-copilot-react-tracker-json-a-v11\n');
 }
 test('fixed pilot SOURCE gates inventory on original runtime success and upload on inventory success',async()=>{assertTrackerWorkflowBoundary(await trackerWorkflowSource());});
 test.each(['native-result.json','tracker-a-result.json'] as const)('fixed workflow refuses inventory eligibility while full visible %s publication originals fail or remain held',async name=>{
@@ -738,8 +923,8 @@ test('coherent pilot source membership and fixed next source profiles are select
  const literal=source.split('export const COPILOT_PRODUCTION_SOURCES=Object.freeze([')[1]!.split(']);')[0]!;
  const paths=[...literal.matchAll(/'([^']+)'/g)].map(match=>match[1]!);expect(paths).toHaveLength(79);expect(new Set(paths).size).toBe(79);
  for(const [before,after] of [['.github/workflows/hosted-copilot-mounted.yml','.github/workflows/hosted-copilot-tracker-a.yml'],['apps/copilotkit/runtime/mounted-native.ts','apps/copilotkit/runtime/mounted-tracker-a-trace.ts'],['apps/copilotkit/runtime/mounted-tracker-a-trace.ts','apps/copilotkit/runtime/mounted-tracker-a.ts'],['tests/copilotkit-mounted-conformance.test.ts','tests/copilotkit-mounted-tracker-a-trace.test.ts'],['tests/copilotkit-mounted-tracker-a-trace.test.ts','tests/copilotkit-mounted-tracker-a.test.ts']])expect(paths.indexOf(after!)).toBe(paths.indexOf(before!)+1);
- expect(source).toContain("context.releaseId!=='hosted-copilot-react-production-build-v56'");
- expect(await readFile(new URL('../.github/workflows/hosted-copilot-mounted.yml',import.meta.url),'utf8')).toContain('run-name: hosted-copilot-react-h100-r6400-v17\n');
+ expect(source).toContain("context.releaseId!=='hosted-copilot-react-production-build-v57'");
+ expect(await readFile(new URL('../.github/workflows/hosted-copilot-mounted.yml',import.meta.url),'utf8')).toContain('run-name: hosted-copilot-react-h100-r6400-v18\n');
 });
 
 test('pilot reserves 32MiB raw, 1MiB transport and unchanged 256KiB input independently',()=>{const roles=tool.mountedTrackerAReservation('runtime',[],runtimeKnown()).roles;for(const [path,cap] of [['tracker-a-case-2-trace.json',33554432],['tracker-a-case-2-transport.json',1048576],['tracker-a-case-2-input.json',262144]] as const)expect(roles.find(row=>row.path===path)?.cap).toBe(cap);});

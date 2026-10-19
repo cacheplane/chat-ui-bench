@@ -85,15 +85,15 @@ describe('same original page wheel handler gate',()=>{
   const result=await runMountedTrackerA(f.ports);expect(result.hasPrimary).toBe(true);expect(rowReads).toBe(0);expect(result.input?.handlerGates).toEqual([]);
  });
 });
-function pageGateFixture(){
+function pageGateFixture(options:{now?:()=>number;url?:string;top?:number;scrollHeight?:number;rect?:{x:number;y:number;width:number;height:number}}={}){
  const originals=new Map<string,PropertyDescriptor|undefined>();let boxes=0,queries=0,clocks=0,registrations=0,removeFails=false;
- class FakeNode {isConnected=true;scrollTop=1000;scrollHeight=3000;clientHeight=500;callbacks=new Map<string,EventListener>();contains(target:unknown){return target===this;}getBoundingClientRect(){boxes++;return {x:0,y:0,width:100,height:500};}addEventListener(name:string,callback:EventListener){registrations++;this.callbacks.set(name,callback);}removeEventListener(name:string){if(removeFails)throw Error('remove');this.callbacks.delete(name);}}
+ class FakeNode {isConnected=true;scrollTop=options.top??1000;scrollHeight=options.scrollHeight??3000;clientHeight=500;callbacks=new Map<string,EventListener>();contains(target:unknown){return target===this;}getBoundingClientRect(){boxes++;return options.rect??{x:0,y:0,width:100,height:500};}addEventListener(name:string,callback:EventListener){registrations++;this.callbacks.set(name,callback);}removeEventListener(name:string){if(removeFails)throw Error('remove');this.callbacks.delete(name);}}
  const scroller=new FakeNode(),host={locators:{scroller:'#scroll'},probeAnchorDiagnostic(){return null;},releaseAnchorDiagnostic(){}},w:{__copilotkitBenchHost:typeof host;__copilotkitTrackerA?:unknown}={__copilotkitBenchHost:host};
- const globals:Record<string,unknown>={window:w,document:{querySelectorAll(){queries++;return [scroller];},addEventListener(){},removeEventListener(){}},performance:{now(){return ++clocks;}},Node:FakeNode,location:{href:'http://original/'},innerWidth:1280,innerHeight:800,devicePixelRatio:1};
+ const globals:Record<string,unknown>={window:w,document:{querySelectorAll(){queries++;return [scroller];},addEventListener(){},removeEventListener(){}},performance:{now(){clocks++;return options.now?options.now()+clocks/1000:clocks;}},Node:FakeNode,location:{href:options.url??'http://original/'},innerWidth:1280,innerHeight:800,devicePixelRatio:1};
  for(const [key,value] of Object.entries(globals)){originals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));Object.defineProperty(globalThis,key,{configurable:true,value});}
  trackerCallbacks.initializeTrackerAPage();
- const state=w.__copilotkitTrackerA as {install(name:'wheel'):boolean;remove(name:'wheel'):boolean;drain():{handlerGates:unknown[]}};
- return {state,emit(deltaY:number,extra:Record<string,unknown>={}){scroller.callbacks.get('wheel')!({timeStamp:0,isTrusted:true,deltaX:0,deltaY,deltaMode:0,target:scroller,currentTarget:scroller,...extra} as unknown as Event);},read(role:'before'|'after',slot:number){return (trackerCallbacks.readTrackerAAnchorScalarEnvelope as unknown as (arg:unknown)=>Promise<{handlerGate:unknown}>)({selection:{id:'H0',ownerToken:1},purpose:{role,slot,ordinal:(role==='before'?2:3)+2*slot}});},setGate(descriptor:PropertyDescriptor){Object.defineProperty(w.__copilotkitTrackerA,'gate',{configurable:true,...descriptor});},reads:()=>({boxes,queries,clocks}),registrations:()=>registrations,failRemoval(){removeFails=true;},restore(){for(const [key,descriptor] of originals)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}};
+ const state=w.__copilotkitTrackerA as trackerCallbacks.TrackerAPageState;
+ return {state,scroller,emit(deltaY:number,extra:Record<string,unknown>={}){scroller.callbacks.get('wheel')!({timeStamp:0,isTrusted:true,deltaX:0,deltaY,deltaMode:0,target:scroller,currentTarget:scroller,...extra} as unknown as Event);},read(role:'before'|'after',slot:number){return (trackerCallbacks.readTrackerAAnchorScalarEnvelope as unknown as (arg:unknown)=>Promise<{handlerGate:unknown}>)({selection:{id:'H0',ownerToken:1},purpose:{role,slot,ordinal:(role==='before'?2:3)+2*slot}});},setGate(descriptor:PropertyDescriptor){Object.defineProperty(w.__copilotkitTrackerA,'gate',{configurable:true,...descriptor});},reads:()=>({boxes,queries,clocks}),registrations:()=>registrations,failRemoval(){removeFails=true;},restore(){for(const [key,descriptor] of originals)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}};
 }
 describe('actual native scalar envelope callback with fake page state',()=>{
  it.each(['host','url','match','absent-state'] as const)('preserves the normal original G1 snapshot on diagnostic %s admission',kind=>{
@@ -155,6 +155,72 @@ function fixture(){
  const ports={profileRef:{path:'tracker-a-profile.json' as const,bytes:1,sha256:'a'.repeat(64)},clock,connect:async()=>{calls.push('connect');},openFollow:async()=>{calls.push('open-1');return follow;},openHistory:async()=>{calls.push('open-2');return Object.assign(suppliedHistory,Object.fromEntries(Object.entries(history).filter(([key])=>key!=='scalar'&&key!=='observations')));},closeClient:async()=>{calls.push('client-close');}};
  return {ports,history,follow,calls,clock,advance,events,scalar,get now(){return now;}};
 }
+
+/** Connect the real initialized page/listener/gate/drain to the supplied owner.
+ * The older fixture's synthesized scalar envelopes are deliberately bypassed. */
+function pageSequencerFixture(rejectMeasuredWheel:number|null=null){
+ const f=fixture(),page=pageGateFixture({now:()=>f.now+7000,url:'http://localhost:1234/',top:1400,scrollHeight:2000,rect:{x:10,y:20,width:500,height:500}});
+ const sentinel=Object.freeze({original:'measured-wheel-rejection'}),purposes:trackerCallbacks.TrackerAScalarPurpose[]=[],counts={entries:0,wheels:0,measuredWheels:0,pointers:0,drains:0,installs:0,removes:0};
+ const open=f.ports.openHistory;
+ const ports:trackerCallbacks.TrackerASequencerPorts={...f.ports,async openHistory(){
+  const owner=await open(),listeners={...owner.listeners};
+  for(const name of ['wheel','scroll','animationstart','transitionrun'] as const){
+   listeners[name]={install:async()=>{counts.installs++;f.calls.push(`install-${name}`);return page.state.install(name);},remove:async()=>{counts.removes++;f.calls.push(`remove-${name}`);return page.state.remove(name);}};
+  }
+  return {...owner,baseline:page.state.baseline,listeners,
+   async entrySample(){counts.entries++;f.calls.push('entry-sample');return {scalar:page.state.scalar(),active:true,prefixLength:counts.entries,returnControlVisible:true};},
+   async movePointer(x,y){counts.pointers++;await owner.movePointer(x,y);},
+   async scalar(selection,purpose){purposes.push({...purpose});return readTrackerAAnchorScalarEnvelope({selection,purpose});},
+   async wheel(_x,y){counts.wheels++;f.calls.push(y===-600?'entry-wheel':'wheel');if(y===-12&&++counts.measuredWheels===rejectMeasuredWheel)throw sentinel;page.scroller.scrollTop+=y;page.emit(y);},
+   async observations(){counts.drains++;const result=page.state.drain(),receivedHostMs=f.now;
+    return {handlerGates:result.handlerGates,wheelEvents:result.wheelEvents.map(row=>({...row,receivedHostMs})),scrollEvents:result.scrollEvents.map(row=>({...row,receivedHostMs})),motionEvents:result.motionEvents.map(row=>({...row,receivedHostMs})),losses:{navigation:null,context:null,page:null,session:null},overflows:{wheel:result.overflows.wheel===null?null:{...result.overflows.wheel,firstHostMs:receivedHostMs},scroll:result.overflows.scroll===null?null:{...result.overflows.scroll,firstHostMs:receivedHostMs},motion:result.overflows.motion===null?null:{...result.overflows.motion,firstHostMs:receivedHostMs}}};
+   }};
+ }};
+ return {...f,page,ports,counts,purposes,sentinel};
+}
+describe('actual page gate and supplied sequencer integration',()=>{
+ it('completes forty real handler gates and eighty-two actual scalar envelopes with one owned drain',async()=>{
+  const f=pageSequencerFixture();try{
+   const result=await runMountedTrackerA(f.ports);
+   expect(result.status).toBe('complete');expect(result.hasPrimary).toBe(false);expect(result.handlerGateError).toBeNull();
+   expect(result.input?.scalarObservations).toHaveLength(82);expect(result.input?.handlerGates).toHaveLength(40);expect(result.input?.handlerGates.every(row=>row.state==='observed'&&row.waitClaimed)).toBe(true);expect(result.input?.wheelEvents).toHaveLength(41);
+   expect(f.purposes.at(-1)).toEqual({role:'post',ordinal:82,slot:null});expect(f.counts).toEqual({entries:3,wheels:41,measuredWheels:40,pointers:1,drains:1,installs:4,removes:4});
+   expect(f.page.reads()).toMatchObject({boxes:86,queries:86});expect(result.inputDrain.status).toBe('fulfilled');
+  }finally{f.page.restore();}
+ });
+ it.each([1,2])('retains the original wheel rejection %i and its actual partial post without a gate copy failure',async rejected=>{
+  const f=pageSequencerFixture(rejected),postOrdinal=2*rejected+1;try{
+   const result=await runMountedTrackerA(f.ports),post=result.input?.scalarObservations.at(-1);
+   expect(result.status).toBe('incomplete');expect(result.primary).toBe(f.sentinel);expect(result.hasPrimary).toBe(true);
+   expect(f.purposes.at(-1)).toEqual({role:'post',ordinal:postOrdinal,slot:null});expect(post).toMatchObject({ordinal:postOrdinal,role:'post',status:'fulfilled',value:{scrollTop:800-12*(rejected-1)}});
+   expect(result.input?.phase.postBoundaryScalarOrdinal).toBe(postOrdinal);expect(result.input?.scalarObservations).toHaveLength(postOrdinal);expect(result.input?.wheelRequests).toHaveLength(rejected);
+   expect(f.counts).toEqual({entries:3,wheels:rejected+1,measuredWheels:rejected,pointers:1,drains:1,installs:4,removes:4});expect(f.page.reads()).toMatchObject({boxes:4+postOrdinal,queries:4+postOrdinal});
+   expect(result.inputDrain.status).toBe('fulfilled');expect(result.input?.handlerGates.at(-1)).toMatchObject({state:'cancelled',cancellationReason:'listener-remove'});
+   expect(result.handlerGateError).toBeNull();
+  }finally{f.page.restore();}
+ });
+ it('retains post ordinal two after a missed first slot without charging a measured wheel or gate',async()=>{
+  const f=pageSequencerFixture(),wait=f.clock.waitUntil;f.clock.waitUntil=async at=>{await wait(f.purposes.length===1&&at===700?750:at);};try{
+   const result=await runMountedTrackerA(f.ports);
+   expect(result.primary).toBeInstanceOf(Error);expect((result.primary as Error).message).toBe('Missed absolute slot');expect(result.status).toBe('incomplete');
+   expect(f.purposes).toEqual([{role:'pre',ordinal:1,slot:null},{role:'post',ordinal:2,slot:null}]);expect(result.input?.scalarObservations.at(-1)).toMatchObject({ordinal:2,role:'post',status:'fulfilled',value:{scrollTop:800}});
+   expect(f.counts).toEqual({entries:3,wheels:1,measuredWheels:0,pointers:1,drains:1,installs:4,removes:4});expect(result.input?.handlerGates).toEqual([]);expect(result.input?.wheelRequests).toEqual([]);expect(f.page.reads()).toMatchObject({boxes:6,queries:6});
+   expect(result.handlerGateError).toBeNull();
+  }finally{f.page.restore();}
+ });
+ it.each([1,83,2.5,NaN,Infinity,-Infinity,'3',null,undefined])('refuses malformed post ordinal %s while retaining the actual scalar',async ordinal=>{
+  const f=pageGateFixture();try{
+   const result=await (readTrackerAAnchorScalarEnvelope as (request:unknown)=>Promise<{scalar:unknown;handlerGate:unknown}>)({selection:undefined,purpose:{role:'post',ordinal,slot:null}});
+   expect(result.scalar).toMatchObject({scrollTop:1000});expect(result.handlerGate).toMatchObject({status:'invalid',failure:'gate-copy-invalid'});expect(f.state.drain().handlerGates).toEqual([]);
+  }finally{f.restore();}
+ });
+ it.each([0,1,'0',undefined])('refuses nonnull post slot %s',async slot=>{
+  const f=pageGateFixture();try{
+   const result=await (readTrackerAAnchorScalarEnvelope as (request:unknown)=>Promise<{scalar:unknown;handlerGate:unknown}>)({selection:undefined,purpose:{role:'post',ordinal:3,slot}});
+   expect(result.scalar).toMatchObject({scrollTop:1000});expect(result.handlerGate).toMatchObject({status:'invalid',failure:'gate-copy-invalid'});
+  }finally{f.restore();}
+ });
+});
 
 describe('fixed two-case trajectory',()=>{
  it.each(['malformed','getter'] as const)('anchor diagnostic preserves raw opposing-offset before %s diagnostic refusal',async kind=>{

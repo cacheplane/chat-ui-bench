@@ -37,7 +37,8 @@ export async function readTrackerAAnchorScalarEnvelope(request:Readonly<{selecti
   {const outer=Object.getOwnPropertyDescriptors(request);if(Reflect.ownKeys(outer).length!==2||!outer.selection||!('value'in outer.selection)||!outer.purpose||!('value'in outer.purpose))throw Error('Scalar request');selection=outer.selection.value;
    const candidate:unknown=outer.purpose.value;if(typeof candidate!=='object'||candidate===null)throw Error('Scalar purpose');const d:PropertyDescriptorMap=Object.getOwnPropertyDescriptors(candidate);if(![Object.prototype,null].includes(Object.getPrototypeOf(candidate))||Reflect.ownKeys(d).length!==3||['role','ordinal','slot'].some(k=>!d[k]||!('value'in d[k]!)))throw Error('Scalar purpose');
    const role=d.role!.value,ordinal=d.ordinal!.value,slot=d.slot!.value;
-   if(!((role==='pre'&&ordinal===1&&slot===null)||(role==='post'&&ordinal===82&&slot===null)||((role==='before'||role==='after')&&Number.isInteger(slot)&&slot>=0&&slot<40&&ordinal===(role==='before'?2:3)+2*slot)))throw Error('Scalar tuple');purpose={role,ordinal,slot};
+   // Failed trajectories still take the next post sample; only complete runs reach 82.
+   if(!((role==='pre'&&ordinal===1&&slot===null)||(role==='post'&&Number.isInteger(ordinal)&&ordinal>=2&&ordinal<=82&&slot===null)||((role==='before'||role==='after')&&Number.isInteger(slot)&&slot>=0&&slot<40&&ordinal===(role==='before'?2:3)+2*slot)))throw Error('Scalar tuple');purpose={role,ordinal,slot};
   }
  }catch{purposeInvalid=true;}
  if(purpose?.role==='after'){
