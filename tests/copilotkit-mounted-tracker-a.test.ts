@@ -1,5 +1,100 @@
 import {describe,it,expect} from 'vitest';
 import {runMountedTrackerA,readTrackerAAnchorScalarEnvelope,readTrackerAGeometrySnapshot} from '../apps/copilotkit/runtime/mounted-tracker-a.ts';
+import * as trackerCallbacks from '../apps/copilotkit/runtime/mounted-tracker-a.ts';
+describe('same original page wheel handler gate',()=>{
+ it('requires a valid gate before dispatch while preserving raw opposing-offset priority',async()=>{
+  for(const positive of [false,true]){
+   const f=fixture(),read=f.history.scalar;let reads=0;
+   Object.assign(f.history,{scalar:async()=>{const scalar=await read();if(++reads===2){if(positive)scalar.scrollTop+=1;return {scalar,anchorDiagnostic:null,handlerGate:{invalid:true}};}return scalar;}});
+   const result=await runMountedTrackerA(f.ports);expect(result.hasPrimary).toBe(true);expect(result.input?.wheelRequests).toHaveLength(0);expect(result.firstFailure?.code).toBe(positive?'opposing-offset':'unclassified');
+  }
+ });
+ it('exports the actual baseline initializer for supplied page callback tests',()=>{
+  expect(Reflect.get(trackerCallbacks,'initializeTrackerAPage')).toBeTypeOf('function');
+ });
+ it('keeps AFTER pending after dispatch acknowledgement until the same original listener records its event',async()=>{
+  const f=pageGateFixture();try{
+   f.state.install('wheel');f.emit(-600);
+   const before=await f.read('before',0);expect(before.handlerGate).toMatchObject({status:'armed',record:{state:'armed',waitClaimed:false}});
+   const reads=f.reads();let settled=false;
+   const after=f.read('after',0).then(value=>{settled=true;return value;});
+   await Promise.resolve();await Promise.resolve();expect(settled).toBe(false);expect(f.reads()).toEqual(reads);
+   f.emit(-12);const result=await after;
+   expect(result.handlerGate).toMatchObject({status:'observed',record:{slot:0,state:'observed',waitClaimed:true,eventOrdinal:2}});
+   expect(f.state.drain().handlerGates).toEqual([expect.objectContaining({eventOrdinal:2,eventPageNowMs:expect.any(Number),state:'observed'})]);
+   expect(f.registrations()).toBe(1);
+  }finally{f.restore();}
+ });
+ it('observes a handler before AFTER claims the same active arm and preserves the first candidate on duplicate',async()=>{
+  const f=pageGateFixture();try{f.state.install('wheel');f.emit(-600);await f.read('before',0);f.emit(-12);f.emit(-12);await expect(f.read('after',0)).rejects.toThrow();expect(f.state.drain().handlerGates).toEqual([expect.objectContaining({state:'refused',eventOrdinal:2,refusalCode:'duplicate-event'})]);}finally{f.restore();}
+ });
+ it.each(['duplicate','remove'] as const)('rechecks the same arm before any AFTER scalar read when %s follows handler resolution before continuation',async kind=>{
+  const f=pageGateFixture();try{f.state.install('wheel');f.emit(-600);await f.read('before',0);const reads=f.reads(),after=f.read('after',0);f.emit(-12);if(kind==='duplicate')f.emit(-12);else f.state.remove('wheel');await expect(after).rejects.toThrow();expect(f.reads()).toEqual({...reads,clocks:reads.clocks+(kind==='duplicate'?2:1)});expect(f.state.drain().handlerGates).toEqual([expect.objectContaining({state:kind==='duplicate'?'refused':'observed',waitClaimed:true,eventOrdinal:2,cancellationReason:null})]);}finally{f.restore();}
+ });
+ it.each(['duplicate','remove'] as const)('checks %s again immediately before sampling across the outer callback await continuation',async kind=>{
+  const f=pageGateFixture();try{f.state.install('wheel');f.emit(-600);await f.read('before',0);const reads=f.reads(),after=f.read('after',0);const mutation=Promise.resolve().then(()=>{if(kind==='duplicate')f.emit(-12);else f.state.remove('wheel');});f.emit(-12);await mutation;await expect(after).rejects.toThrow();expect(f.reads()).toEqual({...reads,clocks:reads.clocks+(kind==='duplicate'?2:1)});}finally{f.restore();}
+ });
+ it('does not start AFTER while the unchanged dispatch acknowledgement remains pending even after handler facts exist',async()=>{
+  const f=fixture(),wheel=f.history.wheel,read=f.history.scalar;let resolve!:()=>void,dispatches=0,reads=0;
+  f.history.scalar=async()=>{reads++;return read();};f.history.wheel=async(x,y)=>{await wheel(x,y);if(y===-12&&++dispatches===1)await new Promise<void>(yes=>{resolve=yes;});};
+  const run=runMountedTrackerA(f.ports);for(let i=0;i<3000&&dispatches===0;i++)await Promise.resolve();expect(dispatches).toBe(1);expect(f.events).toHaveLength(2);expect(reads).toBe(2);resolve();const result=await run;expect(result.status).toBe('complete');expect(result.input?.wheelRequests).toHaveLength(40);expect(result.input?.scalarObservations).toHaveLength(82);
+ });
+ it('rejects a second arm and never adopts an older already consumed event for a second AFTER',async()=>{
+  const first=pageGateFixture();try{first.state.install('wheel');first.emit(-600);await first.read('before',0);expect((await first.read('before',1)).handlerGate).toMatchObject({status:'invalid',record:{slot:0,state:'refused',refusalCode:'arm-state'}});await expect(first.read('after',0)).rejects.toThrow();}finally{first.restore();}
+  const second=pageGateFixture();try{second.state.install('wheel');second.emit(-600);await second.read('before',0);second.emit(-12);await second.read('after',0);await expect(second.read('after',0)).rejects.toThrow();expect((await second.read('before',1)).handlerGate).toMatchObject({status:'invalid'});expect(second.state.drain().handlerGates).toHaveLength(1);}finally{second.restore();}
+ });
+ it('cancels an armed promise in removal finally even when original removal throws',async()=>{
+  const f=pageGateFixture();try{f.state.install('wheel');f.emit(-600);await f.read('before',0);const after=f.read('after',0);f.failRemoval();expect(()=>f.state.remove('wheel')).toThrow('remove');await expect(after).rejects.toThrow();expect(f.state.drain().handlerGates).toEqual([expect.objectContaining({state:'cancelled',waitClaimed:true,cancellationReason:'listener-remove',eventOrdinal:null})]);}finally{f.restore();}
+ });
+ it.each([{isTrusted:false},{deltaMode:1},{target:null},{currentTarget:null},{deltaY:-600}])('refuses actual invalid measured event %j without replacing raw evidence',async extra=>{
+  const f=pageGateFixture();try{f.state.install('wheel');f.emit(-600);await f.read('before',0);const after=f.read('after',0);f.emit(-12,extra);await expect(after).rejects.toThrow();expect(f.state.drain()).toMatchObject({handlerGates:[{state:'refused',eventOrdinal:2,refusalCode:'event-invalid'}],wheelEvents:[{ordinal:1},{ordinal:2}]});}finally{f.restore();}
+ });
+ it('releases an observed unclaimed arm on removal without falsely cancelling it',async()=>{
+  const f=pageGateFixture();try{f.state.install('wheel');f.emit(-600);await f.read('before',0);f.emit(-12);f.state.remove('wheel');expect(f.state.drain().handlerGates).toEqual([expect.objectContaining({state:'observed',waitClaimed:false,cancellationReason:null,eventOrdinal:2})]);}finally{f.restore();}
+ });
+ it('completes forty exact pairs with only the original scalar, probe, wheel clock and listener work',async()=>{
+  const f=pageGateFixture();try{
+   f.state.install('wheel');f.emit(-600);
+   await readTrackerAAnchorScalarEnvelope({selection:{id:'H0',ownerToken:1},purpose:{role:'pre',ordinal:1,slot:null}});
+   for(let slot=0;slot<40;slot++){await f.read('before',slot);f.emit(-12);expect((await f.read('after',slot)).handlerGate).toMatchObject({status:'observed',record:{slot,waitClaimed:true}});}
+   await readTrackerAAnchorScalarEnvelope({selection:{id:'H0',ownerToken:1},purpose:{role:'post',ordinal:82,slot:null}});f.state.remove('wheel');
+   expect(f.reads()).toEqual({boxes:83,queries:83,clocks:288});expect(f.registrations()).toBe(1);expect(f.state.drain().handlerGates).toHaveLength(40);
+  }finally{f.restore();}
+ });
+ it.each(['null','undefined','getter','throw-null','throw-undefined'] as const)('preserves raw scalar on %s page gate source failure',async kind=>{
+  const f=pageGateFixture();let getters=0;try{f.setGate(kind==='getter'?{get(){getters++;throw Error('getter');}}:{value:()=>{if(kind==='throw-null')throw null;if(kind==='throw-undefined')throw undefined;return kind==='null'?null:undefined;}});
+   const result=await f.read('before',0);expect(result).toMatchObject({scalar:{scrollTop:1000},handlerGate:{status:'invalid',failure:kind.startsWith('throw')||kind==='getter'?'gate-source-error':'gate-copy-invalid'}});expect(getters).toBe(0);
+  }finally{f.restore();}
+ });
+ it.each(['extra','getter','wrong-ordinal','entry-slot','unknown-role'] as const)('refuses %s purpose while preserving the already captured raw scalar',async kind=>{
+  const f=pageGateFixture();let getters=0;try{f.state.install('wheel');f.emit(-600);const purpose:Record<string,unknown>={role:'before',ordinal:2,slot:0};if(kind==='extra')purpose.extra=true;if(kind==='getter')Object.defineProperty(purpose,'slot',{get(){getters++;throw null;}});if(kind==='wrong-ordinal')purpose.ordinal=4;if(kind==='entry-slot')Object.assign(purpose,{role:'pre',ordinal:1});if(kind==='unknown-role')purpose.role='entry';
+   const result=await (readTrackerAAnchorScalarEnvelope as (arg:unknown)=>Promise<{scalar:unknown;handlerGate:unknown}>)({selection:{id:'H0',ownerToken:1},purpose});expect(result.scalar).toMatchObject({scrollTop:1000});expect(result.handlerGate).toMatchObject({status:'invalid'});expect(getters).toBe(0);expect(f.state.drain().handlerGates).toEqual([]);
+  }finally{f.restore();}
+ });
+ it.each(['malformed','getter','null-trap','undefined-trap'] as const)('updates canonical %s gate failure after return without resampling or changing the primary',async kind=>{
+  const f=fixture(),read=f.history.scalar;let resolve!:(value:unknown)=>void,started=false,reads=0,getters=0,raw:unknown;
+  Object.assign(f.history,{scalar:async()=>{const value=await read();if(++reads!==3)return value;raw=value;started=true;return new Promise(yes=>{resolve=yes;});}});
+  const run=runMountedTrackerA(f.ports);for(let i=0;i<3000&&!started;i++)await Promise.resolve();expect(started).toBe(true);f.advance(120000);const result=await run,first=result.firstFailure,primary=result.primary;
+  expect(result.input?.phase.postBoundaryScalarOrdinal).toBeNull();expect(result.handlerGateError).toBeNull();
+  const envelope:Record<string,unknown>={scalar:raw,anchorDiagnostic:null,handlerGate:null};if(kind==='getter')Object.defineProperty(envelope,'handlerGate',{get(){getters++;throw Error('getter');}});if(kind.endsWith('trap'))envelope.handlerGate=new Proxy({},{getPrototypeOf(){throw kind==='null-trap'?null:undefined;}});
+  resolve(envelope);for(let i=0;i<40;i++)await Promise.resolve();expect(result.handlerGateError).toBeInstanceOf(Error);expect(result.input?.scalarObservations[2]?.value).toEqual(raw);expect(result.firstFailure).toBe(first);expect(result.primary).toBe(primary);expect(reads).toBe(3);expect(getters).toBe(0);
+ });
+ it('preflights the bounded gate ledger before walking any raw event row',async()=>{
+  const f=fixture(),open=f.ports.openHistory;let rowReads=0;
+  Object.assign(f.ports,{openHistory:async()=>{const owner=await open();return {...owner,observations:async()=>{const facts=await owner.observations(),event=facts.wheelEvents[0]!;return {...facts,handlerGates:Array.from({length:41},()=>null),wheelEvents:[new Proxy(event,{getPrototypeOf(target){rowReads++;return Object.getPrototypeOf(target);}}),...facts.wheelEvents.slice(1)]};}};}});
+  const result=await runMountedTrackerA(f.ports);expect(result.hasPrimary).toBe(true);expect(rowReads).toBe(0);expect(result.input?.handlerGates).toEqual([]);
+ });
+});
+function pageGateFixture(){
+ const originals=new Map<string,PropertyDescriptor|undefined>();let boxes=0,queries=0,clocks=0,registrations=0,removeFails=false;
+ class FakeNode {isConnected=true;scrollTop=1000;scrollHeight=3000;clientHeight=500;callbacks=new Map<string,EventListener>();contains(target:unknown){return target===this;}getBoundingClientRect(){boxes++;return {x:0,y:0,width:100,height:500};}addEventListener(name:string,callback:EventListener){registrations++;this.callbacks.set(name,callback);}removeEventListener(name:string){if(removeFails)throw Error('remove');this.callbacks.delete(name);}}
+ const scroller=new FakeNode(),host={locators:{scroller:'#scroll'},probeAnchorDiagnostic(){return null;},releaseAnchorDiagnostic(){}},w:{__copilotkitBenchHost:typeof host;__copilotkitTrackerA?:unknown}={__copilotkitBenchHost:host};
+ const globals:Record<string,unknown>={window:w,document:{querySelectorAll(){queries++;return [scroller];},addEventListener(){},removeEventListener(){}},performance:{now(){return ++clocks;}},Node:FakeNode,location:{href:'http://original/'},innerWidth:1280,innerHeight:800,devicePixelRatio:1};
+ for(const [key,value] of Object.entries(globals)){originals.set(key,Object.getOwnPropertyDescriptor(globalThis,key));Object.defineProperty(globalThis,key,{configurable:true,value});}
+ trackerCallbacks.initializeTrackerAPage();
+ const state=w.__copilotkitTrackerA as {install(name:'wheel'):boolean;remove(name:'wheel'):boolean;drain():{handlerGates:unknown[]}};
+ return {state,emit(deltaY:number,extra:Record<string,unknown>={}){scroller.callbacks.get('wheel')!({timeStamp:0,isTrusted:true,deltaX:0,deltaY,deltaMode:0,target:scroller,currentTarget:scroller,...extra} as unknown as Event);},read(role:'before'|'after',slot:number){return (trackerCallbacks.readTrackerAAnchorScalarEnvelope as unknown as (arg:unknown)=>Promise<{handlerGate:unknown}>)({selection:{id:'H0',ownerToken:1},purpose:{role,slot,ordinal:(role==='before'?2:3)+2*slot}});},setGate(descriptor:PropertyDescriptor){Object.defineProperty(w.__copilotkitTrackerA,'gate',{configurable:true,...descriptor});},reads:()=>({boxes,queries,clocks}),registrations:()=>registrations,failRemoval(){removeFails=true;},restore(){for(const [key,descriptor] of originals)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else Reflect.deleteProperty(globalThis,key);}};
+}
 describe('actual native scalar envelope callback with fake page state',()=>{
  it.each(['host','url','match','absent-state'] as const)('preserves the normal original G1 snapshot on diagnostic %s admission',kind=>{
   const previous=Object.getOwnPropertyDescriptor(globalThis,'window'),oldLocation=Object.getOwnPropertyDescriptor(globalThis,'location'),calls:unknown[]=[],shot=frame(2,'streaming');
@@ -7,12 +102,12 @@ describe('actual native scalar envelope callback with fake page state',()=>{
   const state={anchorContext:{host:original,url:'http://original/',refused:null}};Object.defineProperty(globalThis,'window',{configurable:true,value:{__copilotkitBenchHost:kind==='host'?replacement:original,...(kind==='absent-state'?{}:{__copilotkitTrackerA:state})}});Object.defineProperty(globalThis,'location',{configurable:true,value:{href:kind==='url'?'http://changed/':'http://original/'}});
   try{expect(readTrackerAGeometrySnapshot('tracker-a-G1-anchor-diagnostic-v1')).toBe(shot);expect(calls).toEqual(kind==='match'?['tracker-a-G1-anchor-diagnostic-v1']:kind==='absent-state'?[undefined]:[kind,undefined]);if(kind==='host'||kind==='url')expect(state.anchorContext.refused).toBe(kind);}finally{if(previous)Object.defineProperty(globalThis,'window',previous);else Reflect.deleteProperty(globalThis,'window');if(oldLocation)Object.defineProperty(globalThis,'location',oldLocation);else Reflect.deleteProperty(globalThis,'location');}
  });
- it.each(['outer-getter','identity-getter','extra-object','probe-throw'] as const)('preserves original scalar without invoking %s diagnostic getters',kind=>{
+ it.each(['outer-getter','identity-getter','extra-object','probe-throw'] as const)('preserves original scalar without invoking %s diagnostic getters',async kind=>{
   const previous=Object.getOwnPropertyDescriptor(globalThis,'window'),oldLocation=Object.getOwnPropertyDescriptor(globalThis,'location');let getters=0,scalars=0;
   const diagnostic:Record<string,unknown>={status:'unavailable',reason:'source-error',identity:{sameHostObject:null,sameOwner:null,sameScroller:null,sameScope:null,sameUrl:null,connected:null,uniqueSelectors:null,contained:null,parentMatched:null},ownerToken:null,contentTopCssPx:null,relativeTopCssPx:null,nativeViewportY:null,textRectCount:0,eligible:null,scrollTopAfterProbe:null,nodesVisited:0,rectangleUnits:0,textChars:0};
   if(kind==='outer-getter')Object.defineProperty(diagnostic,'textChars',{get(){getters++;throw Error('getter');}});if(kind==='identity-getter')Object.defineProperty(diagnostic.identity,'sameOwner',{get(){getters++;throw Error('getter');}});if(kind==='extra-object')diagnostic.textChars={get secret(){getters++;return true;}};
   const original={retained:'raw'},host={probeAnchorDiagnostic(){if(kind==='probe-throw')throw Error('actual probe');return diagnostic;},releaseAnchorDiagnostic(){}};Object.defineProperty(globalThis,'window',{configurable:true,value:{__copilotkitBenchHost:host,__copilotkitTrackerA:{scalar(){scalars++;return original;},anchorContext:{host,url:'http://original/',refused:null}}}});Object.defineProperty(globalThis,'location',{configurable:true,value:{href:'http://original/'}});
-  try{const result=readTrackerAAnchorScalarEnvelope({id:'H0',ownerToken:1});expect(result.scalar).toBe(original);expect(getters).toBe(0);expect(scalars).toBe(1);expect(result.anchorDiagnostic).toMatchObject(kind==='probe-throw'?{status:'unavailable',reason:'source-error'}:{contractInvalid:true});JSON.stringify(result);expect(getters).toBe(0);}finally{if(previous)Object.defineProperty(globalThis,'window',previous);else Reflect.deleteProperty(globalThis,'window');if(oldLocation)Object.defineProperty(globalThis,'location',oldLocation);else Reflect.deleteProperty(globalThis,'location');}
+  try{const result=await readTrackerAAnchorScalarEnvelope({selection:{id:'H0',ownerToken:1},purpose:{role:'pre',ordinal:1,slot:null}});expect(result.scalar).toBe(original);expect(getters).toBe(0);expect(scalars).toBe(1);expect(result.anchorDiagnostic).toMatchObject(kind==='probe-throw'?{status:'unavailable',reason:'source-error'}:{contractInvalid:true});JSON.stringify(result);expect(getters).toBe(0);}finally{if(previous)Object.defineProperty(globalThis,'window',previous);else Reflect.deleteProperty(globalThis,'window');if(oldLocation)Object.defineProperty(globalThis,'location',oldLocation);else Reflect.deleteProperty(globalThis,'location');}
  });
 });
 
@@ -44,7 +139,20 @@ function fixture(){
  const trace={start:async()=>{calls.push('trace-start');},finish:(()=>{let original:Promise<void>|null=null;return ()=>original??=(async()=>{calls.push('trace-finish');})();})(),snapshot:()=>({outcome:{capture:{status:'complete',reason:null},containment:'verified'},sessionClose:{firstHostMs:null,overflowHostMs:null,timing:'expected-detach'}})} as unknown as Trace;
  const history={baseline:scalar(),entrySample:async()=>{calls.push('entry-sample');return {scalar:scalar(),active:true,prefixLength:++entryReads,returnControlVisible:true};},seed:async()=>{calls.push('seed-2');},restore:async()=>{calls.push('G0');return frame(2,'restored-history');},acquireTrace:async()=>{calls.push('acquire-trace');return trace;},listeners,startContinuation:async()=>{calls.push('start-2');},waitActivePrefix:async()=>({active:true,prefixLength:1}),geometry:async()=>{calls.push(`G${++geometry}`);return frame(2,'streaming',geometry===1?100:2100,geometry===1?'R':'RR');},movePointer:async(x:number,y:number)=>{calls.push(`pointer-${x}-${y}`);},scalar:async()=>scalar(),wheel:async(dx:0,dy:-600|-12)=>{calls.push(dy===-600?'entry-wheel':'wheel');top+=dy;events.push({ordinal:events.length+1,receivedHostMs:now,pageNowMs:now+7000+(++pageRead)/1000,eventTimeStampMs:now+6999+(pageRead)/1000,isTrusted:true,deltaX:dx,deltaY:dy,deltaMode:0,targetContained:true,currentTargetIsScroller:true});},returnToResponse:async()=>{calls.push('return');},complete:async()=>{calls.push('G4');return frame(2,'completed',11000);},close:async()=>{calls.push('close-2');return caseRecord(2);},observations:()=>({wheelEvents:events,scrollEvents:[],motionEvents:[],losses:{navigation:null,context:null,page:null,session:null},overflows:{wheel:null,scroll:null,motion:null}})};
  const follow={seed:async()=>{calls.push('seed-1');},restore:async()=>frame(1,'restored-history'),startContinuation:async()=>{calls.push('start-1');},exercise:async()=>({samples:[frame(1,'streaming',0),frame(1,'streaming',800,'RR')],anchorId:null,returned:null,wheel:null}),complete:async()=>{calls.push('complete-1');return frame(1,'completed');},close:async()=>{calls.push('close-1');return caseRecord(1);}};
- const ports={profileRef:{path:'tracker-a-profile.json' as const,bytes:1,sha256:'a'.repeat(64)},clock,connect:async()=>{calls.push('connect');},openFollow:async()=>{calls.push('open-1');return follow;},openHistory:async()=>{calls.push('open-2');return history;},closeClient:async()=>{calls.push('client-close');}};
+ const gates:import('../apps/copilotkit/runtime/mounted-tracker-a.ts').TrackerAHandlerGate[]=[];
+ const suppliedHistory={...history,async scalar(selection:Readonly<{id:string;ownerToken:number}>|undefined,purpose:import('../apps/copilotkit/runtime/mounted-tracker-a.ts').TrackerAScalarPurpose){
+  const result=await (history.scalar as (selection:unknown,purpose:unknown)=>Promise<unknown>)(selection,purpose);
+  let gate:unknown=null;
+  if(purpose.role==='before'){
+   const slot=purpose.slot!,row={slot,beforeOrdinal:2+2*slot,afterOrdinal:3+2*slot,expectedEventOrdinal:slot+2,state:'armed' as const,waitClaimed:false,listenerOwnedIdentity:null,eventOrdinal:null,eventPageNowMs:null,eventTimeStampMs:null,cancellationReason:null,refusalCode:null};gates.push(row);gate={schema:1,purpose,status:'armed',record:{...row},failure:null};
+  }else if(purpose.role==='after'){
+   const row=gates[purpose.slot!]!,event=events.find(e=>e.ordinal===row.expectedEventOrdinal)!;Object.assign(row,{state:'observed',waitClaimed:true,listenerOwnedIdentity:event.currentTargetIsScroller,eventOrdinal:event.ordinal,eventPageNowMs:event.pageNowMs,eventTimeStampMs:event.eventTimeStampMs});gate={schema:1,purpose,status:'observed',record:{...row},failure:null};
+  }
+  const descriptors=typeof result==='object'&&result!==null?Object.getOwnPropertyDescriptors(result):{};
+  if(Object.hasOwn(descriptors,'scalar')){const envelope=Object.create(Object.getPrototypeOf(result),descriptors) as Record<string,unknown>;if(!Object.hasOwn(descriptors,'handlerGate'))Object.defineProperty(envelope,'handlerGate',{enumerable:true,configurable:true,value:gate});return envelope;}
+  return {scalar:result,anchorDiagnostic:null,handlerGate:gate};
+ },async observations(){const value=await history.observations();return {...value,handlerGates:gates.map(row=>{const event=events.find(e=>e.ordinal===row.eventOrdinal);return event?{...row,eventPageNowMs:event.pageNowMs,eventTimeStampMs:event.eventTimeStampMs}:({...row});})};}};
+ const ports={profileRef:{path:'tracker-a-profile.json' as const,bytes:1,sha256:'a'.repeat(64)},clock,connect:async()=>{calls.push('connect');},openFollow:async()=>{calls.push('open-1');return follow;},openHistory:async()=>{calls.push('open-2');return Object.assign(suppliedHistory,Object.fromEntries(Object.entries(history).filter(([key])=>key!=='scalar'&&key!=='observations')));},closeClient:async()=>{calls.push('client-close');}};
  return {ports,history,follow,calls,clock,advance,events,scalar,get now(){return now;}};
 }
 
@@ -217,7 +325,7 @@ describe('original deadlines and independent closure',()=>{
 describe('fixed boundary and clock evidence',()=>{
  it.each(['scroll','motion'] as const)('conservatively scopes every possible %s event interval and retains disjoint raw facts',async population=>{for(const scenario of ['delayed-inside','spans-phase','creation-at-post','handler-at-pre','before-disjoint','after-disjoint'] as const){const f=fixture(),read=f.history.scalar,observe=f.history.observations;let reads=0,pre=0,post=0;f.history.scalar=async()=>{const value=await read();if(++reads===1)pre=value.pageNowMs;if(reads===82)post=value.pageNowMs;return value;};Object.assign(f.history,{observations:()=>{const facts=observe(),handler=scenario==='handler-at-pre'?pre:scenario==='before-disjoint'?pre-1:post+10,created=scenario==='delayed-inside'?pre+1:scenario==='creation-at-post'?post:scenario==='after-disjoint'?post+1:pre-10;return {...facts,...(population==='scroll'?{scrollEvents:[{ordinal:1,receivedHostMs:f.now,pageNowMs:handler,eventTimeStampMs:created,currentTargetIsScroller:true,scrollTop:801,scrollHeight:2000,clientHeight:500}]}:{motionEvents:[{ordinal:1,kind:'animationstart',receivedHostMs:f.now,pageNowMs:handler,eventTimeStampMs:created,targetContained:true}]})};}});const result=await runMountedTrackerA(f.ports),disjoint=scenario.endsWith('disjoint');expect(result.hasPrimary,scenario).toBe(!disjoint);expect(result.input?.outcome.phase.status,scenario).toBe(disjoint?'complete':'incomplete');expect(result.input?.[population==='scroll'?'scrollEvents':'motionEvents'],scenario).toHaveLength(1);}});
  it.each(['wheel','scroll','motion'] as const)('globally refuses negative or future creation timestamps in retained %s events',async population=>{for(const invalid of ['negative','future'] as const){const f=fixture(),observe=f.history.observations;Object.assign(f.history,{observations:()=>{const facts=observe(),created=invalid==='negative'?-1:10001;if(population==='wheel')return {...facts,wheelEvents:facts.wheelEvents.map((event,index)=>index===0?{...event,eventTimeStampMs:invalid==='negative'?-1:event.pageNowMs+1}:event)};return {...facts,...(population==='scroll'?{scrollEvents:[{ordinal:1,receivedHostMs:f.now,pageNowMs:10000,eventTimeStampMs:created,currentTargetIsScroller:true,scrollTop:801,scrollHeight:2000,clientHeight:500}]}:{motionEvents:[{ordinal:1,kind:'transitionrun',receivedHostMs:f.now,pageNowMs:10000,eventTimeStampMs:created,targetContained:true}]})};}});const result=await runMountedTrackerA(f.ports);expect(result.hasPrimary,invalid).toBe(true);expect(result.input?.outcome.phase.status,invalid).toBe('incomplete');expect(result.input?.[population==='wheel'?'wheelEvents':population==='scroll'?'scrollEvents':'motionEvents'],invalid).toHaveLength(population==='wheel'?41:1);}});
- it('keeps wheel slot membership on handler page time when creation precedes the slot',async()=>{const f=fixture(),observe=f.history.observations;Object.assign(f.history,{observations:()=>{const facts=observe();return {...facts,wheelEvents:facts.wheelEvents.map((event,index)=>index===1?{...event,eventTimeStampMs:facts.wheelEvents[0]!.eventTimeStampMs}:event)};}});const result=await runMountedTrackerA(f.ports);expect(result.hasPrimary).toBe(false);expect(result.input?.wheelEvents).toHaveLength(41);});
+ it('keeps wheel slot membership on handler page time when creation precedes the slot',async()=>{const f=fixture(),observe=f.history.observations;Object.assign(f.history,{observations:()=>{const facts=observe();facts.wheelEvents[1]!.eventTimeStampMs=facts.wheelEvents[0]!.eventTimeStampMs;return facts;}});const result=await runMountedTrackerA(f.ports);expect(result.hasPrimary).toBe(false);expect(result.input?.wheelEvents).toHaveLength(41);});
  it.each(['missing-pre','missing-post','reversed-post'] as const)('refuses %s conservative phase bracket with raw facts retained',async kind=>{const f=fixture(),read=f.history.scalar;let n=0;f.history.scalar=async()=>{const s=await read();n++;if((kind==='missing-pre'&&n===1)||(kind==='missing-post'&&n===82))s.pageNowMs=NaN;if(kind==='reversed-post'&&n===82)s.pageNowMs=1;return s;};const r=await runMountedTrackerA(f.ports);expect(r.hasPrimary).toBe(true);expect(r.input?.outcome.phase.status).toBe('incomplete');expect(f.calls).toContain('trace-finish');});
  it.each(['pre','post'] as const)('rejects opposing scroll exactly on CLOSED %s boundary',async boundary=>{const f=fixture(),read=f.history.scalar,observe=f.history.observations;let n=0,page=0;f.history.scalar=async()=>{const s=await read();if(++n===(boundary==='pre'?1:82))page=s.pageNowMs;return s;};Object.assign(f.history,{observations:()=>({...observe(),scrollEvents:[900,910].map((scrollTop,i)=>({ordinal:i+1,receivedHostMs:f.now,pageNowMs:page,eventTimeStampMs:page,currentTargetIsScroller:true,scrollTop,scrollHeight:2000,clientHeight:500}))})});const r=await runMountedTrackerA(f.ports);expect(r.hasPrimary).toBe(true);expect(r.input?.scrollEvents).toHaveLength(2);});
  it('admits the last legal capture-tail wake without rebasing the fixed target',async()=>{const f=fixture(),wait=f.clock.waitUntil;f.clock.waitUntil=async at=>{if(at===4700)f.advance(4749.999);else await wait(at);};const r=await runMountedTrackerA(f.ports);expect(r.hasPrimary).toBe(false);expect(r.input).toMatchObject({phase:{captureTail:{status:'fulfilled',targetHostMs:4700,settledHostMs:4749.999}}});});
