@@ -1,5 +1,5 @@
 name: Hosted unqualified scroll cause diagnostic
-run-name: hosted-copilot-react-scroll-cause-v2
+run-name: hosted-copilot-react-scroll-cause-v3
 on:
   workflow_dispatch:
     inputs:

@@ -280,7 +280,8 @@ function admissionPolicy(input: unknown, selected: AdmissionProfile): PolicyResu
 export const MOUNTED_MODULE_PACKAGE_SPECIFIERS: Readonly<Record<string,string>>=Object.freeze({'@copilotkit/runtime/v2':'apps/copilotkit/node_modules/@copilotkit/runtime','@copilotkit/runtime/v2/hono':'apps/copilotkit/node_modules/@copilotkit/runtime',
   '@ag-ui/client':'node_modules/@ag-ui/client','@ag-ui/core':'node_modules/@ag-ui/core','@ag-ui/core/schemas':'node_modules/@ag-ui/core','@hono/node-server':'node_modules/@hono/node-server',
   'rxjs':'node_modules/rxjs','@copilotkit/aimock/agui':'node_modules/@copilotkit/aimock','playwright':'node_modules/playwright','zod':'node_modules/zod'});
-export const MOUNTED_MODULE_BUILTINS: readonly string[]=Object.freeze(['node:http','node:crypto','node:fs/promises','node:path','node:url','node:perf_hooks']);
+// node:util supplies types.isProxy for the closed diagnostic receipt boundary.
+export const MOUNTED_MODULE_BUILTINS: readonly string[]=Object.freeze(['node:http','node:crypto','node:fs/promises','node:path','node:url','node:perf_hooks','node:util']);
 /** One reviewed external rewrite; compiler IDs retain the original logical map. */
 export const WORKER_ZOD_PUBLIC_BINDING = Object.freeze({publicSpecifier:'zod',rawSpecifier:'../../../../node_modules/zod/index.js',packagePath:'node_modules/zod',sourceParent:'packages/contract/src/fixture.ts'} as const);
 export interface WorkerPublicPackage {readonly publicSpecifier:string;readonly packagePath:string}

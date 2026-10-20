@@ -1,4 +1,5 @@
 /** Hosted SOURCE adapter, never invoked by local tests or STATIC inspection. */
+import {types as nodeTypes} from 'node:util';
 import {runMountedConformance,mountedPrerequisitesAccepted,createMountedSnapshotReader,awaitRestoredHistorySnapshot,closeAfterHistoryReadinessPublication,type MountedPrerequisites,type MountedConformanceResult,type MountedCaseOwner,type JourneyObservations} from './mounted-conformance.ts';
 import {evaluateMountedOriginPolicy,MOUNTED_CASE_WITNESS_LABELS,type CaseRecord,type Witness,type OriginLease,type OriginalStatus} from '../../../tests/support/hosted-copilot-mounted-policy.ts';
 import {assertProductionOutputInventory,ordinaryPath,type FileFact} from '../../../tests/support/hosted-copilot-contract.ts';
@@ -8,7 +9,7 @@ import type {GeometrySnapshot,RestoredHistoryDiagnosticPort,AnchorPurpose} from 
 import type {OwnedFrontendHost} from '../src/host.ts';
 import type {CDPSession,Page,BrowserContext,Frame} from 'playwright';
 import {evaluateMountedTrackerAPilotPrerequisites,type MountedTrackerAPilotPrerequisites} from '../../../tests/support/hosted-copilot-mounted-policy.ts';
-import {runMountedTrackerA,initializeTrackerAPage,readTrackerAAnchorScalarEnvelope,readTrackerAGeometrySnapshot,exportTrackerAScrollCauseDiagnostic,type ScrollCausePageExport,type TrackerAHistoryOwner,type TrackerASequencerResult} from './mounted-tracker-a.ts';
+import {runMountedTrackerA,initializeTrackerAPage,readTrackerAAnchorScalarEnvelope,readTrackerAGeometrySnapshot,exportTrackerAScrollCauseDiagnostic,type ScrollCausePageExport,type TrackerAHistoryOwner,type TrackerASequencerResult,type PostCaptureDrainReceipt,type PostCaptureDrainView,type PostCaptureDrainReason} from './mounted-tracker-a.ts';
 import {createMountedTrackerATrace,TRACKER_A_TRACE_CONFIG,type TrackerATracePorts,type TrackerAProfileRef} from './mounted-tracker-a-trace.ts';
 
 export interface NativeMountedOptions {prerequisites:MountedPrerequisites;browserEndpoint:string;assets:Readonly<{root:string;files:readonly FileFact[]}>}
@@ -29,10 +30,56 @@ export function createScrollCauseExportOwner(call:()=>Promise<unknown>,deadline:
   try{await wait(observed,Math.max(0,receipt.targetHostMs-now()));receipt.waiter='fulfilled';}catch{if(receipt.status==='pending'){receipt.waiter='timed-out';receipt.failure='export-timeout';}else{receipt.waiter='rejected';receipt.failure='export-refused';}}
  }};
 }
+/** Page-owned completion only: no scalar, geometry, input, or return work. */
+export async function readPostCapturePublicCompletion():Promise<boolean>{
+ const h=(window as unknown as {__copilotkitBenchHost:OwnedFrontendHost}).__copilotkitBenchHost;
+ await h.waitForReplay();await h.validateCompletion();const p=h.readProgress();return !p.loading&&p.outcome==='success'&&p.error===null;
+}
+/** One diagnostic operation; original settlement never rewrites a latched waiter. */
+export function createPostCaptureDrainOwner(ports:{deadline:number;now?:()=>number;started():boolean;attempted():boolean;admitted():boolean;cleanup():Promise<void>;complete():Promise<void>;wait?:(work:Promise<void>,phase:'cleanup'|'completion')=>Promise<void>}){
+ const now=ports.now??(()=>performance.now());let charged=false;
+ const receipt:PostCaptureDrainReceipt={schemaVersion:1,eligibility:'ineligible',reason:'no-measured-failure',original:'not-started',waiter:'not-started',outcome:'ineligible',requestedHostMs:null,targetHostMs:null,settledHostMs:null};
+ const refuse=(reason:PostCaptureDrainReason)=>{receipt.eligibility='ineligible';receipt.reason=reason;};
+ const wait=async(work:Promise<void>,phase:'cleanup'|'completion')=>{void work.catch(()=>{});await (ports.wait?ports.wait(work,phase):boundedWait(work,Math.max(0,ports.deadline-now()),'Postcapture natural drain deadline'));if(now()>=ports.deadline)throw Error('Postcapture natural drain deadline');};
+ return {receipt,async attempt(view:Readonly<PostCaptureDrainView>):Promise<PostCaptureDrainReceipt>{
+  if(charged)return receipt;charged=true;
+  if(!view.hasPrimary||view.hostT0Ms===null){refuse('no-measured-failure');return receipt;}
+  if(!ports.started()){refuse('continuation-not-started');return receipt;}
+  if(ports.attempted()||view.completionAttempted){refuse('completion-attempted');return receipt;}
+  if(view.pendingOriginal){refuse('pending-original');return receipt;}
+  if(!view.captureTailFulfilled||!view.traceClosed||!view.inputDrainFulfilled){refuse('capture-incomplete');return receipt;}
+  if(!ports.admitted()){refuse('admission-closed');return receipt;}
+  const at=now();if(!Number.isFinite(at)||!Number.isFinite(ports.deadline)||at>=ports.deadline){refuse('deadline');return receipt;}
+  receipt.requestedHostMs=at;receipt.targetHostMs=ports.deadline;
+  let cleanupState:'pending'|'fulfilled'|'rejected'='pending';
+  let cleanup:Promise<void>;try{cleanup=Promise.resolve(ports.cleanup());}catch(error){cleanup=Promise.reject(error);}
+  const cleanupOriginal=cleanup.then(()=>{cleanupState='fulfilled';},error=>{cleanupState='rejected';throw error;});void cleanupOriginal.catch(()=>{});
+  try{await wait(cleanupOriginal,'cleanup');}catch{const rejected=(cleanupState as string)==='rejected';refuse(rejected?'cleanup-rejected':'cleanup-timeout');receipt.waiter=rejected?'rejected':'timed-out';receipt.outcome=rejected?'ineligible':'timed-out';return receipt;}
+  if(!ports.admitted()){refuse('admission-closed');return receipt;}
+  if(ports.attempted()){refuse('completion-attempted');return receipt;}
+  receipt.eligibility='eligible';receipt.reason='eligible';receipt.original='pending';receipt.outcome='pending';
+  let original:Promise<void>;try{original=Promise.resolve(ports.complete());}catch(error){original=Promise.reject(error);}
+  const observed=original.then(()=>{receipt.original='fulfilled';const at=now();receipt.settledHostMs=Number.isFinite(at)?at:null;},error=>{receipt.original='rejected';const at=now();receipt.settledHostMs=Number.isFinite(at)?at:null;throw error;});void observed.catch(()=>{});
+  try{await wait(observed,'completion');receipt.waiter='fulfilled';receipt.outcome='fulfilled';}catch{const rejected=(receipt.original as string)==='rejected';receipt.waiter=rejected?'rejected':'timed-out';receipt.outcome=rejected?'rejected':'timed-out';}
+  return receipt;
+ }};
+}
 function scrollCauseOwn(value:unknown,keys:readonly string[]):Record<string,unknown>{
  if(typeof value!=='object'||value===null||Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('Diagnostic own-data object required');
  const d=Object.getOwnPropertyDescriptors(value);if(Reflect.ownKeys(d).length!==keys.length||Reflect.ownKeys(d).some(key=>typeof key!=='string'||!keys.includes(key)))throw Error('Diagnostic closed keys');
  const out:Record<string,unknown>={};for(const key of keys){const field=d[key];if(!field||!('value'in field)||!field.enumerable)throw Error('Diagnostic accessor denied');Object.defineProperty(out,key,{value:field.value,enumerable:true,writable:true,configurable:true});}return out;
+}
+export function copyPostCaptureDrainReceipt(value:unknown):PostCaptureDrainReceipt{
+ if(nodeTypes.isProxy(value))throw Error('Diagnostic postcapture drain proxy denied');
+ const r=scrollCauseOwn(value,['schemaVersion','eligibility','reason','original','waiter','outcome','requestedHostMs','targetHostMs','settledHostMs']);
+ const reasons=['eligible','no-measured-failure','continuation-not-started','completion-attempted','capture-incomplete','pending-original','cleanup-rejected','cleanup-timeout','deadline','admission-closed'];
+ if(r.schemaVersion!==1||!['eligible','ineligible'].includes(r.eligibility as string)||!reasons.includes(r.reason as string)||!['not-started','pending','fulfilled','rejected'].includes(r.original as string)||!['not-started','fulfilled','rejected','timed-out'].includes(r.waiter as string)||!['ineligible','pending','fulfilled','rejected','timed-out'].includes(r.outcome as string))throw Error('Diagnostic postcapture drain schema');
+ for(const key of ['requestedHostMs','targetHostMs','settledHostMs'])if(r[key]!==null&&(typeof r[key]!=='number'||!Number.isFinite(r[key])||Number(r[key])<0))throw Error('Diagnostic postcapture drain timing');
+ if((r.eligibility==='eligible')!==(r.reason==='eligible')||r.eligibility==='ineligible'&&r.original!=='not-started'||r.outcome==='fulfilled'&&(r.original!=='fulfilled'||r.waiter!=='fulfilled'||r.eligibility!=='eligible')||r.outcome==='rejected'&&(r.original!=='rejected'||r.waiter!=='rejected'||r.eligibility!=='eligible')||r.outcome==='timed-out'&&r.waiter!=='timed-out'||r.outcome==='ineligible'&&r.eligibility!=='ineligible'||r.original!=='not-started'&&(r.requestedHostMs===null||r.targetHostMs===null)||['fulfilled','rejected'].includes(r.original as string)&&r.settledHostMs===null||['not-started','pending'].includes(r.original as string)&&r.settledHostMs!==null||r.requestedHostMs!==null&&r.targetHostMs!==null&&Number(r.requestedHostMs)>=Number(r.targetHostMs)||r.settledHostMs!==null&&r.requestedHostMs!==null&&Number(r.settledHostMs)<Number(r.requestedHostMs))throw Error('Diagnostic postcapture drain consistency');
+ if((r.waiter==='fulfilled')!==(r.outcome==='fulfilled')||(r.waiter==='timed-out')!==(r.outcome==='timed-out')||r.eligibility==='eligible'&&r.original==='not-started'||r.eligibility==='ineligible'&&(r.waiter==='rejected'?r.reason!=='cleanup-rejected':r.waiter==='timed-out'?r.reason!=='cleanup-timeout':r.waiter!=='not-started')||r.outcome==='pending'&&r.waiter!=='not-started')throw Error('Diagnostic postcapture drain waiter consistency');
+ if(r.reason==='cleanup-timeout'&&(r.waiter!=='timed-out'||r.outcome!=='timed-out'||r.requestedHostMs===null||r.targetHostMs===null)||r.reason==='cleanup-rejected'&&(r.waiter!=='rejected'||r.outcome!=='ineligible'||r.requestedHostMs===null||r.targetHostMs===null)||r.outcome==='fulfilled'&&Number(r.settledHostMs)>=Number(r.targetHostMs))throw Error('Diagnostic postcapture drain reason consistency');
+ if((r.requestedHostMs===null)!==(r.targetHostMs===null)||['no-measured-failure','continuation-not-started','capture-incomplete','pending-original','deadline'].includes(r.reason as string)&&r.requestedHostMs!==null)throw Error('Diagnostic postcapture drain admission timing');
+ return r as unknown as PostCaptureDrainReceipt;
 }
 function scrollCauseRef(value:unknown,path:string,cap:number){const r=scrollCauseOwn(value,['path','bytes','sha256']);if(r.path!==path||typeof r.bytes!=='number'||!Number.isSafeInteger(r.bytes)||r.bytes<0||r.bytes>cap||typeof r.sha256!=='string'||!/^[0-9a-f]{64}$/.test(r.sha256))throw Error('Diagnostic literal reference');return {path,bytes:r.bytes,sha256:r.sha256};}
 /** Known source fields only; no Error prototypes, getters, cycles or truncation. */
@@ -111,8 +158,9 @@ function scrollCauseOriginalLane(value:unknown,lane:'input'|'transport',profile:
 export function projectScrollCauseEvidence(result:NativeMountedScrollCauseResult,profileRef:TrackerAProfileRef){
  const r=scrollCauseOwn(result,['kind','schemaVersion','strict','originals','browserVersion','caseEvidence','attribution','qualification','nativeGO','performance','fps']);if(r.kind!=='scroll-cause-diagnostic-result'||r.schemaVersion!==1||r.qualification!==false||r.nativeGO!==false||r.performance!==false||r.fps!=='unavailable')throw Error('Diagnostic result schema');
  const profile=scrollCauseRef(profileRef,'tracker-a-profile.json',16384),source=r.strict;if(typeof source!=='object'||source===null)throw Error('Diagnostic strict result');
- const selected:Record<string,unknown>={};for(const key of ['status','hasPrimary','firstFailure','cleanupFailures','caseEvidence','snapshots','input','transport','inputDrain','anchorDiagnostic']){const d=Object.getOwnPropertyDescriptor(source,key);if(!d&&key==='anchorDiagnostic'){selected[key]=null;continue;}if(!d||!('value'in d)||!d.enumerable)throw Error('Diagnostic original field');selected[key]=d.value;}
+ const selected:Record<string,unknown>={};for(const key of ['status','hasPrimary','firstFailure','cleanupFailures','caseEvidence','snapshots','input','transport','inputDrain','anchorDiagnostic','postCaptureDrain']){const d=Object.getOwnPropertyDescriptor(source,key);if(!d&&key==='anchorDiagnostic'){selected[key]=null;continue;}if(!d||!('value'in d)||!d.enumerable)throw Error('Diagnostic original field');selected[key]=d.value;}
  if(!['complete','incomplete'].includes(selected.status as string)||typeof selected.hasPrimary!=='boolean'||!Array.isArray(selected.cleanupFailures)||selected.cleanupFailures.length>128)throw Error('Diagnostic original status');
+ const postCaptureDrain=copyPostCaptureDrainReceipt(selected.postCaptureDrain);if(postCaptureDrain.original==='pending'||['pending','rejected','timed-out'].includes(postCaptureDrain.outcome))throw Error('Diagnostic postcapture drain unpublished');
  const failure=selected.firstFailure===null?null:scrollCauseOwn(selected.firstFailure,['code','ordinal','previousOrdinal','slot']);
  if(failure){
   const allNull=failure.ordinal===null&&failure.previousOrdinal===null&&failure.slot===null,pre=failure.code==='baseline'&&failure.ordinal===1&&failure.previousOrdinal===null&&failure.slot===null;
@@ -140,7 +188,7 @@ export function projectScrollCauseEvidence(result:NativeMountedScrollCauseResult
  const inputDrain=copyScrollCauseData(selected.inputDrain,4096) as TrackerASequencerResult['inputDrain'];scrollCauseOwn(inputDrain,['status','requestedHostMs','settledHostMs']);
  const actualCoverage=scrollCauseCoverage({input,transport,inputDrain} as TrackerASequencerResult,exportOriginal,{snapshot:ledger,capability:coverage.capability,host:coverage.host,url:coverage.url,sameScroller:coverage.sameScroller,g1:coverage.g1});
  if(JSON.stringify(actualCoverage)!==JSON.stringify(coverage))throw Error('Diagnostic coverage original join');
- const strictResult=copyScrollCauseData({schemaVersion:1,kind:'unqualified-scroll-cause-strict-result',profileRef:profile,strict:{status:selected.status,hasPrimary:selected.hasPrimary,firstFailure:failure,cleanupFailureCount:selected.cleanupFailures.length},caseEvidence,originals,browserVersion:r.browserVersion,anchorDiagnostic,publicationAbsence:absence,attributionCoverage:coverage,qualification:false,nativeGO:false,performance:false,fps:'unavailable'},524288);
+ const strictResult=copyScrollCauseData({schemaVersion:1,kind:'unqualified-scroll-cause-strict-result',profileRef:profile,strict:{status:selected.status,hasPrimary:selected.hasPrimary,firstFailure:failure,cleanupFailureCount:selected.cleanupFailures.length},caseEvidence,originals,browserVersion:r.browserVersion,anchorDiagnostic,postCaptureDrain,publicationAbsence:absence,attributionCoverage:coverage,qualification:false,nativeGO:false,performance:false,fps:'unavailable'},524288);
  return {strictResult,cases,input,transport,firstFailure:failure,ledger,exportOriginal,absence};
 }
 /** Caller bootstrap must authenticate source/provider/archive/physical graph
@@ -166,7 +214,7 @@ export async function runNativeMountedTrackerAPilot(options:NativeMountedTracker
  const copied:NativeMountedTrackerAPublication={wheelHandlerAfterGate:{...expectedGate},profileRef:{path:'tracker-a-profile.json',bytes,sha256:descriptors.sha256.value},anchorDiagnostic:{...expected},reserveTraceSink:reserveDescriptor.value};
  return runNativeMountedOwner(options,diagnostics,{kind:'pilot',publication:copied});
 }
-export interface NativeMountedScrollCauseOptions {kind:'scroll-cause-diagnostic-options';schemaVersion:1;source:{commitSha:string;treeSha:string;lockSha256:string};run:{repository:'cacheplane/chat-ui-bench';runId:string;attempt:1;tag:'hosted-copilot-react-scroll-cause-v2'};browserEndpoint:string;assets:NativeMountedOptions['assets'];buildRef:{path:'diagnostic-build.json';bytes:number;sha256:string}}
+export interface NativeMountedScrollCauseOptions {kind:'scroll-cause-diagnostic-options';schemaVersion:1;source:{commitSha:string;treeSha:string;lockSha256:string};run:{repository:'cacheplane/chat-ui-bench';runId:string;attempt:1;tag:'hosted-copilot-react-scroll-cause-v3'};browserEndpoint:string;assets:NativeMountedOptions['assets'];buildRef:{path:'diagnostic-build.json';bytes:number;sha256:string}}
 export interface NativeMountedScrollCausePublication extends NativeMountedTrackerAPublication {attribution:{protocol:'scroll-cause-attribution-v1';exportTimeoutMs:2000}}
 export interface ScrollCauseExportReceipt {status:'not-started'|'pending'|'fulfilled'|'rejected';requestedHostMs:number|null;targetHostMs:number|null;settledHostMs:number|null;waiter:'not-started'|'fulfilled'|'rejected'|'timed-out';failure:null|'capability-unavailable'|'capability-changed'|'owner-changed'|'export-refused'|'export-timeout'|'deadline'|'closure-unavailable'|'copy-invalid'}
 type ScrollCauseExportOwner=ReturnType<typeof createScrollCauseExportOwner>;
@@ -178,7 +226,7 @@ export async function runNativeMountedScrollCauseDiagnostic(options:NativeMounte
  const o=scrollCauseOwn(options,['kind','schemaVersion','source','run','browserEndpoint','assets','buildRef']);
  if(o.kind!=='scroll-cause-diagnostic-options'||o.schemaVersion!==1)throw Error('Diagnostic options denied before SDK imports');
  const source=scrollCauseOwn(o.source,['commitSha','treeSha','lockSha256']),run=scrollCauseOwn(o.run,['repository','runId','attempt','tag']);
- if(typeof source.commitSha!=='string'||!/^[0-9a-f]{40}$/.test(source.commitSha)||typeof source.treeSha!=='string'||!/^[0-9a-f]{40}$/.test(source.treeSha)||typeof source.lockSha256!=='string'||!/^[0-9a-f]{64}$/.test(source.lockSha256)||run.repository!=='cacheplane/chat-ui-bench'||typeof run.runId!=='string'||!/^\d{1,20}$/.test(run.runId)||run.attempt!==1||run.tag!=='hosted-copilot-react-scroll-cause-v2'||typeof o.browserEndpoint!=='string')throw Error('Diagnostic context denied before SDK imports');
+ if(typeof source.commitSha!=='string'||!/^[0-9a-f]{40}$/.test(source.commitSha)||typeof source.treeSha!=='string'||!/^[0-9a-f]{40}$/.test(source.treeSha)||typeof source.lockSha256!=='string'||!/^[0-9a-f]{64}$/.test(source.lockSha256)||run.repository!=='cacheplane/chat-ui-bench'||typeof run.runId!=='string'||!/^\d{1,20}$/.test(run.runId)||run.attempt!==1||run.tag!=='hosted-copilot-react-scroll-cause-v3'||typeof o.browserEndpoint!=='string')throw Error('Diagnostic context denied before SDK imports');
  scrollCauseRef(o.buildRef,'diagnostic-build.json',1048576);const asset=scrollCauseOwn(o.assets,['root','files']);
  if(typeof asset.root!=='string'||asset.root.length>4096||!Array.isArray(asset.files))throw Error('Diagnostic assets denied before SDK imports');
  const inventory=assertProductionOutputInventory(asset.files);
@@ -240,7 +288,7 @@ async function runNativeMountedOwner(options:NativeMountedOptions|NativeMountedT
    const mark=(label:NativeCaseWitness)=>{const w=witnesses.find(x=>x.label===label)!;if(w.status!=='pending')throw Error('Duplicate original witness');w.status='fulfilled';};
    let history:readonly OriginLease[]=[],leases:readonly OriginLease[]=[],recordingFailed=false,localClosed=false,publicationFailed=false;
    let page:import('playwright').Page|undefined,context:import('playwright').BrowserContext|undefined;
-   let remoteAdmission:Promise<void>|undefined,originalClose:Promise<CaseRecord>|undefined,completed=false,publicIdle=false;
+   let remoteAdmission:Promise<void>|undefined,originalClose:Promise<CaseRecord>|undefined,completed=false,publicIdle=false,continuationStarted=false,completionAttempted=false;
    let pilot:ReturnType<typeof bindNativeTrackerA>|undefined;
    const observe=(event:NativeCaseObservation)=>{
     try{
@@ -320,7 +368,7 @@ async function runNativeMountedOwner(options:NativeMountedOptions|NativeMountedT
      if(pilot)await pilot.captureBaseline();
      return restored;
     },
-    async startContinuation(){await page!.evaluate(()=>{const original=(window as unknown as {__copilotkitBenchHost:OwnedFrontendHost}).__copilotkitBenchHost.connectReplay('/__bench/continuation');Promise.resolve(original).catch(()=>{});});},
+    async startContinuation(){continuationStarted=true;await page!.evaluate(()=>{const original=(window as unknown as {__copilotkitBenchHost:OwnedFrontendHost}).__copilotkitBenchHost.connectReplay('/__bench/continuation');Promise.resolve(original).catch(()=>{});});},
     async exercise(selected):Promise<JourneyObservations>{
      if(selected==='follow'){
       await until(responseVisible);const first=await read();if(first.status!=='available')throw Error('Original response geometry unavailable');
@@ -351,7 +399,7 @@ async function runNativeMountedOwner(options:NativeMountedOptions|NativeMountedT
      const control=await page!.evaluate(()=>(window as unknown as {__copilotkitBenchHost:OwnedFrontendHost}).__copilotkitBenchHost.locators.returnToResponse);
      if(!control)throw Error('Native return control absent');await page!.locator(control).click({scroll:'none'});await until(s=>s.responseOnscreen);const returned=await read();return {samples:[first,second],anchorId,returned,wheel:{...wheelEvent,afterScrollTop:first.scroll.scrollTop}};
     },
-    async complete(){await page!.evaluate(async()=>{const h=(window as unknown as {__copilotkitBenchHost:OwnedFrontendHost}).__copilotkitBenchHost;await h.waitForReplay();await h.validateCompletion();});completed=server.completed();publicIdle=await page!.evaluate(()=>{const p=(window as unknown as {__copilotkitBenchHost:OwnedFrontendHost}).__copilotkitBenchHost.readProgress();return !p.loading&&p.outcome==='success'&&p.error===null;});mark('completionACK');if(!completed||!publicIdle||recordingFailed)throw Error('Original completion failed');await until(s=>s.responseOnscreen&&!s.loading&&s.outcome==='success');return read();},
+    async complete(){if(completionAttempted)throw Error('Original completion already charged');completionAttempted=true;await page!.evaluate(async()=>{const h=(window as unknown as {__copilotkitBenchHost:OwnedFrontendHost}).__copilotkitBenchHost;await h.waitForReplay();await h.validateCompletion();});completed=server.completed();publicIdle=await page!.evaluate(()=>{const p=(window as unknown as {__copilotkitBenchHost:OwnedFrontendHost}).__copilotkitBenchHost.readProgress();return !p.loading&&p.outcome==='success'&&p.error===null;});mark('completionACK');if(!completed||!publicIdle||recordingFailed)throw Error('Original completion failed');await until(s=>s.responseOnscreen&&!s.loading&&s.outcome==='success');return read();},
     close(){if(originalClose)return originalClose;originalClose=(async()=>{try{return await closeAfterHistoryReadinessPublication(async()=>{await server.close();if(recordingFailed)throw Error('Native observation failed');return rawRecord();},()=>publicationFailed);}finally{caseEvidence.push(rawRecord());}})();return originalClose;}
    };
    if(mode.kind!=='ordinary'&&number===2){
@@ -359,6 +407,14 @@ async function runNativeMountedOwner(options:NativeMountedOptions|NativeMountedT
      const control=await page!.evaluate(()=>(window as unknown as {__copilotkitBenchHost:OwnedFrontendHost}).__copilotkitBenchHost.locators.returnToResponse);
      if(!control)throw Error('Native return control absent');await page!.locator(control).click({scroll:'none'});await until(s=>s.responseOnscreen);
     }});owner.pilot=pilot.history;
+    if(mode.kind==='scroll-cause'){
+     const drain=createPostCaptureDrainOwner({deadline:overallDeadline,started:()=>continuationStarted,attempted:()=>completionAttempted,admitted:()=>!localClosed&&!recordingFailed&&page!==undefined,cleanup:()=>pilot!.cleanupOriginal(),complete:async()=>{
+      if(completionAttempted)throw Error('Original completion already charged');completionAttempted=true;
+      const idle=await page!.evaluate(readPostCapturePublicCompletion);
+      const done=server.completed();if(!done||!idle||recordingFailed)throw Error('Original completion failed');completed=done;publicIdle=idle;mark('completionACK');
+     }});
+     pilot.history.postCaptureDrain=view=>drain.attempt(view);
+    }
    }
    return owner;
   },
@@ -372,7 +428,7 @@ async function runNativeMountedOwner(options:NativeMountedOptions|NativeMountedT
    const observed=attributionExport.value();let copied:ScrollCausePageExport|null=null;try{if(observed!==undefined)copied=copyScrollCauseData(observed,1048576) as ScrollCausePageExport;}catch{attributionExport.receipt.failure='copy-invalid';}
    // Refresh only this diagnostic data lane from the last actual cleanup view.
    // Earlier strict decisions and original error/receipt identities stay intact.
-   const strict=diagnosticTransport===undefined?pilot:{...pilot,transport:diagnosticTransport};
+   const strict={...pilot,...(diagnosticTransport===undefined?{}:{transport:diagnosticTransport}),postCaptureDrain:pilot.postCaptureDrain??{schemaVersion:1 as const,eligibility:'ineligible' as const,reason:'no-measured-failure' as const,original:'not-started' as const,waiter:'not-started' as const,outcome:'ineligible' as const,requestedHostMs:null,targetHostMs:null,settledHostMs:null}};
    const snapshot=copied?.snapshot??null,coverage=scrollCauseCoverage(strict,attributionExport.receipt,copied);
    return {kind:'scroll-cause-diagnostic-result',schemaVersion:1,strict,originals,browserVersion,caseEvidence,attribution:{protocol:'scroll-cause-attribution-v1',exportOriginal:attributionExport.receipt,coverage,snapshot},qualification:false,nativeGO:false,performance:false,fps:'unavailable'};
   }
@@ -429,7 +485,7 @@ function boundedPrivateTopology(value:unknown):void{
  if(new TextEncoder().encode(JSON.stringify(value)).length!==bytes)throw Error('Private topology serialized extent');
 }
 function topologyText(value:unknown,cap:number,allowEmpty=false):string{if(typeof value!=='string'||(!allowEmpty&&value.length===0)||value.length>cap||new TextEncoder().encode(value).length>cap)throw Error('Private topology selected field capacity');return value;}
-function bindNativeTrackerA(ports:{scrollCauseAttribution?:true;observeScrollCauseTransport?:(value:NonNullable<TrackerASequencerResult['transport']>)=>void;page():Page|undefined;context():BrowserContext|undefined;deadline:number;publication:NativeMountedTrackerAPublication;check():void;owner:MountedCaseOwner;geometry(purpose?:AnchorPurpose):Promise<GeometrySnapshot>;active():Promise<unknown>;returned():Promise<void>}){
+export function bindNativeTrackerA(ports:{scrollCauseAttribution?:true;observeScrollCauseTransport?:(value:NonNullable<TrackerASequencerResult['transport']>)=>void;page():Page|undefined;context():BrowserContext|undefined;deadline:number;publication:NativeMountedTrackerAPublication;check():void;owner:MountedCaseOwner;geometry(purpose?:AnchorPurpose):Promise<GeometrySnapshot>;active():Promise<unknown>;returned():Promise<void>}){
  const clock=nativeClock(ports.deadline),fresh=():PrivateOriginal=>({status:'not-started',requestedHostMs:null,settledHostMs:null,promise:null,value:undefined});
  const baselineOriginal=fresh(),reservationOriginal=fresh(),sessionOriginal=fresh(),sessionCloseRegistration=fresh(),sessionCloseRemoval=fresh(),targetOriginal=fresh(),frameOriginal=fresh(),drainOriginal=fresh();
  let targetDiagnostic:unknown,frameDiagnostic:unknown,session:CDPSession|undefined,sink:TrackerATracePorts['sink']|undefined,trace:ReturnType<typeof createMountedTrackerATrace>|undefined;
@@ -547,7 +603,10 @@ function bindNativeTrackerA(ports:{scrollCauseAttribution?:true;observeScrollCau
   if(baselineOriginal.status!=='not-started')throw Error('Original baseline already charged');admitted();
   const original=retain(()=>ports.scrollCauseAttribution?page().evaluate(initializeTrackerAPage,{scrollCauseAttribution:true}):page().evaluate(initializeTrackerAPage),baselineOriginal);
   history.baseline=await original;
- },async dispose(){
+ },cleanupOriginal(){return startCleanup();},async dispose(){
+  await boundedWait(startCleanup(),Math.max(0,Math.min(1000,ports.deadline-performance.now())),'Original pilot trace cleanup');
+ }};
+ function startCleanup():Promise<void>{
   cleanupRequested=true;
   if(!cleanup){
    cleanup=(async()=>{
@@ -590,6 +649,6 @@ function bindNativeTrackerA(ports:{scrollCauseAttribution?:true;observeScrollCau
     if(failures.length)throw Error('Original pilot cleanup incomplete',{cause:failures});
    })();void cleanup.catch(()=>{});
   }
-  await boundedWait(cleanup,Math.max(0,Math.min(1000,ports.deadline-performance.now())),'Original pilot trace cleanup');
- }};
+  return cleanup;
+ }
 }

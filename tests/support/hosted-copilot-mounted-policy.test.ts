@@ -314,6 +314,14 @@ describe('supplied mounted admission and direct module facts', () => {
   it('checks one app-local output and public package resolution metadata only', () => {
     expect(modulePolicy(moduleInput())).toMatchObject({ status: 'accepted', facts: { importOccurrences: 2, packageResolutions: 1 }, authority: flags });
   });
+  it('admits the explicit Node Proxy inspector while retaining builtin spelling and resolution guards',()=>{
+    const v=moduleInput();v.imports[1]!.specifier='node:util';
+    expect(modulePolicy(v).status).toBe('accepted');
+    for(const specifier of ['util','node:util/types','node:module','node:child_process']){
+      const denied=moduleInput();denied.imports[1]!.specifier=specifier;expectFailure(modulePolicy(denied),'native-import');
+    }
+    const resolved=moduleInput();resolved.imports[1]!.specifier='node:util';resolved.imports[1]!.resolutionIndex=0;expectFailure(modulePolicy(resolved),'native-resolution');
+  });
   it.each([
     ['native-output-path', (v: ReturnType<typeof moduleInput>) => { v.workerPath = 'tmp/worker.mjs'; }],
     ['native-output', (v: ReturnType<typeof moduleInput>) => { v.emitted[0]!.kind = 'asset'; }],

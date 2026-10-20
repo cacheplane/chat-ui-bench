@@ -1,3 +1,4 @@
+import {types} from 'node:util';
 import {createHash} from 'node:crypto';
 import {constants,createWriteStream} from 'node:fs';
 import {open,lstat,realpath,opendir,mkdir} from 'node:fs/promises';
@@ -92,6 +93,18 @@ export function diagnosticRecord(value:unknown,keys:readonly string[]):Record<st
  const result:Record<string,unknown>=Object.create(null);
  for(const key of keys){const d=descriptors[key];need(d&&'value'in d&&d.enumerable,'diagnostic-data');result[key]=d.value;}
  return result;
+}
+/** Independent publisher admission: only closed own data, never a foreign getter or Proxy. */
+export function assertDiagnosticPostCaptureDrain(value:unknown):void{
+ need(!types.isProxy(value),'diagnostic-postcapture-drain');
+ const r=diagnosticRecord(value,['schemaVersion','eligibility','reason','original','waiter','outcome','requestedHostMs','targetHostMs','settledHostMs']);
+ need(r.schemaVersion===1&&['eligible','ineligible'].includes(r.eligibility as string)&&['eligible','no-measured-failure','continuation-not-started','completion-attempted','capture-incomplete','pending-original','cleanup-rejected','cleanup-timeout','deadline','admission-closed'].includes(r.reason as string)&&['not-started','pending','fulfilled','rejected'].includes(r.original as string)&&['not-started','fulfilled','rejected','timed-out'].includes(r.waiter as string)&&['ineligible','pending','fulfilled','rejected','timed-out'].includes(r.outcome as string),'diagnostic-postcapture-drain');
+ for(const key of ['requestedHostMs','targetHostMs','settledHostMs'])need(r[key]===null||typeof r[key]==='number'&&Number.isFinite(r[key])&&Number(r[key])>=0,'diagnostic-postcapture-drain');
+ need((r.eligibility==='eligible')===(r.reason==='eligible')&&!(r.eligibility==='ineligible'&&r.original!=='not-started')&&!(r.outcome==='fulfilled'&&(r.original!=='fulfilled'||r.waiter!=='fulfilled'||r.eligibility!=='eligible'))&&!(r.outcome==='rejected'&&(r.original!=='rejected'||r.waiter!=='rejected'||r.eligibility!=='eligible'))&&!(r.outcome==='timed-out'&&r.waiter!=='timed-out')&&!(r.outcome==='ineligible'&&r.eligibility!=='ineligible')&&!(r.original!=='not-started'&&(r.requestedHostMs===null||r.targetHostMs===null))&&!(['fulfilled','rejected'].includes(r.original as string)&&r.settledHostMs===null)&&!(['not-started','pending'].includes(r.original as string)&&r.settledHostMs!==null)&&!(r.requestedHostMs!==null&&r.targetHostMs!==null&&Number(r.requestedHostMs)>=Number(r.targetHostMs))&&!(r.settledHostMs!==null&&r.requestedHostMs!==null&&Number(r.settledHostMs)<Number(r.requestedHostMs)),'diagnostic-postcapture-drain');
+ need((r.waiter==='fulfilled')===(r.outcome==='fulfilled')&&(r.waiter==='timed-out')===(r.outcome==='timed-out')&&!(r.eligibility==='eligible'&&r.original==='not-started')&&!(r.eligibility==='ineligible'&&(r.waiter==='rejected'?r.reason!=='cleanup-rejected':r.waiter==='timed-out'?r.reason!=='cleanup-timeout':r.waiter!=='not-started'))&&!(r.outcome==='pending'&&r.waiter!=='not-started'),'diagnostic-postcapture-drain');
+ need(!(r.reason==='cleanup-timeout'&&(r.waiter!=='timed-out'||r.outcome!=='timed-out'))&&!(r.reason==='cleanup-rejected'&&(r.waiter!=='rejected'||r.outcome!=='ineligible')),'diagnostic-postcapture-drain');
+ need((r.requestedHostMs===null)===(r.targetHostMs===null)&&!(['cleanup-timeout','cleanup-rejected'].includes(r.reason as string)&&r.requestedHostMs===null)&&!(['no-measured-failure','continuation-not-started','capture-incomplete','pending-original','deadline'].includes(r.reason as string)&&r.requestedHostMs!==null)&&!(r.outcome==='fulfilled'&&Number(r.settledHostMs)>=Number(r.targetHostMs)),'diagnostic-postcapture-drain');
+ need(r.original!=='pending'&&!['pending','rejected','timed-out'].includes(r.outcome as string),'diagnostic-postcapture-drain-unsettled');
 }
 /** Bounded data parser; duplicate keys never disappear through JSON.parse. */
 export function parseDiagnosticJson(raw:Uint8Array):unknown{
@@ -210,8 +223,9 @@ async function inspectDiagnosticPublication(directory:string,context:DiagnosticP
  need(worker.launchPath===context.launchWorker&&worker.bytes===launch.bytes&&worker.sha256===launch.sha256&&copy.bytes===launch.bytes&&copy.sha256===launch.sha256,'diagnostic-worker-copy');
  for(const [name,argv] of [['parent',context.parentArgv],['application',context.childArgv]] as const)assertDiagnosticCommandClosure(data(`${name}-started.json`),data(`${name}-result.json`),{stdout:fact(`${name}.stdout`),stderr:fact(`${name}.stderr`)},argv);
  const strict=data('diagnostic-strict-result.json');
- diagnosticRecord(strict,['schemaVersion','kind','profileRef','strict','caseEvidence','originals','browserVersion','anchorDiagnostic','publicationAbsence','attributionCoverage','qualification','nativeGO','performance','fps']);
+ diagnosticRecord(strict,['schemaVersion','kind','profileRef','strict','caseEvidence','originals','browserVersion','anchorDiagnostic','postCaptureDrain','publicationAbsence','attributionCoverage','qualification','nativeGO','performance','fps']);
  need(strict.schemaVersion===1&&strict.kind==='unqualified-scroll-cause-strict-result'&&strict.qualification===false&&strict.nativeGO===false&&strict.performance===false&&strict.fps==='unavailable','diagnostic-strict-authority');joinRef(strict.profileRef,'tracker-a-profile.json');
+ assertDiagnosticPostCaptureDrain(strict.postCaptureDrain);
  const originalStrict=diagnosticRecord(strict.strict,['status','hasPrimary','firstFailure','cleanupFailureCount']);need(['complete','incomplete'].includes(originalStrict.status as string)&&typeof originalStrict.hasPrimary==='boolean'&&Number.isSafeInteger(originalStrict.cleanupFailureCount)&&Number(originalStrict.cleanupFailureCount)>=0,'diagnostic-strict-shape');
  const expectedExit=originalStrict.status==='complete'&&originalStrict.hasPrimary===false?0:2;
  for(const name of ['parent','application'] as const){const commandResult=data(`${name}-result.json`),exit=object(commandResult.exit);need(commandResult.timedOut===false&&commandResult.terminationRequested===false&&exit.exitCode===expectedExit&&exit.signal===null,'diagnostic-infrastructure-exit');}
@@ -252,7 +266,7 @@ export const SCROLL_CAUSE_FORENSIC_RESERVATION=Object.freeze({bytes:Object.value
 type ForensicContext=Omit<DiagnosticPublicationContext,'launchWorker'>;
 function commandForensicContext(context:ForensicContext){
  const source=diagnosticRecord(context.source,['commitSha','treeSha','lockSha256']),run=diagnosticRecord(context.run,['repository','runId','attempt','tag']);
- need(typeof source.commitSha==='string'&&/^[a-f0-9]{40}$/.test(source.commitSha)&&typeof source.treeSha==='string'&&/^[a-f0-9]{40}$/.test(source.treeSha)&&typeof source.lockSha256==='string'&&/^[a-f0-9]{64}$/.test(source.lockSha256)&&run.repository==='cacheplane/chat-ui-bench'&&typeof run.runId==='string'&&/^[1-9][0-9]{0,19}$/.test(run.runId)&&run.attempt===1&&run.tag==='hosted-copilot-react-scroll-cause-v2','diagnostic-context-join');
+ need(typeof source.commitSha==='string'&&/^[a-f0-9]{40}$/.test(source.commitSha)&&typeof source.treeSha==='string'&&/^[a-f0-9]{40}$/.test(source.treeSha)&&typeof source.lockSha256==='string'&&/^[a-f0-9]{64}$/.test(source.lockSha256)&&run.repository==='cacheplane/chat-ui-bench'&&typeof run.runId==='string'&&/^[1-9][0-9]{0,19}$/.test(run.runId)&&run.attempt===1&&run.tag==='hosted-copilot-react-scroll-cause-v3','diagnostic-context-join');
  const argv=(value:readonly string[])=>{need(Array.isArray(value)&&value.length>=1&&value.length<=8&&Reflect.ownKeys(value).length===value.length+1,'diagnostic-command-owner');const copied:string[]=[];for(let i=0;i<value.length;i++){const d=Object.getOwnPropertyDescriptor(value,String(i));need(d&&'value'in d&&typeof d.value==='string'&&d.value.length<=4096,'diagnostic-command-owner');copied.push(d.value);}need(Buffer.byteLength(JSON.stringify(copied))<=8192,'diagnostic-command-owner');return copied;};
  return {source,run,parentArgv:argv(context.parentArgv),childArgv:argv(context.childArgv)};
 }
@@ -277,7 +291,7 @@ async function forensicStageCensus(stage:string,withManifest:boolean){
  need(names.length===8+Number(withManifest)&&SCROLL_CAUSE_FORENSIC_ROLES.every(path=>names.includes(path))&&names.includes(FORENSIC_MANIFEST)===withManifest,'diagnostic-namespace');need(JSON.stringify(owner)===JSON.stringify(await canonicalDirectory(stage)),'diagnostic-namespace-changed');return owner.slice(0,3);
 }
 function forensicManifest(originals:Awaited<ReturnType<typeof forensicOriginals>>,copies:Map<string,RoleFact>,stageIdentity:string[]){
- return {schemaVersion:1,kind:'unqualified-scroll-cause-command-forensics',source:originals.checked.source,run:originals.checked.run,profile:{release:'hosted-copilot-react-scroll-cause-v2',scope:'closed-parent-application-commands-only'},parentArgv:originals.checked.parentArgv,childArgv:originals.checked.childArgv,files:SCROLL_CAUSE_FORENSIC_ROLES.map(path=>{const original=originals.files.get(path)!,copy=copies.get(path)!;return {...diagnosticRef(original),originalIdentity:original.identity,copyIdentity:copy.identity};}),originalNamespace:originals.namespace,stageIdentity,outcomes:originals.outcomes,reservation:SCROLL_CAUSE_FORENSIC_RESERVATION,diagnosticArtifactAdmission:'not-established',browserClosure:'unestablished',rawTraceClosure:'unestablished',descendants:'unqualified',qualification:false,nativeGO:false,performance:false,fps:'unavailable'};
+ return {schemaVersion:1,kind:'unqualified-scroll-cause-command-forensics',source:originals.checked.source,run:originals.checked.run,profile:{release:'hosted-copilot-react-scroll-cause-v3',scope:'closed-parent-application-commands-only'},parentArgv:originals.checked.parentArgv,childArgv:originals.checked.childArgv,files:SCROLL_CAUSE_FORENSIC_ROLES.map(path=>{const original=originals.files.get(path)!,copy=copies.get(path)!;return {...diagnosticRef(original),originalIdentity:original.identity,copyIdentity:copy.identity};}),originalNamespace:originals.namespace,stageIdentity,outcomes:originals.outcomes,reservation:SCROLL_CAUSE_FORENSIC_RESERVATION,diagnosticArtifactAdmission:'not-established',browserClosure:'unestablished',rawTraceClosure:'unestablished',descendants:'unqualified',qualification:false,nativeGO:false,performance:false,fps:'unavailable'};
 }
 /** Fresh sibling only. A diagnostic inventory failure cannot block this action. */
 export async function admitScrollCauseCommandForensics(directory:string,stage:string,context:ForensicContext,writeManifest:(stage:string,raw:Buffer)=>Promise<unknown>=async(stage,raw)=>{

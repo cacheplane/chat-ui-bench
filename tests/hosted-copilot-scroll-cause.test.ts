@@ -139,9 +139,10 @@ test('frontend ZIP closes the exact original asset bytes with CRC and bounded ph
  await expect((api as any).packDiagnosticFrontend(root,[...files,files[0]])).rejects.toThrow();
 });
 
-async function closedPublicationFixture(exit=2){
+const inactivePostCaptureDrain=()=>({schemaVersion:1,eligibility:'ineligible',reason:'no-measured-failure',original:'not-started',waiter:'not-started',outcome:'ineligible',requestedHostMs:null,targetHostMs:null,settledHostMs:null});
+async function closedPublicationFixture(exit=2,postCaptureDrain:unknown=inactivePostCaptureDrain()){
  const a=await import('./support/hosted-copilot-scroll-cause-artifact.js'),directory=await realpath(await mkdtemp(resolve(tmpdir(),'scroll-cause-publish-'))),worker=resolve(await realpath(await mkdtemp(resolve(tmpdir(),'scroll-cause-worker-'))),'worker.mjs');await writeFile(worker,'export {};\n');
- const source={commitSha:'a'.repeat(40),treeSha:'b'.repeat(40),lockSha256:'c'.repeat(64)},run={repository:'cacheplane/chat-ui-bench',runId:'123',attempt:1,tag:'hosted-copilot-react-scroll-cause-v2'};
+ const source={commitSha:'a'.repeat(40),treeSha:'b'.repeat(40),lockSha256:'c'.repeat(64)},run={repository:'cacheplane/chat-ui-bench',runId:'123',attempt:1,tag:'hosted-copilot-react-scroll-cause-v3'};
  const ref=async(path:any)=>a.diagnosticRef(await a.readDiagnosticRole(directory,path));
  await a.writeDiagnosticJson(directory,'diagnostic-profile.json',{source,run,qualification:false});
  await a.writeDiagnosticJson(directory,'diagnostic-source.json',{source,run,qualification:false});
@@ -151,7 +152,7 @@ async function closedPublicationFixture(exit=2){
  await a.writeDiagnosticJson(directory,'diagnostic-build.json',{source,run,profilePath:'diagnostic-profile.json',profileSha256:(await ref('diagnostic-profile.json')).sha256,worker:{launchPath:worker,bytes:11,sha256:a.diagnosticHash('export {};\n')},qualification:false});
  await a.writeDiagnosticJson(directory,'tracker-a-profile.json',{source,run,recipeRef:await ref('diagnostic-profile.json'),buildRef:await ref('diagnostic-build.json'),qualification:false});
  const absent=[['native-case-1.json','case-not-produced'],['native-case-2.json','case-not-produced'],['tracker-a-case-2-input.json','input-not-produced'],['tracker-a-case-2-transport.json','transport-not-produced'],['diagnostic-first-failure.json','first-failure-none'],['scroll-cause-ledger.json','ledger-unavailable']].map(([path,reason])=>({path,reason}));
- await a.writeDiagnosticJson(directory,'diagnostic-strict-result.json',{schemaVersion:1,kind:'unqualified-scroll-cause-strict-result',profileRef:await ref('tracker-a-profile.json'),strict:{status:'incomplete',hasPrimary:true,firstFailure:null,cleanupFailureCount:0},caseEvidence:[],originals:[{label:'browserConnect',status:'fulfilled'},{label:'clientClose',status:'fulfilled'},{label:'clientDisconnected',status:'fulfilled'}],browserVersion:null,anchorDiagnostic:null,publicationAbsence:absent,attributionCoverage:{availability:'unavailable'},qualification:false,nativeGO:false,performance:false,fps:'unavailable'});
+ await a.writeDiagnosticJson(directory,'diagnostic-strict-result.json',{schemaVersion:1,kind:'unqualified-scroll-cause-strict-result',profileRef:await ref('tracker-a-profile.json'),strict:{status:'incomplete',hasPrimary:true,firstFailure:null,cleanupFailureCount:0},caseEvidence:[],originals:[{label:'browserConnect',status:'fulfilled'},{label:'clientClose',status:'fulfilled'},{label:'clientDisconnected',status:'fulfilled'}],browserVersion:null,anchorDiagnostic:null,postCaptureDrain,publicationAbsence:absent,attributionCoverage:{availability:'unavailable'},qualification:false,nativeGO:false,performance:false,fps:'unavailable'});
  await a.writeDiagnosticJson(directory,'scroll-cause-export.json',{status:'not-started',requestedHostMs:null,targetHostMs:null,settledHostMs:null,waiter:'not-started',failure:null});
  const footer=a.encodeDiagnosticFooter({protocol:'scroll-cause-child-publication-v1',source:source.commitSha,run:run.runId,rawTrace:{created:false,closed:false},strictResultRef:await ref('diagnostic-strict-result.json')});
  const childArgv=[process.execPath,'-e',`process.stdout.write(${JSON.stringify(footer)});process.exitCode=${exit}`],parentArgv=[process.execPath,'-e',`process.exitCode=${exit}`];
@@ -172,9 +173,9 @@ test('manifest-last retains a closed failed command and reauthenticates namespac
 
 test('hosted diagnostic context refuses mixed source, release, attempt and runtime flags before any SDK import',async()=>{
  const path=resolve('tests/support/hosted-copilot-scroll-cause-launch.ts');const api=existsSync(path)?await import(pathToFileURL(path).href):null;expect(api?.selectScrollCauseHostedContext).toBeTypeOf('function');if(!api)throw Error('launcher absent');
- const c={sourceSha:'a'.repeat(40),checkoutSha:'a'.repeat(40),tagSha:'a'.repeat(40),githubSha:'a'.repeat(40),workflowSha:'a'.repeat(40),repository:'cacheplane/chat-ui-bench',runId:'123',attempt:'1',ref:'refs/tags/hosted-copilot-react-scroll-cause-v2',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-scroll-cause.yml@refs/tags/hosted-copilot-react-scroll-cause-v2',event:'workflow_dispatch',actions:'true',platform:'linux',runner:'Linux',node:'v24.20.0',npm:'11.19.0',execArgv:['--experimental-import-meta-resolve']};
+ const c={sourceSha:'a'.repeat(40),checkoutSha:'a'.repeat(40),tagSha:'a'.repeat(40),githubSha:'a'.repeat(40),workflowSha:'a'.repeat(40),repository:'cacheplane/chat-ui-bench',runId:'123',attempt:'1',ref:'refs/tags/hosted-copilot-react-scroll-cause-v3',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-scroll-cause.yml@refs/tags/hosted-copilot-react-scroll-cause-v3',event:'workflow_dispatch',actions:'true',platform:'linux',runner:'Linux',node:'v24.20.0',npm:'11.19.0',execArgv:['--experimental-import-meta-resolve']};
  expect(api.selectScrollCauseHostedContext(c)).toMatchObject({sourceSha:c.sourceSha,runId:'123'});
- for(const changed of [{attempt:'2'},{checkoutSha:'b'.repeat(40)},{ref:'refs/heads/main'},{ref:'refs/tags/hosted-copilot-react-scroll-cause-v1',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-scroll-cause.yml@refs/tags/hosted-copilot-react-scroll-cause-v1'},{node:'v25.0.0'},{execArgv:[]},{execArgv:['--experimental-import-meta-resolve','--import=alien']}])expect(()=>api.selectScrollCauseHostedContext({...c,...changed})).toThrow();
+ for(const changed of [{ref:'refs/tags/hosted-copilot-react-scroll-cause-v2',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-scroll-cause.yml@refs/tags/hosted-copilot-react-scroll-cause-v2'},{attempt:'2'},{checkoutSha:'b'.repeat(40)},{ref:'refs/heads/main'},{ref:'refs/tags/hosted-copilot-react-scroll-cause-v1',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-scroll-cause.yml@refs/tags/hosted-copilot-react-scroll-cause-v1'},{node:'v25.0.0'},{execArgv:[]},{execArgv:['--experimental-import-meta-resolve','--import=alien']}])expect(()=>api.selectScrollCauseHostedContext({...c,...changed})).toThrow();
 });
 
 test('owned raw trace writer exposes actual fsync and close originals and refuses concurrent or post-finish writes',async()=>{
@@ -304,4 +305,41 @@ test('command forensics preserves actual timed-out signal exit and literal senti
 
 test.each([{attempt:2},{runId:'0'},{tag:'hosted-copilot-react-scroll-cause-v1'}])('command forensics refuses invalid caller context %j',async changed=>{
  const {a,directory,context}=await closedPublicationFixture();await expect(a.admitScrollCauseCommandForensics(directory,directory+'-forensics',{...context,run:{...context.run,...changed}})).rejects.toThrow('diagnostic-context-join');
+});
+
+for(const [name,receipt] of Object.entries({missing:undefined,extra:{...inactivePostCaptureDrain(),extra:1},enum:{...inactivePostCaptureDrain(),reason:'alien'},nonfinite:{...inactivePostCaptureDrain(),requestedHostMs:-1},inconsistent:{...inactivePostCaptureDrain(),original:'fulfilled'},pending:{schemaVersion:1,eligibility:'eligible',reason:'eligible',original:'pending',waiter:'not-started',outcome:'pending',requestedHostMs:1,targetHostMs:10,settledHostMs:null},rejected:{schemaVersion:1,eligibility:'eligible',reason:'eligible',original:'rejected',waiter:'rejected',outcome:'rejected',requestedHostMs:1,targetHostMs:10,settledHostMs:2},timeout:{schemaVersion:1,eligibility:'eligible',reason:'eligible',original:'pending',waiter:'timed-out',outcome:'timed-out',requestedHostMs:1,targetHostMs:10,settledHostMs:null},late:{schemaVersion:1,eligibility:'eligible',reason:'eligible',original:'fulfilled',waiter:'timed-out',outcome:'timed-out',requestedHostMs:1,targetHostMs:10,settledHostMs:11}})) test(`publisher independently refuses postcapture ${name}`,async()=>{
+ const {a,directory,context}=await closedPublicationFixture(2,receipt===undefined?null:receipt);
+ if(name==='missing'){const path=resolve(directory,'diagnostic-strict-result.json'),row=JSON.parse(await readFile(path,'utf8'));delete row.postCaptureDrain;await writeFile(path,JSON.stringify(row)+'\n');}
+ await expect(a.publishDiagnosticInventory(directory,context)).rejects.toThrow();expect(existsSync(resolve(directory,'diagnostic-manifest.json'))).toBe(false);
+});
+test('publisher admits a fulfilled drain while retaining failed strict status and exit',async()=>{
+ const receipt={schemaVersion:1,eligibility:'eligible',reason:'eligible',original:'fulfilled',waiter:'fulfilled',outcome:'fulfilled',requestedHostMs:1,targetHostMs:10,settledHostMs:2};
+ const {a,directory,context}=await closedPublicationFixture(2,receipt);await expect(a.publishDiagnosticInventory(directory,context)).resolves.toMatchObject({qualification:false,nativeGO:false,performance:false});
+ expect(JSON.parse(await readFile(resolve(directory,'diagnostic-strict-result.json'),'utf8')).strict).toMatchObject({status:'incomplete',hasPrimary:true});
+});
+
+test('v3 profile explicitly describes the unscored postcapture drain and preserves pilot protocol v2',async()=>{
+ const source=await readFile(resolve('tests/support/hosted-copilot-scroll-cause-launch.ts'),'utf8');
+ expect(source).toContain("postCaptureDrain:POST_CAPTURE_DRAIN_PROFILE");
+ const api=await import('./support/hosted-copilot-scroll-cause-launch.ts');
+ expect((api as any).POST_CAPTURE_DRAIN_PROFILE).toEqual({schemaVersion:1,mode:'unscored-postcapture-natural-drain',caseNumber:2,position:'after-capture-cleanup-before-owner-close',deadline:'original-overall-deadline',completion:'existing-public-validation-once',scoring:false});
+ expect(source).toContain("strictMode:'tracker-json-a-pilot-v2'");
+});
+
+test('publisher receipt admission reads no accessor, proxy trap, coercion or error field',async()=>{
+ const {assertDiagnosticPostCaptureDrain:admit}=await import('./support/hosted-copilot-scroll-cause-artifact.ts');let reads=0;
+ const accessor={...inactivePostCaptureDrain()};Object.defineProperty(accessor,'reason',{enumerable:true,get(){reads++;throw Error('read');}});
+ const proxy=new Proxy(inactivePostCaptureDrain(),{getPrototypeOf(){reads++;throw Error('trap');},ownKeys(){reads++;throw Error('trap');}});
+ const coercion={...inactivePostCaptureDrain(),reason:{toString(){reads++;return 'no-measured-failure';}}};
+ for(const receipt of [accessor,proxy,coercion])expect(()=>admit(receipt)).toThrow();
+ expect(reads).toBe(0);
+});
+
+for(const reason of ['cleanup-timeout','cleanup-rejected'] as const)test(`publisher refuses ${reason} without its actual waiter state`,async()=>{
+ const {a,directory,context}=await closedPublicationFixture(2,{...inactivePostCaptureDrain(),reason});
+ await expect(a.publishDiagnosticInventory(directory,context)).rejects.toThrow();expect(existsSync(resolve(directory,'diagnostic-manifest.json'))).toBe(false);
+});
+
+for(const [name,receipt] of Object.entries({lateSuccess:{schemaVersion:1,eligibility:'eligible',reason:'eligible',original:'fulfilled',waiter:'fulfilled',outcome:'fulfilled',requestedHostMs:1,targetHostMs:10,settledHostMs:11},unpairedTimes:{...inactivePostCaptureDrain(),reason:'admission-closed',requestedHostMs:1},cleanupWithoutTimes:{...inactivePostCaptureDrain(),reason:'cleanup-rejected',waiter:'rejected'},earlyWithTimes:{...inactivePostCaptureDrain(),requestedHostMs:1,targetHostMs:10}}))test(`publisher refuses impossible drain time ${name}`,async()=>{
+ const {a,directory,context}=await closedPublicationFixture(2,receipt);await expect(a.publishDiagnosticInventory(directory,context)).rejects.toThrow();expect(existsSync(resolve(directory,'diagnostic-manifest.json'))).toBe(false);
 });

@@ -102,7 +102,7 @@ test('markers and vendor records share the exact row limit and width budget', ()
 });
 test('diagnostic preflight never coerces source values or enters normal prerequisites', async () => {
   let getters = 0;
-  const options = { kind: 'scroll-cause-diagnostic-options', schemaVersion: 1, source: { commitSha: { toString() { getters++; return 'a'.repeat(40); } }, treeSha: 'b'.repeat(40), lockSha256: 'c'.repeat(64) }, run: { repository: 'cacheplane/chat-ui-bench', runId: '1', attempt: 1, tag: 'hosted-copilot-react-scroll-cause-v2' }, browserEndpoint: 'ws://127.0.0.1:1234/', assets: { root: '/unreachable', files: [] }, buildRef: { path: 'diagnostic-build.json', bytes: 1, sha256: 'd'.repeat(64) } };
+  const options = { kind: 'scroll-cause-diagnostic-options', schemaVersion: 1, source: { commitSha: { toString() { getters++; return 'a'.repeat(40); } }, treeSha: 'b'.repeat(40), lockSha256: 'c'.repeat(64) }, run: { repository: 'cacheplane/chat-ui-bench', runId: '1', attempt: 1, tag: 'hosted-copilot-react-scroll-cause-v3' }, browserEndpoint: 'ws://127.0.0.1:1234/', assets: { root: '/unreachable', files: [] }, buildRef: { path: 'diagnostic-build.json', bytes: 1, sha256: 'd'.repeat(64) } };
   await expect(native.runNativeMountedScrollCauseDiagnostic(options, {}, {})).rejects.toThrow('before SDK imports'); expect(getters).toBe(0);
   await expect(native.runNativeMountedConformance(options, {})).rejects.toThrow('prerequisites');
   await expect(native.runNativeMountedTrackerAPilot(options, {}, {})).rejects.toThrow('prerequisites');
@@ -121,7 +121,7 @@ test('native export retains the single original across timeout and late fulfillm
 function projectionFixture() {
   const coverage = { protocol: 'scroll-cause-attribution-v1', version: 1, capability: 'not-checked', host: 'not-checked', url: 'not-checked', sameScroller: 'not-checked', g1: 'not-returned', originals: { inputDrain: 'not-started', trace: 'unavailable', export: 'not-started' }, scalarJoin: { status: 'unavailable', expected: null, observed: 0, lastOrdinal: null }, availability: 'unavailable', reasons: ['not-started', 'g1-unavailable', 'ledger-unavailable', 'scalar-join-unavailable', 'input-unclosed', 'trace-unclosed', 'export-unclosed'] };
   const receipt = { status: 'not-started', requestedHostMs: null, targetHostMs: null, settledHostMs: null, waiter: 'not-started', failure: null };
-  return { kind: 'scroll-cause-diagnostic-result', schemaVersion: 1, strict: { status: 'incomplete', hasPrimary: true, firstFailure: { code: 'opposing-offset', ordinal: 3, previousOrdinal: 2, slot: 0 }, cleanupFailures: [], caseEvidence: [], snapshots: [], input: null, transport: null, anchorDiagnostic: null, inputDrain: { status: 'not-started', requestedHostMs: null, settledHostMs: null } }, originals: ['browserConnect', 'clientClose', 'clientDisconnected'].map(label => ({ label, status: 'fulfilled' })), browserVersion: null, caseEvidence: [], attribution: { protocol: 'scroll-cause-attribution-v1', exportOriginal: receipt, snapshot: null, coverage }, qualification: false, nativeGO: false, performance: false, fps: 'unavailable' };
+  return { kind: 'scroll-cause-diagnostic-result', schemaVersion: 1, strict: { status: 'incomplete', hasPrimary: true, firstFailure: { code: 'opposing-offset', ordinal: 3, previousOrdinal: 2, slot: 0 }, cleanupFailures: [], caseEvidence: [], snapshots: [], input: null, transport: null, anchorDiagnostic: null, inputDrain: { status: 'not-started', requestedHostMs: null, settledHostMs: null }, postCaptureDrain: {schemaVersion:1,eligibility:'ineligible',reason:'no-measured-failure',original:'not-started',waiter:'not-started',outcome:'ineligible',requestedHostMs:null,targetHostMs:null,settledHostMs:null} }, originals: ['browserConnect', 'clientClose', 'clientDisconnected'].map(label => ({ label, status: 'fulfilled' })), browserVersion: null, caseEvidence: [], attribution: { protocol: 'scroll-cause-attribution-v1', exportOriginal: receipt, snapshot: null, coverage }, qualification: false, nativeGO: false, performance: false, fps: 'unavailable' };
 }
 const profile = { path: 'tracker-a-profile.json', bytes: 10, sha256: 'a'.repeat(64) };
 for (const witness of [
@@ -325,4 +325,16 @@ test('actual pinned closed trio preserves success and original throws with versi
     }
     expect(outcomes[1]).toEqual(outcomes[0]);
   }
+});
+
+test('projection requires the v3 receipt without reading a receipt accessor',()=>{
+ const missing:any=projectionFixture();delete missing.strict.postCaptureDrain;
+ expect(()=>native.projectScrollCauseEvidence(missing,profile)).toThrow();
+ let reads=0;const accessor:any=projectionFixture();Object.defineProperty(accessor.strict.postCaptureDrain,'reason',{enumerable:true,get(){reads++;throw Error('foreign');}});
+ expect(()=>native.projectScrollCauseEvidence(accessor,profile)).toThrow();expect(reads).toBe(0);
+});
+for(const state of ['pending','rejected','timed-out','late-fulfilled'] as const)test(`projection refuses unpublished drain ${state}`,()=>{
+ const value:any=projectionFixture(),late=state==='late-fulfilled';
+ value.strict.postCaptureDrain={schemaVersion:1,eligibility:'eligible',reason:'eligible',original:late?'fulfilled':state==='rejected'?'rejected':'pending',waiter:state==='pending'?'not-started':state==='rejected'?'rejected':'timed-out',outcome:state==='pending'?'pending':state==='rejected'?'rejected':'timed-out',requestedHostMs:1,targetHostMs:10,settledHostMs:late?11:state==='rejected'?2:null};
+ expect(()=>native.projectScrollCauseEvidence(value,profile)).toThrow('postcapture');
 });

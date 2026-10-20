@@ -508,3 +508,38 @@ describe('QUALITY required listener-removal coverage',()=>{
   if(kind.startsWith('reject')){const failure=kind==='reject-null'?null:undefined;expect(r.primary).toBe(failure);expect(r.cleanupFailures).toContain(failure);}else expect(r.input?.listeners.scroll.ownedIdentityMatch).toBe(kind==='valid');
  });
 });
+
+ describe('postcapture natural drain seam',()=>{
+ it('runs only after fixed tail and original capture/input cleanup, preserving opposing failure',async()=>{
+  const f=fixture(),read=f.history.scalar;let reads=0,view:unknown;
+  f.history.scalar=async()=>{const value=await read();if(++reads>=3)value.scrollTop+=100;return value;};
+  Object.assign(f.history,{postCaptureDrain:async(value:unknown)=>{view=value;f.calls.push('natural-drain');expect(f.now).toBe(4700);expect(f.calls).toContain('trace-finish');expect(f.calls.filter(v=>v.startsWith('remove-'))).toHaveLength(7);return null;}});
+  const r=await runMountedTrackerA(f.ports);
+  expect(f.calls.indexOf('natural-drain')).toBeGreaterThan(f.calls.indexOf('trace-finish'));
+  expect(f.calls.indexOf('natural-drain')).toBeLessThan(f.calls.indexOf('close-2'));
+  expect(view).toMatchObject({hasPrimary:true,firstFailure:{code:'opposing-offset'},hostT0Ms:700,captureTailFulfilled:true,inputDrainFulfilled:true,traceClosed:true,pendingOriginal:false,completionAttempted:false});
+  expect(r.status).toBe('incomplete');expect(r.firstFailure?.code).toBe('opposing-offset');expect(r.input?.phase.completion.status).toBe('not-started');expect(r.input?.geometryCheckpoints.G4.status).toBe('not-started');expect(f.calls).not.toContain('return');expect(f.calls.filter(v=>v==='wheel')).toHaveLength(1);
+ });
+ it('retains primary identity and still closes when postcapture callback rejects',async()=>{
+  const f=fixture(),read=f.history.scalar;let reads=0;f.history.scalar=async()=>{const value=await read();if(++reads>=3)value.scrollTop+=100;return value;};
+  const cleanup=Object.freeze({drain:true});Object.assign(f.history,{postCaptureDrain:async()=>{throw cleanup;}});
+  const r=await runMountedTrackerA(f.ports);expect(r.cleanupFailures).toContain(cleanup);expect(r.firstFailure?.code).toBe('opposing-offset');expect(f.calls).toContain('close-2');
+ });
+ });
+
+it('ordinary supplied pilot has no diagnostic hook or receipt and preserves its complete path',async()=>{const f=fixture();const result=await runMountedTrackerA(f.ports);expect(result.status).toBe('complete');expect(Object.hasOwn(result,'postCaptureDrain')).toBe(false);expect(f.calls.filter(value=>value==='G4')).toHaveLength(1);expect(f.calls).toContain('return');});
+
+ it.each(['fulfilled','timed-out'] as const)('starts original diagnostic case and client cleanup even when the postcapture hook reaches the unchanged deadline: %s',async outcome=>{
+  const f=fixture(),read=f.history.scalar;let reads=0;f.history.scalar=async()=>{const value=await read();if(++reads>=3)value.scrollTop+=100;return value;};
+  Object.assign(f.history,{postCaptureDrain:async()=>{f.advance(f.clock.deadlineHostMs);return {schemaVersion:1,eligibility:'eligible',reason:'eligible',original:outcome==='fulfilled'?'fulfilled':'pending',waiter:outcome,outcome,requestedHostMs:4700,targetHostMs:120000,settledHostMs:outcome==='fulfilled'?120000:null};}});
+  const result=await runMountedTrackerA(f.ports);expect(result.status).toBe('incomplete');expect(result.firstFailure?.code).toBe('opposing-offset');expect(result.postCaptureDrain?.outcome).toBe(outcome);expect(f.calls.filter(value=>value==='close-2')).toHaveLength(1);expect(f.calls.filter(value=>value==='client-close')).toHaveLength(1);expect(result.cases.map(row=>row.caseNumber)).toEqual([1]);
+ });
+
+it('retains pending original diagnostic cleanup after timeout without promoting late case closure',async()=>{
+ const f=fixture(),read=f.history.scalar,close=f.history.close,client=f.ports.closeClient;let reads=0,releaseCase!:()=>void,releaseClient!:()=>void;
+ f.history.scalar=async()=>{const value=await read();if(++reads>=3)value.scrollTop+=100;return value;};
+ Object.assign(f.history,{postCaptureDrain:async()=>{f.advance(f.clock.deadlineHostMs);return {schemaVersion:1,eligibility:'eligible',reason:'eligible',original:'pending',waiter:'timed-out',outcome:'timed-out',requestedHostMs:4700,targetHostMs:120000,settledHostMs:null};},close:()=>{f.calls.push('case-original-start');return new Promise<void>(yes=>{releaseCase=yes;}).then(close);}});
+ f.ports.closeClient=()=>{f.calls.push('client-original-start');return new Promise<void>(yes=>{releaseClient=yes;}).then(client);};
+ const result=await runMountedTrackerA(f.ports),primary=result.primary;expect(f.calls.filter(value=>value==='case-original-start')).toHaveLength(1);expect(f.calls.filter(value=>value==='client-original-start')).toHaveLength(1);expect(f.calls).not.toContain('close-2');
+ releaseCase();releaseClient();for(let i=0;i<20;i++)await Promise.resolve();expect(f.calls.filter(value=>value==='close-2')).toHaveLength(1);expect(f.calls.filter(value=>value==='client-close')).toHaveLength(1);expect(result.primary).toBe(primary);expect(result.status).toBe('incomplete');expect(result.cases.map(row=>row.caseNumber)).toEqual([1]);expect(result.postCaptureDrain?.outcome).toBe('timed-out');
+});
