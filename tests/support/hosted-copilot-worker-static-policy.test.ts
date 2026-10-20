@@ -353,12 +353,14 @@ describe('complete worker registered graph',()=>{
    const changed=structuredClone(pins);change(changed);expect(()=>outputPolicy.assertWorkerComponentPins(pins,changed)).toThrow();
   }
  });
- it('accepts every configured external role without extending the16-specifier universe',()=>{
+ it('accepts the17 configured external roles including the explicit Proxy inspector',()=>{
   const f=fixture(),configured=[...Object.keys(MOUNTED_MODULE_PACKAGE_SPECIFIERS),...MOUNTED_MODULE_BUILTINS];
+  expect(configured).toHaveLength(17);expect(configured.at(-1)).toBe('node:util');
   for(const id of configured)f.rows.push({id,index:f.rows.length,role:'configured-external',codeKind:'not-read',allowed:true,requested:true});
   const id='/repo/packages/contract/src/fixture.ts';f.rows.push({id,index:f.rows.length,role:'normal-source',codeKind:'string',allowed:false,requested:false,
    source:{id,kind:'physical',external:false,path:'packages/contract/src/fixture.ts',sha256:'a'.repeat(64)},importedIds:['zod'],dynamicallyImportedIds:[]});
-  f.counts.registeredRows+=17;f.counts.normalSources++;f.counts.configuredExternals=16;f.counts.relations=1;f.counts.work+=18;expect(validate(f).counts.configuredExternals).toBe(16);
+  f.counts.registeredRows+=configured.length+1;f.counts.normalSources++;f.counts.configuredExternals=configured.length;f.counts.relations=1;f.counts.work+=configured.length+2;expect(validate(f).counts.configuredExternals).toBe(17);
+  for(const key of ['registeredRows','configuredExternals','work'] as const){const underreported=structuredClone(f);underreported.counts[key]--;expect(()=>validate(underreported)).toThrow('Worker registered graph denied');}
   const ordinary=fixture();ordinary.rows.pop();ordinary.callbacks.observations=[];ordinary.callbacks.retainedCallbackCount=0;
   ordinary.counts={registeredRows:1,normalSources:1,configuredExternals:0,compilerRegisteredDependencies:0,relations:0,work:1};expect(validate(ordinary).counts.compilerRegisteredDependencies).toBe(0);
  });
