@@ -32,7 +32,7 @@ jobs:
       - name: Set up Node 24
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version: '24.20.0'
           cache: npm
 
       - name: Prepare evidence directories
@@ -63,6 +63,9 @@ jobs:
           set -o pipefail
           npm run test:h100-observer:portability 2>&1 | tee ci-logs/h100-observer-portability.log
           npm run test:h100-observer 2>&1 | tee ci-logs/h100-observer.log
+
+      - name: Test portable unscored module-binding source controls
+        run: npm run test:copilot-module-binding 2>&1 | tee ci-logs/copilot-module-binding-controls.log
 
       - name: Test offline hosted failure inspector with Python 3.12 or newer
         run: |
@@ -98,6 +101,17 @@ jobs:
             ci-logs/h100-observer*.log
             ${{ runner.temp }}/ci-evidence/h100-observer-*/
             ${{ runner.temp }}/ci-evidence/h100-portability-relocated-*/exclusive-output/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Preserve module-binding source-control evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: copilot-module-binding-controls-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-logs/copilot-module-binding-controls.log
+            ${{ runner.temp }}/ci-evidence/copilot-module-binding-tests-*/run/
           if-no-files-found: warn
           retention-days: 7
 
@@ -145,7 +159,7 @@ jobs:
       - name: Set up Node 24
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version: '24.20.0'
           cache: npm
 
       - name: Prepare evidence directories
@@ -185,6 +199,20 @@ jobs:
 
       - name: Run long-thread comparison browser conformance
         run: npm run test:browser:comparison 2>&1 | tee ci-logs/comparison-browser.log
+
+      - name: Observe one unscored source-locked module binding and original closure
+        run: npm run diagnose:copilot-module-binding -- --browser --run-id "ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --out "$RUNNER_TEMP/ci-evidence/copilot-module-binding-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" 2>&1 | tee ci-logs/copilot-module-binding.log
+
+      - name: Preserve original module-binding outcome on success or failure
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: copilot-module-binding-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-logs/copilot-module-binding.log
+            ${{ runner.temp }}/ci-evidence/copilot-module-binding-run-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Preserve browser logs
         if: always()

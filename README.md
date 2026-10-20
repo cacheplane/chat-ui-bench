@@ -14,6 +14,10 @@ scoring any sample. Failed and invalid repetitions remain in reports.
 
 ## Run it
 
+The separate [Copilot module-binding diagnostic](tools/copilot-module-binding/README.md)
+checks four source-locked initializers and owned process closure. It is unscored,
+requires an explicit browser flag, and establishes no cache/history readiness or FPS.
+
 Use Node 24+ and npm 11+; dependencies and Playwright Chromium are pinned in the
 lockfile. These benchmark commands need no global browser or Python installation.
 The optional [hosted failure inspector](docs/hosted-failure-inspection.md) and
