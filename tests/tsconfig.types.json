@@ -11,5 +11,6 @@
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["copilotkit-fixture-selection.test.ts", "hosted-copilot-mounted-bootstrap.test.ts", "fixtures/aimock.ts", "fixtures/aimock.test.ts", "fixtures/copilotkit-httpagent.ts", "fixtures/copilotkit-httpagent.test.ts", "type-tests/**/*.ts", "support/**/*.ts", "hosted/**/*.ts", "../vitest.hosted-httpagent.config.ts"]
+  "include": ["copilotkit-fixture-selection.test.ts", "hosted-copilot-mounted-bootstrap.test.ts", "fixtures/aimock.ts", "fixtures/aimock.test.ts", "fixtures/copilotkit-httpagent.ts", "fixtures/copilotkit-httpagent.test.ts", "type-tests/**/*.ts", "support/**/*.ts", "hosted/**/*.ts", "../vitest.hosted-httpagent.config.ts"],
+  "exclude": ["support/hosted-copilot-scroll-cause-launch.ts", "hosted/scroll-cause-build.test.ts"]
 }

@@ -13,6 +13,8 @@
   ],
   "scripts": {
     "test": "vitest run",
+    "test:scroll-cause:build": "vitest run --config vitest.scroll-cause-build.config.ts --no-color",
+    "typecheck:scroll-cause": "tsc -p tests/tsconfig.scroll-cause.json --noEmit",
     "test:hosted:httpagent": "node tools/hosted-httpagent-admission.mjs && vitest run --config vitest.hosted-httpagent.config.ts --no-color",
     "typecheck": "npm run typecheck --workspaces --if-present && npm run typecheck:fixtures && npm run typecheck:copilot-geometry && npm run typecheck:copilot-mounted",
     "typecheck:fixtures": "tsc -p tests/tsconfig.types.json",
