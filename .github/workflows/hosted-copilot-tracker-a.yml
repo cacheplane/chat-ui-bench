@@ -1,5 +1,5 @@
 name: Hosted Copilot Tracker JSON A pilot
-run-name: hosted-copilot-react-tracker-json-a-v10
+run-name: hosted-copilot-react-tracker-json-a-v11
 on:
   workflow_dispatch:
     inputs:
@@ -32,15 +32,15 @@ on:
         required: true
         type: string
       native_run_id:
-        description: Independently qualified successful same-source ordinary-native V17 original run attempt 1
+        description: Independently qualified successful same-source ordinary-native V18 original run attempt 1
         required: true
         type: string
       native_artifact_id:
-        description: Independently qualified successful same-source ordinary-native V17 original artifact ID
+        description: Independently qualified successful same-source ordinary-native V18 original artifact ID
         required: true
         type: string
       native_archive_sha256:
-        description: Actual whole qualified ordinary-native V17 archive SHA256
+        description: Actual whole qualified ordinary-native V18 archive SHA256
         required: true
         type: string
       native_root_sha256:
@@ -123,6 +123,19 @@ jobs:
         with:
           name: copilot-tracker-a-failure-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/copilot-tracker-a-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+      - name: Admit closed command forensics independently after original runtime failure
+        id: forensic_artifacts
+        if: always() && steps.runtime.outcome == 'failure'
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-mounted-bootstrap.mjs forensic-inventory
+      - name: Retain only admitted unqualified command forensic copies
+        if: always() && steps.forensic_artifacts.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: copilot-tracker-a-forensic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/copilot-tracker-a-forensic-${{ github.run_id }}-${{ github.run_attempt }}/
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7

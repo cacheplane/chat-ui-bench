@@ -2,7 +2,7 @@
 import {createHash} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
 import {createWriteStream,constants} from 'node:fs';
-import {mkdir,lstat,realpath,writeFile,readdir,open} from 'node:fs/promises';
+import {mkdir,lstat,realpath,writeFile,readdir,open,opendir} from 'node:fs/promises';
 import {join,relative,resolve} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {readSourceSnapshot,COPILOT_PRODUCTION_SOURCES} from '../tests/support/hosted-copilot-context.ts';
@@ -31,7 +31,7 @@ export function createRestoredHistoryDiagnosticPort(write){
  }};
 }
 
-const RELEASE='hosted-copilot-react-h100-r6400-v17',REPOSITORY='cacheplane/chat-ui-bench';
+const RELEASE='hosted-copilot-react-h100-r6400-v18',REPOSITORY='cacheplane/chat-ui-bench';
 const globalOriginalLabels=['workerImport','browserLaunch','browserConnect','clientClose','clientDisconnected','browserServerClose','publicServerClose','applicationChildExit','applicationChildClose','parentWorkerClose'];
 const MiB=1024*1024,hash=b=>createHash('sha256').update(b).digest('hex');
 const need=(ok,message='Mounted bootstrap refused')=>{if(!ok)throw new Error(message);};
@@ -39,8 +39,8 @@ const id=v=>typeof v==='string'&&/^[1-9][0-9]{0,19}$/.test(v);
 const digest=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const boundedError=e=>{try{return e instanceof Error?e.message.slice(0,512):'Original operation failed';}catch{return 'Original operation failed';}};
-const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v10',PILOT_MODE='tracker-json-a-pilot-v2';
-const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v17';
+const PILOT_RELEASE='hosted-copilot-react-tracker-json-a-v11',PILOT_MODE='tracker-json-a-pilot-v2';
+const nativePrerequisiteRelease='hosted-copilot-react-h100-r6400-v18';
 let selectedBootstrapMode=null,pilotPhase=null,pilotKnown=null;
 const contextFields=['candidateSha','checkoutSha','githubSha','workflowSha','tagSha','repository','releaseId','githubRef','workflowRef','eventName','actions','platform','runnerOs','runnerMarker','attempt'];
 function ownData(value,keys){
@@ -172,7 +172,7 @@ export async function closeTrackerAPilotFile(raw,writer,authenticate){
  try{await writer.close();}catch(error){if(!failed){failed=true;primary=error;}}if(failed)throw primary;return await authenticate();
 }
 export async function runTrackerAPilotAction(action,perform,setExit){
- setExit(1);need(['prepare','install','provision','inventory','failure-inventory','child','parent','run'].includes(action));const result=await perform();
+ setExit(1);need(['prepare','install','provision','inventory','failure-inventory','forensic-inventory','child','parent','run'].includes(action));const result=await perform();
  if(action==='child'||action==='parent'){need(result==='complete'||result==='incomplete','Original closed publication status absent');setExit(result==='complete'?0:2);}
  else if(action==='run'){need(result==='complete'||result==='incomplete','Original run outcome absent');if(result==='complete')setExit(0);}
  else setExit(0);
@@ -646,6 +646,95 @@ export async function assertTrackerARuntimeAbsent(directory,known){const future=
 export async function admitTrackerAInventory(profileRef,ports){
  const names=await ports.names();need(names.includes('parent-started.json'),'Runtime original publication unavailable');const parentFile=await ports.read('parent-result.json',16384),parent=JSON.parse(Buffer.from(parentFile.raw).toString('utf8')),publication=await authenticateTrackerAReport(parent,'parent',profileRef,ports),partial=publication.value;need(partial.originals.filter(row=>row.label!=='parentWorkerClose').every(row=>row.status==='fulfilled')&&partial.stdio.every(row=>row.status==='fulfilled'),'Runtime original quiescence unavailable');
  await admitAnchorInventory(profileRef,ports,names,publication.diagnostic);
+}
+const forensicRoles=['parent-started.json','parent-result.json','parent.stdout','parent.stderr','application-started.json','application-result.json','application.stdout','application.stderr'];
+const forensicManifestName='tracker-a-command-forensics.json',forensicManifestCap=16384,forensicCopiesCap=8978432;
+const forensicAdmissions=new WeakMap();
+const forensicCap=name=>Math.min(pilotRoleCap(name),name.endsWith('.json')?16384:4194304);
+const forensicIdentityKeys=['path','bytes','dev','ino','mode','mtimeMs','ctimeMs','nlink','regular','contained','symlink'];
+export function planTrackerACommandEvidenceBudget(originalBytes,originalFiles){
+ const bytes=count(originalBytes)+forensicCopiesCap+forensicManifestCap,files=count(originalFiles)+forensicRoles.length+1,visitedEntries=files+2;
+ need(bytes<=128*MiB&&files<=128&&visitedEntries<=4096,'Forensic original/copy/manifest union capacity');return {bytes,files,visitedEntries};
+}
+function forensicSnapshot(value){
+ const rows=denseData(value,128),seen=new Set();let bytes=0;
+ const snapshot=rows.map(value=>{
+  const r=ownData(value,forensicIdentityKeys);need(typeof r.path==='string'&&ordinaryPath(r.path)&&!r.path.includes('/')&&!seen.has(r.path),'Forensic census namespace');seen.add(r.path);
+  need(r.regular===true&&r.contained===true&&r.symlink===false&&r.nlink===1,'Forensic census regular single-link ownership');
+  need(count(r.bytes)<=pilotRoleCap(r.path),'Forensic census role cap');for(const key of ['dev','ino','mode'])count(r[key]);for(const key of ['mtimeMs','ctimeMs'])need(typeof r[key]==='number'&&Number.isFinite(r[key]),'Forensic census identity');
+  bytes+=r.bytes;need(bytes<=128*MiB,'Forensic census byte bound');return {...r};
+ }).sort((a,b)=>a.path.localeCompare(b.path));
+ // Directory entries are checked separately; this is the file union domain.
+ planTrackerACommandEvidenceBudget(bytes,snapshot.length);
+ return snapshot;
+}
+function sameForensicSnapshot(a,b){need(JSON.stringify(a)===JSON.stringify(b),'Forensic original namespace/identity changed');}
+async function forensicRead(ports,name,cap){
+ const f=ownData(await ports.read(name,cap),['raw','bytes','sha256']);need(f.raw instanceof Uint8Array&&f.raw.byteLength===f.bytes&&f.bytes<=cap&&digest(f.sha256)&&hash(f.raw)===f.sha256,'Forensic whole physical bytes');return {raw:Buffer.from(f.raw),bytes:f.bytes,sha256:f.sha256};
+}
+export async function admitTrackerACommandEvidence(context,supplied,ports){
+ need(selectMountedBootstrapMode(context)==='tracker-a','Forensic pilot context required');
+ const s=ownData(supplied,['intent','intentRef','profile','profileRef','runId','attempt','parentArgv','applicationArgv']);need(id(s.runId)&&s.attempt===1,'Forensic original run/attempt');
+ accepted(evaluateMountedTrackerAAdmissionPolicy(s.intent));need(JSON.stringify(s.intent.context)===JSON.stringify(context)&&s.intent.source.commitSha===context.candidateSha,'Forensic source/context differs');
+ const intentRef=fileRef(s.intentRef,'native-intent.json'),profileRef=fileRef(s.profileRef,'tracker-a-profile.json');need(intentRef!==null&&profileRef!==null);
+ const profile=validateTrackerAProfile(s.profile,s.intent,intentRef);need(profile.sourceSha===context.candidateSha,'Forensic profile source differs');
+ const before=forensicSnapshot(await ports.census()),byName=new Map(before.map(row=>[row.path,row]));
+ const retained=new Map();
+ for(const [name,cap,value,ref] of [['native-intent.json',524288,s.intent,intentRef],['tracker-a-profile.json',16384,profile,profileRef]]){
+  const f=await forensicRead(ports,name,cap);need(f.bytes===ref.bytes&&f.sha256===ref.sha256&&JSON.stringify(JSON.parse(f.raw.toString('utf8')))===JSON.stringify(value),'Forensic source/profile physical binding');need(byName.get(name)?.bytes===f.bytes,'Forensic census/source bytes differ');retained.set(name,f);
+ }
+ for(const name of forensicRoles){need(byName.has(name),'Forensic required command role absent');const f=await forensicRead(ports,name,forensicCap(name));need(byName.get(name).bytes===f.bytes,'Forensic census/command bytes differ');retained.set(name,f);}
+ const commands={};
+ for(const [owner,action,expected] of [['parent','parent',s.parentArgv],['application','child',s.applicationArgv]]){
+  const argv=startupArgv(expected,action);need(JSON.stringify(argv)===JSON.stringify(fixedWorkerArgv(action)),'Forensic original command owner differs');
+  const started=ownData(JSON.parse(retained.get(owner+'-started.json').raw.toString('utf8')),['argv','qualification','originalClosed','startedUtc']);
+  need(JSON.stringify(startupArgv(started.argv,action))===JSON.stringify(argv)&&started.qualification===false&&started.originalClosed===false&&typeof started.startedUtc==='string'&&/^[\x20-\x7e]{1,32}$/.test(started.startedUtc),'Forensic started original intent differs');
+  const c=constructMountedCaptureResult(JSON.parse(retained.get(owner+'-result.json').raw.toString('utf8')));
+  need(JSON.stringify(c.argv)===JSON.stringify(argv)&&c.spawned&&c.spawnError===null&&!c.timedOut&&!c.terminationRequested&&c.exitObserved&&c.closeObserved&&c.exit!==null&&c.original.closed&&c.original.streamsComplete,'Forensic direct command closure');
+  need(c.original.exitCode===c.exit.exitCode&&c.original.signal===c.exit.signal&&(c.exit.exitCode!==null||c.exit.signal!==null),'Forensic observed/original exit differs');
+  for(const stream of ['stdout','stderr']){const f=retained.get(owner+'.'+stream),v=c.streamFacts[stream];need(v.readableEOF&&v.writerFinish&&v.writerClose&&!v.writerError&&!v.overflow&&v.retainedBytesKnown&&v.seen===v.retained&&v.retained===f.bytes&&c.original[stream+'Bytes']===f.bytes&&c.original[stream+'RetainedBytes']===f.bytes,'Forensic direct stream closure/bytes');}
+  commands[owner]={startedUtc:started.startedUtc,capture:c};
+ }
+ need(commands.parent.capture.exit.exitCode!==0||commands.parent.capture.exit.signal!==null||commands.application.capture.exit.exitCode!==0||commands.application.capture.exit.signal!==null,'Forensic failed runtime evidence required');
+ sameForensicSnapshot(before,forensicSnapshot(await ports.census()));
+ const commandFacts={};for(const owner of ['parent','application']){const {capture:c,startedUtc}=commands[owner];commandFacts[owner]={argv:c.argv,startedUtc,exit:c.exit,exitObserved:true,closeObserved:true,originalClosed:true,streamsComplete:true,stdout:{bytes:c.original.stdoutBytes,readableEOF:true,writerFinish:true,writerClose:true},stderr:{bytes:c.original.stderrBytes,readableEOF:true,writerFinish:true,writerClose:true}};}
+ const manifest={schemaVersion:1,kind:'tracker-a-command-forensics',status:'unqualified-command-forensics',sourceSha:context.candidateSha,runId:s.runId,attempt:1,profileRef,commands:commandFacts,files:forensicRoles.map(path=>{const f=retained.get(path);return {path,bytes:f.bytes,sha256:f.sha256};}),qualification:false,nativeGO:false,performance:false,fps:'unavailable',descendantClosure:'unqualified',cases:'unknown',client:'unknown',workerImport:'unknown',trace:'unknown'};
+ need(encoded(manifest).length<=forensicManifestCap,'Forensic manifest cap');
+ const admitted=Object.freeze({kind:'admitted-tracker-a-command-evidence'});forensicAdmissions.set(admitted,{before,retained,manifest,used:false});return admitted;
+}
+function forensicStatIdentity(stat){return {dev:stat.dev,ino:stat.ino,mode:stat.mode,bytes:stat.size,mtimeMs:stat.mtimeMs,ctimeMs:stat.ctimeMs};}
+async function forensicDirectory(path){const stat=await lstat(path);need(stat.isDirectory()&&!stat.isSymbolicLink()&&await realpath(path)===path,'Forensic canonical directory required');return {dev:stat.dev,ino:stat.ino};}
+async function forensicPhysical(path,cap){
+ const before=await lstat(path);need(before.isFile()&&!before.isSymbolicLink()&&before.nlink===1&&before.size<=cap&&await realpath(path)===path,'Forensic physical regular single-link input');
+ const identity=JSON.stringify(forensicStatIdentity(before)),check=stat=>need(stat.isFile()&&!stat.isSymbolicLink()&&stat.nlink===1&&JSON.stringify(forensicStatIdentity(stat))===identity,'Forensic physical lifetime changed');
+ const file=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);let raw;
+ try{check(await file.stat());let bytes=0;const chunks=[];while(true){const chunk=Buffer.alloc(Math.min(65536,cap+1-bytes)),read=await file.read(chunk,0,chunk.length,bytes);if(!read.bytesRead)break;bytes+=read.bytesRead;need(bytes<=cap,'Forensic physical byte cap');chunks.push(chunk.subarray(0,read.bytesRead));}raw=Buffer.concat(chunks);check(await file.stat());check(await lstat(path));need(raw.length===before.size&&await realpath(path)===path,'Forensic physical path changed');}finally{await file.close();}
+ // Recheck after descriptor close as well as pre/open/post-read checks.
+ check(await lstat(path));need(await realpath(path)===path,'Forensic final path changed');return {raw,bytes:raw.length,sha256:hash(raw)};
+}
+async function forensicCensus(directory){
+ await forensicDirectory(directory);const rows=[];
+ for await(const entry of await opendir(directory,{bufferSize:16})){need(rows.length<128,'Forensic census file bound');need(entry.isFile()&&!entry.isSymbolicLink()&&ordinaryPath(entry.name)&&!entry.name.includes('/'),'Forensic flat namespace required');const path=join(directory,entry.name),stat=await lstat(path);need(stat.isFile()&&!stat.isSymbolicLink()&&stat.nlink===1&&await realpath(path)===path,'Forensic census physical ownership');rows.push({path:entry.name,...forensicStatIdentity(stat),nlink:stat.nlink,regular:true,contained:true,symlink:false});}
+ return forensicSnapshot(rows);
+}
+export async function stageTrackerACommandEvidence(admitted,ports){
+ const state=forensicAdmissions.get(admitted);need(state&&!state.used,'Forensic admission absent or already consumed');state.used=true;
+ const {directory,stageDirectory}=ownData(ports,['directory','stageDirectory']);
+ need(typeof directory==='string'&&resolve(directory)===directory&&typeof stageDirectory==='string'&&resolve(stageDirectory)===stageDirectory,'Forensic absolute paths required');
+ const suffix=state.manifest.runId+'-1',parent=resolve(directory,'..');need(directory===join(parent,'copilot-tracker-a-'+suffix)&&stageDirectory===join(parent,'copilot-tracker-a-forensic-'+suffix),'Forensic fixed sibling namespace');
+ const sourceIdentity=await forensicDirectory(directory),parentIdentity=await forensicDirectory(parent);
+ const checkDirectories=async()=>{need(JSON.stringify(await forensicDirectory(parent))===JSON.stringify(parentIdentity)&&JSON.stringify(await forensicDirectory(directory))===JSON.stringify(sourceIdentity),'Forensic original directory replaced');};
+ const checkOriginal=async()=>{await checkDirectories();sameForensicSnapshot(state.before,await forensicCensus(directory));for(const [name,f] of state.retained){const current=await forensicPhysical(join(directory,name),name==='native-intent.json'?524288:forensicCap(name));need(current.bytes===f.bytes&&current.sha256===f.sha256&&current.raw.equals(f.raw),'Forensic original whole bytes changed');}await checkDirectories();sameForensicSnapshot(state.before,await forensicCensus(directory));};
+ await checkOriginal();await mkdir(stageDirectory,{mode:0o700});const stageIdentity=await forensicDirectory(stageDirectory),staged=new Map();
+ const checkStage=async()=>{need(JSON.stringify(await forensicDirectory(stageDirectory))===JSON.stringify(stageIdentity),'Forensic stage directory replaced');let count=0;for await(const entry of await opendir(stageDirectory,{bufferSize:16})){need(++count<=9&&staged.has(entry.name),'Forensic stage namespace changed');}need(count===staged.size,'Forensic stage namespace changed');for(const [name,before] of staged){const current=await forensicPhysical(join(stageDirectory,name),name===forensicManifestName?forensicManifestCap:forensicCap(name)),stat=await lstat(join(stageDirectory,name));need(current.bytes===before.bytes&&current.sha256===before.sha256&&JSON.stringify(forensicStatIdentity(stat))===before.identity,'Forensic staged file changed');}};
+ const write=async(name,raw,cap)=>{
+  await checkDirectories();await checkStage();const file=await open(join(stageDirectory,name),constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
+  let opened,closedIdentity;
+  await closeTrackerAPilotFile(raw,{write:async bytes=>{opened=await file.stat();need(opened.isFile()&&opened.nlink===1,'Forensic stage writer ownership');await file.writeFile(bytes);},fsync:async()=>{await file.sync();const stat=await file.stat();need(stat.isFile()&&stat.nlink===1&&stat.dev===opened.dev&&stat.ino===opened.ino,'Forensic stage writer changed');closedIdentity=JSON.stringify(forensicStatIdentity(stat));},close:()=>file.close()},async()=>{const f=await forensicPhysical(join(stageDirectory,name),cap);need(f.bytes===raw.length&&f.sha256===hash(raw),'Forensic copied bytes differ');const stat=await lstat(join(stageDirectory,name)),identity=JSON.stringify(forensicStatIdentity(stat));need(identity===closedIdentity,'Forensic stage writer/path differs');staged.set(name,{bytes:f.bytes,sha256:f.sha256,identity});});
+ };
+ for(const name of forensicRoles)await write(name,state.retained.get(name).raw,forensicCap(name));
+ await checkOriginal();await checkStage();await write(forensicManifestName,encoded(state.manifest),forensicManifestCap);
+ await checkOriginal();await checkStage();return {stageDirectory,manifest:state.manifest};
 }
 async function admitAnchorInventory(profileRef,ports,names,diagnostic){
  const read=async(name,cap,ref=null)=>{const f=ownData(await ports.read(name,cap),['raw','bytes','sha256']);need(f.raw instanceof Uint8Array&&f.bytes===f.raw.byteLength&&f.bytes<=cap&&hash(f.raw)===f.sha256,'Anchor inventory whole bytes');if(ref!==null)need(ref.path===name&&ref.bytes===f.bytes&&ref.sha256===f.sha256,'Anchor inventory transitive ref changed');return JSON.parse(Buffer.from(f.raw).toString('utf8'));};
@@ -1208,9 +1297,17 @@ async function failureInventory(directory){
  const result=await admitTrackerAFailureInventory(loaded.profileRef,{names:()=>readdir(directory),read:(name,cap)=>physical(join(directory,name),cap)});
  await beginPilotPhase(directory,'failure-inventory');await writeJson(directory,'tracker-a-failure-inventory.json',result,524288);
 }
+async function forensicInventory(directory){
+ const current=await checkContext();need(current.mode==='tracker-a','Command forensics is pilot only');
+ const intentFile=await forensicPhysical(join(directory,'native-intent.json'),524288),intent=JSON.parse(intentFile.raw.toString('utf8'));
+ need(JSON.stringify(current.selected)===JSON.stringify(intent.source)&&JSON.stringify(current.context)===JSON.stringify(intent.context),'Forensic original source/context differs');
+ const loaded=await loadTrackerAProfile(directory,intent),runId=process.env.GITHUB_RUN_ID;need(id(runId)&&process.env.GITHUB_RUN_ATTEMPT==='1');
+ const admitted=await admitTrackerACommandEvidence(current.context,{intent,intentRef:loaded.intentRef,profile:loaded.profile,profileRef:loaded.profileRef,runId,attempt:1,parentArgv:fixedWorkerArgv('parent'),applicationArgv:fixedWorkerArgv('child')},{read:(name,cap)=>forensicPhysical(join(directory,name),cap),census:()=>forensicCensus(directory)});
+ return await stageTrackerACommandEvidence(admitted,{directory,stageDirectory:join(resolve(directory,'..'),'copilot-tracker-a-forensic-'+runId+'-1')});
+}
 async function main(){
  const action=process.argv[2],mode=environmentMode();
- const perform=async()=>{need(process.argv.length===3&&['prepare','install','provision','run','parent','child','inventory','failure-inventory'].includes(action));const {directory,scratch}=paths();return await performAction(action,directory,scratch);};
+ const perform=async()=>{need(process.argv.length===3&&['prepare','install','provision','run','parent','child','inventory','failure-inventory','forensic-inventory'].includes(action));const {directory,scratch}=paths();return await performAction(action,directory,scratch);};
  if(mode==='tracker-a')return await runTrackerAPilotAction(action,perform,code=>{process.exitCode=code;});await perform();
 }
 async function performAction(action,directory,scratch){
@@ -1221,6 +1318,7 @@ async function performAction(action,directory,scratch){
  else if(process.argv[2]==='parent')return await parent(directory,scratch);
  else if(process.argv[2]==='child')return await child(directory,scratch);
  else if(process.argv[2]==='failure-inventory')await failureInventory(directory);
+ else if(process.argv[2]==='forensic-inventory')await forensicInventory(directory);
  else await inventory(directory);
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>handleMountedBootstrapFailure(error,code=>{process.exitCode=code;},async error=>{const reason=boundedError(error);console.error(reason);if(selectedBootstrapMode==='tracker-a'&&process.argv[2]==='run'){try{await writeTrackerAExceptionDiagnostic(process.stderr.write.bind(process.stderr));}catch{}}try{const action=process.argv[2];if(selectedBootstrapMode!==null&&['prepare','install','provision','run','parent','child'].includes(action)){await checkContext();if(selectedBootstrapMode==='tracker-a'){const failure=serializeMountedFailure(action,error);await writeBytes(paths().directory,failure.name,failure.raw,failure.cap);}else await writeJson(paths().directory,'phase-failure-'+action+'.json',{action,reason,status:'incomplete',qualification:false});}}catch{}}));
