@@ -27,6 +27,8 @@
     "bench:analyze:comparison": "node packages/analyzer/dist/comparison-cli.js",
     "bench:inspect:hosted-failure": "python3 -I -S -B tools/analyze-hosted-failure.py",
     "test:hosted-failure-inspector": "python3 -I -S -B -m unittest discover -s tests/support -p test_hosted_failure_analyzer.py",
+    "bench:inspect:scroll-cause": "python3 -I -S -B tools/inspect-scroll-cause.py",
+    "test:scroll-cause-inspector": "python3 -I -S -B -m unittest discover -s tests/support -p test_scroll_cause_inspector.py",
     "test:browser:threadplane": "npm run build && vitest run --config vitest.threadplane.browser.config.ts",
     "bench:long-thread": "node packages/runner/dist/long-thread-main.js",
     "test:browser:comparison": "vitest run --config vitest.comparison.browser.config.ts --no-color"
