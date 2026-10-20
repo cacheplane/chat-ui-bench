@@ -141,7 +141,7 @@ test('frontend ZIP closes the exact original asset bytes with CRC and bounded ph
 
 async function closedPublicationFixture(exit=2){
  const a=await import('./support/hosted-copilot-scroll-cause-artifact.js'),directory=await realpath(await mkdtemp(resolve(tmpdir(),'scroll-cause-publish-'))),worker=resolve(await realpath(await mkdtemp(resolve(tmpdir(),'scroll-cause-worker-'))),'worker.mjs');await writeFile(worker,'export {};\n');
- const source={commitSha:'a'.repeat(40),treeSha:'b'.repeat(40),lockSha256:'c'.repeat(64)},run={repository:'cacheplane/chat-ui-bench',runId:'123',attempt:1,tag:'hosted-copilot-react-scroll-cause-v1'};
+ const source={commitSha:'a'.repeat(40),treeSha:'b'.repeat(40),lockSha256:'c'.repeat(64)},run={repository:'cacheplane/chat-ui-bench',runId:'123',attempt:1,tag:'hosted-copilot-react-scroll-cause-v2'};
  const ref=async(path:any)=>a.diagnosticRef(await a.readDiagnosticRole(directory,path));
  await a.writeDiagnosticJson(directory,'diagnostic-profile.json',{source,run,qualification:false});
  await a.writeDiagnosticJson(directory,'diagnostic-source.json',{source,run,qualification:false});
@@ -172,9 +172,9 @@ test('manifest-last retains a closed failed command and reauthenticates namespac
 
 test('hosted diagnostic context refuses mixed source, release, attempt and runtime flags before any SDK import',async()=>{
  const path=resolve('tests/support/hosted-copilot-scroll-cause-launch.ts');const api=existsSync(path)?await import(pathToFileURL(path).href):null;expect(api?.selectScrollCauseHostedContext).toBeTypeOf('function');if(!api)throw Error('launcher absent');
- const c={sourceSha:'a'.repeat(40),checkoutSha:'a'.repeat(40),tagSha:'a'.repeat(40),githubSha:'a'.repeat(40),workflowSha:'a'.repeat(40),repository:'cacheplane/chat-ui-bench',runId:'123',attempt:'1',ref:'refs/tags/hosted-copilot-react-scroll-cause-v1',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-scroll-cause.yml@refs/tags/hosted-copilot-react-scroll-cause-v1',event:'workflow_dispatch',actions:'true',platform:'linux',runner:'Linux',node:'v24.20.0',npm:'11.19.0',execArgv:['--experimental-import-meta-resolve']};
+ const c={sourceSha:'a'.repeat(40),checkoutSha:'a'.repeat(40),tagSha:'a'.repeat(40),githubSha:'a'.repeat(40),workflowSha:'a'.repeat(40),repository:'cacheplane/chat-ui-bench',runId:'123',attempt:'1',ref:'refs/tags/hosted-copilot-react-scroll-cause-v2',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-scroll-cause.yml@refs/tags/hosted-copilot-react-scroll-cause-v2',event:'workflow_dispatch',actions:'true',platform:'linux',runner:'Linux',node:'v24.20.0',npm:'11.19.0',execArgv:['--experimental-import-meta-resolve']};
  expect(api.selectScrollCauseHostedContext(c)).toMatchObject({sourceSha:c.sourceSha,runId:'123'});
- for(const changed of [{attempt:'2'},{checkoutSha:'b'.repeat(40)},{ref:'refs/heads/main'},{node:'v25.0.0'},{execArgv:[]},{execArgv:['--experimental-import-meta-resolve','--import=alien']}])expect(()=>api.selectScrollCauseHostedContext({...c,...changed})).toThrow();
+ for(const changed of [{attempt:'2'},{checkoutSha:'b'.repeat(40)},{ref:'refs/heads/main'},{ref:'refs/tags/hosted-copilot-react-scroll-cause-v1',workflowRef:'cacheplane/chat-ui-bench/.github/workflows/hosted-copilot-scroll-cause.yml@refs/tags/hosted-copilot-react-scroll-cause-v1'},{node:'v25.0.0'},{execArgv:[]},{execArgv:['--experimental-import-meta-resolve','--import=alien']}])expect(()=>api.selectScrollCauseHostedContext({...c,...changed})).toThrow();
 });
 
 test('owned raw trace writer exposes actual fsync and close originals and refuses concurrent or post-finish writes',async()=>{
@@ -225,4 +225,83 @@ test.each(['spawn','overflow'] as const)('actual command %s failure never manufa
  const result=await a.captureDiagnosticCommand(directory,'application',argv,10000);
  if(kind==='spawn')expect(result).toMatchObject({spawned:false,spawnError:'spawn-refused'});else expect(result.streams.stdout).toMatchObject({overflow:true,retained:262144});
  expect(()=>a.assertDiagnosticCommandClosure(JSON.parse('{}'),result,{stdout:{bytes:0},stderr:{bytes:0}},argv)).toThrow();
+});
+
+test('closed pending-completionACK failure stays refused while independent command forensics retain exact eight originals',async()=>{
+ const {a,directory,context}=await closedPublicationFixture();
+ const {MOUNTED_CASE_WITNESS_LABELS}=await import('./support/hosted-copilot-mounted-policy.ts');
+ const strict=JSON.parse(await readFile(resolve(directory,'diagnostic-strict-result.json'),'utf8'));
+ strict.caseEvidence=[{caseNumber:2,originals:MOUNTED_CASE_WITNESS_LABELS.map(label=>({label,status:label==='completionACK'?'pending':'fulfilled'}))}];
+ await writeFile(resolve(directory,'diagnostic-strict-result.json'),JSON.stringify(strict)+'\n');
+ await expect(a.publishDiagnosticInventory(directory,context)).rejects.toThrow('diagnostic-case-open');
+ expect((a as any).admitScrollCauseCommandForensics).toBeTypeOf('function');
+ const stage=directory+'-command-forensics',manifest=await (a as any).admitScrollCauseCommandForensics(directory,stage,context);
+ expect(manifest).toMatchObject({kind:'unqualified-scroll-cause-command-forensics',diagnosticArtifactAdmission:'not-established',qualification:false,nativeGO:false,performance:false,fps:'unavailable'});
+ expect(manifest.files).toHaveLength(8);expect(manifest.outcomes.application.exit).toEqual({exitCode:2,signal:null});
+ for(const row of manifest.files)expect(await readFile(resolve(stage,row.path))).toEqual(await readFile(resolve(directory,row.path)));
+ expect(existsSync(resolve(stage,'diagnostic-strict-result.json'))).toBe(false);expect(existsSync(resolve(directory,'diagnostic-manifest.json'))).toBe(false);
+ await expect((a as any).verifyScrollCauseCommandForensics(directory,stage,context)).resolves.toMatchObject({qualification:false});
+});
+
+test('command forensic reservation charges original ceiling, all copies and manifest within unchanged union cap',async()=>{
+ const a=await import('./support/hosted-copilot-scroll-cause-artifact.ts');expect((a as any).SCROLL_CAUSE_FORENSIC_RESERVATION).toEqual({bytes:130240512,files:41});
+ a.assertDiagnosticBudget(134217728,128);expect(()=>a.assertDiagnosticBudget(134217729,128)).toThrow();expect(()=>a.assertDiagnosticBudget(1,129)).toThrow();
+ expect((a as any).SCROLL_CAUSE_FORENSIC_ROLES).toHaveLength(8);expect(Object.hasOwn(a.SCROLL_CAUSE_ROLE_CAPS,'forensic-manifest.json')).toBe(false);
+});
+
+test('workflow independent command fallback runs after failed diagnostic admission and preserves original failure',async()=>{
+ const yaml=await readFile(resolve('.github/workflows/hosted-copilot-scroll-cause.yml'),'utf8'),source=await readFile(resolve('tests/support/hosted-copilot-scroll-cause-launch.ts'),'utf8');
+ expect(yaml).toContain("if: always() && (steps.runtime.outcome == 'success' || steps.runtime.outcome == 'failure') && (steps.inventory.outcome == 'failure' || steps.finalcheck.outcome == 'failure')");
+ expect(yaml).toContain("if: always() && steps.forensic.outcome == 'success' && steps.forensic_finalcheck.outcome == 'success'");expect(yaml).toContain('copilot-scroll-cause-command-forensics-${{ github.run_id }}-${{ github.run_attempt }}');expect(yaml).not.toContain('continue-on-error');
+ const dispatcher=source.slice(source.indexOf('export async function runScrollCauseAction'));expect(dispatcher.indexOf("action==='forensic'")).toBeGreaterThan(0);expect(dispatcher.indexOf("action==='forensic'")).toBeLessThan(dispatcher.indexOf('const loaded=await authenticateDiagnosticBuild'));
+ expect(source.indexOf('diagnosticPrimaryLine(result.strict.primary)')).toBeGreaterThan(source.indexOf('const result=await imported.runNativeMountedScrollCauseDiagnostic'));expect(source.indexOf('diagnosticPrimaryLine(result.strict.primary)')).toBeLessThan(source.indexOf('const footer=encodeDiagnosticFooter'));
+});
+
+test.each(['missing','hardlink','open','overflow','argv','extra','existing-stage','nonsibling'] as const)('command forensics refuses %s before manifest publication',async attack=>{
+ const {a,directory,context}=await closedPublicationFixture();let stage=directory+'-forensics';
+ if(attack==='missing'){const {unlink}=await import('node:fs/promises');await unlink(resolve(directory,'application.stderr'));}
+ if(attack==='hardlink')await link(resolve(directory,'application.stderr'),directory+'-linked-stderr');
+ if(attack==='open'||attack==='overflow'){const path=resolve(directory,'application-result.json'),r=JSON.parse(await readFile(path,'utf8'));if(attack==='open')r.streams.stderr.writerClose=false;else r.streams.stderr.overflow=true;await writeFile(path,JSON.stringify(r)+'\n');}
+ if(attack==='argv')context.childArgv=['foreign-command'];
+ if(attack==='extra')await writeFile(resolve(directory,'foreign-role'),'foreign');
+ if(attack==='existing-stage'){const {mkdir}=await import('node:fs/promises');await mkdir(stage);await writeFile(resolve(stage,'sentinel'),'unchanged');}
+ if(attack==='nonsibling')stage=resolve(directory,'nested-stage');
+ await expect(a.admitScrollCauseCommandForensics(directory,stage,context)).rejects.toThrow();expect(existsSync(resolve(stage,'forensic-manifest.json'))).toBe(false);
+ if(attack==='existing-stage')expect(await readFile(resolve(stage,'sentinel'),'utf8')).toBe('unchanged');
+});
+
+test.each(['original','copy','manifest','namespace','interrupted'] as const)('command manifest physically exists but admission rejects after %s fault',async attack=>{
+ const {a,directory,context}=await closedPublicationFixture(),stage=directory+'-forensics';
+ await expect(a.admitScrollCauseCommandForensics(directory,stage,context,async(dir,raw)=>{
+  await writeFile(resolve(dir,'forensic-manifest.json'),raw,{flag:'wx'});
+  if(attack==='original')await writeFile(resolve(directory,'application.stderr'),'after-manifest original sentinel');
+  if(attack==='copy')await writeFile(resolve(dir,'application.stderr'),'after-manifest copy sentinel');
+  if(attack==='manifest')await writeFile(resolve(dir,'forensic-manifest.json'),'{}\n');
+  if(attack==='namespace')await writeFile(resolve(dir,'foreign-role'),'unowned');
+  if(attack==='interrupted')throw Error('interrupted after manifest');
+ })).rejects.toThrow();
+ expect(existsSync(resolve(stage,'forensic-manifest.json'))).toBe(true);
+ if(attack!=='interrupted')await expect(a.verifyScrollCauseCommandForensics(directory,stage,context)).rejects.toThrow();
+});
+
+test('command-only evidence honestly retains infrastructure failure without diagnostic admission and finalcheck rejects later mutation',async()=>{
+ const {a,directory,context}=await closedPublicationFixture(1),stage=directory+'-forensics';
+ await expect(a.publishDiagnosticInventory(directory,context)).rejects.toThrow('diagnostic-infrastructure-exit');
+ const manifest=await a.admitScrollCauseCommandForensics(directory,stage,context);expect(manifest.outcomes.application).toMatchObject({exit:{exitCode:1,signal:null},timedOut:false});expect(manifest.diagnosticArtifactAdmission).toBe('not-established');
+ await writeFile(resolve(stage,'parent.stdout'),'later mutation');await expect(a.verifyScrollCauseCommandForensics(directory,stage,context)).rejects.toThrow();
+});
+
+test('command forensics preserves actual timed-out signal exit and literal sentinel bytes without promoting closure scope',async()=>{
+ const {a,directory,context}=await closedPublicationFixture(),{unlink}=await import('node:fs/promises');
+ for(const name of ['application-started.json','application-result.json','application.stdout','application.stderr'])await unlink(resolve(directory,name));
+ context.childArgv=[process.execPath,'-e',"process.stdout.write('literal timeout sentinel');setInterval(()=>{},1000)"];
+ const result=await a.captureDiagnosticCommand(directory,'application',context.childArgv,300);
+ expect(result).toMatchObject({timedOut:true,terminationRequested:true,exit:{exitCode:null,signal:'SIGTERM'},streamsComplete:true});
+ const stage=directory+'-forensics',manifest=await a.admitScrollCauseCommandForensics(directory,stage,context);
+ expect(await readFile(resolve(stage,'application.stdout'),'utf8')).toBe('literal timeout sentinel');expect(manifest.outcomes.application).toMatchObject({timedOut:true,terminationRequested:true});
+ expect(manifest).toMatchObject({browserClosure:'unestablished',rawTraceClosure:'unestablished',descendants:'unqualified',qualification:false});
+});
+
+test.each([{attempt:2},{runId:'0'},{tag:'hosted-copilot-react-scroll-cause-v1'}])('command forensics refuses invalid caller context %j',async changed=>{
+ const {a,directory,context}=await closedPublicationFixture();await expect(a.admitScrollCauseCommandForensics(directory,directory+'-forensics',{...context,run:{...context.run,...changed}})).rejects.toThrow('diagnostic-context-join');
 });

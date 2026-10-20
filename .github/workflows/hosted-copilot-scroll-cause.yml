@@ -1,5 +1,5 @@
 name: Hosted unqualified scroll cause diagnostic
-run-name: hosted-copilot-react-scroll-cause-v1
+run-name: hosted-copilot-react-scroll-cause-v2
 on:
   workflow_dispatch:
     inputs:
@@ -59,6 +59,23 @@ jobs:
         with:
           name: copilot-scroll-cause-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/copilot-scroll-cause-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+      - name: Admit closed command originals independently after diagnostic refusal
+        id: forensic
+        if: always() && (steps.runtime.outcome == 'success' || steps.runtime.outcome == 'failure') && (steps.inventory.outcome == 'failure' || steps.finalcheck.outcome == 'failure')
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-scroll-cause.mjs forensic
+      - name: Reauthenticate only admitted command forensic copies
+        id: forensic_finalcheck
+        if: always() && steps.forensic.outcome == 'success'
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-scroll-cause.mjs forensic-finalcheck
+      - name: Retain separately named unqualified command originals
+        if: always() && steps.forensic.outcome == 'success' && steps.forensic_finalcheck.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: copilot-scroll-cause-command-forensics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/copilot-scroll-cause-command-forensics-${{ github.run_id }}-${{ github.run_attempt }}/
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7

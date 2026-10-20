@@ -4,13 +4,14 @@ import {open,realpath,lstat,mkdir} from 'node:fs/promises';
 import {join,resolve,dirname} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {spawnSync,type ChildProcess} from 'node:child_process';
-import {diagnosticRecord,diagnosticHash,diagnosticRef,readDiagnosticPhysical,readDiagnosticRole,writeDiagnosticRole,writeDiagnosticJson,parseDiagnosticJson,captureDiagnosticCommand,assertDiagnosticCommandClosure,encodeDiagnosticFooter,parseDiagnosticFooter,packDiagnosticFrontend,publishDiagnosticInventory,verifyDiagnosticInventory,cleanDiagnosticEnvironment,SCROLL_CAUSE_ROLE_CAPS,type DiagnosticRole} from './hosted-copilot-scroll-cause-artifact.ts';
+import {diagnosticNeed,diagnosticPrimaryLine} from './hosted-copilot-scroll-cause-refusal.ts';
+import {diagnosticRecord,diagnosticHash,diagnosticRef,readDiagnosticPhysical,readDiagnosticRole,writeDiagnosticRole,writeDiagnosticJson,parseDiagnosticJson,captureDiagnosticCommand,assertDiagnosticCommandClosure,encodeDiagnosticFooter,parseDiagnosticFooter,packDiagnosticFrontend,publishDiagnosticInventory,verifyDiagnosticInventory,admitScrollCauseCommandForensics,verifyScrollCauseCommandForensics,cleanDiagnosticEnvironment,SCROLL_CAUSE_ROLE_CAPS,type DiagnosticRole} from './hosted-copilot-scroll-cause-artifact.ts';
 import {buildScrollCauseFrontend,buildScrollCauseWorker,diagnosticSourcePin,diagnosticFrontendInventory,validateDiagnosticInstalledPackages} from './hosted-copilot-scroll-cause-build.ts';
 import {reverseScrollCause,type ScrollCauseTransform} from './hosted-copilot-scroll-cause-transform.ts';
 import {copyHistoryReadinessDiagnostic,type RestoredHistoryDiagnosticPort} from '../../apps/copilotkit/src/geometry.ts';
 import type {NativeMountedScrollCauseOptions,NativeMountedScrollCausePublication} from '../../apps/copilotkit/runtime/mounted-native.ts';
-export const SCROLL_CAUSE_RELEASE='hosted-copilot-react-scroll-cause-v1';
-function need(ok:unknown,code='diagnostic-launch-refused'):asserts ok{if(!ok)throw Error(code);}
+export const SCROLL_CAUSE_RELEASE='hosted-copilot-react-scroll-cause-v2';
+function need(ok:unknown,code='diagnostic-launch-refused'):asserts ok{diagnosticNeed(ok,code);}
 export function selectScrollCauseHostedContext(value:unknown){
  const c=diagnosticRecord(value,['sourceSha','checkoutSha','tagSha','githubSha','workflowSha','repository','runId','attempt','ref','workflowRef','event','actions','platform','runner','node','npm','execArgv']);
  need(typeof c.sourceSha==='string'&&/^[a-f0-9]{40}$/.test(c.sourceSha)&&['checkoutSha','tagSha','githubSha','workflowSha'].every(k=>c[k]===c.sourceSha),'diagnostic-source-context');
@@ -59,7 +60,7 @@ export function observeDiagnosticBrowserStdio(directory:string,child:ChildProces
  return {rows,closed:()=>Promise.all(closed)};
 }
 
-const COMPONENTS=Object.freeze(['package.json','package-lock.json','.github/workflows/hosted-copilot-scroll-cause.yml','tools/hosted-copilot-scroll-cause.mjs','apps/copilotkit/vite.scroll-cause.config.ts','apps/copilotkit/hosted-scroll-cause-entry.ts','apps/copilotkit/index.html','apps/copilotkit/src/main.tsx','apps/copilotkit/src/scroll-cause-main.ts','apps/copilotkit/src/scroll-cause-frontend.ts','apps/copilotkit/src/scroll-cause-diagnostic.ts','apps/copilotkit/runtime/mounted-native.ts','apps/copilotkit/runtime/mounted-tracker-a.ts','apps/copilotkit/runtime/mounted-tracker-a-trace.ts','tests/support/hosted-copilot-scroll-cause-transform.ts','tests/support/hosted-copilot-scroll-cause-build.ts','tests/support/hosted-copilot-scroll-cause-artifact.ts','tests/support/hosted-copilot-scroll-cause-launch.ts','tests/support/hosted-copilot-worker-static-policy.ts','tests/support/hosted-copilot-build-plugin.ts']);
+const COMPONENTS=Object.freeze(['package.json','package-lock.json','.github/workflows/hosted-copilot-scroll-cause.yml','tools/hosted-copilot-scroll-cause.mjs','apps/copilotkit/vite.scroll-cause.config.ts','apps/copilotkit/hosted-scroll-cause-entry.ts','apps/copilotkit/index.html','apps/copilotkit/src/main.tsx','apps/copilotkit/src/scroll-cause-main.ts','apps/copilotkit/src/scroll-cause-frontend.ts','apps/copilotkit/src/scroll-cause-diagnostic.ts','apps/copilotkit/runtime/mounted-native.ts','apps/copilotkit/runtime/mounted-tracker-a.ts','apps/copilotkit/runtime/mounted-tracker-a-trace.ts','tests/support/hosted-copilot-scroll-cause-transform.ts','tests/support/hosted-copilot-scroll-cause-build.ts','tests/support/hosted-copilot-scroll-cause-artifact.ts','tests/support/hosted-copilot-scroll-cause-launch.ts','tests/support/hosted-copilot-scroll-cause-refusal.ts','tests/support/hosted-copilot-worker-static-policy.ts','tests/support/hosted-copilot-build-plugin.ts']);
 const authority={qualification:false,nativeGO:false,performance:false,fps:'unavailable'} as const;
 const gate={protocol:'tracker-a-wheel-handler-after-gate-v1',maxGates:40,entry:'unchanged',arm:'measured-before-existing-evaluate',wait:'measured-after-existing-evaluate',event:'same-original-wheel-listener'} as const;
 const anchor={protocol:'tracker-a-anchor-scalars-v1',role:'tracker-a-anchor-scalars-v1.json',cap:65536,maxObservations:82,g1Purpose:'tracker-a-G1-anchor-diagnostic-v1',metric:'min-positive-text-rect-viewport-y'} as const;
@@ -114,6 +115,7 @@ async function childDiagnostic(root:string,directory:string,current:Awaited<Retu
  const strict=await writeDiagnosticJson(directory,'diagnostic-strict-result.json',projection.strictResult);
  if(projection.firstFailure!==null)await writeDiagnosticJson(directory,'diagnostic-first-failure.json',{schemaVersion:1,kind:'unqualified-scroll-cause-first-failure',source:current.source,run:current.run,diagnosticStrictResultRef:diagnosticRef(strict),firstFailure:projection.firstFailure,...authority});
  await authenticateDiagnosticBuild(root,directory,current);need(!rawState.created||rawState.closed,'diagnostic-raw-still-open');
+ if(result.strict.hasPrimary){const line=diagnosticPrimaryLine(result.strict.primary);await new Promise<void>((done,fail)=>process.stdout.write(line,error=>error?fail(error):done()));}
  const footer=encodeDiagnosticFooter({protocol:'scroll-cause-child-publication-v1',source:current.source.commitSha,run:current.run.runId,rawTrace:{created:rawState.created,closed:rawState.closed},strictResultRef:diagnosticRef(strict)});await new Promise<void>((done,fail)=>process.stdout.write(footer,error=>error?fail(error):done()));
  if(result.strict.status!=='complete'||result.strict.hasPrimary)process.exitCode=2;
 }
@@ -133,9 +135,13 @@ async function parentDiagnostic(root:string,directory:string,current:Awaited<Ret
 }
 /** Only this fixed action dispatcher is called by the tiny executable entry. */
 export async function runScrollCauseAction(action:unknown){
- need(['preflight','build','run','parent','child','inventory','finalcheck'].includes(action as string),'diagnostic-action');const root=await realpath(process.cwd()),current=await checkScrollCauseHostedContext(root);if(action==='preflight')return;const temp=process.env.RUNNER_TEMP;need(typeof temp==='string'&&resolve(temp)===temp&&await realpath(temp)===temp,'diagnostic-temp');
+ need(['preflight','build','run','parent','child','inventory','finalcheck','forensic','forensic-finalcheck'].includes(action as string),'diagnostic-action');const root=await realpath(process.cwd()),current=await checkScrollCauseHostedContext(root);if(action==='preflight')return;const temp=process.env.RUNNER_TEMP;need(typeof temp==='string'&&resolve(temp)===temp&&await realpath(temp)===temp,'diagnostic-temp');
  const directory=join(temp,`copilot-scroll-cause-${current.run.runId}-1`),workspace=join(temp,`copilot-scroll-cause-build-${current.run.runId}-1`);
  if(action==='build')return buildDiagnostic(root,directory,workspace,current);
+ if(action==='forensic'||action==='forensic-finalcheck'){
+  await sourcePins(root);const context={source:current.source,run:current.run,parentArgv:command(root,'parent'),childArgv:command(root,'child')},stage=join(temp,`copilot-scroll-cause-command-forensics-${current.run.runId}-1`);
+  if(action==='forensic')await admitScrollCauseCommandForensics(directory,stage,context);else await verifyScrollCauseCommandForensics(directory,stage,context);return;
+ }
  const loaded=await authenticateDiagnosticBuild(root,directory,current);
  if(action==='child')return childDiagnostic(root,directory,current);if(action==='parent')return parentDiagnostic(root,directory,current);
  if(action==='run'){const result=await captureDiagnosticCommand(directory,'parent',command(root,'parent'),210000,{SCROLL_CAUSE_SOURCE_SHA:current.source.commitSha});if(result.close.exitCode===2&&result.close.signal===null&&result.streamsComplete&&!result.timedOut&&!result.terminationRequested)process.exitCode=2;else if(result.close.exitCode!==0||result.close.signal!==null||!result.streamsComplete||result.timedOut||result.terminationRequested)process.exitCode=1;return;}

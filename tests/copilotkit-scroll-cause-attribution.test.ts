@@ -102,7 +102,7 @@ test('markers and vendor records share the exact row limit and width budget', ()
 });
 test('diagnostic preflight never coerces source values or enters normal prerequisites', async () => {
   let getters = 0;
-  const options = { kind: 'scroll-cause-diagnostic-options', schemaVersion: 1, source: { commitSha: { toString() { getters++; return 'a'.repeat(40); } }, treeSha: 'b'.repeat(40), lockSha256: 'c'.repeat(64) }, run: { repository: 'cacheplane/chat-ui-bench', runId: '1', attempt: 1, tag: 'hosted-copilot-react-scroll-cause-v1' }, browserEndpoint: 'ws://127.0.0.1:1234/', assets: { root: '/unreachable', files: [] }, buildRef: { path: 'diagnostic-build.json', bytes: 1, sha256: 'd'.repeat(64) } };
+  const options = { kind: 'scroll-cause-diagnostic-options', schemaVersion: 1, source: { commitSha: { toString() { getters++; return 'a'.repeat(40); } }, treeSha: 'b'.repeat(40), lockSha256: 'c'.repeat(64) }, run: { repository: 'cacheplane/chat-ui-bench', runId: '1', attempt: 1, tag: 'hosted-copilot-react-scroll-cause-v2' }, browserEndpoint: 'ws://127.0.0.1:1234/', assets: { root: '/unreachable', files: [] }, buildRef: { path: 'diagnostic-build.json', bytes: 1, sha256: 'd'.repeat(64) } };
   await expect(native.runNativeMountedScrollCauseDiagnostic(options, {}, {})).rejects.toThrow('before SDK imports'); expect(getters).toBe(0);
   await expect(native.runNativeMountedConformance(options, {})).rejects.toThrow('prerequisites');
   await expect(native.runNativeMountedTrackerAPilot(options, {}, {})).rejects.toThrow('prerequisites');
