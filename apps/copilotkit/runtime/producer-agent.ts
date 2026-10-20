@@ -10,7 +10,7 @@ import type { HistoryMessage, CaseIds } from '../src/controls.js';
 import { AGENT_ID } from '../src/context.js';
 import { boundedChunks, producerEvents, seedEvents, translateReplay } from './wire.js';
 import type { FixtureSelection } from './fixture-selection.js';
-import { OwnedOperations, boundedWait, diagnostic, notifyNativeCase, type NativeCaseHooks } from './ownership.js';
+import { OwnedOperations, boundedWait, diagnostic, notifyNativeCase, cleanupOriginalBridge, type NativeCaseHooks } from './ownership.js';
 
 export interface BridgeSpec {
   readonly fixture: LongThreadFixture;
@@ -144,12 +144,7 @@ export class ProducerAgent extends AbstractAgent {
         } catch(error) {
           this.receipts.set(input.runId,{runId:input.runId,successful:false,eof,producerSettled,readerSettled,eventCount,deltaCount,responseBytes,producerDrains});throw error;
         } finally {
-          cancellation.abort();
-          let cleanupFailed=false;
-          if(reader) {try {await reader.cancel();}catch(error) {cleanupFailed=true;this.operations.cleanupFailure(error);}finally {reader.releaseLock();}}
-          if(producer) {try {await producer.close();}catch(error) {cleanupFailed=true;this.operations.cleanupFailure(error);}}
-          this.cancellations.delete(input.runId);
-          if(cleanupFailed) throw new Error('Original bridge cleanup failed; case ownership retained');
+          await cleanupOriginalBridge(reader,producer,this.operations,cancellation,()=>{this.cancellations.delete(input.runId);});
         }
       },async()=> {cancellation.abort();});
       // Original remains owned by operations until its asynchronous finally closes

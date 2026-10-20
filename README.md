@@ -15,7 +15,9 @@ scoring any sample. Failed and invalid repetitions remain in reports.
 ## Run it
 
 Use Node 24+ and npm 11+; dependencies and Playwright Chromium are pinned in the
-lockfile. No global browser or Python installation is required.
+lockfile. These benchmark commands need no global browser or Python installation.
+The optional [hosted failure inspector](docs/hosted-failure-inspection.md) uses
+Python 3.12 or newer and its standard library.
 
 ```sh
 npm ci
@@ -178,7 +180,7 @@ profile. React/provider/entitlement, browser origin/rendering, native closure,
 presentation timing, FPS and ranking remain deferred.
 
 The next CopilotKit production STATIC release uses the separate fixed identity
-`hosted-copilot-react-production-build-v57`. Its worker policy checks the complete
+`hosted-copilot-react-production-build-v58`. Its worker policy checks the complete
 registered graph separately from emitted chunk ownership. The conditional
 compiler dependency requires complete bounded runtime callbacks, absence from
 every normal module's resolved dependencies, and absence from emitted chunk
@@ -254,12 +256,12 @@ stdout, each including LF≤4096 bytes. Awaited child write callbacks do not pro
 parent retention or stream closure. These diagnostics share the existing stdout and
 archive caps, and cannot promote geometry or lifecycle success. Default Chat,
 canonical workload, strict geometry and its4/5 read budgets remain unchanged.
-Fresh native preparation uses `hosted-copilot-react-h100-r6400-v18` only after
-independent qualification of same-source full STATIC V57. Neither pure checks nor
+Fresh native preparation uses `hosted-copilot-react-h100-r6400-v19` only after
+independent qualification of same-source full STATIC V58. Neither pure checks nor
 content readiness establish recovery, native conformance, FPS or ranking.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v11` workflow requires
-independently qualified same-source STATIC V57 and successful ordinary-native V18
+The separate experimental `hosted-copilot-react-tracker-json-a-v12` workflow requires
+independently qualified same-source STATIC V58 and successful ordinary-native V19
 original artifacts. Pilot startup uses the shared capture helper; serialized
 `capture` stage keys remain unchanged. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,

@@ -24,6 +24,23 @@ export function diagnostic(error: unknown): string {
   const value=error instanceof Error ? error.message : typeof error==='string' ? error : '[opaque operation failure]';
   return value.slice(0,256);
 }
+/** The original bridge finally sequence. Only the two caught operations receive
+ * closed outward labels; releaseLock and diagnostic-recording throws retain
+ * their original abrupt completion and prevent subsequent cleanup work. */
+export async function cleanupOriginalBridge(
+ reader:{cancel():Promise<unknown>;releaseLock():void}|undefined,
+ producer:{close():Promise<void>}|undefined,
+ operations:{cleanupFailure(error:unknown):void},
+ cancellation:{abort():void},
+ forget:()=>void,
+):Promise<void> {
+ cancellation.abort();
+ const failed:('reader-cancel'|'producer-close')[]=[];
+ if(reader) {try {await reader.cancel();}catch(error) {failed.push('reader-cancel');operations.cleanupFailure(error);}finally {reader.releaseLock();}}
+ if(producer) {try {await producer.close();}catch(error) {failed.push('producer-close');operations.cleanupFailure(error);}}
+ forget();
+ if(failed.length) throw new Error(`Original bridge cleanup failed; case ownership retained [${failed.join(',')}]`);
+}
 export async function boundedWait<T>(original: Promise<T>, milliseconds: number, label: string): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const expired=new Promise<never>((_resolve,reject)=> { timeout=setTimeout(()=>reject(new Error(`${label} settlement deadline exceeded`)),milliseconds); });

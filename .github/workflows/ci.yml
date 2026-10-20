@@ -58,6 +58,11 @@ jobs:
       - name: Run unit tests
         run: npm test 2>&1 | tee ci-logs/unit.log
 
+      - name: Test offline hosted failure inspector with Python 3.12 or newer
+        run: |
+          python3 --version 2>&1 | tee ci-logs/hosted-failure-inspector.log
+          npm run test:hosted-failure-inspector 2>&1 | tee -a ci-logs/hosted-failure-inspector.log
+
       - name: Typecheck workspaces
         run: npm run typecheck 2>&1 | tee ci-logs/typecheck.log
 
