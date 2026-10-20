@@ -1,0 +1,23 @@
+{
+  "kind": "copilot-module-binding-profile-v1",
+  "scope": "unscored four-source initialization and owned resource closure only",
+  "nodeMajor": 24,
+  "platforms": ["linux", "darwin"],
+  "compiler": {"name":"esbuild","version":"0.28.2"},
+  "playwright": "1.64.0",
+  "overallMs":120000,"phaseMs":15000,"cleanupMs":5000,"subjectMs":5000,
+  "buildFiles":640,"buildBytes":33554432,"individualBytes":8388608,
+  "inputFiles":16384,"inputBytesPerPass":67108864,
+  "functionalFiles":96,"functionalBytes":8388608,"detailBytes":262144,
+  "functionalFixturePolicy":"Owned ephemeral relocation/control inputs fit96files/8MiB and are removed after subjects; installed node_modules is read-only linked, not copied. The one actual full-build scratch uses the separate BUILD640/32MiB envelope and is removed after its subject. Functional retained outcome/logs/receipt use96files/8MiB.",
+  "streamBytes":1048576,"rawReceiptUtf8Bytes":16384,"phaseEvidenceBytes":262144,
+  "requests":768,"staticPaths":640,"responseBytes":33554432,
+  "browserCount":1,"contextCount":1,"pageCount":1,"retries":0,
+  "runtimeControlFiles":16,"runtimeControlBytesPerPass":16777216,
+  "outerCapture":{"files":4,"bytes":2228224,"intentBytes":65536,"stdoutBytes":1048576,"stderrBytes":1048576,"receiptBytes":65536},
+  "runtimeProvenance":"Current process.execPath and Node/V8/platform/arch; pinned package/control bytes and browser revision; actual executable regular-file metadata and browser.version(). No exact-machine binary or whole-browser/app attestation. Executable metadata is not a binary hash.",
+  "networkBoundary":"Owned page/context observable requests and controlled features, not OS-wide egress. One owned loopback static listener plus literal owned Playwright control WebSocket; page sockets/workers/serviceworkers/downloads/redirects/unexpected requests refused.",
+  "historyAndCacheAPIs":"absent; private render/history/active32/work subjects are not public capabilities",
+  "qualification":false,"nativeGO":false,"performance":false,"scoring":false,"ranking":false,
+  "warmReadiness":"unavailable","liveReadiness":"unavailable","fps":"unavailable"
+}
