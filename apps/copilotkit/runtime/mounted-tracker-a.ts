@@ -111,6 +111,9 @@ export async function readTrackerAAnchorScalarEnvelope(request:Readonly<{selecti
 
 export interface TrackerAEntrySample {scalar:TrackerAScalar;active:boolean;prefixLength:number;returnControlVisible:boolean}
 type EntryRow=Original&{value:TrackerAEntrySample|null};
+export type PostCaptureDrainReason='eligible'|'no-measured-failure'|'continuation-not-started'|'completion-attempted'|'capture-incomplete'|'pending-original'|'cleanup-rejected'|'cleanup-timeout'|'deadline'|'admission-closed';
+export interface PostCaptureDrainReceipt {schemaVersion:1;eligibility:'eligible'|'ineligible';reason:PostCaptureDrainReason;original:'not-started'|'pending'|'fulfilled'|'rejected';waiter:'not-started'|'fulfilled'|'rejected'|'timed-out';outcome:'ineligible'|'pending'|'fulfilled'|'rejected'|'timed-out';requestedHostMs:number|null;targetHostMs:number|null;settledHostMs:number|null}
+export interface PostCaptureDrainView {readonly hasPrimary:boolean;readonly firstFailure:TrackerAFirstFailure|null;readonly hostT0Ms:number|null;readonly captureTailFulfilled:boolean;readonly inputDrainFulfilled:boolean;readonly traceClosed:boolean;readonly pendingOriginal:boolean;readonly completionAttempted:boolean}
 export interface TrackerAHistoryOwner {
  /** Original owned topology, without a full collector or one of the82 scalars. */
  baseline:unknown;seed():Promise<void>;restore():Promise<GeometrySnapshot>;acquireTrace():Promise<Trace>;
@@ -119,7 +122,7 @@ export interface TrackerAHistoryOwner {
  movePointer(x:number,y:number):Promise<void>;entrySample():Promise<unknown>;scalar(selection:Readonly<{id:string;ownerToken:number}>|undefined,purpose:TrackerAScalarPurpose):Promise<unknown>;wheel(x:0,y:-600|-12):Promise<void>;
  returnToResponse():Promise<void>;
  /** Original canonical EOF/public-idle validation and G4, before disposal. */
- complete():Promise<GeometrySnapshot>;close():Promise<CaseRecord>;observations():unknown|Promise<unknown>;
+ complete():Promise<GeometrySnapshot>;postCaptureDrain?(view:Readonly<PostCaptureDrainView>):Promise<PostCaptureDrainReceipt|null>;close():Promise<CaseRecord>;observations():unknown|Promise<unknown>;
 }
 export interface TrackerASequencerPorts {
  profileRef:TrackerAProfileRef;
@@ -151,7 +154,7 @@ export interface TrackerAInput extends Observations {
 export type TrackerAFirstFailure=Readonly<{code:'unclassified'|'baseline'|'timestamp-reverse'|'opposing-offset'|'end-stop';ordinal:number|null;previousOrdinal:number|null;slot:number|null}>;
 export type AnchorObservation=AnchorProbe&{ordinal:number;role:ScalarRow['role'];slot:number|null;pageStartMs:number|null;pageEndMs:number|null;jointReadStable:boolean|null};
 export interface TrackerAAnchorDiagnostic {selection:{snapshotRef:{path:'native-case-2.json';index:number};id:string;role:'user'|'assistant';ownerToken:number;metric:'min-positive-text-rect-viewport-y';contentTopCssPx:number;relativeTopCssPx:number;nativeViewportY:number};observations:AnchorObservation[]}
-export interface TrackerASequencerResult {status:'complete'|'incomplete';cases:CaseRecord[];caseEvidence:CaseRecord[];snapshots:{caseNumber:1|2;snapshot:GeometrySnapshot}[];input:TrackerAInput|null;transport:ReturnType<Trace['snapshot']>|null;/** Original receipt; child tracker persists this closed-drain witness. */inputDrain:ListenerOriginal;anchorDiagnostic:TrackerAAnchorDiagnostic|null;anchorDiagnosticError:unknown|null;handlerGateError:unknown|null;hasPrimary:boolean;primary:unknown;firstFailure:TrackerAFirstFailure|null;cleanupFailures:unknown[];authority:ReturnType<typeof authority>}
+export interface TrackerASequencerResult {status:'complete'|'incomplete';cases:CaseRecord[];caseEvidence:CaseRecord[];snapshots:{caseNumber:1|2;snapshot:GeometrySnapshot}[];input:TrackerAInput|null;transport:ReturnType<Trace['snapshot']>|null;/** Original receipt; child tracker persists this closed-drain witness. */inputDrain:ListenerOriginal;postCaptureDrain?:PostCaptureDrainReceipt|null;anchorDiagnostic:TrackerAAnchorDiagnostic|null;anchorDiagnosticError:unknown|null;handlerGateError:unknown|null;hasPrimary:boolean;primary:unknown;firstFailure:TrackerAFirstFailure|null;cleanupFailures:unknown[];authority:ReturnType<typeof authority>}
 function data(value:unknown,keys:readonly string[]):Record<string,unknown>{
  if(typeof value!=='object'||value===null||Array.isArray(value)||(Object.getPrototypeOf(value)!==Object.prototype&&Object.getPrototypeOf(value)!==null))throw Error('Invalid owned data');
  const names=Reflect.ownKeys(value);if(names.length!==keys.length||names.some(k=>typeof k!=='string'||!keys.includes(k)))throw Error('Invalid owned keys');
@@ -205,7 +208,8 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
  const cases:CaseRecord[]=[],caseEvidence:CaseRecord[]=[],snapshots:TrackerASequencerResult['snapshots']=[],cleanupFailures:unknown[]=[];
  const inputDrain:ListenerOriginal={status:'not-started',requestedHostMs:null,settledHostMs:null};
  let hasPrimary=false,primary:unknown,input:TrackerAInput|null=null,trace:Trace|null=null,transport:TrackerASequencerResult['transport']=null,connected=false,lastNow=-Infinity;
- let traceFinish:Promise<void>|null=null;
+ let diagnosticCleanup=false;
+ let traceFinish:Promise<void>|null=null,postCaptureDrain:PostCaptureDrainReceipt|null=null;
  const finishTrace=()=>{if(traceFinish===null){try{traceFinish=trace!.finish();}catch(error){traceFinish=Promise.reject(error);}}return traceFinish;};
  let clockInvalid=false,clockFailure:unknown;
  let firstFailure:TrackerAFirstFailure|null=null;
@@ -240,6 +244,9 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
  });}
  function check(limit=deadline){const at=now();if(at>=limit)throw Error('Original deadline unavailable');return at;}
  function dispatch<T>(call:()=>Promise<T>):Promise<T>{check();let work:Promise<T>;try{work=Promise.resolve(call());}catch(e){work=Promise.reject(e);}return bounded(work);}
+ // Diagnostic cleanup must start its original even after the waiter deadline.
+ // The same original remains owned; bounded() supplies no additional budget.
+ function dispatchCleanup<T>(call:()=>Promise<T>):Promise<T>{let work:Promise<T>;try{work=Promise.resolve(call());}catch(error){work=Promise.reject(error);}return bounded(work);}
  function invoke<T>(call:()=>Promise<T>,row:{status:TrackerAOriginal;settledHostMs:number|null;requestedHostMs?:number|null;startedHostMs?:number|null},limit=deadline){
   const at=check(Math.min(limit,deadline));
   if('requestedHostMs'in row)row.requestedHostMs=at;
@@ -270,8 +277,8 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
   const target=row.targetHostMs;
   await invoke(async()=>{await wait(target);if(now()>=target+50)throw Error('Late capture wake');},row,target+50).wait;
  }
- async function close(owner:{close():Promise<CaseRecord>},n:1|2,caseSnapshots:GeometrySnapshot[],semantic=true){
-  const current=await dispatch(()=>owner.close());caseEvidence.push(current);
+ async function close(owner:{close():Promise<CaseRecord>},n:1|2,caseSnapshots:GeometrySnapshot[],semantic=true,diagnostic=false){
+  const current=await (diagnostic?dispatchCleanup(()=>owner.close()):dispatch(()=>owner.close()));caseEvidence.push(current);
   if(current.caseNumber!==n||current.journey!==(n===1?'follow':'history-reading')||caseSnapshots.some(s=>s.status!=='available'||s.frame.scopeId!==current.threadId)||evaluateMountedClosurePolicy({schemaVersion:1,kind:'case-boundary',priorCase:n===1?null:cases[0],currentCase:current,secondStarted:n===2}).status!=='accepted')throw Error('Original case boundary incomplete');if(semantic)cases.push(current);
  }
  try{
@@ -296,7 +303,7 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
   }
   let owner:TrackerAHistoryOwner|undefined,closed=false,semanticComplete=false,inputAcquired=false;const secondSnapshots:GeometrySnapshot[]=[];
   try{
-   const h=await dispatch(()=>ports.openHistory());owner=h;
+   const h=await dispatch(()=>ports.openHistory());owner=h;diagnosticCleanup=h.postCaptureDrain!==undefined;
    const checkpoint=():Checkpoint=>({status:'not-started',requestedHostMs:null,settledHostMs:null,snapshotRef:null});
    const listener=():ListenerFact=>({registration:{status:'not-started',requestedHostMs:null,settledHostMs:null},removal:{status:'not-started',requestedHostMs:null,settledHostMs:null},ownedIdentityMatch:null});
    input={schemaVersion:2,kind:'tracker-a-case-input',mode:'tracker-json-a-pilot-v2',caseNumber:2,profileRef:{path:'tracker-a-profile.json',bytes:p.bytes,sha256:p.sha256},entry:{before:{...original(),value:null},wheel:original(),afterWait:original(),after:{...original(),value:null},settledWait:original(),settled:{...original(),value:null}},phase:{hostT0Ms:null,hostT1Ms:null,postBoundaryScalarOrdinal:null,postBoundarySettled:'not-started',returnClick:original(),captureTail:{...original(),targetHostMs:null},completion:original(),tail:original()},geometryCheckpoints:{G0:checkpoint(),G1:checkpoint(),G2:checkpoint(),G3:checkpoint(),G4:checkpoint()},anchor:null,listeners:{wheel:listener(),scroll:listener(),animationstart:listener(),transitionrun:listener(),navigation:listener(),contextClose:listener(),pageClose:listener()},pointer:null,scalarObservations:[],wheelRequests:[],handlerGates:[],wheelEvents:[],scrollEvents:[],motionEvents:[],losses:{navigation:null,context:null,page:null,session:null},overflows:{wheel:null,scroll:null,motion:null},outcome:{phase:{status:'not-started',reason:null},competingMotion:'unavailable',scenarioQualification:'unavailable'},authority:authority()};const current=input;
@@ -468,10 +475,14 @@ export async function runMountedTrackerA(ports:TrackerASequencerPorts):Promise<T
      input.outcome.phase={status:'incomplete',reason:'phase'};
     }
    }
-   snapshots.push(...secondSnapshots.map(snapshot=>({caseNumber:2 as const,snapshot})));if(owner&&!closed){closed=true;try{await close(owner,2,secondSnapshots,semanticComplete&&inputAcquired);}catch(e){remember(e);cleanupFailures.push(e);}}
+   if(owner?.postCaptureDrain&&input){
+    const view=Object.freeze({hasPrimary,firstFailure,hostT0Ms:input.phase.hostT0Ms,captureTailFulfilled:input.phase.captureTail.status==='fulfilled',inputDrainFulfilled:inputDrain.status==='fulfilled',traceClosed:transport?.outcome.capture.status==='complete'&&transport.outcome.containment==='verified'&&Object.values(input.listeners).every(row=>row.registration.status==='not-started'||row.removal.status==='fulfilled'),pendingOriginal:input.scalarObservations.some(row=>row.status==='pending')||input.wheelRequests.some(row=>row.status==='pending')||Object.values(input.geometryCheckpoints).some(row=>row.status==='pending')||input.phase.returnClick.status==='pending'||input.phase.completion.status==='pending',completionAttempted:input.phase.completion.status!=='not-started'});
+    try{postCaptureDrain=await owner.postCaptureDrain(view);}catch(error){remember(error);cleanupFailures.push(error);}
+   }
+   snapshots.push(...secondSnapshots.map(snapshot=>({caseNumber:2 as const,snapshot})));if(owner&&!closed){closed=true;try{await close(owner,2,secondSnapshots,semanticComplete&&inputAcquired,diagnosticCleanup);}catch(e){remember(e);cleanupFailures.push(e);}}
   }
- }catch(e){remember(e);}finally{if(connected)try{await dispatch(()=>ports.closeClient());}catch(e){if(!hasPrimary)remember(e);cleanupFailures.push(e);}}
- returnedResult={status:!hasPrimary&&cleanupFailures.length===0&&cases.length===2?'complete':'incomplete',cases,caseEvidence,snapshots,input,transport,inputDrain,anchorDiagnostic,anchorDiagnosticError,handlerGateError,hasPrimary,primary,firstFailure,cleanupFailures,authority:authority()};return returnedResult;
+ }catch(e){remember(e);}finally{if(connected)try{await (diagnosticCleanup?dispatchCleanup(()=>ports.closeClient()):dispatch(()=>ports.closeClient()));}catch(e){if(!hasPrimary)remember(e);cleanupFailures.push(e);}}
+ returnedResult={status:!hasPrimary&&cleanupFailures.length===0&&cases.length===2?'complete':'incomplete',cases,caseEvidence,snapshots,input,transport,inputDrain,...(postCaptureDrain===null?{}:{postCaptureDrain}),anchorDiagnostic,anchorDiagnosticError,handlerGateError,hasPrimary,primary,firstFailure,cleanupFailures,authority:authority()};return returnedResult;
 }
 function dense(value:unknown,cap:number):unknown[]{
  if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype)throw Error('Dense population required');const d=Object.getOwnPropertyDescriptor(value,'length');if(!d||!('value'in d)||!Number.isSafeInteger(d.value)||d.value<0||d.value>cap)throw Error('Population capacity');
