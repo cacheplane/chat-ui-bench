@@ -11,6 +11,7 @@
     "skipLibCheck": false
   },
   "include": [
+    "copilotkit-bridge-cleanup.test.ts",
     "copilotkit-mounted-conformance.test.ts",
     "copilotkit-mounted-tracker-a-trace.test.ts",
     "copilotkit-mounted-tracker-a.test.ts",

@@ -608,9 +608,9 @@ with the strict browser-source type profile and `skipLibCheck:false` as part of 
 ## Prepared native conformance source
 
 The `hosted-copilot-mounted.yml` workflow and inert
-`runNativeMountedConformance` worker export now prepare a fresh V57
+`runNativeMountedConformance` worker export now prepare a fresh V58
 frontend/worker STATIC release. After ROOT and peer qualify that completed
-original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v18`
+original artifact, the separate fixed `hosted-copilot-react-h100-r6400-v19`
 native tag must point to the same commit. The native dispatch supplies the
 verified original STATIC run/artifact/archive and review hashes; these are
 caller review assertions, not cryptographic certification by the pure policy.
@@ -660,12 +660,12 @@ validated scalars and actual attempted count, without text or arbitrary error
 details. An awaited write callback is separate from parent retained bytes and
 original EOF/writer-close; partial/missing diagnostics or publication failure do
 not supply successful case closure. All existing stdout/archive caps apply.
-Fresh native V18 must independently complete both original serial cases after
-qualification of same-source full STATIC V57. Content readiness and pure tests
+Fresh native V19 must independently complete both original serial cases after
+qualification of same-source full STATIC V58. Content readiness and pure tests
 establish no geometry, runtime conformance, FPS or ranking result.
 
-The separate experimental `hosted-copilot-react-tracker-json-a-v11` workflow requires
-independently qualified same-source STATIC V57 and successful ordinary-native V18
+The separate experimental `hosted-copilot-react-tracker-json-a-v12` workflow requires
+independently qualified same-source STATIC V58 and successful ordinary-native V19
 original artifacts. It authenticates the native prerequisite archive as opaque
 bytes. Its five tracker roles are `tracker-a-profile.json`,
 `tracker-a-case-2-input.json`, `tracker-a-case-2-trace.json`,
