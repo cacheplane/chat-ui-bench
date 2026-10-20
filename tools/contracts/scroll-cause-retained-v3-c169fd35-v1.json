@@ -1,0 +1,84 @@
+{
+  "commit": "c169fd3543b29178a237ca6c9c9c34c678c04a2c",
+  "tree": "108aad99100a82b46e222e3d7fabb34b8c4e5987",
+  "lockSha256": "c9c4138247c23c593ceb5bd9f5275b59962aad0f017bcbc33dc78bcec3545a56",
+  "sourcePins": {
+    "tests/support/hosted-copilot-scroll-cause-artifact.ts": {
+      "bytes": 48899,
+      "sha256": "e3faaa1e7bd095eab4aeef38dd488112e6359da181f7d582283dd8325a9e154b"
+    },
+    "tests/support/hosted-copilot-scroll-cause-launch.ts": {
+      "bytes": 30089,
+      "sha256": "b6d57c1c1d6d1499484b6152a6470cd55bef9f3d315cc4ef12c3f41c362f88d0"
+    },
+    "apps/copilotkit/runtime/mounted-native.ts": {
+      "bytes": 93636,
+      "sha256": "8d5d6242d856279aaae9fbb339de8e752978a1a6ad67bd37672350df3ad5090e"
+    },
+    "package-lock.json": {
+      "bytes": 1188802,
+      "sha256": "c9c4138247c23c593ceb5bd9f5275b59962aad0f017bcbc33dc78bcec3545a56"
+    }
+  },
+  "caps": {
+    "diagnostic-profile.json": 16384,
+    "tracker-a-profile.json": 16384,
+    "diagnostic-source.json": 262144,
+    "diagnostic-build.json": 1048576,
+    "diagnostic-transform.json": 262144,
+    "diagnostic-frontend-inventory.json": 524288,
+    "diagnostic-module-pins.json": 1048576,
+    "diagnostic-frontend.zip": 33554432,
+    "diagnostic-worker.mjs": 16777216,
+    "diagnostic-browser-registry.json": 262144,
+    "diagnostic-browser-process.json": 16384,
+    "parent-started.json": 16384,
+    "parent-result.json": 16384,
+    "parent.stdout": 4194304,
+    "parent.stderr": 4194304,
+    "application-started.json": 16384,
+    "application-result.json": 16384,
+    "application.stdout": 262144,
+    "application.stderr": 262144,
+    "browser-stdout.bin": 262144,
+    "browser-stderr.bin": 262144,
+    "native-case-1.json": 2097152,
+    "native-case-2.json": 2097152,
+    "diagnostic-strict-result.json": 524288,
+    "tracker-a-case-2-input.json": 262144,
+    "tracker-a-case-2-transport.json": 1048576,
+    "tracker-a-case-2-trace.json": 33554432,
+    "diagnostic-first-failure.json": 4096,
+    "scroll-cause-ledger.json": 1048576,
+    "scroll-cause-export.json": 16384,
+    "diagnostic-manifest.json": 524288
+  },
+  "optional": {
+    "browser-stdout.bin": "stdio-not-exposed",
+    "browser-stderr.bin": "stdio-not-exposed",
+    "native-case-1.json": "case-not-produced",
+    "native-case-2.json": "case-not-produced",
+    "tracker-a-case-2-input.json": "input-not-produced",
+    "tracker-a-case-2-transport.json": "transport-not-produced",
+    "tracker-a-case-2-trace.json": "raw-not-created",
+    "diagnostic-first-failure.json": "first-failure-none",
+    "scroll-cause-ledger.json": "ledger-unavailable",
+    "scroll-cause-export.json": "export-not-created"
+  },
+  "forensicRoles": [
+    "parent-started.json",
+    "parent-result.json",
+    "parent.stdout",
+    "parent.stderr",
+    "application-started.json",
+    "application-result.json",
+    "application.stdout",
+    "application.stderr"
+  ],
+  "forensicManifestCap": 16384,
+  "reservation": {
+    "bytes": 130240512,
+    "files": 41
+  },
+  "release": "hosted-copilot-react-scroll-cause-v3"
+}

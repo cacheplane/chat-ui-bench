@@ -16,8 +16,9 @@ scoring any sample. Failed and invalid repetitions remain in reports.
 
 Use Node 24+ and npm 11+; dependencies and Playwright Chromium are pinned in the
 lockfile. These benchmark commands need no global browser or Python installation.
-The optional [hosted failure inspector](docs/hosted-failure-inspection.md) uses
-Python 3.12 or newer and its standard library.
+The optional [hosted failure inspector](docs/hosted-failure-inspection.md) and
+[retained scroll-cause inspector](docs/scroll-cause-retained-inspection.md) use
+Python 3.12 or newer and its standard library on POSIX.
 
 ```sh
 npm ci

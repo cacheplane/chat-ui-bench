@@ -63,6 +63,11 @@ jobs:
           python3 --version 2>&1 | tee ci-logs/hosted-failure-inspector.log
           npm run test:hosted-failure-inspector 2>&1 | tee -a ci-logs/hosted-failure-inspector.log
 
+      - name: Test offline retained scroll cause inspector with Python 3.12 or newer
+        run: |
+          python3 --version 2>&1 | tee ci-logs/scroll-cause-inspector.log
+          npm run test:scroll-cause-inspector 2>&1 | tee -a ci-logs/scroll-cause-inspector.log
+
       - name: Typecheck workspaces
         run: npm run typecheck 2>&1 | tee ci-logs/typecheck.log
 
