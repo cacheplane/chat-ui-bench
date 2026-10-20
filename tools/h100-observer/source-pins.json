@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    {
+      "path": "node_modules/@tanstack/virtual-core/dist/esm/index.js",
+      "bytes": 54156,
+      "sha256": "06f0d457a913752786a32f3f16dff0c5a9c5a8c4877665c31a2e74598db13c09"
+    },
+    {
+      "path": "node_modules/@tanstack/virtual-core/dist/esm/lazy-measurements.js",
+      "bytes": 1052,
+      "sha256": "99b8ef4dc023f5249b8c6c0c164abd2d5793a369b83795c2559ef83069643672"
+    },
+    {
+      "path": "node_modules/@tanstack/virtual-core/dist/esm/utils.js",
+      "bytes": 2545,
+      "sha256": "c1cee1b5f7f1cff7e20bd074dcc38b70f4774924f00bb674c0e226089f8d8279"
+    },
+    {
+      "path": "node_modules/@copilotkit/react-core/dist/copilotkit-DgJj6xa0.mjs",
+      "bytes": 509399,
+      "sha256": "2067b06183e89b1399dbbd894f03d1c541d4f14b4cd62be717d10c01849969a6"
+    },
+    {
+      "path": "node_modules/@tanstack/react-virtual/dist/esm/index.js",
+      "bytes": 5195,
+      "sha256": "c96d5598df79205f09d9bc4c45109adb1aa0c55ae5ceb9935e2f6b3294563167"
+    },
+    {
+      "path": "node_modules/@copilotkit/shared/dist/utils/row-render-keys.mjs",
+      "bytes": 8848,
+      "sha256": "3d3aac23ae6be0d844aacecb938b9378312149d4e3c8bbcfaa50681ea77e9c93"
+    },
+    {
+      "path": "node_modules/@tanstack/virtual-core/package.json",
+      "bytes": 1337,
+      "sha256": "e1ba3497e53e6a2ca4ac59db669b89e60fffeb1a37a982649eb37b55482f3cc1"
+    },
+    {
+      "path": "node_modules/@copilotkit/react-core/package.json",
+      "bytes": 4802,
+      "sha256": "b9a09c214b1aabac7a4d2d94d84f17d2c821eea4dcdb3f85c04c4f30dfe66fc5"
+    },
+    {
+      "path": "node_modules/@tanstack/react-virtual/package.json",
+      "bytes": 1884,
+      "sha256": "4274cda973d0d72214cd89f80c87346021bc9baf6f5dd29de062b25f412ad68e"
+    },
+    {
+      "path": "node_modules/@copilotkit/shared/package.json",
+      "bytes": 2594,
+      "sha256": "419a1910ae51c163ed654b9bfe5d843157e6ec97182b7b4013dbd7b3be4922a4"
+    }
+  ]
+}
