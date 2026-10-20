@@ -58,6 +58,12 @@ jobs:
       - name: Run unit tests
         run: npm test 2>&1 | tee ci-logs/unit.log
 
+      - name: Test portable controlled H100 observer
+        run: |
+          set -o pipefail
+          npm run test:h100-observer:portability 2>&1 | tee ci-logs/h100-observer-portability.log
+          npm run test:h100-observer 2>&1 | tee ci-logs/h100-observer.log
+
       - name: Test offline hosted failure inspector with Python 3.12 or newer
         run: |
           python3 --version 2>&1 | tee ci-logs/hosted-failure-inspector.log
@@ -81,6 +87,18 @@ jobs:
           name: unit-conformance-${{ github.run_id }}-${{ github.run_attempt }}
           path: ci-logs/
           if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve controlled H100 observer evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: h100-observer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-logs/h100-observer*.log
+            ${{ runner.temp }}/ci-evidence/h100-observer-*/
+            ${{ runner.temp }}/ci-evidence/h100-portability-relocated-*/exclusive-output/
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Preserve failure logs and browser evidence
