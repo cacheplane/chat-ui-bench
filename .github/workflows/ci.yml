@@ -66,6 +66,9 @@ jobs:
       - name: Typecheck workspaces
         run: npm run typecheck 2>&1 | tee ci-logs/typecheck.log
 
+      - name: Typecheck separate scroll-cause diagnostic sources
+        run: npm run typecheck:scroll-cause 2>&1 | tee ci-logs/scroll-cause-typecheck.log
+
       - name: Preserve unit logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -147,6 +150,9 @@ jobs:
 
       - name: Install Playwright Chromium and system dependencies
         run: npx playwright install --with-deps chromium 2>&1 | tee ci-logs/browser-install.log
+
+      - name: Verify separate scroll-cause diagnostic build and loading
+        run: npm run test:scroll-cause:build 2>&1 | tee ci-logs/scroll-cause-build.log
 
       - name: Run browser conformance sequentially
         run: npm run test:browser 2>&1 | tee ci-logs/browser.log

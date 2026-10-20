@@ -16,16 +16,28 @@ export interface TrackerAScalar {pageNowMs:number;url:string;sameOriginalScrolle
 interface TrackerAAnchorHost {locators:{scroller:string};readGeometrySnapshot(purpose?:AnchorPurpose):GeometrySnapshot;releaseAnchorDiagnostic(reason:'host'|'url'):void;probeAnchorDiagnostic(selection:Readonly<{id:string;ownerToken:number}>):unknown}
 export type TrackerAScalarPurpose=Readonly<{role:'pre'|'before'|'after'|'post';ordinal:number;slot:number|null}>;
 export interface TrackerAHandlerGate {slot:number;beforeOrdinal:number;afterOrdinal:number;expectedEventOrdinal:number;state:'armed'|'observed'|'cancelled'|'refused';waitClaimed:boolean;listenerOwnedIdentity:boolean|null;eventOrdinal:number|null;eventPageNowMs:number|null;eventTimeStampMs:number|null;cancellationReason:'listener-remove'|null;refusalCode:'arm-state'|'unexpected-order'|'duplicate-event'|'event-invalid'|'event-copy-invalid'|'source-error'|null}
-interface TrackerAAnchorPageState {scalar():TrackerAScalar;anchorContext:{host:TrackerAAnchorHost;url:string;refused:'host'|'url'|null};gate?(purpose:TrackerAScalarPurpose):unknown;waitGate?(purpose:TrackerAScalarPurpose):Promise<void>;confirmGate?(purpose:TrackerAScalarPurpose):void}
+export interface ScrollCausePageExport {snapshot:unknown;capability:'not-checked'|'same'|'missing'|'changed'|'invalid';host:'not-checked'|'same'|'changed';url:'not-checked'|'same'|'changed';sameScroller:'not-checked'|'same'|'changed';g1:'not-returned'|'raw-returned'}
+interface PageAttribution {start():void;marker(purpose:TrackerAScalarPurpose,value:TrackerAScalar):void;export():ScrollCausePageExport}
+interface TrackerAAnchorPageState {scalar(purpose?:TrackerAScalarPurpose):TrackerAScalar;attribution?:PageAttribution;anchorContext:{host:TrackerAAnchorHost;url:string;refused:'host'|'url'|null};gate?(purpose:TrackerAScalarPurpose):unknown;waitGate?(purpose:TrackerAScalarPurpose):Promise<void>;confirmGate?(purpose:TrackerAScalarPurpose):void}
 type TrackerAAnchorWindow=Window&{__copilotkitBenchHost?:TrackerAAnchorHost;__copilotkitTrackerA?:TrackerAAnchorPageState};
 /** Same normal full-read path; diagnostic admission can only disable a lease. */
 export function readTrackerAGeometrySnapshot(purpose:AnchorPurpose|undefined):GeometrySnapshot{
  const w=window as TrackerAAnchorWindow,h=w.__copilotkitBenchHost;if(!h)throw Error('Original host absent');
+ const returned=(snapshot:GeometrySnapshot)=>{if(purpose==='tracker-a-G1-anchor-diagnostic-v1')try{const escrow=Object.getOwnPropertyDescriptor(w,'__copilotkitTrackerAScrollCause');if(escrow&&'value'in escrow&&!escrow.configurable&&!escrow.writable){const record=Object.getOwnPropertyDescriptors(escrow.value),state=Object.getOwnPropertyDescriptor(w,'__copilotkitTrackerA');if(state&&'value'in state&&record.state?.value===state.value&&Object.getOwnPropertyDescriptor(state.value,'attribution')?.value===record.attribution?.value){const start=Object.getOwnPropertyDescriptor(record.attribution!.value,'start');if(start&&'value'in start&&typeof start.value==='function')start.value.call(record.attribution!.value);}}}catch{}return snapshot;};
  if(purpose){const context=w.__copilotkitTrackerA?.anchorContext;if(context){
   if(h!==context.host||location.href!==context.url){context.refused??=h!==context.host?'host':'url';context.host.releaseAnchorDiagnostic(context.refused);}
-  if(context.refused===null)return h.readGeometrySnapshot(purpose);
+  if(context.refused===null)return returned(h.readGeometrySnapshot(purpose));
  }}
- return h.readGeometrySnapshot();
+ return returned(h.readGeometrySnapshot());
+}
+/** One cleanup evaluate; operates only on the originally captured capsule. */
+export function exportTrackerAScrollCauseDiagnostic():ScrollCausePageExport{
+ const w=window as TrackerAAnchorWindow,escrow=Object.getOwnPropertyDescriptor(w,'__copilotkitTrackerAScrollCause');
+ if(!escrow||!('value'in escrow)||escrow.configurable||escrow.writable||!Object.isFrozen(escrow.value))throw Error('capability-unavailable');
+ const d=Object.getOwnPropertyDescriptors(escrow.value),capsule=d.attribution?.value;
+ if(!capsule||!Object.isFrozen(capsule))throw Error('capability-unavailable');
+ const method=Object.getOwnPropertyDescriptor(capsule,'export');if(!method||!('value'in method)||typeof method.value!=='function')throw Error('capability-unavailable');
+ return method.value.call(capsule) as ScrollCausePageExport;
 }
 
 /** Closed evaluate callback: no free value bindings and no SDK work. Raw scalar
@@ -45,7 +57,7 @@ export async function readTrackerAAnchorScalarEnvelope(request:Readonly<{selecti
   const wait=Object.getOwnPropertyDescriptor(s,'waitGate');if(!wait||!('value'in wait)||typeof wait.value!=='function')throw Error('Original gate wait unavailable');await wait.value.call(s,purpose);
   const confirm=Object.getOwnPropertyDescriptor(s,'confirmGate');if(!confirm||!('value'in confirm)||typeof confirm.value!=='function')throw Error('Original gate confirmation unavailable');confirm.value.call(s,purpose);
  }
- const scalar=s.scalar(),pageStartMs=performance.now();let candidate:unknown,sameHostObject:boolean|null=null,sameUrl:boolean|null=null;
+ const scalar=s.scalar(purpose),pageStartMs=performance.now();let candidate:unknown,sameHostObject:boolean|null=null,sameUrl:boolean|null=null;
  const finish=(anchorDiagnostic:unknown)=>{
   let handlerGate:unknown=null;
   if(purposeInvalid||!purpose)handlerGate={schema:1,purpose:null,status:'invalid',record:null,failure:'gate-copy-invalid'};
@@ -537,14 +549,34 @@ type PilotWheel={ordinal:number;pageNowMs:number;eventTimeStampMs:number;isTrust
 type PilotScroll={ordinal:number;pageNowMs:number;eventTimeStampMs:number;currentTargetIsScroller:boolean;scrollTop:number;scrollHeight:number;clientHeight:number};
 type PilotMotion={ordinal:number;kind:'animationstart'|'transitionrun';pageNowMs:number;eventTimeStampMs:number;targetContained:boolean};
 type PilotDOMName='wheel'|'scroll'|'animationstart'|'transitionrun';
-export type TrackerAPageState={baseline:TrackerAScalar;scalar():TrackerAScalar;anchorContext:{host:TrackerAAnchorHost;url:string;refused:'host'|'url'|null};gate(purpose:TrackerAScalarPurpose):unknown;waitGate(purpose:TrackerAScalarPurpose):Promise<void>;confirmGate(purpose:TrackerAScalarPurpose):void;install(name:PilotDOMName):boolean;remove(name:PilotDOMName):boolean;drain():{handlerGates:TrackerAHandlerGate[];wheelEvents:PilotWheel[];scrollEvents:PilotScroll[];motionEvents:PilotMotion[];overflows:{wheel:{ordinal:42}|null;scroll:{ordinal:257}|null;motion:{ordinal:33}|null}}};
+export type TrackerAPageState=TrackerAAnchorPageState&{baseline:TrackerAScalar;gate(purpose:TrackerAScalarPurpose):unknown;waitGate(purpose:TrackerAScalarPurpose):Promise<void>;confirmGate(purpose:TrackerAScalarPurpose):void;install(name:PilotDOMName):boolean;remove(name:PilotDOMName):boolean;drain():{handlerGates:TrackerAHandlerGate[];wheelEvents:PilotWheel[];scrollEvents:PilotScroll[];motionEvents:PilotMotion[];overflows:{wheel:{ordinal:42}|null;scroll:{ordinal:257}|null;motion:{ordinal:33}|null}}};
 type PilotWindow=Window&{__copilotkitBenchHost?:TrackerAAnchorHost;__copilotkitTrackerA?:TrackerAPageState};
 /** Actual self-contained native baseline callback; no SDK imports. */
-export function initializeTrackerAPage():TrackerAScalar{
+export function initializeTrackerAPage(options?:Readonly<{scrollCauseAttribution:true}>|void):TrackerAScalar{
    const w=window as PilotWindow,h=w.__copilotkitBenchHost;if(!h||w.__copilotkitTrackerA)throw Error('Original pilot baseline unavailable');
    const selector=h.locators.scroller,elements=document.querySelectorAll<HTMLElement>(selector),scroller=elements[0];if(elements.length!==1||!scroller?.isConnected)throw Error('Original pilot scroller unavailable');
    const originalURL=location.href,box=scroller.getBoundingClientRect(),rect={x:box.x,y:box.y,width:box.width,height:box.height};
    const baseline:TrackerAScalar={pageNowMs:performance.now(),url:originalURL,sameOriginalScroller:true,connected:scroller.isConnected,uniqueSelector:true,innerWidth,innerHeight,devicePixelRatio,rect,scrollTop:scroller.scrollTop,scrollHeight:scroller.scrollHeight,clientHeight:scroller.clientHeight};
+   let attribution:PageAttribution|undefined,capturedState:TrackerAPageState|undefined;
+   if(options){
+    let capability:ScrollCausePageExport['capability']='not-checked',host:ScrollCausePageExport['host']='not-checked',url:ScrollCausePageExport['url']='not-checked',sameScroller:ScrollCausePageExport['sameScroller']='not-checked',g1:ScrollCausePageExport['g1']='not-returned';
+    let captured:object|undefined,observer:unknown,start:Function|undefined,marker:Function|undefined,seal:Function|undefined;
+    try{
+     const o=Object.getOwnPropertyDescriptors(options);if(Reflect.ownKeys(o).length!==1||o.scrollCauseAttribution?.value!==true)throw Error();
+     const outer=Object.getOwnPropertyDescriptor(w,'__copilotkitScrollCauseDiagnostic');if(!outer){capability='missing';throw Error();}if(!('value'in outer))throw Error();
+     captured=outer.value;if(!captured||![Object.prototype,null].includes(Object.getPrototypeOf(captured))||!Object.isFrozen(captured))throw Error();
+     const d=Object.getOwnPropertyDescriptors(captured);if(Reflect.ownKeys(d).length!==5||['protocol','observer','start','marker','seal'].some(k=>!d[k]||!('value'in d[k]!)||!d[k]!.enumerable)||d.protocol!.value!=='scroll-cause-attribution-v1'||typeof d.observer!.value!=='object'||d.observer!.value===null||!Object.isFrozen(d.observer!.value)||['start','marker','seal'].some(k=>typeof d[k]!.value!=='function'))throw Error();
+     observer=d.observer!.value;start=d.start!.value;marker=d.marker!.value;seal=d.seal!.value;capability='same';
+    }catch{if(capability!=='missing')capability='invalid';}
+    const current=()=>{
+     if(capability!=='same'||!captured)return false;
+     const state=Object.getOwnPropertyDescriptor(w,'__copilotkitTrackerA');if(!state||!('value'in state)||state.value!==capturedState||Object.getOwnPropertyDescriptor(capturedState!,'attribution')?.value!==attribution){capability='changed';return false;}
+     const outer=Object.getOwnPropertyDescriptor(w,'__copilotkitScrollCauseDiagnostic');const d=Object.getOwnPropertyDescriptors(captured);
+     if(!outer||!('value'in outer)||outer.value!==captured||d.observer?.value!==observer||d.start?.value!==start||d.marker?.value!==marker||d.seal?.value!==seal){capability='changed';return false;}
+     const actual=Object.getOwnPropertyDescriptor(w,'__copilotkitBenchHost');if(!actual||!('value'in actual)||actual.value!==h){host='changed';return false;}host='same';return true;
+    };
+    attribution={start(){try{g1='raw-returned';if(!current())return;const context=w.__copilotkitTrackerA?.anchorContext;if(context?.refused){if(context.refused==='host')host='changed';else url='changed';return;}start!.call(captured,scroller);}catch{capability='invalid';}},marker(purpose,value){try{if(!current())return;if(value.url!==originalURL){url='changed';return;}url='same';if(!value.sameOriginalScroller||!value.connected||!value.uniqueSelector){sameScroller='changed';return;}sameScroller='same';marker!.call(captured,scroller,purpose);}catch{capability='invalid';}},export(){try{if(current()){if(location.href!==originalURL)url='changed';if(url!=='changed'&&host!=='changed')return {snapshot:seal!.call(captured),capability,host,url,sameScroller,g1};}}catch{capability='invalid';}return {snapshot:null,capability,host,url,sameScroller,g1};}};
+   }
    const wheelEvents:PilotWheel[]=[],scrollEvents:PilotScroll[]=[],motionEvents:PilotMotion[]=[],overflows:ReturnType<TrackerAPageState['drain']>['overflows']={wheel:null,scroll:null,motion:null};
    let wheelCount=0,scrollCount=0,motionCount=0,drainAttempted=false;
    const handlerGates:TrackerAHandlerGate[]=[];
@@ -571,9 +603,10 @@ export function initializeTrackerAPage():TrackerAScalar{
    const animationstart=(event:Event)=>motion('animationstart',event),transitionrun=(event:Event)=>motion('transitionrun',event);
    const names={wheel:{owner:scroller,callback:wheel as EventListener},scroll:{owner:scroller,callback:scroll},animationstart:{owner:document,callback:animationstart},transitionrun:{owner:document,callback:transitionrun}};
    const installed={wheel:false,scroll:false,animationstart:false,transitionrun:false},removed={wheel:false,scroll:false,animationstart:false,transitionrun:false};
-   w.__copilotkitTrackerA={baseline,anchorContext:{host:h,url:originalURL,refused:null},scalar(){
+   w.__copilotkitTrackerA={baseline,...(attribution?{attribution}:{}),anchorContext:{host:h,url:originalURL,refused:null},scalar(purpose){
     const matches=document.querySelectorAll(selector),current=scroller.getBoundingClientRect(),url=location.href;
     const value:TrackerAScalar={pageNowMs:performance.now(),url,sameOriginalScroller:matches[0]===scroller,connected:scroller.isConnected,uniqueSelector:matches.length===1,innerWidth,innerHeight,devicePixelRatio,rect:{x:current.x,y:current.y,width:current.width,height:current.height},scrollTop:scroller.scrollTop,scrollHeight:scroller.scrollHeight,clientHeight:scroller.clientHeight};
+    if(purpose&&attribution)attribution.marker(purpose,value);
     // Return actual finite observations; the sequencer retains them before guards.
     return value;
    },gate(purpose){
@@ -593,5 +626,6 @@ export function initializeTrackerAPage():TrackerAScalar{
     const current=active;
     if(!current||purpose.role!=='after'||current.row.slot!==purpose.slot||current.row.afterOrdinal!==purpose.ordinal||!current.row.waitClaimed||!admission||latched||!installed.wheel||removed.wheel||current.row.state!=='observed'||current.row.eventOrdinal!==current.row.expectedEventOrdinal||wheelCount!==current.row.expectedEventOrdinal)throw Error('Original wheel gate changed before sampling');
    },install(name){if(installed[name])throw Error('Original DOM listener already charged');installed[name]=true;const registration=names[name];registration.owner.addEventListener(name,registration.callback,{passive:true});return true;},remove(name){if(removed[name])throw Error('Original DOM removal already charged');removed[name]=true;const registration=names[name];try{registration.owner.removeEventListener(name,registration.callback);return installed[name];}finally{if(name==='wheel'){admission=false;if(active){if(active.row.state==='armed'){active.row.state='cancelled';active.row.cancellationReason='listener-remove';active.reject(Error('Original wheel listener removed'));}active=null;}}}},drain(){if(drainAttempted)throw Error('Original page drain already charged');drainAttempted=true;return {handlerGates:handlerGates.map(row=>({...row})),wheelEvents:wheelEvents.slice(),scrollEvents:scrollEvents.slice(),motionEvents:motionEvents.slice(),overflows:{wheel:overflows.wheel,scroll:overflows.scroll,motion:overflows.motion}};}};
+   if(attribution){try{capturedState=w.__copilotkitTrackerA;Object.freeze(attribution);Object.defineProperty(w,'__copilotkitTrackerAScrollCause',{value:Object.freeze({state:capturedState,attribution}),enumerable:true,writable:false,configurable:false});}catch{attribution=undefined;}}
    return baseline;
 }

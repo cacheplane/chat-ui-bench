@@ -179,6 +179,17 @@ function pageSequencerFixture(rejectMeasuredWheel:number|null=null){
  return {...f,page,ports,counts,purposes,sentinel};
 }
 describe('actual page gate and supplied sequencer integration',()=>{
+ it('keeps actual opposing-offset primary and cleanup when the diagnostic marker throws',async()=>{
+  const f=pageSequencerFixture();let markers=0;try{
+   const w=(globalThis as unknown as {window:Record<string,unknown>}).window;
+   w.__copilotkitScrollCauseDiagnostic=Object.freeze({protocol:'scroll-cause-attribution-v1',observer:Object.freeze({}),start(){},marker(){markers++;throw Object.freeze({diagnostic:true});},seal(){return null;}});
+   delete w.__copilotkitTrackerA;trackerCallbacks.initializeTrackerAPage({scrollCauseAttribution:true});f.page.state=w.__copilotkitTrackerA as typeof f.page.state;
+   const open=f.ports.openHistory;f.ports.openHistory=async()=>{const owner=await open();return {...owner,scalar(selection,purpose){if(purpose.ordinal===3)f.page.scroller.scrollTop+=100;return owner.scalar(selection,purpose);}};};
+   const result=await runMountedTrackerA(f.ports);
+   expect(markers).toBe(1);expect(result.firstFailure).toEqual({code:'opposing-offset',ordinal:3,previousOrdinal:2,slot:0});expect(result.hasPrimary).toBe(true);
+   expect(result.input?.scalarObservations[2]?.value?.scrollTop).toBe(888);expect(result.handlerGateError).toBeNull();expect(result.inputDrain.status).toBe('fulfilled');expect(f.counts.removes).toBe(4);expect(f.counts.drains).toBe(1);
+  }finally{f.page.restore();}
+ });
  it('completes forty real handler gates and eighty-two actual scalar envelopes with one owned drain',async()=>{
   const f=pageSequencerFixture();try{
    const result=await runMountedTrackerA(f.ports);

@@ -1,0 +1,64 @@
+name: Hosted unqualified scroll cause diagnostic
+run-name: hosted-copilot-react-scroll-cause-v1
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact immutable diagnostic source commit; no normal admission or performance authority
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: hosted-copilot-scroll-cause
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: true
+      SCROLL_CAUSE_SOURCE_SHA: ${{ inputs.candidate_sha }}
+      COPILOTKIT_TELEMETRY_DISABLED: 'true'
+      DO_NOT_TRACK: '1'
+    steps:
+      - name: Check out exact immutable diagnostic workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Provision exact diagnostic Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.20.0'
+      - name: Select exact hosted source and release before dependencies
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-scroll-cause.mjs preflight
+      - name: Install exact lock without scripts
+        # Source selection precedes dependency or browser execution.
+        if: success()
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install pinned Chromium
+        run: node node_modules/playwright/cli.js install --with-deps chromium
+      - name: Build separate transformed diagnostic frontend and nested worker
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-scroll-cause.mjs build
+      - name: Run one original strict scenario under separate diagnostic ownership
+        id: runtime
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-scroll-cause.mjs run
+      - name: Admit only closed diagnostic originals after outer run returned
+        id: inventory
+        if: always() && (steps.runtime.outcome == 'success' || steps.runtime.outcome == 'failure')
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-scroll-cause.mjs inventory
+      - name: Reauthenticate manifest and original namespace immediately before upload
+        id: finalcheck
+        if: always() && steps.inventory.outcome == 'success'
+        run: node --experimental-import-meta-resolve tools/hosted-copilot-scroll-cause.mjs finalcheck
+      - name: Retain separately named unqualified diagnostic originals
+        if: always() && steps.inventory.outcome == 'success' && steps.finalcheck.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: copilot-scroll-cause-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/copilot-scroll-cause-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
