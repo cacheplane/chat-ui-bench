@@ -1,9 +1,10 @@
 import {createHash} from 'node:crypto';
 import {constants,createWriteStream} from 'node:fs';
-import {open,lstat,realpath,opendir} from 'node:fs/promises';
-import {join,resolve} from 'node:path';
+import {open,lstat,realpath,opendir,mkdir} from 'node:fs/promises';
+import {join,resolve,dirname} from 'node:path';
 import {spawn} from 'node:child_process';
 import {deflateRawSync} from 'node:zlib';
+import {diagnosticNeed as need} from './hosted-copilot-scroll-cause-refusal.ts';
 /** Separate unqualified diagnostic namespace. Never used by normal inventories. */
 export const SCROLL_CAUSE_ROLE_CAPS=Object.freeze({
  'diagnostic-profile.json':16384,'tracker-a-profile.json':16384,
@@ -32,7 +33,6 @@ export function assertDiagnosticBudget(bytes:number,files:number):void{
  if(!Number.isSafeInteger(bytes)||bytes<0||bytes>134217728||!Number.isSafeInteger(files)||files<0||files>128)throw Error('diagnostic-budget');
 }
 export const diagnosticHash=(bytes:Uint8Array|string)=>createHash('sha256').update(bytes).digest('hex');
-function need(value:unknown,code='diagnostic-refused'):asserts value{if(!value)throw Error(code);}
 const statIdentity=(s:{dev:number|bigint;ino:number|bigint;mode:number|bigint;nlink:number|bigint;size:number|bigint;mtimeMs:number|bigint;ctimeMs:number|bigint;mtimeNs?:bigint;ctimeNs?:bigint})=>[s.dev,s.ino,s.mode,s.nlink,s.size,s.mtimeNs??s.mtimeMs,s.ctimeNs??s.ctimeMs].map(String);
 async function boundedFileRead(handle:Awaited<ReturnType<typeof open>>,size:number){
  const raw=Buffer.alloc(size+1);let read=0;while(read<raw.length){const result=await handle.read(raw,read,raw.length-read,read);if(result.bytesRead===0)break;read+=result.bytesRead;need(read<=size,'diagnostic-file-grew');}need(read===size,'diagnostic-file-size');return raw.subarray(0,read);
@@ -243,4 +243,55 @@ export async function publishDiagnosticInventory(directory:string,context:Diagno
 }
 export async function verifyDiagnosticInventory(directory:string,context:DiagnosticPublicationContext){
  const inspected=await inspectDiagnosticPublication(directory,context,true),original=inspected.facts.get('diagnostic-manifest.json')!;need(JSON.stringify(parseDiagnosticJson(original.raw))===JSON.stringify(inspected.manifest),'diagnostic-manifest-join');await revalidateDiagnosticRole(directory,original);return inspected.manifest;
+}
+
+/** Separate fixed command-only namespace; none of these checks admits payloads. */
+export const SCROLL_CAUSE_FORENSIC_ROLES=Object.freeze(['parent-started.json','parent-result.json','parent.stdout','parent.stderr','application-started.json','application-result.json','application.stdout','application.stderr'] as const);
+const FORENSIC_MANIFEST='forensic-manifest.json',FORENSIC_MANIFEST_CAP=16384;
+export const SCROLL_CAUSE_FORENSIC_RESERVATION=Object.freeze({bytes:Object.values(SCROLL_CAUSE_ROLE_CAPS).reduce((sum,cap)=>sum+cap,0)+16777216+SCROLL_CAUSE_FORENSIC_ROLES.reduce((sum,path)=>sum+SCROLL_CAUSE_ROLE_CAPS[path],0)+FORENSIC_MANIFEST_CAP,files:Object.keys(SCROLL_CAUSE_ROLE_CAPS).length+1+SCROLL_CAUSE_FORENSIC_ROLES.length+1});
+type ForensicContext=Omit<DiagnosticPublicationContext,'launchWorker'>;
+function commandForensicContext(context:ForensicContext){
+ const source=diagnosticRecord(context.source,['commitSha','treeSha','lockSha256']),run=diagnosticRecord(context.run,['repository','runId','attempt','tag']);
+ need(typeof source.commitSha==='string'&&/^[a-f0-9]{40}$/.test(source.commitSha)&&typeof source.treeSha==='string'&&/^[a-f0-9]{40}$/.test(source.treeSha)&&typeof source.lockSha256==='string'&&/^[a-f0-9]{64}$/.test(source.lockSha256)&&run.repository==='cacheplane/chat-ui-bench'&&typeof run.runId==='string'&&/^[1-9][0-9]{0,19}$/.test(run.runId)&&run.attempt===1&&run.tag==='hosted-copilot-react-scroll-cause-v2','diagnostic-context-join');
+ const argv=(value:readonly string[])=>{need(Array.isArray(value)&&value.length>=1&&value.length<=8&&Reflect.ownKeys(value).length===value.length+1,'diagnostic-command-owner');const copied:string[]=[];for(let i=0;i<value.length;i++){const d=Object.getOwnPropertyDescriptor(value,String(i));need(d&&'value'in d&&typeof d.value==='string'&&d.value.length<=4096,'diagnostic-command-owner');copied.push(d.value);}need(Buffer.byteLength(JSON.stringify(copied))<=8192,'diagnostic-command-owner');return copied;};
+ return {source,run,parentArgv:argv(context.parentArgv),childArgv:argv(context.childArgv)};
+}
+async function forensicOriginalCensus(directory:string){
+ const owner=await canonicalDirectory(directory),rows:{path:string;identity:string[]}[]=[];const handle=await opendir(directory);
+ try{for await(const entry of handle){need(rows.length<31&&Object.hasOwn(SCROLL_CAUSE_ROLE_CAPS,entry.name),'diagnostic-namespace');const path=entry.name as DiagnosticRole,s=await lstat(join(directory,path),{bigint:true});need(s.isFile()&&!s.isSymbolicLink()&&s.size<=BigInt(SCROLL_CAUSE_ROLE_CAPS[path]),'diagnostic-physical');rows.push({path,identity:statIdentity(s)});}}finally{await handle.close().catch(()=>{});}
+ rows.sort((a,b)=>a.path.localeCompare(b.path));need(JSON.stringify(owner)===JSON.stringify(await canonicalDirectory(directory)),'diagnostic-namespace-changed');
+ return {entries:rows.length,sha256:diagnosticHash(JSON.stringify({owner,rows})),coverage:'metadata-only; unselected roles not admitted'};
+}
+async function forensicOriginals(directory:string,context:ForensicContext){
+ const checked=commandForensicContext(context),namespace=await forensicOriginalCensus(directory),files=new Map<string,RoleFact>();
+ assertDiagnosticBudget(SCROLL_CAUSE_FORENSIC_RESERVATION.bytes,SCROLL_CAUSE_FORENSIC_RESERVATION.files);
+ for(const path of SCROLL_CAUSE_FORENSIC_ROLES)files.set(path,await readDiagnosticRole(directory,path));
+ const get=(path:string)=>{const f=files.get(path);need(f,'diagnostic-required-ref');return f;};
+ const outcomes:Record<string,unknown>={};
+ for(const [name,argv] of [['parent',checked.parentArgv],['application',checked.childArgv]] as const){const started=parseDiagnosticJson(get(`${name}-started.json`).raw),result=parseDiagnosticJson(get(`${name}-result.json`).raw);assertDiagnosticCommandClosure(started,result,{stdout:get(`${name}.stdout`),stderr:get(`${name}.stderr`)},argv);const r=object(result);outcomes[name]={exit:r.exit,close:r.close,timedOut:r.timedOut,terminationRequested:r.terminationRequested};}
+ need(JSON.stringify(namespace)===JSON.stringify(await forensicOriginalCensus(directory)),'diagnostic-namespace-changed');return {checked,namespace,files,outcomes};
+}
+async function forensicStageCensus(stage:string,withManifest:boolean){
+ const owner=await canonicalDirectory(stage),names:string[]=[];const handle=await opendir(stage);
+ try{for await(const entry of handle){need(names.length<9&&entry.isFile()&&!entry.isSymbolicLink()&&(SCROLL_CAUSE_FORENSIC_ROLES.some(path=>path===entry.name)||(withManifest&&entry.name===FORENSIC_MANIFEST)),'diagnostic-namespace');names.push(entry.name);}}finally{await handle.close().catch(()=>{});}
+ need(names.length===8+Number(withManifest)&&SCROLL_CAUSE_FORENSIC_ROLES.every(path=>names.includes(path))&&names.includes(FORENSIC_MANIFEST)===withManifest,'diagnostic-namespace');need(JSON.stringify(owner)===JSON.stringify(await canonicalDirectory(stage)),'diagnostic-namespace-changed');return owner.slice(0,3);
+}
+function forensicManifest(originals:Awaited<ReturnType<typeof forensicOriginals>>,copies:Map<string,RoleFact>,stageIdentity:string[]){
+ return {schemaVersion:1,kind:'unqualified-scroll-cause-command-forensics',source:originals.checked.source,run:originals.checked.run,profile:{release:'hosted-copilot-react-scroll-cause-v2',scope:'closed-parent-application-commands-only'},parentArgv:originals.checked.parentArgv,childArgv:originals.checked.childArgv,files:SCROLL_CAUSE_FORENSIC_ROLES.map(path=>{const original=originals.files.get(path)!,copy=copies.get(path)!;return {...diagnosticRef(original),originalIdentity:original.identity,copyIdentity:copy.identity};}),originalNamespace:originals.namespace,stageIdentity,outcomes:originals.outcomes,reservation:SCROLL_CAUSE_FORENSIC_RESERVATION,diagnosticArtifactAdmission:'not-established',browserClosure:'unestablished',rawTraceClosure:'unestablished',descendants:'unqualified',qualification:false,nativeGO:false,performance:false,fps:'unavailable'};
+}
+/** Fresh sibling only. A diagnostic inventory failure cannot block this action. */
+export async function admitScrollCauseCommandForensics(directory:string,stage:string,context:ForensicContext,writeManifest:(stage:string,raw:Buffer)=>Promise<unknown>=async(stage,raw)=>{
+ const handle=await open(join(stage,FORENSIC_MANIFEST),constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);try{await handle.writeFile(raw);await handle.sync();}finally{await handle.close();}
+}){
+ need(resolve(directory)===directory&&resolve(stage)===stage&&directory!==stage&&dirname(directory)===dirname(stage),'diagnostic-directory');await canonicalDirectory(dirname(directory));const originals=await forensicOriginals(directory,context);await mkdir(stage,{mode:0o700});await canonicalDirectory(stage);
+ const copies=new Map<string,RoleFact>();for(const path of SCROLL_CAUSE_FORENSIC_ROLES){const original=originals.files.get(path)!;await revalidateDiagnosticRole(directory,original);const copied=await writeDiagnosticRole(stage,path,original.raw);need(copied.bytes===original.bytes&&copied.sha256===original.sha256,'diagnostic-reference-join');copies.set(path,copied);await revalidateDiagnosticRole(directory,original);}
+ const stageIdentity=await forensicStageCensus(stage,false);for(const f of originals.files.values())await revalidateDiagnosticRole(directory,f);need(JSON.stringify(originals.namespace)===JSON.stringify(await forensicOriginalCensus(directory)),'diagnostic-namespace-changed');
+ const manifest=forensicManifest(originals,copies,stageIdentity),raw=Buffer.from(JSON.stringify(manifest)+'\n');need(raw.length<=FORENSIC_MANIFEST_CAP,'diagnostic-role-cap');await writeManifest(stage,raw);return verifyScrollCauseCommandForensics(directory,stage,context);
+}
+/** Reauthenticate originals, copies and manifest; no admitted-object trust. */
+export async function verifyScrollCauseCommandForensics(directory:string,stage:string,context:ForensicContext){
+ need(resolve(directory)===directory&&resolve(stage)===stage&&directory!==stage&&dirname(directory)===dirname(stage),'diagnostic-directory');const originals=await forensicOriginals(directory,context),stageIdentity=await forensicStageCensus(stage,true),copies=new Map<string,RoleFact>();
+ for(const path of SCROLL_CAUSE_FORENSIC_ROLES){const copy=await readDiagnosticRole(stage,path),original=originals.files.get(path)!;need(copy.bytes===original.bytes&&copy.sha256===original.sha256,'diagnostic-reference-join');copies.set(path,copy);}
+ const manifest=await readDiagnosticPhysical(join(stage,FORENSIC_MANIFEST),FORENSIC_MANIFEST_CAP),expected=forensicManifest(originals,copies,stageIdentity);need(JSON.stringify(parseDiagnosticJson(manifest.raw))===JSON.stringify(expected),'diagnostic-manifest-join');
+ for(const f of originals.files.values())await revalidateDiagnosticRole(directory,f);for(const f of copies.values())await revalidateDiagnosticRole(stage,f);need(JSON.stringify(originals.namespace)===JSON.stringify(await forensicOriginalCensus(directory))&&JSON.stringify(stageIdentity)===JSON.stringify(await forensicStageCensus(stage,true)),'diagnostic-namespace-changed');const final=await readDiagnosticPhysical(join(stage,FORENSIC_MANIFEST),FORENSIC_MANIFEST_CAP);need(final.sha256===manifest.sha256&&JSON.stringify(final.identity)===JSON.stringify(manifest.identity),'diagnostic-file-changed');return expected;
 }
