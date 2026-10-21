@@ -1,5 +1,6 @@
 import { BodyReader, copyBody, WireBudget, WireError, type WireField } from './browser-frame-protobuf-wire.js';
-import { decodeModernTrackEvent, decodeModernTrackEventWithMembers, type EventFragment, type EventFragmentWithMembers } from './browser-frame-track-event-fragments.js';
+import { decodeModernTrackEvent, decodeModernTrackEventWithMembers,decodeAnnotationTrackEvent, type EventFragment, type EventFragmentWithMembers,type AnnotationEventFragment } from './browser-frame-track-event-fragments.js';
+import type {AnnotationWork} from './browser-frame-trace-framer.js';
 export const PACKET_POLICY = 'pinned-browser-frame-packet-fragments-v1';
 export const PACKET_SOURCE = Object.freeze({ perfettoPin: '403906f4adfbf287a02e5546f8430dcc9d56b649', chromiumPin: 'f842f52ef39fd97b449eb27cff414bf05a98ddce' });
 export const PACKET_LABELS = Object.freeze({ normalizationCapability: 'structural-packet-fragments-only', runtimeQualification: 'unestablished', sourceCoverage: 'unestablished', evaluationEligibility: false, scoringEligibility: false, rankingEligibility: false } as const);
@@ -12,6 +13,7 @@ export interface PacketFragment extends Readonly<typeof PACKET_LABELS> {
 }
 export interface PacketUnavailable { status: 'unavailable'; diagnostics: { code: string }[] }
 export interface PacketFragmentWithMembers extends Omit<PacketFragment,'event'> {event?:EventFragmentWithMembers}
+export interface AnnotationPacketFragment extends Omit<PacketFragment,'event'>{event?:AnnotationEventFragment}
 /** Internal restricted-profile path; no additional selected payload fields. */
 export function decodeBrowserFramePacketWithMembers(input:unknown):PacketFragmentWithMembers|PacketUnavailable {
  return decodePacket(input,PACKET_POLICY,true) as PacketFragmentWithMembers|PacketUnavailable;
@@ -52,7 +54,8 @@ function boolean(field: WireField): boolean {
 export function decodeBrowserFramePacket(input: unknown, policy: unknown): PacketFragment | PacketUnavailable {
   return decodePacket(input,policy,false);
 }
-function decodePacket(input:unknown,policy:unknown,retainMembers:boolean):PacketFragment|PacketUnavailable {
+export function decodeBrowserFrameAnnotationPacket(input:unknown,work:AnnotationWork):AnnotationPacketFragment|PacketUnavailable{return decodePacket(input,PACKET_POLICY,false,work) as AnnotationPacketFragment|PacketUnavailable;}
+function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotationWork?:AnnotationWork):PacketFragment|PacketUnavailable {
   try {
     if (policy !== PACKET_POLICY) throw new WireError('unsupported-policy');
     const bytes = copyBody(input); const budget = new WireBudget();
@@ -81,7 +84,7 @@ function decodePacket(input:unknown,policy:unknown,retainMembers:boolean):Packet
         case 79: fields.trustedPid = canonicalInt32(field); break;
         case 41: fields.incrementalStateCleared = boolean(field); break;
         case 87: fields.firstPacketOnSequence = boolean(field); break;
-        case 11: event = retainMembers?decodeModernTrackEventWithMembers(context,o.valueStart,o.end):decodeModernTrackEvent(context, o.valueStart, o.end); break;
+        case 11: event = annotationWork?decodeAnnotationTrackEvent(context,o.valueStart,o.end,annotationWork):retainMembers?decodeModernTrackEventWithMembers(context,o.valueStart,o.end):decodeModernTrackEvent(context, o.valueStart, o.end); break;
       }
     }
     return { status: 'decoded_packet_fragment', fields, ...(event === undefined ? {} : { event }), source: PACKET_SOURCE,

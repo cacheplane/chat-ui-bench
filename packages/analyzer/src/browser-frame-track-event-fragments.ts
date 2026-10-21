@@ -1,10 +1,12 @@
 import { BodyReader, WireError, type WireField } from './browser-frame-protobuf-wire.js';
 import { decodeBrowserFramePayload, decodeBrowserFramePayloadWithMembers, PAYLOAD_POLICY, type DecodedFragment, type DecodedFragmentWithMembers, type PayloadMember } from './browser-frame-protobuf-fragments.js';
 import { canonicalInt32, requireBody, scalar, unique, type ProjectionContext, type PacketOccurrence } from './browser-frame-packet-fragments.js';
+import {decodeAnnotation,type AnnotationBody,type AnnotationWork} from './browser-frame-trace-framer.js';
 
 export interface EventFields { categoryIids?: string[]; categories?: string[]; nameIid?: string; name?: string; type?: string; trackUuid?: string }
 type ShiftedPayload = Omit<DecodedFragment, 'occurrences' | 'skippedFields'> & { occurrences: PacketOccurrence[]; skippedFields: PacketOccurrence[] };
 export interface EventFragment { fields: EventFields; presentFieldNumbers: number[]; reporter2?: ShiftedPayload; graphics?: ShiftedPayload }
+export interface AnnotationEventFragment extends EventFragment {annotations:AnnotationBody[]}
 export interface EventFragmentWithMembers extends EventFragment {reporter2?:ShiftedPayload&{members:PayloadMember[]};graphics?:ShiftedPayload&{members:PayloadMember[]}}
 const SELECTED = new Set([3,22,10,23,9,11,1052,1075]);
 const LEGACY = new Set([1,2,6,8,16,17,20]);
@@ -16,11 +18,12 @@ export function decodeModernTrackEvent(context: ProjectionContext, start: number
 export function decodeModernTrackEventWithMembers(context:ProjectionContext,start:number,end:number):EventFragmentWithMembers {
   return decodeTrackEvent(context,start,end,true) as EventFragmentWithMembers;
 }
-function decodeTrackEvent(context:ProjectionContext,start:number,end:number,retainMembers:boolean):EventFragment {
+export function decodeAnnotationTrackEvent(context:ProjectionContext,start:number,end:number,work:AnnotationWork):AnnotationEventFragment {return decodeTrackEvent(context,start,end,false,work) as AnnotationEventFragment;}
+function decodeTrackEvent(context:ProjectionContext,start:number,end:number,retainMembers:boolean,annotationWork?:AnnotationWork):EventFragment {
   const reader = new BodyReader(context.bytes, start, end, context.budget);
   const fields: EventFields = {}; const present = new Set<number>();
   let reporter2: ShiftedPayload | undefined; let graphics: ShiftedPayload | undefined;
-  let nameSeen = false; let stringBytes = 0;
+  let nameSeen = false; let stringBytes = 0;const annotations:AnnotationBody[]=[];
   function literal(field: WireField): string {
     requireBody(field);
     const o = field.occurrence; const length = o.end - o.valueStart;
@@ -47,6 +50,7 @@ function decodeTrackEvent(context:ProjectionContext,start:number,end:number,reta
   while (!reader.complete) {
     const field = reader.next('root'); const o: PacketOccurrence = { ...field.occurrence, scope: 'track_event' };
     context.occurrences.push(o);
+    if(annotationWork&&o.fieldNumber===4){requireBody(field);annotations.push(decodeAnnotation(context,o.valueStart,o.end,literal,annotationWork));present.add(4);continue;}
     if (LEGACY.has(o.fieldNumber)) throw new WireError('unsupported-legacy-event');
     if (!SELECTED.has(o.fieldNumber)) { context.skippedFields.push({ ...o }); continue; }
     if (o.fieldNumber === 10 || o.fieldNumber === 23) {
@@ -78,6 +82,6 @@ function decodeTrackEvent(context:ProjectionContext,start:number,end:number,reta
       case 1075: reporter2 = payload(field, 'reporter2'); break;
     }
   }
-  return { fields, presentFieldNumbers: [...present].sort((a,b) => a-b),
+  return { fields, presentFieldNumbers: [...present].sort((a,b) => a-b),...(annotationWork?{annotations}:{}),
     ...(reporter2 === undefined ? {} : { reporter2 }), ...(graphics === undefined ? {} : { graphics }) };
 }
