@@ -330,9 +330,12 @@ async function fixture() {
   for (const member of members) {let path = dirname(member.path); while (path !== '.') {datasetDirectories.add(path); path = dirname(path);}}
   const seal = comparisonDatasetInventorySchema.parse({...versions, invocationId, status: 'sealed', configuration: config.configuration, invocationClaim: claim, invocationLedger: terminalLedger, root: '.', ledger: ledgerMember, members: members.sort((a, b) => a.path.localeCompare(b.path)), absentMembers: [], directories: [...datasetDirectories].sort(), slots, ownershipSettled: true, finalizationSucceeded: true});
   await writeFile(join(root, 'dataset-seal.json'), canonicalSerialize(seal) + '\n');
-  const hashed = new Set([...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...Object.keys(probe.compiledHashes), ...assets]);
+  const hashed = new Set([...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...Object.keys(probe.compiledHashes), ...assets,
+    probe.compiler.resolutionPath + '/package.json', probe.nativeCompiler.resolutionPath + '/package.json']);
   const paddingKeys = source59.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
-  return {root, workspace, evidenceRoot, context, union, paddingKeys};
+  // Only the synthetic lock extremum may compact additional unlocked, named JavaScript copies.
+  const syntheticLockPaddingKeys = [...new Set([...paddingKeys, ...output138.filter(key => key.endsWith('.js') && !hashed.has(key))])].sort();
+  return {root, workspace, evidenceRoot, context, union, paddingKeys, syntheticLockPaddingKeys, syntheticLockProtectedKeys: [...hashed]};
 }
 const writer = () => helper.writeComparisonCiSnapshot;
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -576,7 +579,7 @@ function assertLockFixtureParity(original:string,candidate:string):void{
 }
 async function compactSyntheticLockFixture(f:Awaited<ReturnType<typeof fixture>>){
   const rows:{key:string;originalBytes:number;compactedBytes:number;compactedSHA256:string}[]=[];
-  for(const key of f.paddingKeys){
+  for(const key of f.syntheticLockPaddingKeys){
     const path=join(f.workspace,key),original=await readFile(path,'utf8');expect(Buffer.byteLength(original)).toBeLessThanOrEqual(1024*1024);
     const pass=(text:string,leading:boolean)=>{const parsed=lockFixtureParse(text),mask=new Uint8Array(text.length);lockFixtureNodes(parsed.program,n=>{if(n.type==='Literal'||n.type==='TemplateLiteral')mask.fill(1,n.start,n.end);});for(const c of parsed.comments)mask.fill(1,c.start,c.end);
       let candidate='';for(let i=0;i<text.length;){if(!mask[i]&&(text[i]===' '||text[i]==='\t')){let end=i+1;while(end<text.length&&!mask[end]&&(text[end]===' '||text[end]==='\t'))end++;const remove=leading?(i===0||text[i-1]==='\n'||text[i-1]==='\r'):/[(),;]/.test(candidate.at(-1)??'')||/[(),;]/.test(text[end]??'');if(!remove)candidate+=text.slice(i,end);i=end;}else candidate+=text[i++];}return candidate;};
@@ -584,6 +587,14 @@ async function compactSyntheticLockFixture(f:Awaited<ReturnType<typeof fixture>>
     rows.push({key,originalBytes:Buffer.byteLength(original),compactedBytes:Buffer.byteLength(candidate),compactedSHA256:sha256(Buffer.from(candidate))});
   }return rows;
 }
+test('synthetic lock compaction preserves every build-bound and non-padding member',async()=>{
+  const f=await fixture(),protectedKeys=new Set(f.syntheticLockProtectedKeys);
+  const preserved=await Promise.all(f.union.filter(key=>!f.syntheticLockPaddingKeys.includes(key)||protectedKeys.has(key)).map(async key=>({key,bytes:await readFile(join(f.workspace,key))})));
+  const compacted=await compactSyntheticLockFixture(f);
+  expect(compacted.some(row=>row.key.endsWith('.js')&&row.compactedBytes<row.originalBytes)).toBe(true);
+  for(const row of compacted)expect(protectedKeys.has(row.key)).toBe(false);
+  for(const row of preserved)expect((await readFile(join(f.workspace,row.key))).equals(row.bytes)).toBe(true);
+});
 test('uncompacted current 2MiB lock exceeds the joint budget and parity mutants refuse',async()=>{
   const original='const value: string = "alpha"; // keep\nvoid value;\n';
   for(const mutant of [original.replace('alpha','beta'),original.replace('// keep','// changed'),original.replace('void value;','')])expect.soft(()=>assertLockFixtureParity(original,mutant)).toThrow();
@@ -608,11 +619,12 @@ test.each([0, 1])('synthetic AST-identical lock cap 2MiB plus %i preserves every
   if (excess) await expect(writer()(f.root, f)).rejects.toThrow('regular bounded original');
   else {
     const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8'));
-    expect(manifest.records).toHaveLength(310);for(const changed of compacted){const record=manifest.records.find((entry:{key:string})=>entry.key===changed.key);expect(record.before.fact).toEqual({byteLength:changed.compactedBytes,sha256:changed.compactedSHA256});expect(record.after).toEqual(record.before);expect(record.copied.fact).toEqual(record.before.fact);expect(await readFile(join(receipt!.directory,record.copied.path))).toEqual(await readFile(join(f.workspace,changed.key)));}
+    expect(manifest.records).toHaveLength(310);for(const changed of compacted){const record=manifest.records.find((entry:{key:string})=>entry.key===changed.key);expect(record.before.fact).toEqual({byteLength:changed.compactedBytes,sha256:changed.compactedSHA256});expect(record.after).toEqual(record.before);expect(record.copied.fact).toEqual(record.before.fact);expect((await readFile(join(receipt!.directory,record.copied.path))).equals(await readFile(join(f.workspace,changed.key)))).toBe(true);}
+    for(const record of manifest.records){expect(record.after).toEqual(record.before);expect(record.copied.fact).toEqual(record.before.fact);expect((await readFile(join(receipt!.directory,record.copied.path))).equals(await readFile(record.originalPath))).toBe(true);}
     const row = manifest.records.find((entry: {key: string}) => entry.key === 'package-lock.json');
     expect(row.before.fact).toEqual({byteLength: target, sha256: sha256(bytes)});
     expect(row.after).toEqual(row.before); expect(row.copied.fact).toEqual(row.before.fact);
-    expect(await readFile(join(receipt!.directory, row.copied.path))).toEqual(bytes);
+    expect((await readFile(join(receipt!.directory, row.copied.path))).equals(bytes)).toBe(true);
   }
 });
 test('foreign package-lock basename retains the ordinary 1MiB policy', () => {
