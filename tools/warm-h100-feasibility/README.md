@@ -1,0 +1,13 @@
+# Source-only H100 warm feasibility study
+
+Run `node tools/warm-h100-feasibility/run.mjs --test --out <new-directory>` with Node 24 after the locked workspace dependencies are present. This command has no browser mode and does not start a server.
+
+The unit uses the current observer without edits. It executes transformed original virtual-core measurement/cache writes, pinned React layout/ref and root-scheduler functions, and the core ResizeObserver callback. Explicit inputs supply render-output topology, geometry, lane selection and the scheduler dispatch callback. This is a source-realizable bounded fixture, not a reconstruction of a browser run or proof of real application scheduling.
+
+Two fences separately report historical completeness and validity of every native-connected latest binding (including unmeasured bindings). Readiness requires exactly 100 eligible original cache origins, exact canonical payload/keys, a nonempty valid live subset, no open observer activity, stable identities, and byte-exact full origin tuples/cache values across fences. The first tuple is retained as bounded exact text, never only a hash. A zero-delta remount retains historical coverage but fails live validity. No reset or extra measurement is used to manufacture a write.
+
+The fixed eight-stop fake-native controller cannot cover all 100 rows in this eight-row fixture. A separate 13-cohort fixture can cover all rows and end with eight valid live rows. Neither result establishes that every finite policy succeeds or fails. Real overlap, overscan, notification batching and final remount behavior remain integration obligations.
+
+The profile gives an explicit proposed exchange of existing category reservations under the same hard ceilings: two larger fence partitions replace four old export partitions plus 256 scope partitions; one controller partition replaces one census partition; one further scope partition funds module setup (257 fewer admitted scopes in the proposal). It does not change or enforce production C admission. The controller's eight frames are a study count, not an enlargement of the existing runtime frame budget. Integration must also decide the fixed itinerary and bind the private fence to the genuine committed observer/native getter seam; it cannot accept externally fabricated state or emit extra journal commands outside the whitelist.
+
+The evaluator refuses accessors/proxies in new proof data; its native connection port is explicit fixture authority. Ordinary trusted canonical objects and unmodified Node intrinsics are the source-model boundary. It never changes observer origins, cache, bindings, eligibility, counters or publication. All metric/native authority is false, and FPS is unavailable.

@@ -1,0 +1,76 @@
+{
+  "kind": "source-only-warm-h100-feasibility-v1",
+  "runtimeIntegrated": false,
+  "browserAuthorized": false,
+  "nativeGO": false,
+  "qualified": false,
+  "caps": {
+    "globalWork": 67108864,
+    "references": 4608,
+    "rawRecordBytes": 2048,
+    "rawNodes": 128,
+    "rawDepth": 6,
+    "rawArray": 64,
+    "rawObjectKeys": 16,
+    "returnSlots": 13
+  },
+  "study": {
+    "fences": 2,
+    "rows": 100,
+    "epochScan": 3200,
+    "controllerStops": 8,
+    "controllerFrames": 8,
+    "firstTupleBytes": 16384,
+    "extraReferenceCeiling": 640
+  },
+  "proposedReallocation": {
+    "oldPlannedGlobal": 67108288,
+    "newPlannedGlobal": 67108288,
+    "oldScopes": 12832,
+    "newScopes": 12575,
+    "scopeUnit": 4096,
+    "oldInitial": 1366464,
+    "newInitial": 1370560,
+    "oldExports": 4,
+    "oldExportUnit": 262144,
+    "newFences": 2,
+    "newFenceUnit": 1048576,
+    "oldCensuses": 4,
+    "remainingCensuses": 3,
+    "controllerUnit": 8192,
+    "censusUnit": 8192,
+    "scopePartitionsExchanged": 257
+  },
+  "fenceLedger": {
+    "canonicalAndOrigins": {
+      "rows": 100,
+      "unitsPerRow": 3072,
+      "total": 307200
+    },
+    "epochScan": {
+      "rows": 3200,
+      "unitsPerRow": 192,
+      "total": 614400
+    },
+    "wantedClosure": {
+      "rows": 100,
+      "unitsPerRow": 32,
+      "total": 3200
+    },
+    "tupleSerialization": {
+      "bytes": 16384,
+      "unitsPerByte": 4,
+      "total": 65536
+    },
+    "fixedAndFirstFenceClosure": 32768,
+    "total": 1023104,
+    "reservation": 1048576
+  },
+  "referenceLedger": {
+    "existingConservativePeak": 3928,
+    "newTemporaryAndRetained": 640,
+    "total": 4568,
+    "ceiling": 4608
+  },
+  "scope": "Budget proposal for this bounded pure study, not executable C admission or production warm mode. Runtime integration must enforce this category exchange and bind trusted native/private ports before any live warm command. No existing observer capacity or behavior is changed."
+}
