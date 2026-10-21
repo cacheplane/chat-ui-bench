@@ -146,4 +146,53 @@ test('held bailout census after diagnostic erasure pays helpers common checks an
 test('closed bailout final proof must find exactly the visited fiber after original sibling effect',async()=>{let f;const r=await closedFacts(x=>{f=x;x.SA.tag=0;},()=>{f.HAA.child=f.B;f.B.sibling=null;});assert.equal(r.site,'c-bail-target');assert.equal(r.reason,'commit');assert.equal(r.ordinaryCreditUnchanged,true);});
 test('closed bailout late mixed stages and nested admission remain sticky before final publication',async()=>{for(const mode of ['join','node','write','nested']){let f;const r=await closedFacts(x=>{f=x;x.SA.tag=0;},()=>{if(mode==='join')f.c.renders.push(f.old);else if(mode==='node')f.c.nodes.push({row:0});else if(mode==='write')f.c.writes.push({row:0});else assert.equal(f.adapter.commitStart(f.x.f.root,f.HAA),null);});assert.equal(r.reason,'commit');assert.equal(r.site,mode==='nested'?'c-bail-nested':mode==='join'?'c-bail-mixed':'c-empty-context');assert.equal(r.ordinaryCreditUnchanged,true);assert.equal(r.closed,true);}});
 
-function eraseEntryDiagnostic(text){const terms=["!p", "!owner", "!mapping", "current!==c", "commits.at(-1)!==c", "c.previousCommit!==null", "c.frameDepth!==0", "c.renders.length", "c.nodes.length", "c.writes.length", "scopes.length", "fiberFrames.length", "p.mapping!==mapping", "p.commit!==sealed", "p.layout!==layout", "r.superseded", "r.count!==100", "!r.rows", "!r.optionsOK", "r.optionsOwner!==owner", "r.owner!==owner", "r.root!==c.root", "r.rootWork!==c.work", "r.cacheRef!==cache", "r.scroller!==scroller", "r.agentId!=='benchmark'", "r.threadId!=='C-thread-1'", "!same(mapping,r)"];return text.replace(terms.map((v,i)=>'if('+v+"){fail('commit','c-bail-e"+(i+1)+"');return;}").join(''),'if('+terms.join('||')+"){fail('commit','c-bail-entry');return;}").replace("if(finished!==certified){if(ownData(certified,'alternate')!==finished){fail('commit','c-bail-a1');return;}if(ownData(finished,'alternate')!==certified){fail('commit','c-bail-a2');return;}}if(ownData(finished,'type')!==component){fail('commit','c-bail-a3');return;}if(ownData(finished,'tag')!==0){fail('commit','c-bail-a4');return;}","if((finished!==certified&&(ownData(certified,'alternate')!==finished||ownData(finished,'alternate')!==certified))||ownData(finished,'type')!==component||ownData(finished,'tag')!==0){fail('commit','c-bail-entry');return;}");}
+function eraseEntryDiagnostic(text){text=eraseRootRelation(text);const terms=["!p", "!owner", "!mapping", "current!==c", "commits.at(-1)!==c", "c.previousCommit!==null", "c.frameDepth!==0", "c.renders.length", "c.nodes.length", "c.writes.length", "scopes.length", "fiberFrames.length", "p.mapping!==mapping", "p.commit!==sealed", "p.layout!==layout", "r.superseded", "r.count!==100", "!r.rows", "!r.optionsOK", "r.optionsOwner!==owner", "r.owner!==owner", "r.root!==c.root", "r.rootWork!==c.work", "r.cacheRef!==cache", "r.scroller!==scroller", "r.agentId!=='benchmark'", "r.threadId!=='C-thread-1'", "!same(mapping,r)"];return text.replace(terms.map((v,i)=>'if('+v+"){fail('commit','c-bail-e"+(i+1)+"');return;}").join(''),'if('+terms.join('||')+"){fail('commit','c-bail-entry');return;}").replace("if(finished!==certified){if(ownData(certified,'alternate')!==finished){fail('commit','c-bail-a1');return;}if(ownData(finished,'alternate')!==certified){fail('commit','c-bail-a2');return;}}if(ownData(finished,'type')!==component){fail('commit','c-bail-a3');return;}if(ownData(finished,'tag')!==0){fail('commit','c-bail-a4');return;}","if((finished!==certified&&(ownData(certified,'alternate')!==finished||ownData(finished,'alternate')!==certified))||ownData(finished,'type')!==component||ownData(finished,'tag')!==0){fail('commit','c-bail-entry');return;}");}
+
+// Scheduling inputs are explicit; all post-initial child/alternate topology is produced by original React.
+const ROOT_PARITY_FIXTURE=`
+export function rootParityFacts(react,makeLayout,change){
+ let PA,SA,DA;
+ const x=continuityFacts(react,{beforeMint({target,host}){
+  PA=new react.FiberNode(0,null,null,0);PA.type=function Parent(){};
+  SA=new react.FiberNode(0,null,null,0);SA.type=function Sibling(){};
+  DA=new react.FiberNode(0,null,null,0);DA.type=function Descendant(){};
+  host.child=PA;PA.child=target;PA.sibling=SA;target.child=DA;
+  react.bubbleProperties(target);react.bubbleProperties(PA);react.bubbleProperties(host);
+ }});
+ const A=x.target,HA=x.f.root.current,events=[],layout=makeLayout(adapter,(bits,f)=>events.push(f.type?.name||'root'));
+ function complete(host){const c=adapter.commitStart(x.f.root,host);adapter.commitMutationEnd(c,true);x.f.root.current=host;layout(x.f.root,host.alternate,host);adapter.commitLayoutEnd(x.f.root,host,true);adapter.commitSpawnedEnd(x.f.root,host,true);return c;}
+ // Commit 2: sibling scheduling gives root child lanes, but parent has no child work.
+ SA.lanes=1;react.bubbleProperties(HA);
+ const HB=react.createWorkInProgress(HA,null);react.bailoutOnAlreadyFinishedWork(HA,HB,1);
+ const PB=HB.child,SB=PB.sibling;
+ const skipped=react.bailoutOnAlreadyFinishedWork(PA,PB,1);
+ SB.lanes=0;SB.flags=4;react.bubbleProperties(PB);react.bubbleProperties(HB);
+ const initialCert=committedTarget;complete(HB);
+ const stage2={reason,skipped:skipped===null,targetShared:PB.child===A,certificateSame:committedTarget===initialCert,targetNotVisited:!events.includes('Target')};
+ if(reason)throw Error('parity stage2 '+reason+'/'+firstSite);
+ // Commit 3: target update clones the shared target while HostRoot swaps back.
+ A.lanes=1;react.bubbleProperties(PB);react.bubbleProperties(HB);
+ const HAA=react.createWorkInProgress(HB,null);react.bailoutOnAlreadyFinishedWork(HB,HAA,1);
+ const PAA=HAA.child;react.bailoutOnAlreadyFinishedWork(PB,PAA,1);const B=PAA.child;
+ B.lanes=0;react.bubbleProperties(B);react.bubbleProperties(PAA);react.bubbleProperties(HAA);
+ const q=x.f.prepare(100,true,{work:B,rootWork:HAA,currentRoot:HB});x.f.root.current=HAA;
+ adapter.commitSpawnedEnd(x.f.root,HAA,true);
+ if(reason)throw Error('parity stage3 '+reason+'/'+firstSite);
+ const cert=committedTarget;
+ // Commit 4: descendant lane forces child cloning, but target's own render is bailed out.
+ B.child.lanes=1;react.bubbleProperties(B);react.bubbleProperties(PAA);react.bubbleProperties(HAA);
+ const HBB=react.createWorkInProgress(HAA,null);react.bailoutOnAlreadyFinishedWork(HAA,HBB,1);
+ const PBB=HBB.child;react.bailoutOnAlreadyFinishedWork(PAA,PBB,1);
+ const AA=PBB.child;react.bailoutOnAlreadyFinishedWork(B,AA,1);const DB=AA.child;
+ DB.lanes=0;DB.flags=4;react.bubbleProperties(AA);react.bubbleProperties(PBB);react.bubbleProperties(HBB);
+ const old=renderByWork.get(AA),before=x.snapshot();events.length=0;
+ const facts={historicalMismatch:old.rootWork!==HBB,historicalIsCurrentAlternate:old.rootWork===HBB.alternate,oldWorkExact:old.work===AA,oldDone:old.done,oldClosed:old.closed,oldNotSuperseded:!old.superseded,hostReused:HBB===HB,targetReused:AA===A,certIsOther:cert.fiber===B,certHost:cert.host===HAA,flags:AA.flags,descendantLayout:(AA.subtreeFlags&4)!==0,stage2};
+ change?.({x,old,AA,HBB,PBB,DB,cert});complete(HBB);return{facts,before,after:x.snapshot(),events};
+}
+`;
+function originalParityReact(){return Function('var workInProgressRootSkippedLanes=0;const hostTransitionProviderCursor={current:null};function formatProdErrorMessage(n){return "React "+n;}function objectIs(a,b){return Object.is(a,b);}function propagateContextChanges(){throw Error("unexpected context propagation");}\n'+['FiberNode','createFiberImplClass','createWorkInProgress','bubbleProperties','propagateParentContextChanges','bailoutOnAlreadyFinishedWork'].map(reactDeclaration).join('\n')+'\nreturn {FiberNode,createWorkInProgress,bubbleProperties,bailoutOnAlreadyFinishedWork};')();}
+async function rootParityResult(held=false,change){const currentSource=fs.readFileSync(new URL('./adapter.mjs',import.meta.url),'utf8'),src=held?eraseRootRelation(currentSource):currentSource,tx=await import('./instrument.mjs'),wrapped=tx.transform('react',new URL('./adapter.mjs',import.meta.url).pathname).code,ast=continuityAst(wrapped),body=['recursivelyTraverseLayoutEffects','commitLayoutEffectOnFiber'].map(name=>{const n=ast.body.find(n=>n.id?.name===name);assert.ok(n);return wrapped.slice(n.start,n.end);}).join('\n'),makeLayout=Function('__lh','commitHookEffectListMount',body+';return commitLayoutEffectOnFiber;'),m=await import('data:text/javascript;base64,'+Buffer.from(src+BOUNDARY_FIXTURE+CONTINUITY_FIXTURE+ROOT_PARITY_FIXTURE+'\n//rootParity'+(++continuitySerial)).toString('base64'));return m.rootParityFacts(originalParityReact(),makeLayout,change);}
+test('root relation extracted React parity shift reaches historical root mismatch without own target layout',async()=>{const r=await rootParityResult();assert.deepEqual(r.facts.stage2,{reason:null,skipped:true,targetShared:true,certificateSame:true,targetNotVisited:true});for(const key of ['historicalMismatch','historicalIsCurrentAlternate','oldWorkExact','oldDone','oldClosed','oldNotSuperseded','hostReused','targetReused','certIsOther','certHost','descendantLayout'])assert.equal(r.facts[key],true,key);assert.equal(r.facts.flags&4,0);assert.ok(r.events.includes('Descendant'));const held=await rootParityResult(true);assert.equal(held.after.site,'c-bail-e23','held source must reach the specific historical relation guard');assert.equal(held.after.reason,'commit');assert.equal(r.after.site,null);assertNoCredit(r.before,r.after);assert.equal(r.after.reason,null,'reciprocal-root source bailout must close zero-credit after the complete current certificate proof');});
+
+function eraseRootRelation(text){return text.replace("const historicalRoot=r.rootWork;if(historicalRoot!==c.work&&(!historicalRoot||typeof historicalRoot!=='object'||ownData(c.work,'alternate')!==historicalRoot||ownData(historicalRoot,'alternate')!==c.work||ownData(historicalRoot,'tag')!==3||ownData(historicalRoot,'stateNode')!==c.root)){fail('commit','c-bail-e23');return;}","if(r.rootWork!==c.work){fail('commit','c-bail-e23');return;}");}
+test('root relation reciprocal historical entry still requires exact final current certificate tree and payload',async()=>{for(const [name,change]of [['removed',f=>f.PBB.child=f.DB],['hidden',f=>{f.PBB.tag=22;f.PBB.memoizedState={};}],['wrong memo',f=>f.AA.memoizedProps={}],['canonical drift',f=>f.x.f.messages[0].content='wrong'],['options drift',f=>f.x.f.instance.options.count=99],['cache replacement',f=>f.x.f.instance.itemSizeCache=new Map()],['duplicate',f=>f.AA.sibling=f.cert.fiber],['real own layout',f=>f.AA.flags|=4]]){const r=await rootParityResult(false,change);assert.equal(r.after.reason,'commit',name);assertNoCredit(r.before,r.after);assert.equal(r.after.certificate,null,name);assert.equal(r.after.eligible,false);}});
