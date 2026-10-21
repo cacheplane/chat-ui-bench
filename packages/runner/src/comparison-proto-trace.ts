@@ -64,7 +64,7 @@ export interface ProtoTimerReceipt {
 }
 export interface ProtoTraceReceipt {
   schemaVersion: 1;
-  policy: 'pinned-proto-transport-diagnostic-pure-v1';
+  policy: 'pinned-proto-transport-diagnostic-pure-v1' | 'pinned-proto-owned-native-transport-v1';
   profileSha256: string;
   revision: number;
   stage: ProtoStage;
@@ -126,11 +126,17 @@ export interface ProtoTraceCollector {
   snapshot(): ProtoTraceReceipt;
 }
 
+// Exact literal selection only: callers cannot mutate a profile or supply limits.
+const DIAGNOSTIC_PROFILE = Object.freeze({policy:'pinned-proto-transport-diagnostic-pure-v1' as const, maxBytes:262144,maxReads:64,maxOperations:133,startMs:10000,finishMs:10000,cleanupMs:1000});
+const OWNED_PROFILE = Object.freeze({policy:'pinned-proto-owned-native-transport-v1' as const,maxBytes:33554432,maxReads:4096,maxOperations:8197,startMs:10000,finishMs:20000,cleanupMs:10000});
+const OWNED_PROFILE_SHA256 = createHash('sha256').update(JSON.stringify(OWNED_PROFILE)).digest('hex');
+
 export function createProtoTraceCollector(ports: ProtoTracePorts, policy: unknown): ProtoTraceCollector {
+  const profile = policy === OWNED_PROFILE.policy ? OWNED_PROFILE : DIAGNOSTIC_PROFILE;
   const observer = (): ProtoObserverReceipt => ({ registrationAttempted: false, registrationState: 'not-attempted', removalAttempted: false, removalState: 'not-attempted' });
   const state: ProtoTraceReceipt = {
-    schemaVersion: 1, policy: 'pinned-proto-transport-diagnostic-pure-v1',
-    profileSha256: '725ad10fb8f3280dca9deb933f17c874f320d9ecd5f9b91732f9e3823d07a66d',
+    schemaVersion: 1, policy: profile.policy,
+    profileSha256: profile === OWNED_PROFILE ? OWNED_PROFILE_SHA256 : '725ad10fb8f3280dca9deb933f17c874f320d9ecd5f9b91732f9e3823d07a66d',
     revision: 0, stage: 'new', outcome: 'open', firstFailure: null, secondaryFailureCount: 0,
     start: 'not-dispatched', end: 'not-dispatched', completionCount: 0, observedFormat: 'not-observed', observedCompression: 'not-observed', observedLoss: 'not-observed',
     readAttempts: 0, readReplies: 0, consecutiveEmpty: 0, emptyFlagCounts: { absent: 0, false: 0, true: 0 }, receivedEof: false, acceptedEof: false,
@@ -247,7 +253,7 @@ export function createProtoTraceCollector(ports: ProtoTracePorts, policy: unknow
     return true;
   }
   function tracked<T>(kind: ProtoOperationKind, invoke: () => Promise<T>, fulfilled: (value: T) => void, rejected: () => void) {
-    if (ordinal >= 133) { fail('invalid-sequence'); return; }
+    if (ordinal >= profile.maxOperations) { fail('invalid-sequence'); return; }
     const op = { kind, ordinal: ++ordinal }; pending.set(op.ordinal, op); touch();
     const settle = (ok: boolean, value?: T) => {
       pending.delete(op.ordinal); touch();
@@ -342,7 +348,7 @@ export function createProtoTraceCollector(ports: ProtoTracePorts, policy: unknow
     ensureBaseObservers();
     if (!cleanupStarted) {
       cleanupStarted = true; cleanupInitializing = true; state.stage = 'closing'; touch();
-      if (state.clockState === 'valid') openStage('cleanup', 1000);
+      if (state.clockState === 'valid') openStage('cleanup', profile.cleanupMs);
       cleanupInitializing = false;
     }
     driveCleanup();
@@ -447,7 +453,7 @@ export function createProtoTraceCollector(ports: ProtoTracePorts, policy: unknow
       if (++state.consecutiveEmpty >= 8) { fail('empty-progress'); return; }
       readNext(); return;
     }
-    if (length > 262144 - state.acceptedWriteBytes) { data = ''; fail('byte-capacity'); return; }
+    if (length > profile.maxBytes - state.acceptedWriteBytes) { data = ''; fail('byte-capacity'); return; }
     state.consecutiveEmpty = 0;
     const bytes = decode(data, length); data = '';
     // Raw envelope/string are no longer referenced before an asynchronous sink ack.
@@ -455,7 +461,7 @@ export function createProtoTraceCollector(ports: ProtoTracePorts, policy: unknow
   }
   function readNext() {
     if (!active('finish') || state.receivedEof) return;
-    if (state.readAttempts >= 64) { fail('read-capacity'); return; }
+    if (state.readAttempts >= profile.maxReads) { fail('read-capacity'); return; }
     state.readAttempts++; touch();
     tracked('read', () => ports.session.read({ handle: handle!, size: 65536 }), reply => { readReply(reply); }, () => { fail('read-rejected'); });
   }
@@ -464,7 +470,7 @@ export function createProtoTraceCollector(ports: ProtoTracePorts, policy: unknow
       state.stage = 'draining'; touch(); readNext();
     }
   }
-  if (policy !== 'pinned-proto-transport-diagnostic-pure-v1') {
+  if (policy !== DIAGNOSTIC_PROFILE.policy && policy !== OWNED_PROFILE.policy) {
     state.stage = 'closed'; state.outcome = 'unavailable'; state.firstFailure = { code: 'unsupported-policy', stage: 'new' };
     const result = Promise.resolve(snapshot());
     return { start: () => result, finish: () => result, close: () => result, snapshot };
@@ -479,7 +485,7 @@ export function createProtoTraceCollector(ports: ProtoTracePorts, policy: unknow
       register('completion', () => ports.session.onComplete(onComplete));
       if (state.firstFailure) { requestCleanup(); return startMethod.promise; }
       state.stage = 'starting'; touch();
-      if (!openStage('start', 10000) || !active('start')) { requestCleanup(); return startMethod.promise; }
+      if (!openStage('start', profile.startMs) || !active('start')) { requestCleanup(); return startMethod.promise; }
       state.start = 'pending';
       tracked('start', () => ports.session.start({ categories: 'blink.user_timing,cc,viz,benchmark,graphics.pipeline,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.frame', transferMode: 'ReturnAsStream', streamFormat: 'proto', streamCompression: 'none' }), () => {
         state.start = 'fulfilled'; touch();
@@ -494,7 +500,7 @@ export function createProtoTraceCollector(ports: ProtoTracePorts, policy: unknow
       finishMethod = method();
       if (state.start !== 'fulfilled' || state.stage !== 'recording' || cleanupRequested) { fail('invalid-sequence'); return finishMethod.promise; }
       state.stage = 'ending'; touch();
-      if (!openStage('finish', 10000) || !active('finish')) { requestCleanup(); return finishMethod.promise; }
+      if (!openStage('finish', profile.finishMs) || !active('finish')) { requestCleanup(); return finishMethod.promise; }
       state.end = 'pending'; endDispatched = true;
       tracked('end', () => ports.session.end(), () => { state.end = 'fulfilled'; touch(); if (active('finish')) maybeRead(); }, () => { state.end = 'rejected'; fail('end-rejected'); });
       return finishMethod.promise;
