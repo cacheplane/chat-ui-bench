@@ -96,3 +96,21 @@ not admitted, native support is false, and FPS is null.
 The private worker reports one bounded58-byte failure line with two-digit `observedAt` and `cleanupAt` stages. These are the last instrumented forward operation and cleanup failure, not authenticated causes or completions. Cleanup never replaces the forward location;00 means no cleanup failure was observed. Original import/entry parsing or successful-result serialization failures outside the existing rejection arm are not covered. Codes01–15 cover worker admission/setup,20–25 navigation/bootstrap/owner setup,30–39 and41–46 capture operations,47–57 the post-wheel geometry boundaries below, and90–93 cleanup failure observations. Positive output, original promises and errors, all deadlines/caps, and unscored authority are unchanged. Historical generic failures and display-link warnings do not identify a stage or establish cause.
 
 The former stage40 span is split into47 before local identity,48 before the awaited geometry port chain (including its identity, backend-node check, remote call, and primitive projection), and49 before local geometry admission. On admitted geometry,50 reports unchanged top and51 increased top after the original `>=` refusal. Codes52–57 report the first mismatch in height, extent, x, y, width, and rectHeight, preserving the original comparison order. These boundaries do not establish settlement, gesture causation, presentation, or FPS.
+
+After both geometry copies pass admission, a failure at50–57 also emits one
+`scroll-layout-bits-v2` JSON line to existing stdout, bounded to1024 bytes.
+The original stderr line and exitCode1 precede this packet. `beforeAfter`
+contains fourteen IEEE754 big-endian doubles as fixed sixteen-character hex
+strings, before then after, in the recorded `order`. This preserves admitted
+Number bits including negative zero. `ui` contains before then after triples:
+typing-host presence, computed bottom padding, and host rectangle height.
+Absent hosts use false/null/null; present measurements use the same hex format.
+The host must be a connected direct-child HTMLElement with repeated selector
+identity. Padding accepts only bounded nonnegative decimal px strings.
+
+These reads share the existing geometry calls; they add no wait or application
+write. Runtime response byte counters include their observer footprint. Earlier
+failures emit no geometry packet. Success result construction stays unchanged.
+DOM/style/layout primitives remain trusted platform operations; source limits
+do not bound native layout CPU, RSS, or GC. Matching layout observations can
+support a hypothesis but cannot establish timing, input settlement, or cause.
