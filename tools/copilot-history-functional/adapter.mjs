@@ -252,3 +252,179 @@ export function installC(originalLaunch){
  }
  Object.defineProperty(window,'__liveHistoryC',{value:Object.freeze({command}),writable:false,configurable:false});
 }
+
+// WARM_SOURCE_CAPABILITY_BEGIN
+let warmSourceCapability=null;
+// A source-supplied owned helper capability, never a caller readiness record.
+// The default adapter/installC paths above do not instantiate or invoke it.
+export function createWarmSourceIngress(runtime,baselineFactory,selectorFactory){
+ if(warmSourceCapability){if(warmSourceCapability.runtime!==runtime||warmSourceCapability.baselineFactory!==baselineFactory||warmSourceCapability.selectorFactory!==selectorFactory)throw Error('warm-source-identity');return warmSourceCapability.ingress;}
+ if((baselineFactory!==undefined||selectorFactory!==undefined)&&(typeof baselineFactory!=='function'||typeof selectorFactory!=='function'))throw Error('warm-source-identity');
+ let target=null,pair=null,dependency=null,calculation=null,extracting=null,dependencyBusy=null,calculateDependency=null,frameRequests=0,frameCallbacks=0,sourceFault=false,rangeEntries=0,geometry=null,rangeKernel=null,rangeExtractor=null;
+ let preparationStarted=false,preparationAccepted=false,failedPlan=null,typedCapabilities=null,partialBusy=false,partialTicket=null,fenceBusy=false,fenceCalls=0,anchor=null,classifierEntries=0,coreEntries=0;
+ if(baselineFactory){const p=continuityNative.prototype(Float64Array.prototype);typedCapabilities={length:continuityNative.descriptor(p,'length').get,buffer:continuityNative.descriptor(p,'buffer').get,tag:continuityNative.descriptor(p,Symbol.toStringTag).get,byteLength:continuityNative.descriptor(ArrayBuffer.prototype,'byteLength').get,resizable:continuityNative.descriptor(ArrayBuffer.prototype,'resizable')?.get??null,float64Prototype:Float64Array.prototype,arrayBufferPrototype:ArrayBuffer.prototype};}
+ function kernel(calculate,extractor){if(typeof calculate!=='function'||typeof extractor!=='function'||rangeKernel&&(rangeKernel!==calculate||rangeExtractor!==extractor)){sourceError();return false;}rangeKernel=calculate;rangeExtractor=extractor;return true;}
+ function chosen(instance){if(!runtime.active())return false;if(reason||closed)return runtime.fail('source-fault');return target===instance;}
+ function rangeAdmission(instance){
+  if(!target||instance!==target||!healthy())return false;
+  if(rangeEntries===256){sourceError();return false;}rangeEntries++;
+  return runtime.active();
+ }
+ function rangeBegin(instance,outer,offset,lanes){
+  if(!rangeAdmission(instance))return null;if(calculation||extracting)return runtime.fail('pair-reentrant');
+  const token={instance,outer,offset,lanes,result:null,flat:null};calculation=token;pair=null;dependency=null;geometry=null;return token;
+ }
+ function calculateDepsBegin(instance){if(!rangeAdmission(instance))return null;if(calculateDependency||calculation||extracting)return runtime.fail('pair-reentrant');const token={instance};calculateDependency=token;return token;}
+ function calculateDepsEnd(instance,token,normal){if(!normal&&instance===target)sourceError();if(token&&calculateDependency===token){if(!normal){pair=null;dependency=null;}calculateDependency=null;}}
+ function rangeInput(instance,token,value){if(token&&calculation===token&&instance===target)token.flat=value;return value;}
+ function rangeCalculated(instance,token,value){
+  if(token&&calculation===token&&chosen(instance)){
+   // Only the pinned calculateRangeImpl result reaches this source seam.
+   const start=value.startIndex,end=value.endIndex;
+   if(typeof start!=='number'||typeof end!=='number'||!Number.isInteger(start)||!Number.isInteger(end)||start<0||end<start||end>99||token.lanes!==1)runtime.fail('pair-stale');
+   else{token.result=value;pair={instance,result:value,outer:token.outer,offset:token.offset,start,end,flat:token.flat};}
+  }return value;
+ }
+ function rangeNull(instance,token){if(token&&calculation===token){pair=null;dependency=null;}}
+ function rangeReturned(instance,token,value){if(token&&calculation===token&&runtime.active()&&value!==token.result)runtime.fail('pair-null');return value;}
+ function rangeEnd(instance,token,normal){if(!normal&&instance===target)sourceError();if(token&&calculation===token){if(!normal){pair=null;dependency=null;}calculation=null;}}
+ function depsBegin(instance){if(!rangeAdmission(instance))return null;if(dependencyBusy||extracting)return runtime.fail('pair-reentrant');const token={instance};dependencyBusy=token;return token;}
+ function rangeDeps(instance,token,value,start,end){
+  if(!token||dependencyBusy!==token||!chosen(instance))return;
+  if(value===null){if(pair)runtime.fail('pair-null');dependency=null;return;}
+  if(!pair||pair.instance!==instance||pair.result!==value||pair.start!==start||pair.end!==end){runtime.fail('pair-stale');dependency=null;return;}dependency=pair;
+ }
+ function depsEnd(instance,token,normal){if(!normal&&instance===target)sourceError();if(token&&dependencyBusy===token){if(!normal){pair=null;dependency=null;}dependencyBusy=null;}}
+ function indexBegin(instance,extractor,overscan,count,start,end,lanes,pinnedExtractor){
+  if(!rangeAdmission(instance))return null;if(extracting||calculation||dependencyBusy)return runtime.fail('pair-reentrant');
+  if(start===null&&end===null){dependency=null;return null;}
+  if(count===0){pair=null;dependency=null;return null;}
+  if(extractor!==pinnedExtractor){runtime.fail('pair-extractor');return null;}
+  if(count!==100||lanes!==1||typeof overscan!=='number'||!Number.isInteger(overscan)||overscan<0||overscan>10||!pair||dependency!==pair||pair.instance!==instance||start!==pair.start||end!==pair.end){runtime.fail('pair-stale');return null;}
+  geometry={flat:pair.flat,viewport:pair.outer,overscan};const token={instance,pair};extracting=token;return token;
+ }
+ function indexResult(instance,token,value){
+  if(token&&extracting===token&&chosen(instance)){
+   const p=token.pair,r=render||current?.renders[0];
+   runtime.range([runtime.ordinal(),current?.id??0,r?.id??0,owner?1:0,cache?1:0,layout],p.outer,p.offset,p.start,p.end,value);
+  }return value;
+ }
+ function indexEnd(instance,token,normal){if(!normal&&instance===target)sourceError();if(token&&extracting===token){if(!normal){pair=null;dependency=null;}extracting=null;}}
+ function event(t,i,n,v,d,z,r=render||current?.renders[0],c=current){
+  if(!runtime.active())return false;
+  if(reason||closed)return runtime.fail('source-fault');
+  if(!target&&t!==0&&t!==1)return false;
+  return runtime.event([runtime.ordinal(),c?.id??0,r?.id??0,owner?1:0,cache?1:0,layout],t,i,n,v,d,z);
+ }
+ function emit(t,i,n,v,d,z,r,c){try{return event(t,i,n,v,d,z,r,c);}catch{runtime.fail('source-fault');return false;}}
+ function coreAdmission(){if(!target||!healthy())return false;if(runtime.active())return true;if(coreEntries===512){sourceError();return false;}coreEntries++;return false;}
+ function estimate(total,first){if(!coreAdmission())return;try{event(21,-1,0,0,total,first);}catch{runtime.fail('source-fault');}}
+ function measureReturn(height,total,index){
+  const s=scopes.at(-1);if(s?s.instance===target:!!render){const e=s?.node,matched=e&&s.index===index;emit(8,matched?index:-1,matched?e.id:0,height,total,0);}
+  return height;
+ }
+ function coreEvent(instance,t,value,z){if(instance===target&&coreAdmission())emit(t,-1,0,t===18?value:0,0,z);}
+ function scrollValue(instance,value){coreEvent(instance,18,value,0);return value;}
+ function deltaFacts(instance,index,size,itemSize){if(!chosen(instance))return;const s=scopes.at(-1),e=s?.node;if(!s||s.instance!==instance||s.index!==index||!e){runtime.fail('source-fault');return;}emit(9,index,e.id,size,itemSize,0);}
+ function deltaBranch(instance,index,delta,branch){if(chosen(instance)){const s=scopes.at(-1),e=s?.node;if(!s||s.instance!==instance||s.index!==index||!e)runtime.fail('source-fault');else emit(10,index,e.id,delta,0,branch?1:0);}return branch;}
+ function sourceError(){sourceFault=true;runtime.fail('source-fault');}
+ function healthy(){return !sourceFault&&!reason&&!originalFailed&&!closed&&runtime.healthy();}
+ function preparationOwned(start){const p=committedTarget;return healthy()&&!runtime.active()&&runtime.retained()===0&&!current&&!render&&!commits.length&&!scopes.length&&!fiberFrames.length&&target===owner&&!!owner&&!!mapping&&!!p&&p.mapping===mapping&&p.commit===sealed&&p.layout===layout&&mapping.owner===owner&&mapping.cacheRef===cache&&mapping.scroller===scroller&&mapping.layout===layout&&mapping.root===selectedRoot&&eligible&&baselineOwner===owner&&baselineCache===cache&&baselineScroller===scroller&&baselineLayout===layout&&counts.work===start;}
+ function preparationCanonical(keys){
+  const rows=mapping.rows,messages=mapping.messages,map=mapping.keys;
+  if(ownData(rows,'length')!==100||ownData(messages,'length')!==100||continuityNative.apply(continuityNative.mapSize,map,[])!==100||continuityNative.prototype(map)!==continuityNative.mapPrototype||mapping.agentId!=='benchmark'||mapping.threadId!=='C-thread-1')return false;
+  for(let i=0;i<100;i++){
+   const row=ownData(rows,i),message=ownData(messages,i),id=ownData(message,'id');
+   if(ownData(row,'type')!=='message'||ownData(row,'message')!==message||id!==(keys?keys[i]:'history-'+i)||ownData(message,'role')!==(i%2?'user':'assistant')||ownData(message,'content')!==expected[i]||continuityNative.apply(continuityNative.mapGet,map,[id])!==id)return false;
+  }return true;
+ }
+ function unavailablePreparation(){sourceError();return failedPlan??=Object.freeze({status:'unavailable',reason:'invalid-input',gapStart:null,gapEnd:null,partition:null,targets:'',finalLow:null,finalHigh:null,steps:0,rangeCalls:0});}
+ function prepare(){
+  if(preparationStarted)return unavailablePreparation();preparationStarted=true;
+  const start=counts.work;let inputs=null;
+  try{
+   if(!preparationOwned(start)||calculateDependency||calculation||dependencyBusy||extracting||!geometry||!typedCapabilities||typeof baselineFactory!=='function'||typeof selectorFactory!=='function'||!rangeKernel||!rangeExtractor||!emptyLive(committedTarget))return unavailablePreparation();
+   {
+    const builder=baselineFactory(continuityNative,typedCapabilities),built=builder.build(geometry.flat,geometry.viewport,geometry.overscan,cache,origins,bindings,layout,sealed);
+    typedCapabilities=null;geometry=null;
+    if(built.status!=='prepared-input')return unavailablePreparation();inputs=built.inputs;
+   }
+   const plan=selectorFactory({calculateRangeImpl:rangeKernel,defaultRangeExtractor:rangeExtractor}).prepare(inputs);
+   const valid=preparationCanonical(inputs.keys)&&emptyLive(committedTarget)&&preparationOwned(start);inputs=null;
+   if(valid){preparationAccepted=true;return plan;}return unavailablePreparation();
+  }catch{return unavailablePreparation();}finally{typedCapabilities=null;geometry=null;inputs=null;}
+ }
+ function fenceResult(historicalComplete,liveSubsetValid,fullWarmReady,connectedRows,why){return {historicalComplete,liveSubsetValid,fullWarmReady,connectedRows,reason:why,nativeGO:false,qualified:false,fps:null};}
+ function partialFence(){try{const partial=sourceAdapter.partial();return {partial,fence:fence(partial)};}finally{partialTicket=null;}}
+ function fence(partial){
+  if(fenceBusy){partialTicket=null;anchor=null;sourceError();return fenceResult(false,false,false,0,'reentrant');}
+  fenceBusy=true;const ticket=partialTicket;partialTicket=null;const start=counts.work;let next=null;
+  try{
+   if(partial!==ticket||!ticket||!preparationAccepted||fenceCalls===2||!preparationOwned(start)||partialBusy||calculateDependency||calculation||dependencyBusy||extracting||!emptyLive(committedTarget))throw 'warm-fence-closed';
+   const second=fenceCalls++===1,prior=anchor;anchor=null;
+   if(!preparationCanonical())throw 'warm-fence-shape';
+   let historical=true,live=true,connectedRows=0,identical=!!prior&&prior.owner===owner&&prior.cache===cache&&prior.scroller===scroller&&prior.mapping===mapping&&prior.layout===layout;
+   if(!second)next=[];
+   const rows=ownData(ticket,'rows');if(ownData(rows,'length')!==100)throw 'warm-fence-shape';
+   for(let i=0;i<101;i++){
+    const b=bindings[i],o=origins[i];let credit=false;
+    if(i<100){
+     credit=!!o&&o.layout===layout&&o.eligible===true&&o.commit!==null&&o.commit<=sealed&&continuityNative.apply(continuityNative.mapGet,cache,[i])===o.size;
+     if(!credit)historical=false;
+     const a=o?.node??0,v=o?.size??0,c=o?.commit??0,m=o?o.measure*32769+o.edge:0,r=o?o.resize*6401+o.seq:0,k=i*5;
+     if(second){if(!prior||prior.values[k]!==a||prior.values[k+1]!==v||prior.values[k+2]!==c||prior.values[k+3]!==m||prior.values[k+4]!==r)identical=false;}
+     else next.push(a,v,c,m,r);
+    }
+    if(b){const connected=continuityNative.apply(continuityNative.nodeConnected,b.node,[]);if(typeof connected!=='boolean')throw 'warm-fence-shape';if(connected){
+     connectedRows++;
+     if(i===100||!credit||o.node!==b.id||b.commit===null||b.commit>o.commit||b.layout!==layout||!b.measured||!b.connected)live=false;
+     else{const row=ownData(rows,i);if(ownData(row,0)!==i||ownData(row,2)!==b.id||ownData(row,3)!==o.node||ownData(row,4)!==o.size||ownData(row,7)!==layout||ownData(row,8)!==o.commit||ownData(row,9)!==o.measure||ownData(row,10)!==o.edge||ownData(row,11)!==o.resize||ownData(row,12)!==o.seq||ownData(row,14)!==true||ownData(row,15)!==true)live=false;}
+    }}
+   }
+   if(!connectedRows)live=false;
+   if(!emptyLive(committedTarget)||!preparationOwned(start))throw 'warm-fence-closed';
+   if(!second){anchor={owner,cache,scroller,mapping,layout,values:next,historical,live};next=null;return fenceResult(historical,live,false,connectedRows,!historical?'historical-gap':!live?'live-binding-gap':'first-fence');}
+   const ready=historical&&live&&!!prior&&prior.historical&&prior.live&&identical;
+   return fenceResult(historical,live,ready,connectedRows,ready?null:!historical?'historical-gap':!live?'live-binding-gap':'fence-drift');
+  }catch{anchor=null;sourceError();return fenceResult(false,false,false,0,'source-shape');}finally{partialTicket=null;next=null;fenceBusy=false;}
+ }
+ function frameRequest(instance){
+  if(!target||instance!==target)return false;
+  if(!healthy()||frameRequests===32){sourceError();return false;}frameRequests++;
+  if(runtime.active())emit(19,-1,0,0,0,0);return true;
+ }
+ function frameEnter(instance){
+  if(!target||instance!==target)return false;
+  if(!healthy()||frameCallbacks>=frameRequests){sourceError();return false;}frameCallbacks++;
+  if(runtime.active())emit(20,-1,0,0,0,0);return true;
+ }
+ function frameEnd(instance,normal){if(!normal&&instance===target)sourceError();}
+ function runFrameRequest(instance,call){try{return call();}catch(error){if(target===instance)sourceError();throw error;}}
+ const sourceAdapter=Object.freeze({...adapter,
+ renderStart(work,Component,root,rootWork){const r=adapter.renderStart(work,Component,root,rootWork);if(r)emit(0,-1,0,0,0,0,r,current);else if(reason)runtime.fail('source-fault');return r;},
+ renderEnd(r,normal){if(r)emit(1,-1,0,0,0,normal?1:0,r,current);return adapter.renderEnd(r,normal);},
+ commitStart(root,work){if(calculateDependency||calculation||dependencyBusy||extracting||partialBusy||partialTicket||fenceBusy){partialTicket=null;sourceError();}const c=adapter.commitStart(root,work);if(c)emit(2,-1,0,0,0,c.previousCommit?.id??0,render,c);else if(reason)runtime.fail('source-fault');return c;},
+ fiberStart(root,currentFiber,finished){if(!sourceFault&&runtime.healthy()){if(classifierEntries===30880)sourceError();else classifierEntries++;}return adapter.fiberStart(root,currentFiber,finished);},
+ commitMutationEnd(c,normal){if(c)emit(3,-1,0,0,0,normal?1:0,render||c.renders[0],c);return adapter.commitMutationEnd(c,normal);},
+ commitLayoutEnd(root,work,normal){const c=current;const value=adapter.commitLayoutEnd(root,work,normal);if(c)emit(4,-1,0,0,0,normal?1:0,render||c.renders[0],c);return value;},
+ commitSpawnedEnd(root,work,normal){const c=current;const value=adapter.commitSpawnedEnd(root,work,normal);if(c)emit(5,-1,0,0,0,normal?1:0,render||c.renders[0],c);return value;},
+ begin(instance,kind,refArg){const s=adapter.begin(instance,kind,refArg);if(s&&chosen(instance)){if(kind===1)emit(6,-1,0,0,0,1);else if(kind===3)emit(11,-1,0,0,0,0);}else if(reason)runtime.fail('source-fault');return s;},
+ end(instance,s,normal){if(s&&chosen(instance)){if(s.kind===1)emit(7,-1,0,0,0,normal?1:0);else if(s.kind===3)emit(13,-1,0,0,0,normal?1:0);}return adapter.end(instance,s,normal);},
+ beginCleanup(instance,node){const s=adapter.beginCleanup(instance,node);if(s&&chosen(instance))emit(16,-1,0,0,0,0);else if(reason)runtime.fail('source-fault');return s;},
+ endCleanup(instance,s,normal){if(s&&chosen(instance))emit(17,-1,0,0,0,normal?1:0);return adapter.endCleanup(instance,s,normal);},
+ bind(instance,s,node,index){const value=adapter.bind(instance,s,node,index);if(s?.kind===2&&chosen(instance)){const e=s.node;emit(12,e?index:-1,e?.id??0,0,0,0);}return value;},
+ partial(){const busy=partialBusy;partialTicket=null;if(busy||fenceBusy)sourceError();partialBusy=true;const start=counts.work;try{const value=adapter.partial();if(healthy()&&counts.work===start+270336)partialTicket=value;else sourceError();return value;}catch(error){sourceError();throw error;}finally{partialBusy=busy;}},
+ dispose(){partialTicket=null;anchor=null;geometry=null;typedCapabilities=null;pair=null;dependency=null;return adapter.dispose();},
+ options(instance,merged,key){
+  const value=adapter.options(instance,merged,key);
+  if(runtime.active()){
+   if(reason)runtime.fail('source-fault');
+   else if(render?.optionsOwner===instance&&render.optionsOK){if(target&&target!==instance)runtime.fail('pair-owner');else target=instance;}
+  }
+  return value;
+ }});
+ function close(){if(calculateDependency||calculation||dependencyBusy||extracting)sourceError();if(sourceFault||reason||originalFailed||closed)runtime.fail('source-fault');pair=null;dependency=null;return runtime.close();}
+ const ingress=Object.freeze({adapter:sourceAdapter,kernel,prepare,fence,partialFence,estimate,measureReturn,coreEvent,scrollValue,deltaFacts,deltaBranch,frameRequest,frameEnter,frameEnd,runFrameRequest,healthy,calculateDepsBegin,calculateDepsEnd,rangeBegin,rangeInput,rangeCalculated,rangeNull,rangeReturned,rangeEnd,depsBegin,depsEnd,rangeDeps,indexBegin,indexResult,indexEnd,close});
+ warmSourceCapability={runtime,baselineFactory,selectorFactory,ingress};return ingress;
+}
+// WARM_SOURCE_CAPABILITY_END

@@ -2,6 +2,16 @@
 
 This sibling diagnostic renders the real Copilot app and observes source-owned virtualizer writes. It is unscored: FPS, performance qualification, and native readiness remain unavailable.
 
+The private warm preparation modules currently have source-only Node controls:
+
+```sh
+node --test --test-concurrency=1 --test-timeout=30000 tools/copilot-history-functional/warm-runtime.node.mjs tools/copilot-history-functional/warm-selector.node.mjs tools/copilot-history-functional/warm-baseline.node.mjs
+```
+
+They observe bounded event and range chronology, construct canonical baseline inputs, select a deterministic widest-gap route, and check historical measurement credit and current connected bindings across two fences. Synthetic controls establish these source properties; they do not establish that an actual browser can complete the route. The default diagnostic does not invoke the warm modules or install a new profile.
+
+The additional work and reference bounds assume one trusted lifecycle: one close, one preparation, and two fences, with nonrenewable callback quotas. They do not cover arbitrary repeated private API calls or unrestricted caller retention. A future browser driver must enforce that lifecycle, bind fresh geometry, validate its complete itinerary, and account for transport and output ownership before use. Source controls grant no native readiness, performance qualification, ranking, or FPS.
+
 Build the source contract once with `npm run build --workspace @chat-ui-bench/contract` after `npm ci`.
 
 Run `npm run test:copilot-history-functional` for offline source controls. Running the tool without arguments only checks current source pins and writes nothing. An explicit browser attempt uses `npm run diagnose:copilot-history-functional -- --browser --run-id example --out /absolute/absent/output`. The output directory must not exist. There are no retries.

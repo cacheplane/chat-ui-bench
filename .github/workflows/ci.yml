@@ -68,7 +68,10 @@ jobs:
         run: npm run test:copilot-module-binding 2>&1 | tee ci-logs/copilot-module-binding-controls.log
 
       - name: Test portable unscored functional history source controls
-        run: npm run test:copilot-history-functional 2>&1 | tee ci-logs/copilot-history-functional-controls.log
+        run: |
+          set -o pipefail
+          npm run test:copilot-history-functional 2>&1 | tee ci-logs/copilot-history-functional-controls.log
+          node --test --test-concurrency=1 --test-timeout=30000 tools/copilot-history-functional/warm-runtime.node.mjs tools/copilot-history-functional/warm-selector.node.mjs tools/copilot-history-functional/warm-baseline.node.mjs 2>&1 | tee -a ci-logs/copilot-history-functional-controls.log
 
       - name: Test source-only complete history preparation controls
         run: node tools/warm-h100-feasibility/run.mjs --test --out "$RUNNER_TEMP/ci-evidence/warm-h100-source-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" 2>&1 | tee ci-logs/warm-h100-source-controls.log
