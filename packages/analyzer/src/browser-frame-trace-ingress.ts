@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import {TraceRootFramer} from './browser-frame-trace-framer.js';
 import { copyBody, WIRE_LIMITS, WireError } from './browser-frame-protobuf-wire.js';
 import { decodeBrowserFramePacket, decodeBrowserFramePacketWithMembers, PACKET_POLICY, type PacketFragment, type PacketFragmentWithMembers } from './browser-frame-packet-fragments.js';
 import {ProfileError,type Budget} from './browser-frame-ordered-state.js';
@@ -68,40 +69,10 @@ function decodeTrace(input:unknown,policy:unknown,sliceBudget?:Budget):TraceIngr
     if (policy !== TRACE_INGRESS_POLICY) throw new WireError('unsupported-policy');
     const bytes = copyBody(input);
     inputRef = { status: 'owned', bytes: bytes.byteLength, sha256: hash(bytes) };
-    let cursor = 0;
-    function varint(): bigint {
-      let value = 0n;
-      for (let index = 0; index < 10; index++) {
-        if (cursor >= bytes.byteLength) throw new WireError('truncated-varint');
-        const byte = bytes[cursor++]!;
-        if (index === 9 && byte > 1) throw new WireError('uint64-varint-overflow');
-        value |= BigInt(byte & 0x7f) << BigInt(index * 7);
-        if ((byte & 0x80) === 0) return value;
-      }
-      throw new WireError('uint64-varint-overflow');
-    }
     const windows: FrameWindow[] = [];
     // Complete the entire narrow wrapper before any packet decoding or body allocation.
-    while (cursor < bytes.byteLength) {
-      offset = cursor;
-      frameIndex = windows.length;
-      if (windows.length >= FRAME_LIMIT) throw new WireError('frame-capacity');
-      const keyStart = cursor;
-      const key = varint();
-      const keyEnd = cursor;
-      const field = key >> 3n;
-      const wire = key & 7n;
-      if (field < 1n || field > 536870911n) throw new WireError('invalid-field-number');
-      if (wire !== 0n && wire !== 1n && wire !== 2n && wire !== 5n) throw new WireError('unsupported-wire-type');
-      if (field !== 1n || wire !== 2n) throw new WireError('unsupported-trace-root-field');
-      const lengthStart = cursor;
-      const length = varint();
-      const lengthEnd = cursor;
-      if (length > BigInt(bytes.byteLength - cursor)) throw new WireError('out-of-bounds-length');
-      const bodyStart = cursor;
-      cursor += Number(length); // Bounded by the remaining owned byte window above.
-      windows.push({ frameIndex, keyStart, keyEnd, lengthStart, lengthEnd, bodyStart, bodyEnd: cursor });
-    }
+    const framer=new TraceRootFramer(bytes.byteLength,FRAME_LIMIT,WIRE_LIMITS.bytes,{end:frame=>windows.push(frame)});
+    try{framer.feed(bytes);framer.finish();}finally{offset=framer.offset;frameIndex=framer.frameIndex;}
     structuralContainerEOF = true;
     const frames: TraceFrame[] = [];
     let occurrences = 0;
