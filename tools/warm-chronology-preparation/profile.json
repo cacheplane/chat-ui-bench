@@ -1,0 +1,14 @@
+{
+  "kind": "node-source-only-warm-chronology-preparation",
+  "runtimeIntegrated": false,
+  "browserExecuted": false,
+  "nativeGO": false,
+  "fullWarmReady": false,
+  "FPS": "unavailable",
+  "limits": {"ranges":16,"events":448,"records":464,"textBytes":49152,"rangeBytes":384,"eventBytes":96,"canonicalRows":100,"candidates":6,"rangeCalls":24,"targets":12},
+  "wholeWitnessBytes": {"range":375,"event":85,"conservativeRange":377,"conservativeEvent":88},
+  "reservations": {"chronology":1179648,"selector":917504,"total":2097152},
+  "sourceBounds": {"chronology":1120768,"selector":434792,"eventWithCallees":1373,"rangeWithCallees":13104},
+  "runner": {"timeoutMs":60000,"streamBytes":1048576,"fileBytes":8388608,"sourceAggregateBytes":33554432},
+  "holds": ["Node-only owned-input model; no browser Proxy guard removal","E08 production seam not installed","whole runtime wrapper and reference proof not established","no actual baseline replay or warm coverage assertion"]
+}
