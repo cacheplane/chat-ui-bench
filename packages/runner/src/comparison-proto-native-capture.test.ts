@@ -1,5 +1,5 @@
 import {expect,it,vi} from 'vitest';
-import {mkdtemp,mkdir,readFile,writeFile,rm,realpath,open} from 'node:fs/promises';
+import {mkdtemp,mkdir,readFile,writeFile,rm,realpath,open,stat,rename} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -69,10 +69,11 @@ it('phase calls are actual unique ordered original operations and duplicate mark
   const owner=create(h.inputs);await owner.start();await owner.mark('start');await owner.mark('start');const r=await owner.close();expect(h.journal.filter(s=>s.startsWith('mark:'))).toHaveLength(1);expect(r.status).toBe('unavailable');unqualified(r);
 }));
 it('held final query remains pending after cleanup timeout and detach is still attempted once',async()=>fixture(async(h,create)=>{
-  const original=h.session.send;let queried=0,release!:(value:unknown)=>void;
-  h.session.send=async(method:string,params?:any)=>{if(method==='Page.getFrameTree'&&++queried===2)return new Promise(done=>{release=done;});return original(method,params);};
+  const original=h.session.send;let queried=0,release!:(value:unknown)=>void,entered!:()=>void;
+  const afterFrameEntered=new Promise<void>(done=>{entered=done;});
+  h.session.send=async(method:string,params?:any)=>{if(method==='Page.getFrameTree'&&++queried===2)return new Promise(done=>{release=done;entered();});return original(method,params);};
   const owner=create(h.inputs);await owner.start();await owner.mark('start');await owner.mark('end');const finishing=owner.finish();
-  for(let i=0;i<1000&&queried<2;i++)await new Promise<void>(done=>setImmediate(done));expect(queried).toBe(2);
+  await afterFrameEntered;expect(queried).toBe(2);
   for(const {callback,delay}of [...h.timers.values()])if(delay===10000)callback();for(let i=0;i<100;i++)await Promise.resolve();
   const r=await finishing;expect(r.status).toBe('pending');expect(r.originalOperationsSettled).toBe(false);expect(r.operations.some((op:any)=>op.kind==='after-frame'&&op.state==='pending')).toBe(true);expect(h.journal.filter(s=>s==='detach')).toHaveLength(1);unqualified(r);
   release({frameTree:{frame:{id:'root',loaderId:'loader',url:'https://authored.invalid/'}}});for(let i=0;i<100;i++)await Promise.resolve();expect(owner.snapshot().status).not.toBe('closed');
@@ -81,7 +82,27 @@ it('revalidates binary after capture before original detach',async()=>fixture(as
  const owner=create(h.inputs);await owner.start();await owner.mark('start');await owner.mark('end');await writeFile(h.runtime.executablePath,'changed after start');const r=await owner.finish();expect(r.status).toBe('unavailable');expect(r.persistedWholeInput).toBe('unavailable');expect(h.journal.filter(s=>s==='detach')).toHaveLength(1);unqualified(r);
 }));
 it('refuses identical-byte replacement inode at readback',async()=>fixture(async(h,create)=>{
- h.onDetach(async()=>{await rm(join(h.directory,'trace.pftrace'));await writeFile(join(h.directory,'trace.pftrace'),Buffer.from([0,255,4]),{flag:'wx'});});const {receipt:r}=await capture(h,create);expect(r.status).toBe('unavailable');expect(r.persistedWholeInput).toBe('unavailable');unqualified(r);
+ let mutation:Promise<void>|undefined;
+ h.onDetach(()=>mutation=(async()=>{
+  const path=join(h.directory,'trace.pftrace'),replacement=join(h.parent,'same-byte-replacement');
+  const originalIdentity=await stat(path,{bigint:true}),bytes=await readFile(path);
+  expect(bytes).toEqual(Buffer.from([0,255,4]));
+  // Allocate while the original inode still exists: unlinking first permits
+  // immediate inode reuse and does not establish this test's premise.
+  await writeFile(replacement,bytes,{flag:'wx'});
+  const replacementIdentity=await stat(replacement,{bigint:true});
+  expect(replacementIdentity.dev===originalIdentity.dev&&replacementIdentity.ino===originalIdentity.ino).toBe(false);
+  expect(await readFile(replacement)).toEqual(bytes);
+  await rename(replacement,path);
+  const selected=await stat(path,{bigint:true});
+  expect({dev:selected.dev,ino:selected.ino}).toEqual({dev:replacementIdentity.dev,ino:replacementIdentity.ino});
+  expect(await readFile(path)).toEqual(bytes);
+ })());
+ const {receipt:r}=await capture(h,create);
+ // The owner deliberately catches detach failures. Check the original hook
+ // promise outside that refusal boundary so a failed premise cannot pass.
+ expect(mutation).toBeDefined();await mutation;
+ expect(r.status).toBe('unavailable');expect(r.persistedWholeInput).toBe('unavailable');expect(r.failures).toEqual(['persisted-readback']);unqualified(r);
 }));
 it('refuses unpinned installed browser revision before tracing',async()=>fixture(async(h,create)=>{
  h.runtime.browserRevision='invented-other';const owner=create(h.inputs);const r=await owner.start();expect(r.status).toBe('unavailable');expect(h.journal).not.toContain('Tracing.start');unqualified(r);
@@ -107,8 +128,8 @@ it('fsync rejection leaves transport and persistence unavailable',async()=>fixtu
  try{const r=await owner.finish();expect(failed).toBe(true);expect(r.status).toBe('unavailable');expect(r.transport.sinkClose).toBe('rejected');expect(r.persistedWholeInput).toBe('unavailable');unqualified(r);}finally{spy.mockRestore();}
 }));
 it('held original runner wait remains pending after its deadline',async()=>fixture(async(h,create)=>{
- let release!:(value:any)=>void;h.runner.wait=()=>new Promise(done=>{release=done;});const owner=create(h.inputs);await owner.start();await owner.mark('start');await owner.mark('end');const final=owner.finish();
- for(let i=0;i<1000&&!release;i++)await new Promise<void>(done=>setImmediate(done));expect(release).toBeTypeOf('function');for(const {callback,delay}of [...h.timers.values()])if(delay===10000)callback();const r=await final;expect(r.status).toBe('pending');expect(r.operations.some((row:any)=>row.kind==='runner-wait'&&row.state==='pending')).toBe(true);expect(r.runner.wait).toBeNull();unqualified(r);release({exitCode:0,signal:null});for(let i=0;i<100;i++)await Promise.resolve();expect(owner.snapshot().status).not.toBe('closed');
+ let release!:(value:any)=>void,entered!:()=>void;const waitEntered=new Promise<void>(done=>{entered=done;});h.runner.wait=()=>new Promise(done=>{release=done;entered();});const owner=create(h.inputs);await owner.start();await owner.mark('start');await owner.mark('end');const final=owner.finish();
+ await waitEntered;expect(release).toBeTypeOf('function');for(const {callback,delay}of [...h.timers.values()])if(delay===10000)callback();const r=await final;expect(r.status).toBe('pending');expect(r.operations.some((row:any)=>row.kind==='runner-wait'&&row.state==='pending')).toBe(true);expect(r.runner.wait).toBeNull();unqualified(r);release({exitCode:0,signal:null});for(let i=0;i<100;i++)await Promise.resolve();expect(owner.snapshot().status).not.toBe('closed');
 }));
 it('marker registry binds both actual original names to run phase and observed target',async()=>fixture(async(h,create)=>{
  const {receipt:r}=await capture(h,create);for(const row of r.marks)expect(row).toMatchObject({runId:'authored-run',phaseId:'authored-phase',targetId:'target'});
@@ -141,16 +162,16 @@ it('C2 unknown cleanup timer preserves a held original detach as pending',async(
  release();for(let i=0;i<100;i++)await Promise.resolve();expect(owner.snapshot().operations.find((row:any)=>row.kind==='detach').state).toBe('fulfilled');expect(owner.snapshot().status).not.toBe('closed');unqualified(r);
 }));
 it('C3 initial raw stat has a deadline and retains the held original pending state',async()=>fixture(async(h,create)=>{
- const handle=await open(h.runtime.executablePath,'r');const proto=Object.getPrototypeOf(handle);await handle.close();const original=proto.stat;let calls=0,release!:(()=>void);
- const spy=vi.spyOn(proto,'stat').mockImplementation(async function(this:any,...args:any[]){const actual=await original.apply(this,args);if(++calls===2)return new Promise(done=>{release=()=>done(actual);});return actual;});
- const owner=create(h.inputs);let early:any;const starting=owner.start();void starting.then((r:any)=>{early=r;});
+ const handle=await open(h.runtime.executablePath,'r');const proto=Object.getPrototypeOf(handle);await handle.close();const original=proto.stat;let calls=0,release!:(()=>void),entered!:()=>void;const statEntered=new Promise<void>(done=>{entered=done;});
+ const spy=vi.spyOn(proto,'stat').mockImplementation(async function(this:any,...args:any[]){const actual=await original.apply(this,args);if(++calls===2)return new Promise(done=>{release=()=>done(actual);entered();});return actual;});
+ const owner=create(h.inputs);const starting=owner.start();
  try{
-  for(let i=0;i<1000&&!release;i++)await new Promise<void>(done=>setImmediate(done));expect(release).toBeTypeOf('function');
-  for(let round=0;round<12&&!early;round++){for(const {callback,delay}of [...h.timers.values()])if(delay===10000)callback();await new Promise<void>(done=>setTimeout(done,5));}
-  const observed=early,pending=owner.snapshot();release();await starting;
+  await statEntered;expect(release).toBeTypeOf('function');
+  for(const {callback,delay}of [...h.timers.values()])if(delay===10000)callback();
+  const observed=await starting,pending=owner.snapshot();release();await starting;
   expect(observed,'start must refuse by the stat deadline without waiting for original stat '+JSON.stringify(pending)).toBeDefined();expect(observed.status).toBe('pending');expect(observed.originalOperationsSettled).toBe(false);expect(observed.operations.find((row:any)=>row.kind==='raw-stat').state).toBe('pending');expect(h.journal).not.toContain('Tracing.start');unqualified(observed);
   for(let i=0;i<100;i++)await Promise.resolve();expect(owner.snapshot().operations.find((row:any)=>row.kind==='raw-stat').state).toBe('fulfilled');expect(owner.snapshot().status).not.toBe('closed');
- }finally{release?.();await starting;const closing=owner.close();for(let i=0;i<1000;i++)await new Promise<void>(done=>setImmediate(done));for(const {callback}of [...h.timers.values()])callback();await closing;spy.mockRestore();}
+ }finally{release?.();await starting;await owner.close();spy.mockRestore();}
 }));
 for(const [exitCode,signal]of [[Number.MAX_SAFE_INTEGER+1,null],[-1,null],[256,null],[0,'\u0000'.repeat(64)],[0,'not-a-signal'],[0,'SIG'+'X'.repeat(13)]]as const)it('C4 refuses runner result outside exact exit/signal grammar '+JSON.stringify([exitCode,signal]),async()=>fixture(async(h,create)=>{
  h.runner.wait=async()=>({exitCode,signal})as any;const {receipt:r}=await capture(h,create);expect(r.runner.wait).toBeNull();expect(r.status).toBe('unavailable');unqualified(r);
