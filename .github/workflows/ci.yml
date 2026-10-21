@@ -70,6 +70,9 @@ jobs:
       - name: Test portable unscored functional history source controls
         run: npm run test:copilot-history-functional 2>&1 | tee ci-logs/copilot-history-functional-controls.log
 
+      - name: Test source-only complete history preparation controls
+        run: node tools/warm-h100-feasibility/run.mjs --test --out "$RUNNER_TEMP/ci-evidence/warm-h100-source-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" 2>&1 | tee ci-logs/warm-h100-source-controls.log
+
       - name: Test offline hosted failure inspector with Python 3.12 or newer
         run: |
           python3 --version 2>&1 | tee ci-logs/hosted-failure-inspector.log
@@ -126,6 +129,17 @@ jobs:
           path: |
             ci-logs/copilot-history-functional-controls.log
             ${{ runner.temp }}/ci-evidence/copilot-history-functional-tests-*/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Preserve complete history preparation source controls
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: warm-h100-source-controls-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-logs/warm-h100-source-controls.log
+            ${{ runner.temp }}/ci-evidence/warm-h100-source-${{ github.run_id }}-${{ github.run_attempt }}/
           if-no-files-found: warn
           retention-days: 7
 
