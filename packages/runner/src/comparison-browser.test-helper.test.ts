@@ -16,6 +16,27 @@ import {parseLongThreadArgs} from './long-thread-cli.js';
 import {createLongThreadLedger} from './long-thread-run.js';
 import {runInNewContext} from 'node:vm';
 
+const d0FramerMembers = [
+  'packages/analyzer/src/browser-frame-trace-framer.ts',
+  'packages/analyzer/src/browser-frame-trace-framer.test.ts',
+  ...['.d.ts','.js','.js.map'].map(ext=>'packages/analyzer/dist/browser-frame-trace-framer'+ext),
+];
+async function addD0FixtureMembers(workspace:string) {
+  for(const key of d0FramerMembers){await mkdir(dirname(join(workspace,key)),{recursive:true});await copyFile(join(repository,key),join(workspace,key));}
+}
+test.each(d0FramerMembers)('D0-v8 retains exact selected framer member %s',async key=>{
+  const f=await fixture();await addD0FixtureMembers(f.workspace);const receipt=await writer()(f.root,f);
+  const manifest=JSON.parse(await readFile(receipt!.path,'utf8')),record=manifest.records.find((row:{key:string})=>row.key===key);
+  expect(record).toBeDefined();expect((await readFile(join(receipt!.directory,record.copied.path))).equals(await readFile(join(repository,key)))).toBe(true);
+});
+test.each(d0FramerMembers)('D0-v8 refuses missing selected framer member %s',async key=>{
+  const f=await fixture();await addD0FixtureMembers(f.workspace);await unlink(join(f.workspace,key));await expect(writer()(f.root,f)).rejects.toThrow();
+});
+test('D0-v8 refuses original framer mutation during final copy',async()=>{
+  const f=await fixture();await addD0FixtureMembers(f.workspace);const injected=duringLastCopy(f,async()=>{const path=join(f.workspace,d0FramerMembers[0]!),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});
+  await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');
+});
+
 function emptyHostObserver(observedAt=100) {
   const callbacks=new Map<number,(value:unknown)=>void>();let next=0;
   const body={isConnected:true,textContent:''};let currentBody=body;
@@ -69,7 +90,7 @@ const foundationSources = ['packages/analyzer/src/browser-frame-ordered-state-v2
   'packages/analyzer/src/browser-frame-track-descriptor-fragments.ts',
   'packages/runner/src/comparison-proto-public-ports.test.ts',
   'packages/runner/src/comparison-proto-public-ports.ts'];
-const analyzerSelected9 = ['packages/analyzer/dist/browser-frame-ordered-state.d.ts',
+const analyzerSelected12 = [...d0FramerMembers.slice(2),'packages/analyzer/dist/browser-frame-ordered-state.d.ts',
   'packages/analyzer/dist/browser-frame-ordered-state.js',
   'packages/analyzer/dist/browser-frame-ordered-state.js.map',
   'packages/analyzer/dist/browser-frame-trace-evidence.d.ts',
@@ -78,7 +99,7 @@ const analyzerSelected9 = ['packages/analyzer/dist/browser-frame-ordered-state.d
   'packages/analyzer/dist/browser-frame-track-descriptor-fragments.d.ts',
   'packages/analyzer/dist/browser-frame-track-descriptor-fragments.js',
   'packages/analyzer/dist/browser-frame-track-descriptor-fragments.js.map'];
-const foundationOutputs = [...analyzerSelected9, ...['.d.ts','.js','.js.map'].map(ext=>'packages/runner/dist/comparison-proto-public-ports'+ext)];
+const foundationOutputs = [...analyzerSelected12, ...['.d.ts','.js','.js.map'].map(ext=>'packages/runner/dist/comparison-proto-public-ports'+ext)];
 const nativeCaptureMembers = [
   'packages/runner/src/comparison-proto-native-capture.ts',
   'packages/runner/src/comparison-proto-native-capture.test.ts',
@@ -86,7 +107,8 @@ const nativeCaptureMembers = [
   'packages/runner/dist/comparison-proto-native-capture.js',
   'packages/runner/dist/comparison-proto-native-capture.js.map',
 ];
-const source55 = [
+const source57 = [
+  ...d0FramerMembers.slice(0,2),
   ...nativeCaptureMembers.slice(0, 2),
   ...foundationSources,
   '.github/workflows/ci.yml', 'apps/threadplane/probe-provenance.mjs', 'apps/threadplane/probe-provenance.test.ts', 'package.json',
@@ -220,7 +242,7 @@ async function fixture() {
   expect(metadata52).toEqual(expectedMetadata52);
   const assets = Object.keys(build.assetHashes).map(key => 'apps/threadplane/dist/' + key);
   const raw2 = ['apps/threadplane/.build-evidence.json', 'packages/runner/.comparison-build-evidence.json'];
-  const union = [...new Set([...source55, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output138, ...analyzerSelected9, ...metadata52, ...assets, ...raw2])].sort();
+  const union = [...new Set([...source57, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output138, ...analyzerSelected12, ...metadata52, ...assets, ...raw2])].sort();
   const copyKeys = union.filter(key => !raw2.includes(key) && key !== nativePath + '/package.json');
   const copyParents = [...new Set(copyKeys.map(key => dirname(join(workspace, key))))];
   for (const parent of copyParents) await mkdir(parent, {recursive: true});
@@ -269,7 +291,7 @@ async function fixture() {
   const seal = comparisonDatasetInventorySchema.parse({...versions, invocationId, status: 'sealed', configuration: config.configuration, invocationClaim: claim, invocationLedger: terminalLedger, root: '.', ledger: ledgerMember, members: members.sort((a, b) => a.path.localeCompare(b.path)), absentMembers: [], directories: [...datasetDirectories].sort(), slots, ownershipSettled: true, finalizationSucceeded: true});
   await writeFile(join(root, 'dataset-seal.json'), canonicalSerialize(seal) + '\n');
   const hashed = new Set([...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...Object.keys(probe.compiledHashes), ...assets]);
-  const paddingKeys = source55.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
+  const paddingKeys = source57.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
   return {root, workspace, evidenceRoot, context, union, paddingKeys};
 }
 const writer = () => helper.writeComparisonCiSnapshot;
@@ -322,13 +344,13 @@ test('CI off performs no filesystem access', async () => {
 test('closed original snapshot retains actual copy bytes and controlled Linux metadata', async () => {
   const f = await fixture(), receipt = await writer()(f.root, f); expect(receipt).not.toBeNull();
   const bytes = await readFile(receipt!.path), manifest = JSON.parse(bytes.toString());
-  expect(f.union).toHaveLength(303); expect(manifest.records).toHaveLength(303);
+  expect(f.union).toHaveLength(308); expect(manifest.records).toHaveLength(308);
   expect(bytes.length).toBe(receipt!.byteLength); expect(sha256(bytes)).toBe(receipt!.sha256);
-  expect(manifest.format).toBe('comparison-ci-original-snapshot-v7');
-  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source55).toEqual(source55); expect(manifest.inventories.output138).toHaveLength(138); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata52).toEqual(expectedMetadata52);
-  expect(Object.keys(manifest.inventories).sort()).toEqual(['source55','source23','product47','probe31','compiled16','output138','analyzerSelected9','contract42','raw2','assets','metadata52'].sort());
-  expect(manifest.inventories.source23).toEqual(source23); expect(manifest.inventories.analyzerSelected9).toEqual([...analyzerSelected9].sort());
-  expect(source55).toHaveLength(55); expect(source23).toHaveLength(23);
+  expect(manifest.format).toBe('comparison-ci-original-snapshot-v8');
+  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source57).toEqual(source57); expect(manifest.inventories.output138).toHaveLength(138); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata52).toEqual(expectedMetadata52);
+  expect(Object.keys(manifest.inventories).sort()).toEqual(['source57','source23','product47','probe31','compiled16','output138','analyzerSelected12','contract42','raw2','assets','metadata52'].sort());
+  expect(manifest.inventories.source23).toEqual(source23); expect(manifest.inventories.analyzerSelected12).toEqual([...analyzerSelected12].sort());
+  expect(source57).toHaveLength(57); expect(source23).toHaveLength(23);
   const protoMembers = [
     'packages/runner/src/comparison-proto-trace.ts',
     'packages/runner/src/comparison-proto-trace.test.ts',
@@ -565,4 +587,4 @@ test('metadata finite overflow fails its numeric bound with valid lock packages'
 test('invalid UTF8 metadata fails closed', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'package-lock.json'), Buffer.from([0x7b, 0xff, 0x7d])); await expect(writer()(f.root, f)).rejects.toThrow();});
 
 test.each([...foundationSources,...foundationOutputs])('snapshot-v6 rejects missing selected foundation member %s',async key=>{const f=await fixture();await unlink(join(f.workspace,key));await expect(writer()(f.root,f)).rejects.toThrow();});
-test('snapshot-v6 selected analyzer bytes retain original lifetime closure',async()=>{const f=await fixture(),key=analyzerSelected9[0]!,injected=duringLastCopy(f,async()=>{const path=join(f.workspace,key),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');});
+test('snapshot-v6 selected analyzer bytes retain original lifetime closure',async()=>{const f=await fixture(),key='packages/analyzer/dist/browser-frame-ordered-state.d.ts',injected=duringLastCopy(f,async()=>{const path=join(f.workspace,key),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');});
