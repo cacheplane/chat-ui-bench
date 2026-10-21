@@ -126,10 +126,10 @@ export function transformWarm(kind,requestedAdapter=adapterPath){
   replace('          this.options.lanes\n        ];\n      },\n      (rangeExtractor, overscan, count, startIndex, endIndex, lanes) => {','          this.options.lanes\n        ];\n        __whOK=true;return __whReturn;}finally{__wh.depsEnd(this,__whDeps,__whOK,__whReturn);}\n      },\n      (rangeExtractor, overscan, count, startIndex, endIndex, lanes) => {\n const __whIndexes=__wh.indexBegin(this,rangeExtractor,overscan,count,startIndex,endIndex,lanes,defaultRangeExtractor);let __whOK=false;try{');
   replace('        return startIndex === null || endIndex === null ? [] : rangeExtractor({','        const __whReturn=startIndex === null || endIndex === null ? [] : rangeExtractor({');
   replace('          count,\n          lanes\n        });\n      },\n      {\n        key: process.env.NODE_ENV !== "production" && "getVirtualIndexes",','          count,\n          lanes\n        });\n        const __whValue=__wh.indexResult(this,__whIndexes,__whReturn);__whOK=true;return __whValue;}finally{__wh.indexEnd(this,__whIndexes,__whOK);}\n      },\n      {\n        key: process.env.NODE_ENV !== "production" && "getVirtualIndexes",');
-  replace('this.scrollToIndex = (index, {','this.scrollToIndex = __wh.captureScroll(this,(index, {');
-  replace('this._startScroll({ index, align }, offset, behavior, "absolute");\n    };\n    this.scrollBy','this._startScroll({ index, align }, offset, behavior, "absolute");\n    });\n    this.scrollBy');
-  replace('this.getVirtualIndexes = memo(', 'this.getVirtualIndexes = __wh.captureIndexes(this,memo(');
-  replace('key: process.env.NODE_ENV !== \"production\" && \"getVirtualIndexes\",\n        debug: () => this.options.debug\n      }\n    );','key: process.env.NODE_ENV !== \"production\" && \"getVirtualIndexes\",\n        debug: () => this.options.debug\n      }\n    ));');
+  replace('this.scrollToIndex = (index, {','this.scrollToIndex = __wh.capture(this,(index, {');
+  replace('this._startScroll({ index, align }, offset, behavior, "absolute");\n    };\n    this.scrollBy','this._startScroll({ index, align }, offset, behavior, "absolute");\n    },2);\n    this.scrollBy');
+  replace('this.getVirtualIndexes = memo(', 'this.getVirtualIndexes = __wh.capture(this,memo(');
+  replace('key: process.env.NODE_ENV !== \"production\" && \"getVirtualIndexes\",\n        debug: () => this.options.debug\n      }\n    );','key: process.env.NODE_ENV !== \"production\" && \"getVirtualIndexes\",\n        debug: () => this.options.debug\n      }\n    ),1);');
   replace('export {\n  Virtualizer,','__wh.kernel(calculateRangeImpl,defaultRangeExtractor);\nexport {\n  Virtualizer,');
  }
  if(code.length>=2*1024*1024||base.edits.length+changes.length>96)throw Error('warm-source-contract');
