@@ -1,5 +1,5 @@
-import { BodyReader, WireError, type WireField } from './browser-frame-protobuf-wire.js';
-import { decodeBrowserFramePayload, decodeBrowserFramePayloadWithMembers, PAYLOAD_POLICY, type DecodedFragment, type DecodedFragmentWithMembers, type PayloadMember } from './browser-frame-protobuf-fragments.js';
+import { BodyReader, WireError,isWholeWireBudget, type WireField } from './browser-frame-protobuf-wire.js';
+import { decodeBrowserFramePayload, decodeBrowserFramePayloadWithMembers,decodeWholePayload, PAYLOAD_POLICY, type DecodedFragment, type DecodedFragmentWithMembers, type PayloadMember } from './browser-frame-protobuf-fragments.js';
 import { canonicalInt32, requireBody, scalar, unique, type ProjectionContext, type PacketOccurrence } from './browser-frame-packet-fragments.js';
 import {decodeAnnotation,type AnnotationBody,type AnnotationWork} from './browser-frame-trace-framer.js';
 
@@ -36,7 +36,7 @@ function decodeTrackEvent(context:ProjectionContext,start:number,end:number,reta
     requireBody(field);
     const o = field.occurrence;
     // Delegate is independently bounded; shared charging limits final admission, not transient allocation.
-    const fragment = retainMembers?decodeBrowserFramePayloadWithMembers(context.bytes.slice(o.valueStart,o.end),kind):decodeBrowserFramePayload(context.bytes.slice(o.valueStart, o.end), kind, PAYLOAD_POLICY);
+    const fragment = isWholeWireBudget(context.budget)?decodeWholePayload(context.bytes.slice(o.valueStart,o.end),kind):retainMembers?decodeBrowserFramePayloadWithMembers(context.bytes.slice(o.valueStart,o.end),kind):decodeBrowserFramePayload(context.bytes.slice(o.valueStart, o.end), kind, PAYLOAD_POLICY);
     if (fragment.status === 'unavailable') throw new WireError(fragment.diagnostics[0]?.code ?? 'unavailable-typed-payload');
     for (const _occurrence of fragment.occurrences) context.budget.chargeOccurrence();
     for (const _member of fragment.fields.surfaceTraceIds ?? []) context.budget.chargeMember();

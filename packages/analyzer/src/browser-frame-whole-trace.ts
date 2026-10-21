@@ -104,3 +104,6 @@ export function createD0StructuralStudy(expectedBytes:number,policy:unknown){
   },
  });
 }
+
+/** Fixed-profile native chunk copy reused by the whole annotation study. */
+export function copyWholeAnnotationChunk(input:unknown):Uint8Array{return chunk(input);}

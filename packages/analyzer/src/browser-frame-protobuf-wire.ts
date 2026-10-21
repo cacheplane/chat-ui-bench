@@ -1,3 +1,4 @@
+import {types} from 'node:util';
 /** Bounded protobuf body primitives. No container detection or recursive decoding. */
 export const WIRE_LIMITS = Object.freeze({ bytes: 262144, occurrences: 32768, members: 16384, diagnostics: 32 });
 export type Scope = 'root' | 'frame_sink';
@@ -106,3 +107,13 @@ export class BodyReader {
 export function signed64(value: bigint): string {
   return (value >= 9223372036854775808n ? value - 18446744073709551616n : value).toString();
 }
+/** Separate fixed whole-profile subclass: legacy class declaration/methods stay exact. */
+class WholeWireBudget extends WireBudget {
+  private wholeOccurrences=0;private wholeMembers=0;
+  override chargeOccurrence():void{if(this.wholeOccurrences>=8192)throw new WireError('field-capacity');this.wholeOccurrences++;super.chargeOccurrence();}
+  override chargeMember():void{if(this.wholeMembers>=4096)throw new WireError('member-capacity');this.wholeMembers++;super.chargeMember();}
+}
+export function newWholeWireBudget():WireBudget{return new WholeWireBudget();}
+export function isWholeWireBudget(budget:WireBudget):boolean{return budget instanceof WholeWireBudget;}
+/** New fixed-profile entries only, before legacy byte reflection. */
+export function wholeByteInputDenied(input:unknown):boolean{return types.isProxy(input);}

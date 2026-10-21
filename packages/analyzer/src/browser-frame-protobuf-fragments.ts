@@ -1,4 +1,4 @@
-import { BodyReader, copyBody, signed64, WireBudget, WireError, type Occurrence, type WireField } from './browser-frame-protobuf-wire.js';
+import { BodyReader, copyBody, signed64, WireBudget, WireError,newWholeWireBudget,wholeByteInputDenied, type Occurrence, type WireField } from './browser-frame-protobuf-wire.js';
 
 export const PAYLOAD_POLICY = 'pinned-chrome-frame-payload-fragments-v1';
 /**
@@ -41,6 +41,11 @@ export interface DecodedFragmentWithMembers extends DecodedFragment {members:Pay
 /** Internal opt-in for the restricted whole-trace projector; selected fields stay v1. */
 export function decodeBrowserFramePayloadWithMembers(input:unknown,kind:unknown):DecodedFragmentWithMembers|UnavailableFragment {
  return decodePayload(input,kind,PAYLOAD_POLICY,true) as DecodedFragmentWithMembers|UnavailableFragment;
+}
+/** Internal fixed whole-profile entry; no caller numeric limits. */
+export function decodeWholePayload(input:unknown,kind:unknown):DecodedFragment|UnavailableFragment{
+ if(wholeByteInputDenied(input))return{status:'unavailable',diagnostics:[{code:'unsupported-byte-view'}]};
+ return decodePayload(input,kind,PAYLOAD_POLICY,false,true);
 }
 const STATES = ['no_update_desired', 'presented_all', 'presented_partial', 'dropped'] as const;
 const FRAME_TYPES = ['forked', 'backfill'] as const;
@@ -126,12 +131,12 @@ function reporter(fields: PayloadFields, field: WireField): void {
 export function decodeBrowserFramePayload(input: unknown, kind: unknown, policy: unknown): DecodedFragment | UnavailableFragment {
   return decodePayload(input,kind,policy,false);
 }
-function decodePayload(input:unknown,kind:unknown,policy:unknown,retainMembers:boolean):DecodedFragment|DecodedFragmentWithMembers|UnavailableFragment {
+function decodePayload(input:unknown,kind:unknown,policy:unknown,retainMembers:boolean,whole=false):DecodedFragment|DecodedFragmentWithMembers|UnavailableFragment {
   try {
     if (policy !== PAYLOAD_POLICY) throw new WireError('unsupported-policy');
     if (kind !== 'reporter2' && kind !== 'graphics') throw new WireError('unsupported-payload-kind');
     const bytes = copyBody(input);
-    const budget = new WireBudget(); const reader = new BodyReader(bytes, 0, bytes.byteLength, budget);
+    const budget = whole?newWholeWireBudget():new WireBudget(); const reader = new BodyReader(bytes, 0, bytes.byteLength, budget);
     const fields: PayloadFields = {};
     const occurrences: Occurrence[] = []; const skippedFields: Occurrence[] = [];
     const retained:PayloadMember[]|undefined=retainMembers?[]:undefined;

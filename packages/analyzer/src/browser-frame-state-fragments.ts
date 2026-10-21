@@ -1,4 +1,4 @@
-import { BodyReader, copyBody, WireBudget, WireError, type WireField } from './browser-frame-protobuf-wire.js';
+import { BodyReader, copyBody, WireBudget, WireError,newWholeWireBudget,wholeByteInputDenied, type WireField } from './browser-frame-protobuf-wire.js';
 export const STATE_BODY_POLICY = 'pinned-browser-frame-state-body-fragments-v1';
 export const STATE_BODY_SOURCE = Object.freeze({ perfettoPin: '403906f4adfbf287a02e5546f8430dcc9d56b649' });
 const LABELS = Object.freeze({ normalizationCapability: 'state-body-fragments-only', sequenceValidity: 'not_evaluated', defaultEpoch: 'not_evaluated', internResolution: 'not_evaluated', clockAdmission: 'not_evaluated', runtimeQualification: 'unestablished', sourceCoverage: 'unestablished', evaluationEligibility: false, scoringEligibility: false, rankingEligibility: false } as const);
@@ -141,11 +141,16 @@ function clocks(context: Context, fields: Omit<StateFields,'entries'>, present: 
 /** Explicit standalone body only; success establishes no parent packet or capture origin. */
 export function decodeBrowserFrameStateBody(input: unknown, kind: unknown, policy: unknown): StateBodyFragment | StateBodyUnavailable {return decodeState(input,kind,policy,false) as StateBodyFragment|StateBodyUnavailable;}
 export function decodeBrowserFrameAnnotationStateBody(input:unknown):AnnotationStateBodyFragment|StateBodyUnavailable{return decodeState(input,'interned_names',STATE_BODY_POLICY,true);}
-function decodeState(input: unknown, kind: unknown, policy: unknown,annotations:boolean): AnnotationStateBodyFragment | StateBodyUnavailable {
+/** Internal fixed whole-profile entry; no caller numeric limits. */
+export function decodeWholeStateBody(input:unknown,kind:Kind):AnnotationStateBodyFragment|StateBodyUnavailable{
+ if(wholeByteInputDenied(input))return{status:'unavailable',diagnostics:[{code:'unsupported-byte-view'}]};
+ return decodeState(input,kind,STATE_BODY_POLICY,true,true);
+}
+function decodeState(input: unknown, kind: unknown, policy: unknown,annotations:boolean,whole=false): AnnotationStateBodyFragment | StateBodyUnavailable {
   try {
     if (policy !== STATE_BODY_POLICY) throw new WireError('unsupported-policy');
     if (kind !== 'defaults' && kind !== 'interned_names' && kind !== 'clock_snapshot') throw new WireError('unsupported-state-body-kind');
-    const bytes = copyBody(input); const context: Context = { bytes, budget: new WireBudget(), occurrences: [], skippedFields: [] };
+    const bytes = copyBody(input); const context: Context = { bytes, budget: whole?newWholeWireBudget():new WireBudget(), occurrences: [], skippedFields: [] };
     const fields: AnnotationStateFields = {}; const present = new Set<number>();
     if (kind === 'defaults') defaults(context,fields,present);
     else if (kind === 'interned_names') interned(context,fields,present,annotations);
