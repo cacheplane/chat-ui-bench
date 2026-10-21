@@ -67,6 +67,9 @@ jobs:
       - name: Test portable unscored module-binding source controls
         run: npm run test:copilot-module-binding 2>&1 | tee ci-logs/copilot-module-binding-controls.log
 
+      - name: Test portable unscored functional history source controls
+        run: npm run test:copilot-history-functional 2>&1 | tee ci-logs/copilot-history-functional-controls.log
+
       - name: Test offline hosted failure inspector with Python 3.12 or newer
         run: |
           python3 --version 2>&1 | tee ci-logs/hosted-failure-inspector.log
@@ -112,6 +115,17 @@ jobs:
           path: |
             ci-logs/copilot-module-binding-controls.log
             ${{ runner.temp }}/ci-evidence/copilot-module-binding-tests-*/run/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Preserve functional history source-control evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: copilot-history-functional-controls-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-logs/copilot-history-functional-controls.log
+            ${{ runner.temp }}/ci-evidence/copilot-history-functional-tests-*/
           if-no-files-found: warn
           retention-days: 7
 

@@ -17,6 +17,8 @@
     "test:h100-observer:portability": "node --test tools/h100-observer/portability.node.mjs",
     "test:copilot-module-binding": "node tools/copilot-module-binding/run.mjs --test",
     "diagnose:copilot-module-binding": "node tools/copilot-module-binding/run.mjs",
+    "test:copilot-history-functional": "node tools/copilot-history-functional/run.mjs --test",
+    "diagnose:copilot-history-functional": "node tools/copilot-history-functional/run.mjs",
     "test:scroll-cause:build": "vitest run --config vitest.scroll-cause-build.config.ts --no-color",
     "typecheck:scroll-cause": "tsc -p tests/tsconfig.scroll-cause.json --noEmit",
     "test:hosted:httpagent": "node tools/hosted-httpagent-admission.mjs && vitest run --config vitest.hosted-httpagent.config.ts --no-color",

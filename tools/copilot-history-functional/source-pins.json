@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    {
+      "path": "node_modules/@tanstack/virtual-core/dist/esm/index.js",
+      "bytes": 54156,
+      "sha256": "06f0d457a913752786a32f3f16dff0c5a9c5a8c4877665c31a2e74598db13c09"
+    },
+    {
+      "path": "node_modules/@tanstack/virtual-core/dist/esm/lazy-measurements.js",
+      "bytes": 1052,
+      "sha256": "99b8ef4dc023f5249b8c6c0c164abd2d5793a369b83795c2559ef83069643672"
+    },
+    {
+      "path": "node_modules/@tanstack/virtual-core/dist/esm/utils.js",
+      "bytes": 2545,
+      "sha256": "c1cee1b5f7f1cff7e20bd074dcc38b70f4774924f00bb674c0e226089f8d8279"
+    },
+    {
+      "path": "node_modules/@copilotkit/react-core/dist/copilotkit-DgJj6xa0.mjs",
+      "bytes": 509399,
+      "sha256": "2067b06183e89b1399dbbd894f03d1c541d4f14b4cd62be717d10c01849969a6"
+    },
+    {
+      "path": "node_modules/@tanstack/react-virtual/dist/esm/index.js",
+      "bytes": 5195,
+      "sha256": "c96d5598df79205f09d9bc4c45109adb1aa0c55ae5ceb9935e2f6b3294563167"
+    },
+    {
+      "path": "node_modules/@copilotkit/shared/dist/utils/row-render-keys.mjs",
+      "bytes": 8848,
+      "sha256": "3d3aac23ae6be0d844aacecb938b9378312149d4e3c8bbcfaa50681ea77e9c93"
+    },
+    {
+      "path": "node_modules/@tanstack/virtual-core/package.json",
+      "bytes": 1337,
+      "sha256": "e1ba3497e53e6a2ca4ac59db669b89e60fffeb1a37a982649eb37b55482f3cc1"
+    },
+    {
+      "path": "node_modules/@copilotkit/react-core/package.json",
+      "bytes": 4802,
+      "sha256": "b9a09c214b1aabac7a4d2d94d84f17d2c821eea4dcdb3f85c04c4f30dfe66fc5"
+    },
+    {
+      "path": "node_modules/@tanstack/react-virtual/package.json",
+      "bytes": 1884,
+      "sha256": "4274cda973d0d72214cd89f80c87346021bc9baf6f5dd29de062b25f412ad68e"
+    },
+    {
+      "path": "node_modules/@copilotkit/shared/package.json",
+      "bytes": 2594,
+      "sha256": "419a1910ae51c163ed654b9bfe5d843157e6ec97182b7b4013dbd7b3be4922a4"
+    },
+    {
+      "path": "apps/copilotkit/src/main.tsx",
+      "bytes": 3151,
+      "sha256": "c961f690c9f7ae547de5da5bb7f67d2d52981604a1c7edadd523f2f71a2b2f86"
+    },
+    {
+      "path": "apps/copilotkit/src/host.ts",
+      "bytes": 16946,
+      "sha256": "5ae7e6459c99e7638e6f133e8736a93605317ec13c6d7646a6846904138d6f71"
+    },
+    {
+      "path": "apps/copilotkit/src/controls.ts",
+      "bytes": 14290,
+      "sha256": "c33c7dabcaa91662dbb6ca68497498a90f1ae5d798dbd0b1d9d6dc7c30f81773"
+    },
+    {
+      "path": "apps/copilotkit/src/context.ts",
+      "bytes": 3268,
+      "sha256": "c9174a1937fe167e0802c89a1e9917da86b6e67c0ee5057b6ea46125556bbff1"
+    },
+    {
+      "path": "apps/copilotkit/src/geometry.ts",
+      "bytes": 28556,
+      "sha256": "8d4963b5944ffb0d3aac7005a41f93bc3cf9716a95c48a466d163fcd0ffc9f5d"
+    },
+    {
+      "path": "apps/copilotkit/src/scroll-cause-frontend.ts",
+      "bytes": 788,
+      "sha256": "92e9328176936ce0a2a0bc6780d771fa5e80a7a1745026c2ac78d8e3a5414346"
+    },
+    {
+      "path": "apps/copilotkit/runtime/mounted-tracker-a.ts",
+      "bytes": 77322,
+      "sha256": "58434971f47d9bcadb6f51042ad61818936abe5c328934b643af7cbf253a6a36"
+    },
+    {
+      "path": "apps/copilotkit/runtime/mounted-native.ts",
+      "bytes": 93636,
+      "sha256": "8d5d6242d856279aaae9fbb339de8e752978a1a6ad67bd37672350df3ad5090e"
+    },
+    {
+      "path": "tests/fixtures/aimock.ts",
+      "bytes": 7034,
+      "sha256": "0fa61611dfdcc0d411819b8a2d3c8ce9e61d8203ad36908ba457f756207a2d63"
+    },
+    {
+      "path": "tests/support/hosted-copilot-scroll-cause-build.ts",
+      "bytes": 19494,
+      "sha256": "dc00f126946372134b2874f77db29eb3c592021fbeffe7ed16a19b5a49a16ad5"
+    },
+    {
+      "path": "tests/support/hosted-copilot-scroll-cause-transform.ts",
+      "bytes": 6567,
+      "sha256": "378dcdceb4e596e1bf8c3016919f5773fe1dd00cd19e55ae33d9eaaffe61caad"
+    },
+    {
+      "path": "node_modules/react/package.json",
+      "bytes": 1242,
+      "sha256": "6e003e4e9ed25afa7fdd55613f8aa877cefa9b359d9c13f81ee704030248e24e"
+    },
+    {
+      "path": "node_modules/react-dom/package.json",
+      "bytes": 3054,
+      "sha256": "136d4af63de473392ea79d6a21932b0ed9eb37fe518ce70f4621250f3d79e9bb"
+    },
+    {
+      "path": "node_modules/react-dom/client.js",
+      "bytes": 1373,
+      "sha256": "00e348ab3d6bc2eef908345d0bc4e008c95bcfecec060dfda5c4967953761396"
+    },
+    {
+      "path": "node_modules/react-dom/cjs/react-dom-client.production.js",
+      "bytes": 625168,
+      "sha256": "8a8147c1cebdb19d82fd11bdb76391be9b20d00edf67cc8e8b30f44e850ce693"
+    },
+    {
+      "path": "node_modules/@copilotkit/react-core/dist/v2/index.css",
+      "bytes": 90186,
+      "sha256": "99c4c404d25fbde4f17cc542a3ca8fa6ae0e4d121b48d18e44bb79ecf0db3fde"
+    },
+    {
+      "path": "node_modules/playwright/index.js",
+      "bytes": 648,
+      "sha256": "4e98f65f0a9d9bcab8cffc0c5cfdd87fd3f5b0be74fc494ff166a466b204cd44"
+    },
+    {
+      "path": "node_modules/playwright/package.json",
+      "bytes": 1219,
+      "sha256": "76e7341a52a4dd154553c3514926a5f824da4374d000e88d9ac3c14ee6eadf84"
+    },
+    {
+      "path": "node_modules/playwright-core/index.js",
+      "bytes": 697,
+      "sha256": "a58fb2cec4293e7dcf73c58a179898a4f3986666451a19da4e731fa3af63265b"
+    },
+    {
+      "path": "node_modules/playwright-core/package.json",
+      "bytes": 876,
+      "sha256": "1d6b6f80ffb0c52865af0f9fe01abf2140df019e49ae6ac134605e462d583f3a"
+    },
+    {
+      "path": "node_modules/playwright-core/lib/coreBundle.js",
+      "bytes": 3584989,
+      "sha256": "2325ca4c1c83070e89dc49fb82525508f0a68e0cf12e2a624277968da216b7e0"
+    },
+    {
+      "path": "node_modules/playwright-core/lib/utilsBundle.js",
+      "bytes": 3085095,
+      "sha256": "75f1431ea7ee00b2b291a0a72d4fa1c07ae04d999f21a00cd03b8f454a5840fc"
+    },
+    {
+      "path": "node_modules/playwright-core/browsers.json",
+      "bytes": 1135,
+      "sha256": "2cfd419f71ac6475d81e1301fa86c34cf2a2a6bae2a0da4b5a2b18310216b6bf"
+    },
+    {
+      "path": "node_modules/esbuild/package.json",
+      "bytes": 3980,
+      "sha256": "9d0bc453f4e791553c4cc2298ba023b409241fd9801e494741666eb0f6051490"
+    },
+    {
+      "path": "node_modules/esbuild/lib/main.js",
+      "bytes": 97463,
+      "sha256": "61ec0ba144ff93f4bf0e96ad6fab6f430ede0aa13e27ace8063ed63ba416b3cd"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 1188802,
+      "sha256": "c9c4138247c23c593ceb5bd9f5275b59962aad0f017bcbc33dc78bcec3545a56"
+    }
+  ],
+  "kind": "copilot-history-functional-source-pins-v1"
+}
