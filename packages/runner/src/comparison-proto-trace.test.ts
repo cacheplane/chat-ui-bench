@@ -3,6 +3,7 @@ import { createProtoTraceCollector, type ProtoTraceCollector, type ProtoTracePor
 
 // Authored protocol controls only. No filesystem, browser, capture or config imports.
 const POLICY = 'pinned-proto-transport-diagnostic-pure-v1';
+const OWNED_POLICY = 'pinned-proto-owned-native-transport-v1';
 const PROFILE = '725ad10fb8f3280dca9deb933f17c874f320d9ecd5f9b91732f9e3823d07a66d';
 const CATEGORIES = 'blink.user_timing,cc,viz,benchmark,graphics.pipeline,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.frame';
 const EMPTY_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
@@ -76,6 +77,7 @@ class ManualClock {
   }
 }
 type Hooks = {
+  retainBytes?: boolean;
   completion?: unknown; replies?: unknown[];
   start?: () => Promise<void>; end?: () => Promise<void>; read?: () => Promise<unknown>;
   write?: (bytes: Uint8Array) => Promise<ProtoWriteAck>;
@@ -111,7 +113,7 @@ function harness(hooks: Hooks, policy: unknown) {
       close() { record('lifetime-close'); if (hooks.autoSessionClose !== false) closed?.(); return hooks.lifetimeClose?.() ?? Promise.resolve(); },
     },
     sink: {
-      write(bytes) { record('write'); received.push(Array.from(bytes)); return hooks.write?.(bytes) ?? Promise.resolve({ status: 'complete', written: bytes.length }); },
+      write(bytes) { record('write'); if(hooks.retainBytes!==false) received.push(Array.from(bytes)); return hooks.write?.(bytes) ?? Promise.resolve({ status: 'complete', written: bytes.length }); },
       close() { record('sink-close'); return hooks.sinkClose?.() ?? Promise.resolve(); },
     },
   };
@@ -466,3 +468,66 @@ it('cleanup-time revocation prevents protocol-closed and preserves an earlier fa
     falseAuthority(r);
   }, { completion: { ...GOOD, dataLossOccurred: priorLoss }, replies: [CHUNK] });
 });
+
+it('owned profile explicitly opts into immutable separate policy and deadlines', async () => fixture(async h => {
+  const r = await start(h);
+  expect(r.policy).toBe(OWNED_POLICY); expect(r.profileSha256).toMatch(/^[a-f0-9]{64}$/); expect(r.profileSha256).not.toBe(PROFILE);
+  expect(r.stageTimes).toEqual([{stage:'start',startedAtMs:0,deadlineAtMs:10000}]);
+  await valueOf(h.collector.finish()); const final=h.collector.snapshot();
+  expect(final.stageTimes.map(row=>[row.stage,row.deadlineAtMs!-row.startedAtMs!])).toEqual([['start',10000],['finish',20000],['cleanup',10000]]);
+  expect(final.outcome).toBe('protocol-closed');falseAuthority(final);
+}, {}, OWNED_POLICY));
+for(const extra of [0,1,65536]) it('owned profile writes real32MiB bytes then '+(extra?'refuses cap+'+extra:'accepts exact cap'), async () => fixture(async h => {
+  let reads=0,written=0;
+  h.hooks.read=async()=>{reads++;return reads<=512?{data:ZERO_CHUNK,base64Encoded:true,eof:!extra&&reads===512}:{data:extra===65536?ZERO_CHUNK:'AA==',base64Encoded:true,eof:true};};
+  h.hooks.write=async bytes=>{expect(bytes).toBeInstanceOf(Uint8Array);expect(bytes.every(value=>value===0)).toBe(true);written+=bytes.byteLength;return {status:'complete',written:bytes.byteLength};};
+  await start(h);const r=await h.collector.finish();
+  expect(written).toBe(33554432);expect(r.acknowledgedWrittenBytes).toBe(written);expect(r.readAttempts).toBe(extra?513:512);
+  expect(r.validatedReceivedBytes).toBe(33554432+extra);expect(h.count('write')).toBe(512);
+  if(extra)failure(r,'byte-capacity');else expect(r.outcome).toBe('protocol-closed');falseAuthority(r);
+}, {retainBytes:false}, OWNED_POLICY));
+for(const extra of [false,true]) it('owned profile permits4096 actual original reads and refuses4097 attempt '+extra,async()=>fixture(async h=>{
+  let reads=0;h.hooks.read=async()=>({data:'AA==',base64Encoded:true,eof:++reads===4096&&!extra});
+  await start(h);const r=await h.collector.finish();expect(reads).toBe(4096);expect(r.readAttempts).toBe(4096);expect(r.acknowledgedWrittenBytes).toBe(4096);
+  if(extra)failure(r,'read-capacity');else expect(r.outcome).toBe('protocol-closed');
+  expect(r.originalOperationsSettled).toBe(true);falseAuthority(r);
+}, {retainBytes:false}, OWNED_POLICY));
+it('owned finish deadline does not synthesize settlement of a held original read',async()=>fixture(async h=>{
+  const read=h.hold<unknown>(EOF);h.hooks.read=()=>read.promise;
+  await start(h);const finishing=h.collector.finish();await turns();h.clock.advance(19999);await turns();expect(h.collector.snapshot().firstFailure).toBeNull();
+  h.clock.advance(1);await turns();expect(h.collector.snapshot().firstFailure?.code).toBe('finish-timeout');
+  h.clock.advance(9999);await turns();expect(observe(finishing).state).toBe('pending');
+  h.clock.advance(1);const r=await valueOf(finishing);expect(r.pending.some(row=>row.kind==='read')).toBe(true);expect(r.originalOperationsSettled).toBe(false);
+  read.resolve(EOF);await turns();expect(h.collector.snapshot().originalOperationsSettled).toBe(true);expect(h.collector.snapshot().outcome).not.toBe('protocol-closed');
+}, {}, OWNED_POLICY));
+it('owned policy objects and boxed strings cannot supply mutable capacity overrides',async()=>{
+  for(const policy of [{policy:OWNED_POLICY,maxBytes:33554432},new String(OWNED_POLICY)])await fixture(async h=>{
+    const r=await valueOf(h.collector.start());failure(r,'unsupported-policy');expect(h.journal).toEqual([]);
+  },{},policy);
+});
+
+for(const [name,completion,code]of invalidCompletions)it('owned profile retains strict completion '+name,async()=>fixture(async h=>{
+ await start(h);const r=await valueOf(h.collector.finish());failure(r,code);expect(h.count('read')).toBe(0);
+},{completion},OWNED_POLICY));
+for(const data of ['AB==','AAB=','=AAA','AA==AAAA'])it('owned profile retains canonical base64 refusal '+data,async()=>fixture(async h=>{
+ await start(h);const r=await valueOf(h.collector.finish());failure(r,'invalid-base64');expect(h.count('write')).toBe(0);
+},{replies:[{data,eof:true,base64Encoded:true}]},OWNED_POLICY));
+for(const lane of ['start','end','read','write','ioClose','sinkClose','lifetimeClose']as const)it('owned profile retains original held '+lane+' after deadline',async()=>fixture(async h=>{
+ const held=h.hold<unknown>(lane==='read'?EOF:lane==='write'?{status:'complete',written:3}:undefined);
+ if(lane==='start')h.hooks.start=()=>held.promise as Promise<void>;
+ if(lane==='end')h.hooks.end=()=>{h.emitComplete();return held.promise as Promise<void>;};
+ if(lane==='read')h.hooks.read=()=>held.promise;
+ if(lane==='write')h.hooks.write=()=>held.promise as Promise<ProtoWriteAck>;
+ if(lane==='ioClose'||lane==='sinkClose'||lane==='lifetimeClose')h.hooks[lane]=()=>held.promise as Promise<void>;
+ const action=lane==='start'?h.collector.start():(await start(h),h.collector.finish());await turns();
+ h.clock.advance(lane==='start'?10000:20000);await turns();h.clock.advance(10000);const r=await valueOf(action);
+ const kind=({ioClose:'io-close',sinkClose:'sink-close',lifetimeClose:'lifetime-close'}as Record<string,string>)[lane]??lane;
+ expect(r.outcome).toBe('unavailable-pending');expect(r.pending.some(row=>row.kind===kind)).toBe(true);expect(r.originalOperationsSettled).toBe(false);
+ held.release();await turns();expect(h.collector.snapshot().outcome).not.toBe('protocol-closed');falseAuthority(r);
+},{replies:[CHUNK]},OWNED_POLICY));
+for(const [status,written,code]of [['partial',1,'sink-partial-write'],['refused',0,'sink-refused-write']]as const)it('owned profile retains '+status+' write acknowledgement',async()=>fixture(async h=>{
+ h.hooks.write=async()=>({status,written});await start(h);const r=await valueOf(h.collector.finish());failure(r,code);expect(r.acknowledgedWrittenBytes).toBe(written);expect(r.acceptedEof).toBe(false);
+},{replies:[CHUNK]},OWNED_POLICY));
+it('owned profile retains eight empty replies refusal',async()=>fixture(async h=>{
+ h.hooks.read=async()=>({data:'',eof:false});await start(h);const r=await valueOf(h.collector.finish());failure(r,'empty-progress');expect(r.readAttempts).toBe(8);
+},{},OWNED_POLICY));
