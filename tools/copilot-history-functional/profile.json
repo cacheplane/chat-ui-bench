@@ -125,9 +125,9 @@
       "nonpendingEmptyPartition": 258176,
       "noTokenJoinOrCredit": true,
       "scope": "One sticky per-commit pending reference before descriptor reads; mixed/nested refuse; actual source census required.",
-      "actualHelperComplete": 272,
+      "actualHelperComplete": 337,
       "actualCommonSyntax": 24,
-      "actualDeferredUpper": 376,
+      "actualDeferredUpper": 441,
       "actualCommitCallsIncludingCleanup": 66,
       "newFiniteSites": [
         "c-bail-context",
@@ -172,13 +172,24 @@
       "historicalHelperSyntax": 127
     },
     "closedEntryDiagnostic": {
-      "helperSyntax": 187,
-      "completeUpper": 376,
-      "addedDynamicUnits": 0,
+      "helperSyntax": 208,
+      "completeUpper": 441,
+      "addedDynamicUnits": 65,
       "sites": 32,
       "maxSiteBytes": 10,
       "stateAdded": 0,
-      "scope": "Two held composites split into ordered literal guards; same read/shortcircuit/throw order; no greater reached decision cost. Conservative static source bound increases60 for unreachable alternative fatal arms within existing1024."
+      "scope": "Historical32literal diagnostic preserved. e23 now admits only current or reciprocal same-root HostRoot provenance; +21 syntax/+44 descriptor bodies <= existing1024. Final full continuity remains exact."
+    },
+    "closedRootRelation": {
+      "helperSyntaxBefore": 187,
+      "helperSyntaxAfter": 208,
+      "additionalDescriptorBodies": 44,
+      "additionalUpper": 65,
+      "completeUpper": 441,
+      "noPublicationOrCredit": true,
+      "currentOrReciprocalHostRootOnly": true,
+      "historicalHelperComplete": 272,
+      "currentHelperComplete": 337
     }
   },
   "sourcePolicy": "Exact reversible installed source; same bare public Copilot ESM and original app; seed-only SSE diagnostic server transform, telemetry disabled",
