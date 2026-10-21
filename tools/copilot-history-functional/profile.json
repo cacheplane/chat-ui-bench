@@ -43,9 +43,21 @@
       "units": 64,
       "firstRefusalLiteralArgument": 1,
       "retainedGuardCalls": 18,
-      "maxSiteBytes": 18,
+      "maxSiteBytes": 20,
       "renewed": false,
-      "scope": "Argument evaluation at first refusal; postrefusal containment excluded from logical profile"
+      "scope": "Argument evaluation at first refusal; postrefusal containment excluded from logical profile",
+      "emptyCommitPrivateState": {
+        "ownedReads": 7,
+        "comparisons": 7,
+        "conditionalDecisions": 7,
+        "concatenations": 11,
+        "callArgumentReturnControlAllowance": 8,
+        "total": 40,
+        "reserve": 48,
+        "applicationReads": 0,
+        "newPersistentFields": 0,
+        "firstRefusalOnly": true
+      }
     }
   },
   "sourcePolicy": "Exact reversible installed source; same bare public Copilot ESM and original app; seed-only SSE diagnostic server transform, telemetry disabled",

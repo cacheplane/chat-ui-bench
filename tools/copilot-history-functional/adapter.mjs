@@ -56,6 +56,7 @@ function closeCommit(c){
 }
 function pendingWrite(o){if(current){if(current.nodes.length+current.writes.length>=2048){fail('limit','l-pwrite');return;}current.writes.push(o);}else{if(!sealed||!bindings[o.row]?.commit){fail('commit','c-pwrite-seal');return;}o.commit=sealed;origins[o.row]=o;}}
 function carryFailureSite(prefix){return 'm-end-carry-p'+prefix;}
+function emptyCommitSite(c){if(reason!==null)return 'c-end-empty-owner';return 'c-empty-r'+(c.root===selectedRoot?1:0)+'p'+(c.previousCommit===null?1:0)+'n'+(c.nodes.length===0?1:0)+'w'+(c.writes.length===0?1:0)+'f'+(c.frameDepth===0?1:0)+'m'+(mapping!==null?1:0);}
 function endCommit(root,work,normal,phase){
  const c=current;
  if(!c||c.root!==root||c.work!==work){fail('commit','c-end-identity');return;}
@@ -82,7 +83,7 @@ function endCommit(root,work,normal,phase){
   if(baselineOwner&&(baselineOwner!==r.owner||baselineCache!==r.owner.itemSizeCache||baselineScroller!==r.scroller||baselineLayout!==r.layout)){fail('layout');break;}
   candidate=r;if(r.map||carried)nextMapping=r;nextCarry=null;
  }
- if(!joined.length&&owner)fail('commit','c-end-empty-owner');
+ if(!joined.length&&owner)fail('commit',emptyCommitSite(c));
  if(!reason){for(const e of c.nodes){e.commit=c.id;const old=bindings[e.row];if(old)old.connected=false;bindings[e.row]=e;}
   for(const o of c.writes){o.commit=c.id;origins[o.row]=o;}
   c.done=true;
