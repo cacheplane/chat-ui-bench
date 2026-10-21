@@ -1,2 +1,27 @@
 import test from'node:test';import assert from'node:assert/strict';import cp from'node:child_process';import {EventEmitter}from'node:events';import fs from'node:fs/promises';import{tmpdir}from'node:os';import {preparePhysical}from'./worker-physical.mjs';
+
+async function argvCase(args,accepted=true){
+ const root=await fs.realpath(await fs.mkdtemp(tmpdir()+'/native-chat-argv-')),original=cp.spawn,send=process.send,kill=process.kill,executable='/authored/browser';let delegated=0,born=0,physical,receipt;
+ const child=new EventEmitter;Object.assign(child,{pid:123,spawnfile:executable,spawnargs:args,stdout:new EventEmitter,stderr:new EventEmitter});
+ for(const stream of[child.stdout,child.stderr])Object.assign(stream,{readableEnded:false,destroyed:false,destroy(){if(!this.destroyed){this.destroyed=true;this.emit('close');}}});
+ cp.spawn=()=>{delegated++;return child;};process.kill=()=>{const error=Error('authored-absent');error.code='ESRCH';throw error;};process.send=(message,callback)=>{born++;assert.equal(message.type,'browser-born');queueMicrotask(()=>process.emit('message',{type:'browser-ack',nonce:'argv',pid:123}));callback?.();};
+ try{
+  physical=await preparePhysical(root,executable,'argv',()=>{});
+  if(accepted){assert.equal(cp.spawn(executable,[],{detached:true}),child);const server=new EventEmitter,browser=new EventEmitter;server.process=()=>child;await physical.launched(server,browser);child.emit('exit',0,null);child.emit('close',0,null);server.emit('close');browser.emit('disconnected');for(const stream of[child.stdout,child.stderr]){stream.emit('end');stream.emit('close');}assert.deepEqual(await physical.wait(),{exitCode:0,signal:null});}
+  else assert.throws(()=>cp.spawn(executable,[],{detached:true}),/native-chat-physical-unavailable/);
+ }finally{if(physical){await physical.abandon();receipt=physical.receipt();}cp.spawn=original;process.send=send;process.kill=kill;await fs.rm(root,{recursive:true});}
+ assert.equal(delegated,1);assert.equal(born,1);assert.ok(receipt.pipes.every(pipe=>pipe.writerClosed));return receipt;
+}
+test('pinned Playwright long disable-features argument fits the unchanged aggregate argv envelope',async()=>{
+ const raw=await fs.readFile(new URL('../../node_modules/playwright-core/lib/coreBundle.js',import.meta.url),'utf8'),block=/disabledFeatures = \[([\s\S]*?)\]\.filter\(Boolean\)/.exec(raw);assert.ok(block);
+ const features=[...block[1].matchAll(/^\s*"([^"\\]+)"\s*,?\s*$/gm)].map(match=>match[1]),flag='--disable-features='+features.join(',');assert.equal(features.length,17);assert.equal(flag.length,393);
+ const args=['/authored/browser','--headless',flag];assert.ok(args.join('').length<4096);assert.deepEqual((await argvCase(args)).argv,args);
+});
+test('argv aggregate exact4096 is admitted and one-over keeps original child cleanup',async()=>{
+ const prefix=['/authored/browser','--headless'],remaining=4096-prefix.join('').length,args=[...prefix,'x'.repeat(remaining)];assert.deepEqual((await argvCase(args)).argv,args);await argvCase([...prefix,'x'.repeat(remaining+1)],false);
+});
+test('argv64 slots remain admitted and a65th keeps original child cleanup',async()=>{await argvCase(['/authored/browser','--headless',...Array(62).fill('x')]);await argvCase(['/authored/browser','--headless',...Array(63).fill('x')],false);});
+test('argv type ASCII executable and headless guards remain closed after original adoption',async()=>{
+ let hooks=0;const object={toString(){hooks++;return'x';}};for(const args of[['/authored/browser','--headless',object],['/authored/browser','--headless','non-ascii-\u0100'],['/other/browser','--headless'],['/authored/browser','--not-headless']])await argvCase(args,false);assert.equal(hooks,0);
+});
 test('early spawn hook adopts original child and pipes before await; original closure and once wait required',async()=>{const root=await fs.realpath(await fs.mkdtemp(tmpdir()+'/native-chat-physical-'));const original=cp.spawn,send=process.send,kill=process.kill;let delegated=0,failed=0;const child=new EventEmitter;Object.assign(child,{pid:123,spawnfile:'/authored/browser',spawnargs:['/authored/browser','--headless'],stdout:new EventEmitter,stderr:new EventEmitter});for(const s of[child.stdout,child.stderr])Object.assign(s,{readableEnded:false,destroyed:false});process.kill=(_pid,signal)=>{assert.equal(signal,0);const e=Error('authored-absent');e.code='ESRCH';throw e;};cp.spawn=()=>{delegated++;return child};process.send=(m,callback)=>{assert.deepEqual(m,{type:'browser-born',nonce:'n',pid:123});queueMicrotask(()=>process.emit('message',{type:'browser-ack',nonce:'n',pid:123}));callback?.();};let p;try{p=await preparePhysical(root,'/authored/browser','n',()=>failed++);const got=cp.spawn('/authored/browser',[],{detached:true});assert.equal(got,child);child.stdout.emit('data',Buffer.from('early'));const server=new EventEmitter,browser=new EventEmitter;server.process=()=>child;await p.launched(server,browser);assert.equal(delegated,1);child.emit('exit',0,null);child.emit('close',0,null);server.emit('close');browser.emit('disconnected');for(const s of[child.stdout,child.stderr]){s.emit('end');s.emit('close');}assert.deepEqual(await p.wait(),{exitCode:0,signal:null});assert.equal(failed,0);assert.equal(await fs.readFile(root+'/browser.stdout.bin','utf8'),'early');assert.equal(p.receipt().earlySpawnHook,true);}finally{if(p)await p.abandon();cp.spawn=original;process.send=send;process.kill=kill;await fs.rm(root,{recursive:true});}});
