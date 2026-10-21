@@ -87,3 +87,52 @@ export function transform(kind,requestedAdapter=adapterPath){
  return {kind,path:pin.path,sourceSha256:pin.sha256,sha256:sha(code),edits,code};
 }
 export function reverse(receipt){let code=receipt.code,added=0;need(sha(code)===receipt.sha256);const placements=receipt.edits.map(e=>{const result={offset:e.offset+added,text:e.text};added+=e.text.length;return result;});for(const e of placements.reverse()){need(code.slice(e.offset,e.offset+e.text.length)===e.text);code=code.slice(0,e.offset)+code.slice(e.offset+e.text.length);}need(sha(code)===receipt.sourceSha256);return code;}
+
+// Opt-in source unit. No driver/profile selects this transform yet.
+export function transformWarm(kind,requestedAdapter=adapterPath){
+ const base=transform(kind,requestedAdapter),changes=[];let code=base.code;
+ function replace(old,text){const start=code.indexOf(old);if(start<0||code.indexOf(old,start+1)>=0)throw Error('warm-source-contract');changes.push({start,old,text});code=code.slice(0,start)+text+code.slice(start+old.length);}
+ let specifier=relative(dirname(resolve(sourceRoot,base.path)),adapterPath);if(!specifier.startsWith('.'))specifier='./'+specifier;
+ let helper=relative(dirname(resolve(sourceRoot,base.path)),resolve(here,'warm-runtime.mjs'));if(!helper.startsWith('.'))helper='./'+helper;
+ let baseline=relative(dirname(resolve(sourceRoot,base.path)),resolve(here,'warm-baseline.mjs'));if(!baseline.startsWith('.'))baseline='./'+baseline;
+ let selector=relative(dirname(resolve(sourceRoot,base.path)),resolve(here,'warm-selector.mjs'));if(!selector.startsWith('.'))selector='./'+selector;
+ if(kind==='react')replace(`var __lh = require(${JSON.stringify(specifier)}).adapter;`, `var __wh = require(${JSON.stringify(specifier)}).createWarmSourceIngress(require(${JSON.stringify(helper)}).getWarmRuntime(),require(${JSON.stringify(baseline)}).createWarmBaseline,require(${JSON.stringify(selector)}).createWarmSelector);\nvar __lh = __wh.adapter;`);
+ else replace(`import {adapter as __lh} from ${JSON.stringify(specifier)};`, `import {createWarmSourceIngress as __warmIngress} from ${JSON.stringify(specifier)};\nimport {getWarmRuntime as __warmRuntime} from ${JSON.stringify(helper)};\nimport {createWarmBaseline as __warmBaseline} from ${JSON.stringify(baseline)};\nimport {createWarmSelector as __warmSelector} from ${JSON.stringify(selector)};\nconst __wh=__warmIngress(__warmRuntime(),__warmBaseline,__warmSelector);const __lh=__wh.adapter;`);
+ if(kind==='copilot')replace('return sizes.size > 0 ? Math.max(1, Math.round(total / sizes.size)) : 100;', 'const __whFirst=sizes.size; __wh.estimate(total,__whFirst);\n\t\treturn __whFirst > 0 ? Math.max(1, Math.round(total / sizes.size)) : 100;');
+ if(kind==='copilot'){
+  replace('const measureRowElement = React.useCallback((el) => {','const measureRowElement = React.useCallback((el) => {\n let __whMeasuredTotal=0;');
+  replace('measuredRef.current.total = total - (sizes.get(index) ?? 0) + height;','measuredRef.current.total = (__whMeasuredTotal=total - (sizes.get(index) ?? 0) + height);');
+  replace('return height;\n\t}, []);\n\tconst isPinnedToBottomRef','return __wh.measureReturn(height,__whMeasuredTotal,index);\n\t}, []);\n\tconst isPinnedToBottomRef');
+ }
+ if(kind==='core'){
+  replace('this.calculateRange = memo(\n      () => [','this.calculateRange = memo(\n      () => {const __whDependency=__wh.calculateDepsBegin(this);let __whOK=false;try{const __whReturn= [');
+  replace('this.notify = (sync) => {','this.notify = (sync) => {\n __wh.coreEvent(this,14,0,sync===true?1:sync===false?0:sync);');
+  replace('const nextCount = merged.count;','const nextCount = merged.count;\n __wh.coreEvent(this,15,0,nextCount);');
+  replace('this.getOffsetForAlignment(toOffset, align),','__wh.scrollValue(this,this.getOffsetForAlignment(toOffset, align)),');
+  replace('const [offset, align] = offsetInfo;','const [offset, align] = offsetInfo;\n __wh.coreEvent(this,18,offset,1);');
+  replace('const delta = size - itemSize;\n      if (delta !== 0) {','const delta = size - itemSize;\n __wh.deltaFacts(this,index,size,itemSize);\n      if (__wh.deltaBranch(this,index,delta,delta !== 0)) {');
+  replace('const createFrameQueue = (targetWindow) => {','const createFrameQueue = (targetWindow,__whInstance) => {');
+  replace('const frames = createFrameQueue(targetWindow);','const frames = createFrameQueue(targetWindow,instance);');
+  replace('const frames = _frames = createFrameQueue(targetWindow);','const frames = _frames = createFrameQueue(targetWindow,this);');
+  replace('const id = targetWindow.requestAnimationFrame(() => {\n        ids.delete(id);\n        fn();\n      });','const id = __wh.runFrameRequest(__whInstance,()=>targetWindow.requestAnimationFrame((__wh.frameRequest(__whInstance),()=>{\n __wh.frameEnter(__whInstance);let __whOK=false;try{\n        ids.delete(id);\n        fn();__whOK=true;\n }finally{__wh.frameEnd(__whInstance,__whOK);}})));');
+  replace('this.rafId = this.targetWindow.requestAnimationFrame(() => {\n      this.rafId = null;\n      this.reconcileScroll();\n    });','this.rafId = __wh.runFrameRequest(this,()=>this.targetWindow.requestAnimationFrame((__wh.frameRequest(this),()=>{\n __wh.frameEnter(this);let __whOK=false;try{\n      this.rafId = null;\n      this.reconcileScroll();__whOK=true;\n }finally{__wh.frameEnd(this,__whOK);}})));');
+  replace('        this.options.lanes\n      ],\n      (measurements, outerSize, scrollOffset, lanes) => {','        this.options.lanes\n      ];__whOK=true;return __whReturn;}finally{__wh.calculateDepsEnd(this,__whDependency,__whOK);}},\n      (measurements, outerSize, scrollOffset, lanes) => {');
+  replace('(measurements, outerSize, scrollOffset, lanes) => {','(measurements, outerSize, scrollOffset, lanes) => {\n const __whRange=__wh.rangeBegin(this,outerSize,scrollOffset,lanes);let __whOK=false;try{');
+  replace('          this.range = null;\n          return null;','          __wh.rangeNull(this,__whRange);this.range = null;\n          __whOK=true;return null;');
+  replace('this.range = calculateRangeImpl(','this.range = __wh.rangeCalculated(this,__whRange,calculateRangeImpl(');
+  replace('lanes === 1 && this._singleLaneMeasurements !== null ? this._singleLaneMeasurements.flat : null\n        );\n        return this.range;','__wh.rangeInput(this,__whRange,lanes === 1 && this._singleLaneMeasurements !== null ? this._singleLaneMeasurements.flat : null)\n        ));\n        const __whReturn=__wh.rangeReturned(this,__whRange,this.range);__whOK=true;return __whReturn;\n }finally{__wh.rangeEnd(this,__whRange,__whOK);}');
+  replace('        let startIndex = null;\n        let endIndex = null;','        const __whDeps=__wh.depsBegin(this);let __whOK=false;try{\n        let startIndex = null;\n        let endIndex = null;');
+  replace('        this.maybeNotify.updateDeps([this.isScrolling, startIndex, endIndex]);\n        return [','        this.maybeNotify.updateDeps([this.isScrolling, startIndex, endIndex]);\n        __wh.rangeDeps(this,__whDeps,range,startIndex,endIndex);\n        const __whReturn= [');
+  replace('          this.options.lanes\n        ];\n      },\n      (rangeExtractor, overscan, count, startIndex, endIndex, lanes) => {','          this.options.lanes\n        ];\n        __whOK=true;return __whReturn;}finally{__wh.depsEnd(this,__whDeps,__whOK);}\n      },\n      (rangeExtractor, overscan, count, startIndex, endIndex, lanes) => {\n const __whIndexes=__wh.indexBegin(this,rangeExtractor,overscan,count,startIndex,endIndex,lanes,defaultRangeExtractor);let __whOK=false;try{');
+  replace('        return startIndex === null || endIndex === null ? [] : rangeExtractor({','        const __whReturn=startIndex === null || endIndex === null ? [] : rangeExtractor({');
+  replace('          count,\n          lanes\n        });\n      },\n      {\n        key: process.env.NODE_ENV !== "production" && "getVirtualIndexes",','          count,\n          lanes\n        });\n        const __whValue=__wh.indexResult(this,__whIndexes,__whReturn);__whOK=true;return __whValue;}finally{__wh.indexEnd(this,__whIndexes,__whOK);}\n      },\n      {\n        key: process.env.NODE_ENV !== "production" && "getVirtualIndexes",');
+  replace('export {\n  Virtualizer,','__wh.kernel(calculateRangeImpl,defaultRangeExtractor);\nexport {\n  Virtualizer,');
+ }
+ if(code.length>=2*1024*1024||base.edits.length+changes.length>96)throw Error('warm-source-contract');
+ return {kind,path:base.path,base,changes,code,sha256:sha(code),sourceSha256:base.sourceSha256};
+}
+export function reverseWarm(receipt){
+ let code=receipt.code;if(sha(code)!==receipt.sha256)throw Error('warm-source-contract');
+ for(const c of [...receipt.changes].reverse()){if(code.slice(c.start,c.start+c.text.length)!==c.text)throw Error('warm-source-contract');code=code.slice(0,c.start)+c.old+code.slice(c.start+c.text.length);}
+ if(code!==receipt.base.code)throw Error('warm-source-contract');return reverse(receipt.base);
+}
