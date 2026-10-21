@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {parseArgs} from './run.mjs';
 import * as policy from './policy.mjs';
+test('diagnostic mapper admits exactly00 through75 and preserves unknown foreign errors',async()=>{
+ const {warmControllerError}=await import('./driver.mjs');for(let i=0;i<=75;i++){const code='C-warm-raf-'+String(i).padStart(2,'0');assert.equal(warmControllerError(new Error('page.evaluate: Error: '+code+'\n at source')),code);assert.equal(warmControllerError(new Error(code),true),code);}
+ for(const suffix of ['76','99','-1','1','001','00-forged','00 trailing']){const code='C-warm-raf-'+suffix;assert.equal(warmControllerError(new Error('page.evaluate: Error: '+code)),null);assert.equal(warmControllerError(new Error(code),true),null);}
+ assert.equal(warmControllerError(new Error('page.evaluate: Error: C-warm-raf-00\n at source')),'C-warm-raf-00');for(const tail of ['\n','\nforged'])assert.equal(warmControllerError(new Error('C-warm-raf-00'+tail),true),null);
+});
 const profile='warm-h100-v1';
 test('warm CLI accepts only the explicit fixed profile',()=>{assert.equal(parseArgs(['--preflight','--profile',profile]).profile,profile);assert.throws(()=>parseArgs(['--profile','foreign']));assert.throws(()=>parseArgs(['--profile',profile,'--profile',profile]));});
 test('runtime profile closes the exact reviewed allocation',()=>{const p=JSON.parse(fs.readFileSync(new URL('./warm-profile.json',import.meta.url)));assert.equal(p.sourceWork.initial,8227264);assert.equal(p.sourceWork.global,67108288);assert.equal(p.warm.scopes,9109);assert.equal(p.warm.commits,64);assert.equal(p.warm.renders,32);});

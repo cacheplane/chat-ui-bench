@@ -271,6 +271,38 @@ async function virtualFixture(text){
  const f=(await import('data:text/javascript;base64,'+Buffer.from(source+extra).toString('base64'))).unbound(runtime),bindings=await sourceCoreClass(text,f.ingress),trace=[];
  const instance=new bindings.Virtualizer({count:100,estimateSize:()=>200,getScrollElement:()=>null,onChange(...args){trace.push(['change',args[0]===instance,args[1]]);},anchorTo:'end'});return{runtime,f,instance,trace,bindings};
 }
+test('diagnostic original constructor preserves first capture site through later RAF and close',async()=>{
+ const x=await virtualFixture(instrument.transformWarm('core').code);assert.equal(x.f.ingress.healthy(),true);
+ const second=new x.bindings.Virtualizer({count:0,estimateSize:()=>200,getScrollElement:()=>null});assert.notEqual(second,x.instance);
+ assert.throws(()=>x.f.ingress.controllerFrame(),e=>e.message==='C-warm-raf-10');
+ assert.equal(x.runtime.diagnostic(),'10');const close=x.runtime.close();assert.equal(close.reason,'source-fault');assert.equal(x.runtime.diagnostic(),'10');
+});
+test('diagnostic sticky runtime tag preserves old close reason and explicit unknown after healthy close',()=>{
+ const r=createWarmRuntime();r.fail('pair-stale','68');r.fail('source-fault','10');assert.equal(r.diagnostic(),'68');assert.equal(r.close().reason,'pair-stale');r.fail('source-fault','01');assert.equal(r.diagnostic(),'68');
+ const fresh=createWarmRuntime();assert.equal(fresh.diagnostic(),'00');assert.equal(fresh.close().reason,null);fresh.fail('source-fault','10');assert.equal(fresh.diagnostic(),'00');assert.equal(fresh.close().reason,'already-closed');
+});
+test('diagnostic complete75 source-extracted failure calls latch exactly once without changing public reasons',()=>{
+ const adapterText=fs.readFileSync(new URL('adapter.mjs',import.meta.url),'utf8'),runtimeText=fs.readFileSync(new URL('warm-runtime.mjs',import.meta.url),'utf8'),adapterAst=parseAst(adapterText,{},'adapter.mjs'),runtimeAst=parseAst(runtimeText,{},'runtime.mjs'),factory=adapterAst.body.find(n=>n.declaration?.id?.name==='createWarmSourceIngress').declaration;
+ let sourceErrorText;const calls=[];function walk(n,text){if(!n||typeof n!=='object')return;if(n.type==='FunctionDeclaration'&&n.id?.name==='sourceError')sourceErrorText=text.slice(n.start,n.end);if(n.type==='CallExpression'&&(n.callee.name==='sourceError'||n.callee.object?.name==='runtime'&&n.callee.property?.name==='fail'||n.callee.name==='fail')){const site=n.arguments.at(-1);if(site?.type==='Literal'&&/^\d\d$/.test(site.value))calls.push({code:site.value,text:text.slice(n.start,n.end),reason:n.callee.name==='sourceError'?'source-fault':n.arguments[0].value});}for(const v of Object.values(n))if(Array.isArray(v))v.forEach(x=>walk(x,text));else if(v&&typeof v==='object')walk(v,text);}
+ walk(factory,adapterText);walk(runtimeAst,runtimeText);assert.equal(calls.length,74);assert.deepEqual(calls.map(x=>x.code),Array.from({length:74},(_,i)=>String(i+1).padStart(2,'0')));assert.ok(sourceErrorText);
+ calls.push({code:'75',text:'sourceError()',reason:'source-fault'});for(const call of calls){const r=createWarmRuntime(),sourceError=Function('runtime','let sourceFault=false;return('+sourceErrorText+');')(r);Function('runtime','fail','sourceError','return('+call.text+');')(r,r.fail,sourceError);assert.equal(r.diagnostic(),call.code);r.fail('pair-owner','00');sourceError('01');const dto=r.close();assert.equal(dto.reason,call.reason);assert.equal(r.diagnostic(),call.code);assert.equal(dto.complete,false);assert.equal(dto.records,0);assert.equal(dto.text,'');assert.equal(dto.nativeGO,false);}
+});
+test('diagnostic real controller RAF branches distinguish entry callback quota and original throw',async()=>{
+ const oldWindow=globalThis.window;try{
+  delete globalThis.window;{const r=createWarmRuntime(),f=await privateIngress(r);assert.throws(()=>f.ingress.controllerFrame(),e=>e.message==='C-warm-raf-05');assert.equal(r.diagnostic(),'05');}
+  const callbacks=[];globalThis.window={requestAnimationFrame(fn){callbacks.push(fn);}};
+  {const r=createWarmRuntime(),f=await privateIngress(r);for(let i=0;i<32;i++){const p=f.ingress.controllerFrame();callbacks.shift()();await p;}assert.throws(()=>f.ingress.controllerFrame(),e=>e.message==='C-warm-raf-06');assert.equal(r.diagnostic(),'06');}
+  {const r=createWarmRuntime(),f=await privateIngress(r);const p=f.ingress.controllerFrame(),callback=callbacks.shift();callback();await p;callback();assert.equal(r.diagnostic(),'08');assert.equal(f.ingress.healthy(),false);}
+  {const r=createWarmRuntime(),f=await privateIngress(r);const p=f.ingress.controllerFrame();r.fail('pair-stale','68');callbacks.shift()();await assert.rejects(p,e=>e.message==='C-warm-raf-68');assert.equal(r.diagnostic(),'68');}
+  {const sentinel={nativeRaf:true};globalThis.window={requestAnimationFrame(){throw sentinel;}};const r=createWarmRuntime(),f=await privateIngress(r);await assert.rejects(f.ingress.controllerFrame(),e=>e===sentinel);assert.equal(r.diagnostic(),'09');}
+ }finally{if(oldWindow===undefined)delete globalThis.window;else globalThis.window=oldWindow;}
+});
+test('diagnostic actual append failures preserve held public DTO and reentrant getter trace',async()=>{
+ const text=fs.readFileSync(new URL('warm-runtime.mjs',import.meta.url),'utf8'),old=text.replace(/fail\(('[^']+'),'[0-9]{2}'\)/g,'fail($1)').replace("function fail(code,site='00'){if(!closed)refusal??=code+'|'+site;return false;}","function fail(code){if(!closed)refusal??=code;return false;}").replace("reason:refusal===null?null:refusal.slice(0,-3)","reason:refusal").replace("diagnostic:()=>refusal===null?'00':refusal.slice(-2),",'');assert.equal(instrument.sha(old),'b559587ca5d216d55596bf9125b809c6c4dbd4cd63f76cb2e1e412ee52b6c236');const held=await import('data:text/javascript;base64,'+Buffer.from(old).toString('base64'));
+ for(const mode of ['valid','invalid','ordinal','capacity','reentrant']){const traces=[],results=[];for(const factory of [held.createWarmRuntime,createWarmRuntime]){const r=factory(),trace=[],h=[1,0,0,0,0,1];if(mode==='reentrant')Object.defineProperty(h,0,{get(){trace.push('header0');r.event([1,0,0,0,0,1],0,-1,0,0,0,0);return 1;}});if(mode==='capacity')for(let j=0;j<448;j++)r.event([r.ordinal(),0,0,0,0,1],0,-1,0,0,0,0);const value=r.event(mode==='ordinal'?[2,0,0,0,0,1]:h,mode==='invalid'?22:0,-1,0,0,0,0);if(r.diagnostic&&mode!=='valid')assert.equal(r.diagnostic(),{invalid:'72',ordinal:'73',capacity:'71',reentrant:'70'}[mode]);results.push({value,close:r.close()});traces.push(trace);}assert.deepEqual(results[1],results[0],mode);assert.deepEqual(traces[1],traces[0],mode);}
+ // Site74 is a defensive guard, unreachable under these prior owned format/count bounds.
+ assert.equal(16*384+448*96,49152);
+});
 test('original notify and conditional nextCount seams emit only already evaluated primitives',async()=>{
  const x=await virtualFixture(instrument.transformWarm('core').code);assert.equal(x.f.state().reason,null);assert.equal(x.runtime.retained(),0,'constructor does not fabricate nextCount');
  x.instance.notify(false);x.instance.scrollElement={};x.instance.setOptions({...x.instance.options,count:100});assert.equal(x.f.state().reason,null);assert.deepEqual(x.trace,[['change',true,false]]);
