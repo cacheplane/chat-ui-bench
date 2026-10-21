@@ -92,3 +92,5 @@ source-owned accounting, not V8 allocation, RSS, native instructions, or a total
 page-application CPU bound. Final resource acceptance and actual acquisition
 remain separate gates. Results remain unscored: clock and frame population are
 not admitted, native support is false, and FPS is null.
+
+The private worker reports one bounded58-byte failure line with two-digit `observedAt` and `cleanupAt` stages. These are the last instrumented forward operation and cleanup failure, not authenticated causes or completions. Cleanup never replaces the forward location;00 means no cleanup failure was observed. Original import/entry parsing or successful-result serialization failures outside the existing rejection arm are not covered. Codes01–15 cover worker admission/setup,20–25 navigation/bootstrap/owner setup,30–46 capture operations, and90–93 cleanup failure observations. Positive output, original promises and errors, all deadlines/caps, and unscored authority are unchanged. Historical generic failures and display-link warnings do not identify a stage or establish cause.
