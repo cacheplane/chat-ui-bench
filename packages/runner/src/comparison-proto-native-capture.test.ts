@@ -3,6 +3,9 @@ import {mkdtemp,mkdir,readFile,writeFile,rm,realpath,open,stat,rename} from 'nod
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
+import * as nativePhase from './comparison-proto-native-capture.js';
+import syncFs from 'node:fs';
+import {body as protoBody,join as protoJoin,text as protoText,uint as protoUint} from '../../analyzer/src/browser-frame-packet-fragments.test-helper.js';
 
 // Source-only owner tests: supplied authored public objects, real exclusive files,
 // no browser acquisition or trace input. This is not functional/native evidence.
@@ -44,6 +47,97 @@ async function setup(){
 async function fixture(body:(h:Awaited<ReturnType<typeof setup>>,create:any)=>Promise<void>){const h=await setup();try{await body(h,await factory());}finally{await h.dispose();}}
 function unqualified(r:any){expect(r.analysis).toBe('not_evaluated');for(const key of ['qualification','captureQualified','fpsEligibility','evaluationEligibility','scoringEligibility','rankingEligibility','nativeSupported'])expect(r[key]).toBe(false);expect(r.targetLifetime).toBe('unestablished');expect(r.clockAdmission).toBe('not_evaluated');}
 async function capture(h:any,create:any){const owner=create(h.inputs);const started=await owner.start();expect(started.status,JSON.stringify(started)).toBe('open');await owner.mark('start');await owner.mark('end');const receipt=await owner.finish();return {owner,receipt};}
+function inspectPhase(owner:unknown):any {
+ const inspect=(nativePhase as unknown as Record<string,unknown>).inspectProtoNativePhase;
+ expect(inspect,'new synchronous source-owned phase inspection export').toBeTypeOf('function');
+ return (inspect as (owner:unknown)=>unknown)(owner);
+}
+async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:ReturnType<typeof nativePhase.createProtoNativeCapture>,r:any,names:string[])=>Promise<void>,mode='pair'){
+ await fixture(async(h,create)=>{
+  const names:string[]=[],mark=h.phase.mark,send=h.session.send;
+  if(mode==='escaped'){h.inputs.runId='"\\'.repeat(16);h.inputs.phaseId='"\\'.repeat(16);h.setTarget({targetInfo:{targetId:'"\\'.repeat(128),type:'page',url:'https://authored.invalid/',browserContextId:'context'}});}
+  h.phase.mark=async name=>{names.push(name);await mark(name);};
+  h.session.send=async(method,parameters)=>{
+   if(method==='IO.read'){
+    expect(names).toHaveLength(2);
+    const marker=(name:string,i:number,extra:Uint8Array[]=[])=>protoBody(1,protoJoin(protoUint(10,1n),protoUint(13,1n),protoUint(8,i?100n:900n),protoBody(11,protoJoin(protoBody(4,protoJoin(protoText(10,'markName'),protoText(6,name))),...extra))));
+    let packets=names.map((name,i)=>marker(name,i));
+    if(mode==='duplicate-start')packets.push(marker(names[0]!,2));if(mode==='duplicate-end')packets.push(marker(names[1]!,2));
+    if(mode==='foreign')packets.push(marker('native:authored-run:authored-phase:other',2));
+    if(mode==='outside')packets.push(marker('unrelated',2));
+    if(mode==='missing-start')packets=packets.slice(1);if(mode==='missing-end')packets=packets.slice(0,1);
+    if(mode==='reverse')packets.reverse();
+    if(mode==='withheld')packets[0]=marker(names[0]!,0,[protoBody(4,protoJoin(protoUint(1,9n),protoText(6,'unresolved')))]);
+    if(mode==='loss')packets[1]=protoBody(1,protoJoin(protoUint(10,1n),protoUint(42,1n),protoBody(11,protoBody(4,protoJoin(protoText(10,'markName'),protoText(6,names[1]!))))));
+    if(mode==='128'||mode==='129')for(let i=2;i<Number(mode);i++)packets.push(marker('unrelated-'+i,i));
+    if(mode==='malformed-tail')packets.push(Uint8Array.of(10,2,0));
+    const bytes=protoJoin(...packets);
+    return {data:Buffer.from(bytes).toString('base64'),base64Encoded:true,eof:true};
+   }
+   return send(method,parameters);
+  };
+  const owner=create(h.inputs);expect((await owner.start()).status).toBe('open');await owner.mark('start');await owner.mark('end');
+  const finishing=owner.finish();expect(owner.finish()).toBe(finishing);const r=await finishing;expect(r.status).toBe('closed');
+  await run(h,owner,r,names);
+ });
+}
+it('phase join source-owned generated names bind the whole supplied file without clock authority',async()=>phaseFixture(async(_h,owner,_r,names)=>{
+ const result=inspectPhase(owner);
+ expect(result).toMatchObject({status:'phase-registry-inventory-diagnostic',reason:null,runId:'authored-run',phaseId:'authored-phase',rows:[{phase:'start',name:names[0],rawTimestamp:'900'},{phase:'end',name:names[1],rawTimestamp:'100'}],authority:{qualification:false,captureQualified:false,nativeSupported:false,FPS:null,duration:null,clockAdmission:'not_evaluated'}});
+ expect(result.rows[0].packetIndex).toBeLessThan(result.rows[1].packetIndex);expect(Object.isFrozen(result)).toBe(true);expect(Object.isFrozen(result.rows[0])).toBe(true);
+}));
+it('phase join rejects unknown cloned and prototype owners without reflection or reader I/O',()=>{
+ let traps=0;const proxy=Proxy.revocable({},{get(){traps++;throw 1;},ownKeys(){traps++;throw 1;},getPrototypeOf(){traps++;throw 1;},getOwnPropertyDescriptor(){traps++;throw 1;}});
+ const read=vi.spyOn(syncFs,'lstatSync');try{
+  for(const value of [null,undefined,1,'x',{},Object.create({receipt:{status:'closed'}}),{receipt:{status:'closed'}},proxy.proxy])expect(inspectPhase(value)).toMatchObject({status:'unavailable',reason:'unregistered-owner',rows:[]});
+  proxy.revoke();expect(inspectPhase(proxy.proxy).reason).toBe('unregistered-owner');expect(traps).toBe(0);expect(read).not.toHaveBeenCalled();
+ }finally{read.mockRestore();}
+});
+it('phase join genuine pre-ready request consumes once and never resurrects',async()=>fixture(async(h,create)=>{
+ const owner=create(h.inputs);const read=vi.spyOn(syncFs,'lstatSync');try{const refused=inspectPhase(owner);expect(refused.reason).toBe('owner-not-ready');expect(read).not.toHaveBeenCalled();await owner.start();await owner.mark('start');await owner.mark('end');await owner.finish();expect(inspectPhase(owner)).toBe(refused);expect(read).not.toHaveBeenCalled();}finally{read.mockRestore();}
+}));
+it('phase join caches one real read and leaves persisted self-pending receipt truthful',async()=>phaseFixture(async(h,owner,_r)=>{
+ const saved=JSON.parse(await readFile(join(h.directory,'receipt.json'),'utf8'));expect(saved.operations.find((o:any)=>o.kind==='write-receipt').state).toBe('pending');
+ const read=vi.spyOn(syncFs,'openSync');try{const result=inspectPhase(owner);expect(result.status).toBe('phase-registry-inventory-diagnostic');expect(read).toHaveBeenCalledTimes(1);expect(inspectPhase(owner)).toBe(result);expect(read).toHaveBeenCalledTimes(1);}finally{read.mockRestore();}
+}));
+it('phase join cached physical hash refusal cannot expose a positive prefix',async()=>phaseFixture(async(h,owner,_r)=>{
+ const file=join(h.directory,'trace.pftrace'),bytes=await readFile(file);bytes[bytes.length-1]^=1;await writeFile(file,bytes);
+ const first=inspectPhase(owner);expect(first).toMatchObject({status:'unavailable',reason:'whole-input-unavailable',rows:[]});expect(inspectPhase(owner)).toBe(first);
+}));
+for(const[mode,reason]of [['duplicate-start','duplicate-start'],['duplicate-end','duplicate-end'],['foreign','foreign-selected-prefix'],['missing-start','missing-start'],['missing-end','missing-end'],['reverse','wire-order-unavailable'],['withheld','root-inventory-withheld'],['loss','state-loss-observed'],['129','whole-input-unavailable'],['malformed-tail','whole-input-unavailable']]as const)it('phase join real authored bytes refuse '+mode,async()=>phaseFixture(async(_h,owner)=>{
+ expect(inspectPhase(owner)).toMatchObject({status:'unavailable',reason,rows:[]});
+},mode));
+for(const mode of ['outside','128'])it('phase join permits only classified outside-prefix inventory '+mode,async()=>phaseFixture(async(_h,owner)=>{
+ const r=inspectPhase(owner);expect(r.status).toBe('phase-registry-inventory-diagnostic');expect(r.counters).toMatchObject({candidates:mode==='128'?128:3,outsidePrefix:mode==='128'?126:1});expect(r.rows).toHaveLength(2);expect(Object.keys(r.rows[0])).toHaveLength(21);
+},mode));
+it('phase join reader throw closes input and caches fixed refusal without exception coercion',async()=>phaseFixture(async(_h,owner)=>{
+ let coercions=0;const read=vi.spyOn(syncFs,'readSync').mockImplementation(()=>{throw {get message(){coercions++;throw 1;},toString(){coercions++;throw 1;}};});
+ const close=vi.spyOn(syncFs,'closeSync');try{const r=inspectPhase(owner);expect(r).toMatchObject({status:'unavailable',reason:'whole-input-unavailable',rows:[]});expect(close).toHaveBeenCalledTimes(1);const n=read.mock.calls.length;expect(inspectPhase(owner)).toBe(r);expect(read).toHaveBeenCalledTimes(n);expect(coercions).toBe(0);}finally{read.mockRestore();close.mockRestore();}
+}));
+it('phase join identical bytes in replacement inode do not match original owner identity',async()=>phaseFixture(async(h,owner)=>{
+ const file=join(h.directory,'trace.pftrace'),replacement=join(h.parent,'replacement'),bytes=await readFile(file),old=await stat(file,{bigint:true});await writeFile(replacement,bytes,{flag:'wx'});const next=await stat(replacement,{bigint:true});expect(next.dev===old.dev&&next.ino===old.ino).toBe(false);await rename(replacement,file);
+ expect(inspectPhase(owner)).toMatchObject({status:'unavailable',reason:'file-identity-unavailable',rows:[]});
+}));
+it('phase join exact source field keys and escaped identifiers remain within closed output caps',async()=>phaseFixture(async(_h,owner)=>{
+ const r=inspectPhase(owner);expect(r.status).toBe('phase-registry-inventory-diagnostic');expect(Buffer.byteLength(JSON.stringify(r))).toBeLessThanOrEqual(8192);expect(Object.keys(r).sort()).toEqual(['policy','status','reason','runId','phaseId','targetId','input','counters','rows','authority'].sort());
+ expect(Object.keys(r.rows[0]).sort()).toEqual(['phase','name','packetIndex','sequenceIndex','intervalVersion','eventStart','eventValueStart','eventEnd','bodySHA256','annotationIndex','definitionIndex','nameSource','clockId','clockSource','trackUuid','trackSource','machineStatus','machineId','sequenceId','rawTimestamp','timestampStatus'].sort());
+ expect(r.authority).toEqual({captureQualified:false,qualification:false,nativeSupported:false,clockAdmission:'not_evaluated',targetLifetime:'unestablished',population:'not_evaluated',FPS:null,duration:null,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false});expect(Object.isFrozen(r.input)&&Object.isFrozen(r.rows)&&Object.isFrozen(r.authority)).toBe(true);
+},'escaped'));
+it('phase join rejects genuine snapshots and method-copy clones after fulfillment',async()=>phaseFixture(async(_h,owner)=>{
+ const read=vi.spyOn(syncFs,'lstatSync');try{for(const value of [owner.snapshot(),{...owner},Object.create(Object.getPrototypeOf(owner))])expect(inspectPhase(value).reason).toBe('unregistered-owner');expect(read).not.toHaveBeenCalled();}finally{read.mockRestore();}
+}));
+it('phase join reader close failure withdraws a resolved pair',async()=>phaseFixture(async(_h,owner)=>{
+ const close=syncFs.closeSync,spy=vi.spyOn(syncFs,'closeSync').mockImplementation(fd=>{close(fd);throw Error('authored-close');});try{expect(inspectPhase(owner)).toMatchObject({status:'unavailable',reason:'whole-input-unavailable',rows:[]});}finally{spy.mockRestore();}
+}));
+it('phase join reentry during original source read latches one immutable refusal',async()=>phaseFixture(async(_h,owner)=>{
+ const original=syncFs.lstatSync;let entered=false,inner:any;const read=vi.spyOn(syncFs,'openSync');
+ const stat=vi.spyOn(syncFs,'lstatSync').mockImplementation((...args:any[])=>{if(!entered){entered=true;inner=inspectPhase(owner);}return (original as any)(...args);});
+ try{const outer=inspectPhase(owner);expect(entered).toBe(true);expect(inner).toMatchObject({status:'unavailable',reason:'internal-unavailable',rows:[]});expect(Object.isFrozen(inner)).toBe(true);expect(outer).toBe(inner);expect(inspectPhase(owner)).toBe(inner);expect(read).toHaveBeenCalledTimes(1);}finally{stat.mockRestore();read.mockRestore();}
+}));
+it('phase join held original runner settlement refuses before any source read',async()=>fixture(async(h,create)=>{
+ let release!:(v:any)=>void,entered!:()=>void;const ready=new Promise<void>(done=>{entered=done;});h.runner.wait=()=>new Promise(done=>{release=done;entered();});const owner=create(h.inputs);await owner.start();await owner.mark('start');await owner.mark('end');const final=owner.finish();await ready;
+ const read=vi.spyOn(syncFs,'lstatSync');try{const r=inspectPhase(owner);expect(r.reason).toBe('owner-not-ready');expect(read).not.toHaveBeenCalled();release({exitCode:0,signal:null});expect((await final).status).toBe('closed');expect(inspectPhase(owner)).toBe(r);expect(read).not.toHaveBeenCalled();}finally{read.mockRestore();}
+}));
 it('owns real exclusive persisted bytes and final queries before exactly one detach',async()=>fixture(async(h,create)=>{
   const {owner,receipt:r}=await capture(h,create);expect(r.status).toBe('closed');expect(r.transport.outcome).toBe('protocol-closed');expect(r.persistedWholeInput).toBe('verified');expect(r.persisted.bytes).toBe(3);
   expect(await readFile(join(h.directory,'trace.pftrace'))).toEqual(Buffer.from([0,255,4]));expect(r.persisted.sha256).toBe('8b167730eca499532adf3dd1b625fe250fe27b835da8c3b5889815dce993a5a4');
