@@ -1,4 +1,4 @@
-import { BodyReader, copyBody, signed64, WireBudget, WireError, type WireField } from './browser-frame-protobuf-wire.js';
+import { BodyReader, copyBody, signed64, WireBudget, WireError,newWholeWireBudget,wholeByteInputDenied, type WireField } from './browser-frame-protobuf-wire.js';
 
 export const TRACK_DESCRIPTOR_BODY_POLICY = 'pinned-browser-frame-track-descriptor-body-fragments-v1';
 export const TRACK_DESCRIPTOR_BODY_SOURCE = Object.freeze({ perfettoPin: '403906f4adfbf287a02e5546f8430dcc9d56b649' });
@@ -39,6 +39,11 @@ function unique(seen: Set<number>, field: number): void {
   if (seen.has(field)) throw new WireError('duplicate-selected-field');
   seen.add(field);
 }
+/** Internal fixed whole-profile entry; no caller numeric limits. */
+export function decodeWholeDescriptor(input:unknown):TrackDescriptorBodyFragment|TrackDescriptorBodyUnavailable{
+ if(wholeByteInputDenied(input))return{status:'unavailable',diagnostics:[{code:'unsupported-byte-view'}]};
+ return decodeDescriptor(input,TRACK_DESCRIPTOR_BODY_POLICY,true);
+}
 /** Standalone TrackDescriptor body only, not a packet/trace or resolved owner.
  * Fixed selected children: ProcessDescriptor(pid:int32,start_timestamp_ns:int64)
  * and ThreadDescriptor(pid:int32,tid:int64). Unknown bodies remain opaque.
@@ -47,10 +52,13 @@ function unique(seen: Set<number>, field: number): void {
  * A parent UUID is retained without ancestry or thread/process inheritance.
  */
 export function decodeBrowserFrameTrackDescriptorBody(input: unknown, policy: unknown): TrackDescriptorBodyFragment | TrackDescriptorBodyUnavailable {
+ return decodeDescriptor(input,policy,false);
+}
+function decodeDescriptor(input:unknown,policy:unknown,whole:boolean):TrackDescriptorBodyFragment|TrackDescriptorBodyUnavailable{
   try {
     if (policy !== TRACK_DESCRIPTOR_BODY_POLICY) throw new WireError('unsupported-policy');
     const bytes = copyBody(input);
-    const context: Context = { bytes, budget: new WireBudget(), occurrences: [], skippedFields: [] };
+    const context: Context = { bytes, budget: whole?newWholeWireBudget():new WireBudget(), occurrences: [], skippedFields: [] };
     const fields: TrackDescriptorFields = {}, present = new Set<number>();
     visit(context, 0, bytes.byteLength, 'track_descriptor', field => {
       const o = field.occurrence, n = o.fieldNumber;

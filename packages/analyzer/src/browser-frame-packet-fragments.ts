@@ -1,4 +1,4 @@
-import { BodyReader, copyBody, WireBudget, WireError, type WireField } from './browser-frame-protobuf-wire.js';
+import { BodyReader, copyBody, WireBudget, WireError,newWholeWireBudget,wholeByteInputDenied, type WireField } from './browser-frame-protobuf-wire.js';
 import { decodeModernTrackEvent, decodeModernTrackEventWithMembers,decodeAnnotationTrackEvent, type EventFragment, type EventFragmentWithMembers,type AnnotationEventFragment } from './browser-frame-track-event-fragments.js';
 import type {AnnotationWork} from './browser-frame-trace-framer.js';
 export const PACKET_POLICY = 'pinned-browser-frame-packet-fragments-v1';
@@ -55,10 +55,15 @@ export function decodeBrowserFramePacket(input: unknown, policy: unknown): Packe
   return decodePacket(input,policy,false);
 }
 export function decodeBrowserFrameAnnotationPacket(input:unknown,work:AnnotationWork):AnnotationPacketFragment|PacketUnavailable{return decodePacket(input,PACKET_POLICY,false,work) as AnnotationPacketFragment|PacketUnavailable;}
-function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotationWork?:AnnotationWork):PacketFragment|PacketUnavailable {
+/** Internal fixed whole-profile entry; no caller numeric limits. */
+export function decodeWholeAnnotationPacket(input:unknown,work:AnnotationWork):AnnotationPacketFragment|PacketUnavailable{
+ if(wholeByteInputDenied(input))return{status:'unavailable',diagnostics:[{code:'unsupported-byte-view'}]};
+ return decodePacket(input,PACKET_POLICY,false,work,true) as AnnotationPacketFragment|PacketUnavailable;
+}
+function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotationWork?:AnnotationWork,whole=false):PacketFragment|PacketUnavailable {
   try {
     if (policy !== PACKET_POLICY) throw new WireError('unsupported-policy');
-    const bytes = copyBody(input); const budget = new WireBudget();
+    const bytes = copyBody(input); const budget = whole?newWholeWireBudget():new WireBudget();
     const context: ProjectionContext = { bytes, budget, occurrences: [], skippedFields: [] };
     const reader = new BodyReader(bytes, 0, bytes.byteLength, budget);
     const fields: PacketFields = {}; const present = new Set<number>(); const opaquePayloads: PacketOccurrence[] = [];

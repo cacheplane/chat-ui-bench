@@ -1,3 +1,4 @@
+import {createWholeAnnotationStudy,WHOLE_ANNOTATION_POLICY,WHOLE_ANNOTATION_AUTHORITY,finishWholeAnnotationOutput}from'./browser-frame-ordered-state.js';
 import fs from'node:fs';import{types}from'node:util';import{createHash}from'node:crypto';
 import{resolve}from'node:path';
 import{createD0StructuralStudy,D0_POLICY,D0_LIMITS,D0_AUTHORITY,encodeD0Result,type D0Result}from'./browser-frame-whole-trace.js';
@@ -13,15 +14,8 @@ function reference(value:unknown):Reference {
 function identity(s:fs.BigIntStats):string[]{return[s.dev,s.ino,s.mode,s.nlink,s.size,s.mtimeNs,s.ctimeNs].map(n=>{const v=String(n);if(v.length>64)throw Error();return v;});}
 function same(a:readonly string[],b:readonly string[]):boolean{return a.length===b.length&&a.every((v,i)=>v===b[i]);}
 /** Explicit source-owned file read only; never starts capture or trusts a caller EOF flag. */
-export function readD0PersistedTrace(value:unknown,policy:unknown){
- let reason:string|null=null,ref:Reference|null=null,fd:number|undefined,study:D0Result|null=null;
- let EOF=false,closed=false,identityMatch=false,hashMatch=false,reads=0,bytes=0;
- let hash:string|null=null,before:string[]|null=null,after:string[]|null=null;
- try{
-  if(policy!==D0_POLICY)throw Error();ref=reference(value);
- }catch{reason='invalid-reference';}
- if(ref){
-  const s=createD0StructuralStudy(ref.bytes,D0_POLICY),wholeHash=createHash('sha256');
+function readOwnedFile(ref:Reference,s:{feed(input:unknown):void}){
+ let reason:string|null=null,fd:number|undefined;let EOF=false,closed=false,identityMatch=false,hashMatch=false,reads=0,bytes=0;let hash:string|null=null,before:string[]|null=null,after:string[]|null=null;const wholeHash=createHash('sha256');
   try{
    const initial=fs.lstatSync(ref.path,{bigint:true});before=identity(initial);
    if(!initial.isFile()||initial.nlink!==1n||initial.size!==BigInt(ref.bytes))throw Error();
@@ -45,6 +39,18 @@ export function readD0PersistedTrace(value:unknown,policy:unknown){
   finally{
    if(fd!==undefined){try{fs.closeSync(fd);closed=true;}catch{reason??='reader-close';}}
   }
+ return {reason,EOF,closed,identityMatch,hashMatch,reads,bytes,hash,before,after};
+}
+export function readD0PersistedTrace(value:unknown,policy:unknown){
+ let reason:string|null=null,ref:Reference|null=null,study:D0Result|null=null;
+ let EOF=false,closed=false,identityMatch=false,hashMatch=false,reads=0,bytes=0;
+ let hash:string|null=null,before:string[]|null=null,after:string[]|null=null;
+ try{
+  if(policy!==D0_POLICY)throw Error();ref=reference(value);
+ }catch{reason='invalid-reference';}
+ if(ref){
+  const s=createD0StructuralStudy(ref.bytes,D0_POLICY),out=readOwnedFile(ref,s);
+  ({reason,EOF,closed,identityMatch,hashMatch,reads,bytes,hash,before,after}=out);
   study=s.finish();
  }
  const fullInputVerified=reason===null&&EOF&&closed&&identityMatch&&hashMatch;
@@ -53,4 +59,18 @@ export function readD0PersistedTrace(value:unknown,policy:unknown){
  const result={policy:D0_POLICY,status:verified&&reason===null?'complete-structural-diagnostic':'unavailable',reason,fullInputVerified,structuralContainerEOF:verified,
   reader:{kind:'source-owned-persisted-file',EOF,closed,identityMatch,hashMatch,reads,bytes,sha256:hash,before,after},study,authority:D0_AUTHORITY};
  encodeD0Result(result);return result;
+}
+
+/** Opt-in whole ordered annotation diagnostic. No native clock/target admission. */
+export function readWholeAnnotationTrace(value:unknown,policy:unknown){
+ let reason:string|null=null,ref:Reference|null=null,study:ReturnType<ReturnType<typeof createWholeAnnotationStudy>['finish']>|null=null;
+ let out:ReturnType<typeof readOwnedFile>={reason:null,EOF:false,closed:false,identityMatch:false,hashMatch:false,reads:0,bytes:0,hash:null,before:null,after:null};
+ try{if(policy!==WHOLE_ANNOTATION_POLICY)throw Error();ref=reference(value);}catch{reason='invalid-reference';}
+ if(ref){const s=createWholeAnnotationStudy(ref.bytes,WHOLE_ANNOTATION_POLICY);out=readOwnedFile(ref,s);reason=out.reason;study=s.finish();}
+ const fullInputVerified=reason===null&&out.EOF&&out.closed&&out.identityMatch&&out.hashMatch;
+ const complete=fullInputVerified&&study?.status==='whole-annotation-study'&&study.framingBoundaryComplete;
+ if(!complete)reason??=study?.reason??'whole-annotation-unavailable';
+ if(!complete&&study)study={...study,status:'unavailable',reason:reason??'whole-annotation-unavailable',semanticProcessing:'unavailable',markInventoryAdmission:'not_evaluated',candidates:[]};
+ const result={policy:WHOLE_ANNOTATION_POLICY,status:complete?'complete-whole-annotation-diagnostic':'unavailable',reason,fullInputVerified,structuralContainerEOF:fullInputVerified&&study?.framingBoundaryComplete===true,reader:{kind:'source-owned-persisted-file',EOF:out.EOF,closed:out.closed,identityMatch:out.identityMatch,hashMatch:out.hashMatch,reads:out.reads,bytes:out.bytes,sha256:out.hash,before:out.before,after:out.after},study,authority:WHOLE_ANNOTATION_AUTHORITY};
+ try{return finishWholeAnnotationOutput(result);}catch{const unavailable={...result,status:'unavailable',reason:'result-capacity',study:study===null?null:{...study,status:'unavailable',reason:'result-capacity',semanticProcessing:'unavailable',markInventoryAdmission:'not_evaluated',candidates:[]}};return finishWholeAnnotationOutput(unavailable);}
 }

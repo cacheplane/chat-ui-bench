@@ -36,3 +36,43 @@ native GO, performance, scoring and ranking remain false and FPS unavailable.
 No default file, CLI, browser, network or capture operation runs on import.
 Tests use only authored synthetic bytes/files. The file adapter cannot establish
 that a supplied persisted file represents a complete native capture.
+
+## Whole-input ordered annotation diagnostic
+
+`createWholeAnnotationStudy(bytes, WHOLE_ANNOTATION_POLICY)` and
+`readWholeAnnotationTrace(reference, WHOLE_ANNOTATION_POLICY)` add a separate
+opt-in ordered annotation mode. They use one persistent reducer across the
+supplied file, preserving sequence-local names, defaults, resets and loss.
+The physical reader is shared with D0. The eager/manual APIs and D0 policies
+retain their existing limits and validation order.
+
+This mode retains at most 64 sequences, 8,192 historical definitions, 1,024
+default versions and 128 candidate rows. Live intern entries are capped at
+4,096 and cumulative retained semantic strings at 262,144 UTF-8 bytes; reset
+does not renew that cumulative allowance. Packet bodies use the stricter
+8,192-occurrence and 4,096-member limits. Literal candidate values are capped
+at 4,096 UTF-8 bytes each and 16,384 bytes together. Unresolved or duplicate
+root-name inventories are withheld rather than treated as absent marks.
+
+A semantic failure stops further decoding while full-input framing and hashing
+continue when possible. Any semantic, framing, read, identity, hash, close or
+output failure withdraws all candidate rows. The unchanged size-limit detector
+may observe one extra byte: only the diagnostic `reader.bytes` slot can report
+33,554,433. That result remains unavailable with `reader-growth`, false physical
+verification and no candidates; the input limit remains 32 MiB.
+
+The closed reader output keeps the same 262,144-byte ceiling, including keys
+and JSON escaping, with 32,768 nodes, 4,096 objects and 65,536 UTF-8 string
+bytes including keys. Its generic owned-JSON guard checks structure and capacity;
+fixed source constructors establish the schema. The conservative source-work
+bound is 14,928,673,113 under the unchanged 15,000,000,000 ceiling. It counts
+source operations and bounded native walks; it does not measure CPU, RSS or GC.
+
+The packet manifest binds all completely framed packet bodies, even after
+semantic decoding stops. The transition manifest covers the implemented
+supported semantic subset; `trustedPid` remains bound by the raw body and is
+not included in that semantic digest or candidate context. Neither manifest
+establishes capture completeness or normalizes clocks. Machine/sequence
+identifiers, raw timestamps and selected clock/track sources remain unqualified.
+All native, performance, scoring and ranking authority stays false, with FPS
+unavailable.

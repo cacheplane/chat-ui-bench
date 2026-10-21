@@ -534,8 +534,12 @@ test.each(['stat', 'read', 'write'])('falsy descriptor %s and genuine close erro
   expect(caught).toBeInstanceOf(AggregateError); expect((caught as AggregateError).errors).toEqual([false, closeError]);
   expect((caught as AggregateError).errors[0]).toBe(false); expect((caught as AggregateError).errors[1]).toBe(closeError);
 });
-test.each([0, 1])('end-to-end file cap exact plus %i uses an unhashed maintained source', async excess => {
-  const f = await fixture(), key = f.paddingKeys[0]!, path = join(f.workspace, key), bytes = await readFile(path);
+test.each([0, 1])('end-to-end file cap exact plus %i uses the largest unhashed maintained source', async excess => {
+  const f = await fixture(), candidates = await Promise.all(f.paddingKeys.map(async key => ({key, bytes: (await stat(join(f.workspace, key))).size})));
+  candidates.sort((a, b) => b.bytes - a.bytes || a.key.localeCompare(b.key));
+  const key = candidates[0]!.key, path = join(f.workspace, key), bytes = await readFile(path);
+  let unionBytes = 0; for (const member of f.union) unionBytes += (await stat(join(f.workspace, member))).size;
+  expect(unionBytes + 1024 * 1024 - bytes.length).toBeLessThanOrEqual(8 * 1024 * 1024);
   await writeFile(path, Buffer.concat([bytes, Buffer.alloc(1024 * 1024 + excess - bytes.length, 32)]));
   if (excess) await expect(writer()(f.root, f)).rejects.toThrow('pre-read file cap');
   else {const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8')); expect(manifest.records.find((row: {key: string}) => row.key === key).before.fact.byteLength).toBe(1024 * 1024);}
