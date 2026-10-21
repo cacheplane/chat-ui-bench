@@ -83,7 +83,7 @@ test('warm transform reverses every whole original and leaves default transform 
 function sourceParts(text){
  const ast=parseAst(text,{},'core.mjs'),parts={};
  function walk(n){if(!n||typeof n!=='object')return;
-  if(n.type==='AssignmentExpression'&&n.left?.object?.type==='ThisExpression'&&['calculateRange','getVirtualIndexes'].includes(n.left.property?.name))parts[n.left.property.name]=n.right.arguments.map(a=>text.slice(a.start,a.end));
+  if(n.type==='AssignmentExpression'&&n.left?.object?.type==='ThisExpression'&&['calculateRange','getVirtualIndexes'].includes(n.left.property?.name)){const rhs=n.right.callee?.property?.name==='captureIndexes'?n.right.arguments[1]:n.right;parts[n.left.property.name]=rhs.arguments.map(a=>text.slice(a.start,a.end));}
   if(n.type==='FunctionDeclaration'&&['calculateRangeImpl','findNearestBinarySearchFlat'].includes(n.id?.name))parts[n.id.name]=text.slice(n.start,n.end);
   if(n.type==='VariableDeclarator'&&['defaultRangeExtractor','findNearestBinarySearch'].includes(n.id?.name))parts[n.id.name]='const '+text.slice(n.start,n.end)+';';
   for(const v of Object.values(n))if(Array.isArray(v))v.forEach(walk);else if(v&&typeof v==='object')walk(v);
@@ -395,7 +395,7 @@ async function preparationFixture(){
  const instance=f.f.instance,flat=new Float64Array(200);for(let i=0;i<100;i++){flat[2*i]=i*200;flat[2*i+1]=200;}
  instance._singleLaneMeasurements={flat};instance.isScrolling=false;instance.maybeNotify={updateDeps(){}};
  const c=rangeCallbacks(instrument.transformWarm('core').code,instance,f.ingress);f.ingress.kernel(c.kernel,c.extractor);instance.options.overscan=5;instance.options.rangeExtractor=c.extractor;let range=c.calculate(Array.from({length:100},(_,i)=>({start:i*200,end:(i+1)*200})),500,19500,1);instance.calculateRange=()=>range;c.indexes(...c.deps());
- return{...f,runtime,flat,react};
+ return{...f,runtime,flat,react,sourceCallbacks:c};
 }
 test('private preparation consumes established baseline and original range capability without old publication credit',async()=>{
  const f=await preparationFixture();assert.equal(f.observed,1);const before=f.x.snapshot();assert.equal(before.reason,null);assert.equal(before.eligible,true);assert.ok(before.baselineOwner);assert.equal(f.ingress.close().complete,true);
@@ -544,3 +544,148 @@ test('postclose entry513 preserves original notify throw and original estimate g
  const held=estimateExperiment(instrument.transform('copilot').code,null,{throwAt:'second-size'}),now=estimateExperiment(instrument.transformWarm('copilot').code,f.ingress,{throwAt:'second-size'});
  assert.deepEqual(now.trace,held.trace);assert.equal(held.thrown,held.sentinel);assert.equal(now.thrown,now.sentinel);assert.equal(f.ingress.healthy(),false);
 });
+
+async function freshMemoFixture(){
+ const f=await preparationFixture(),instance=f.f.instance,code=instrument.transformWarm('core').code,pin=instrument.registry.find(p=>p.path.endsWith('/utils.js')),{memo}=await import(new URL('../../'+pin.path,import.meta.url)),c=f.sourceCallbacks,trace=[],sentinel={freshMemoOriginal:true};let viewport=500,offset=19500,throwAt=null;
+ const rows=Array.from({length:100},(_,i)=>({start:i*200,end:(i+1)*200}));
+ const mark=n=>{trace.push(n);if(throwAt===n)throw sentinel;};
+ instance.getMeasurements=()=>{mark('measurements');return rows;};instance.getSize=()=>{mark('size');return viewport;};instance.getScrollOffset=()=>{mark('offset');return offset;};
+ // These are the actual pinned constructor RHS expressions and original memo,
+ // not a manually populated dependency/pair or replacement memo implementation.
+ const evaluate=name=>Function('memo','__wh','defaultRangeExtractor','calculateRangeImpl','return('+assignedArrow(code,name)+');').call(instance,memo,f.ingress,c.extractor,c.kernel);
+ instance.calculateRange=evaluate('calculateRange');instance.getVirtualIndexes=evaluate('getVirtualIndexes');
+ return{...f,instance,trace,sentinel,change(v,o=offset){viewport=v;offset=o;},throwOn(n){throwAt=n;}};
+}
+test('E1 real pinned memo cached dependencies authenticate one atomic close and preparation',async()=>{
+ const f=await freshMemoFixture();f.instance.getVirtualIndexes();f.instance.getVirtualIndexes();const before=f.x.snapshot();assert.equal(typeof f.ingress.sealPreparation,'function','E1 owned atomic source capability missing');
+ f.trace.length=0;const result=f.ingress.sealPreparation();assert.deepEqual(f.trace,['measurements','size','offset']);assert.equal(result.chronology.complete,true);assert.equal(result.plan.status,'prepared-structural-only');assert.deepEqual(f.x.snapshot(),before);
+ const prior=f.trace.length;const replay=f.ingress.sealPreparation();assert.equal(replay.plan.status,'unavailable');assert.equal(f.trace.length,prior);assert.equal(f.ingress.healthy(),false);
+});
+test('E1 source probe uses newly evaluated viewport instead of last captured geometry',async()=>{
+ const f=await freshMemoFixture();f.instance.getVirtualIndexes();f.change(600,19000);assert.equal(typeof f.ingress.sealPreparation,'function','stale geometry currently has no fresh source gate');
+ f.trace.length=0;const result=f.ingress.sealPreparation();assert.deepEqual(f.trace,['measurements','size','offset']);assert.equal(result.chronology.complete,true);const records=result.chronology.text.trim().split('\n').filter(s=>s.startsWith('R|'));assert.ok(records.at(-1).includes('4082c00000000000'),'last original range must describe600 viewport');assert.equal(result.plan.status,'prepared-structural-only');
+});
+test('E1 source probe preserves original dependency throw identity without closing or preparing',async()=>{
+ const f=await freshMemoFixture();f.instance.getVirtualIndexes();f.throwOn('size');assert.equal(typeof f.ingress.sealPreparation,'function','fresh source boundary missing');let thrown;try{f.ingress.sealPreparation();}catch(e){thrown=e;}assert.equal(thrown,f.sentinel);assert.equal(f.ingress.healthy(),false);assert.equal(f.runtime.active(),false);assert.equal(f.ingress.prepare().status,'unavailable');
+});
+test('E1 cache-hit extractor need not emit a fabricated range record after current source geometry changes',async()=>{
+ const f=await freshMemoFixture();f.instance.getVirtualIndexes();const retained=f.runtime.retained();f.change(600,19400);const result=f.ingress.sealPreparation();assert.equal(result.chronology.records,retained);assert.equal(result.chronology.complete,true);assert.equal(result.plan.status,'prepared-structural-only');assert.equal(f.ingress.healthy(),true);
+});
+test('E1 missing captured callable and a second constructor candidate refuse without invoking application getters',async()=>{
+ const f=await preparationFixture();let calls=0;const fn=()=>{calls++;},first={},second={};assert.equal(f.ingress.captureIndexes(first,fn),fn);assert.equal(f.ingress.captureIndexes(second,fn),fn);const result=f.ingress.sealPreparation();assert.equal(result.chronology,null);assert.equal(result.plan.status,'unavailable');assert.equal(calls,0);assert.equal(f.ingress.healthy(),false);
+});
+test('E1 every original probe dependency exception including warm-seal text is rethrown by exact identity',async()=>{
+ for(const value of [{original:true},'warm-seal-stale',null,undefined]){
+  const f=await freshMemoFixture();f.instance.getVirtualIndexes();f.instance.getSize=()=>{throw value;};let returned=false,thrown=false,error;try{f.ingress.sealPreparation();returned=true;}catch(e){thrown=true;error=e;}assert.equal(returned,false);assert.equal(thrown,true);assert.equal(error,value);assert.equal(f.ingress.healthy(),false);assert.equal(f.ingress.prepare().status,'unavailable');
+ }
+});
+test('E1 nested render and core notification invalidate before publication while original delegates still run',async()=>{
+ for(const event of ['render','notify']){
+  const f=await freshMemoFixture();f.instance.getVirtualIndexes();const before=f.x.snapshot();let calls=0;
+  f.instance.getSize=()=>{calls++;if(event==='render')f.ingress.adapter.renderStart({},function Other(){},f.f.root,f.f.root.current);else f.ingress.coreEvent(f.instance,14,0,0);return 500;};
+  const result=f.ingress.sealPreparation();assert.equal(calls,1);assert.equal(result.chronology,null);assert.equal(result.plan.status,'unavailable');assert.equal(f.ingress.healthy(),false);assert.equal(f.x.snapshot().sealed,before.sealed);assert.equal(f.x.snapshot().carry,before.carry);
+ }
+});
+test('E1 constructor capture preserves assignment reference RHS setter order and original memo identity',()=>{
+ const old=instrument.transform('core').code,now=instrument.transformWarm('core').code;
+ for(const code of [old,now]){
+  const trace=[],instance={},fn=()=>1;Object.defineProperty(instance,'getVirtualIndexes',{set(value){trace.push(['set',value]);}});
+  const original=assignedArrow(code,'getVirtualIndexes');const __wh={captureIndexes(i,v){trace.push(['capture',i,v]);return v;}};
+  Function('memo','__wh','this.getVirtualIndexes='+original+';').call(instance,()=>{trace.push(['memo']);return fn;},__wh);
+  assert.equal(trace[0][0],'memo');assert.equal(trace.at(-1)[0],'set');assert.equal(trace.at(-1)[1],fn);assert.equal(trace.filter(x=>x[0]==='memo').length,1);if(code===now){assert.equal(trace[1][0],'capture');assert.equal(trace[1][1],instance);assert.equal(trace[1][2],fn);}
+ }
+ assert.equal(instrument.reverseWarm(instrument.transformWarm('core')),instrument.reverse(instrument.transform('core')));
+});
+async function e1ProbeTrace(seal,throwAt){
+ const f=await freshMemoFixture();f.instance.getVirtualIndexes();const trace=[],error={probeTrace:true};let reads=0;const mark=n=>{trace.push(n);if(++reads===throwAt)throw error;};
+ for(const key of ['getMeasurements','getSize','getScrollOffset']){const fn=f.instance[key];Object.defineProperty(f.instance,key,{get(){mark(key+'-get');return function(){mark(key+'-call');return fn();};}});}
+ // Options remain owned data required by the pre-call admission. Accessor options
+ // are separately proved refused without invoking the original memo or getter.
+ const notify=f.instance.maybeNotify.updateDeps;f.instance.maybeNotify.updateDeps=function(v){mark('updateDeps');return notify(v);};
+ let result,thrown,didThrow=false;try{result=seal?f.ingress.sealPreparation():f.instance.getVirtualIndexes();}catch(e){didThrow=true;thrown=e;}
+ return{f,trace,reads,error,result,thrown,didThrow};
+}
+test('E1 extra original memo invocation preserves every original getter/callee trace and thrown identity',async()=>{
+ const normal=await e1ProbeTrace(false);
+ for(const point of [undefined,...Array.from({length:normal.reads},(_,i)=>i+1)]){
+  const a=await e1ProbeTrace(false,point),b=await e1ProbeTrace(true,point);assert.deepEqual(b.trace,a.trace);assert.equal(b.didThrow,a.didThrow);if(a.didThrow){assert.equal(a.thrown,a.error);assert.equal(b.thrown,b.error);assert.equal(b.f.ingress.healthy(),false);}
+ }
+});
+test('E1 replaced or accessor-backed installed memo cannot borrow its historical captured function',async()=>{
+ for(const mode of ['replace','accessor']){
+  const f=await freshMemoFixture();f.instance.getVirtualIndexes();let calls=0;if(mode==='replace')f.instance.getVirtualIndexes=()=>{calls++;};else Object.defineProperty(f.instance,'getVirtualIndexes',{get(){calls++;throw Error('must not invoke accessor');}});
+  const result=f.ingress.sealPreparation();assert.equal(result.chronology,null);assert.equal(result.plan.status,'unavailable');assert.equal(calls,0);assert.equal(f.ingress.healthy(),false);
+ }
+});
+test('E1 absence of a constructor memo capability refuses without source invocation',async()=>{
+ const f=await preparationFixture(),before=f.x.snapshot();const result=f.ingress.sealPreparation();assert.equal(result.chronology,null);assert.equal(result.plan.status,'unavailable');assert.equal(f.ingress.healthy(),false);assert.deepEqual(f.x.snapshot(),before);
+});
+test('E1 an estimator entry during the fresh probe refuses even when original dependency returns normally',async()=>{
+ const f=await freshMemoFixture();f.instance.getVirtualIndexes();let entries=0;f.instance.getSize=()=>{entries++;f.ingress.estimate(100,1);return 500;};const result=f.ingress.sealPreparation();assert.equal(entries,1);assert.equal(result.chronology,null);assert.equal(result.plan.status,'unavailable');assert.equal(f.ingress.healthy(),false);
+});
+test('E1 nested original partial invalidates before its once-only delegate and cannot leave a usable ticket',async()=>{
+ const f=await freshMemoFixture();f.instance.getVirtualIndexes();const before=f.x.snapshot();let entries=0,partial;f.instance.getSize=()=>{entries++;partial=f.ingress.adapter.partial();return 500;};const result=f.ingress.sealPreparation();assert.equal(entries,1);assert.equal(f.x.snapshot().counts.exports,before.counts.exports+1);assert.equal(result.chronology,null);assert.equal(result.plan.status,'unavailable');assert.equal(f.ingress.healthy(),false);assert.equal(f.ingress.fence(partial).fullWarmReady,false);
+});
+async function originalMeasurementProbe(cached){
+ const f=await freshMemoFixture(),instance=f.instance,code=instrument.transformWarm('core').code,pin=instrument.registry.find(p=>p.path.endsWith('/utils.js')),{memo}=await import(new URL('../../'+pin.path,import.meta.url)),{createLazyMeasurementsView}=await import(new URL('../../node_modules/@tanstack/virtual-core/dist/esm/lazy-measurements.js',import.meta.url));
+ // A source algorithm fixture, not authentic origins: cached=true supplies
+ // bounded synthetic cached sizes only. No write/fence authority is asserted.
+ if(cached)for(let i=0;i<100;i++)instance.itemSizeCache.set(i,200);
+ Object.assign(instance.options,{paddingStart:0,scrollMargin:0,laneAssignmentMode:'greedy',gap:0,enabled:true,initialMeasurementsCache:[]});
+ Object.assign(instance,{laneAssignments:new Map(),prevLanes:1,lanesChangedFlag:false,lanesSettling:false,pendingMin:0,measurementsCache:[],itemSizeCacheVersion:0});instance._singleLaneMeasurements.items=indices.slice();
+ let estimates=0;const original=Function('measuredRef','__wh','return('+variable(instrument.transformWarm('copilot').code,'estimateRowSize')+');')({current:{total:0,sizes:new Map()}},f.ingress);instance.options.estimateSize=()=>{estimates++;return original();};
+ for(const name of ['getMeasurementOptions','getMeasurements'])instance[name]=Function('memo','createLazyMeasurementsView','return('+assignedArrow(code,name)+');').call(instance,memo,createLazyMeasurementsView);
+ const result=f.ingress.sealPreparation();return{f,result,estimates};
+}
+test('E1 actual original getMeasurements uncached estimator path refuses without suppressing its100 original estimates',async()=>{
+ const {f,result,estimates}=await originalMeasurementProbe(false);assert.equal(estimates,100);assert.equal(result.chronology,null);assert.equal(result.plan.status,'unavailable');assert.equal(f.ingress.healthy(),false);assert.equal(f.f.instance.measurementsCache.length,100);
+});
+test('E1 actual original getMeasurements cached-size recomputation can prepare without any estimator entry',async()=>{
+ const {f,result,estimates}=await originalMeasurementProbe(true);assert.equal(estimates,0);assert.equal(result.chronology.complete,true);assert.equal(result.plan.reason,'no-gap');assert.equal(f.ingress.healthy(),true);assert.equal(f.f.instance.measurementsCache.length,100);assert.equal(f.x.snapshot().counts.writes,0);
+});
+for(const variant of ['count101','count-accessor','cache129'])test('E1 authenticates '+variant+' before inducing the original measurements loop',async()=>{
+ const f=await freshMemoFixture();f.instance.getVirtualIndexes();let calls=0,accessors=0;const original=f.instance.getMeasurements;f.instance.getMeasurements=()=>{calls++;return original();};
+ if(variant==='count101')f.instance.options.count=101;
+ if(variant==='count-accessor')Object.defineProperty(f.instance.options,'count',{get(){accessors++;throw Error('unowned count');}});
+ if(variant==='cache129')for(let i=0;i<129;i++)f.instance.itemSizeCache.set(i,200);
+ let result,thrown;try{result=f.ingress.sealPreparation();}catch(e){thrown=e;}assert.equal(calls,0,'no induced original loop before closed private count/cache admission');assert.equal(accessors,0);assert.equal(thrown,undefined);assert.equal(result.plan.status,'unavailable');assert.equal(f.ingress.healthy(),false);
+});
+test('E1 pre-call options accessors are unadmitted without invoking either original memo or accessor',async()=>{
+ for(const key of ['count','lanes','enabled','getItemKey','initialMeasurementsCache']){
+  const f=await freshMemoFixture();f.instance.getVirtualIndexes();let calls=0,reads=0;const original=f.instance.getMeasurements;f.instance.getMeasurements=()=>{calls++;return original();};Object.defineProperty(f.instance.options,key,{get(){reads++;throw Error('must not call owned-data accessor');}});
+  const result=f.ingress.sealPreparation();assert.equal(result.plan.status,'unavailable');assert.equal(calls,0);assert.equal(reads,0);assert.equal(f.ingress.healthy(),false);
+ }
+});
+
+test('E2 runtime64 codec is separate from old C32 and serializes only the whole wrapper',async()=>{
+ const {encodeWarmSlot,encodeWarmRuntimeSlot}=await import('./policy.mjs'),value=maximumWarmWrapper();value.partial.counts.scopes=9109;value.partial.counts.commits=64;
+ assert.throws(()=>encodeWarmSlot('partial-01.json',value));const stringify=JSON.stringify,calls=[];let bytes;
+ try{JSON.stringify=function(v,...rest){calls.push(v);return stringify.call(this,v,...rest);};bytes=encodeWarmRuntimeSlot('partial-01.json',value);}finally{JSON.stringify=stringify;}
+ assert.deepEqual(calls,[value]);assert.ok(bytes.length<=262144);for(let slot=2;slot<=4;slot++)assert.ok(encodeWarmRuntimeSlot('partial-0'+slot+'.json',{...value,slot,chronology:null,plan:null}).length<=262144);
+ value.partial.counts.scopes=9110;assert.throws(()=>encodeWarmRuntimeSlot('partial-01.json',value));value.partial.counts.scopes=9109;value.partial.counts.commits=65;assert.throws(()=>encodeWarmRuntimeSlot('partial-01.json',value));
+});
+test('E2 controller RAF shares core requests before selection and across chronology close',async()=>{
+ const raw=fs.readFileSync(new URL('adapter.mjs',import.meta.url),'utf8'),callbacks=[];const g={requestAnimationFrame(fn){callbacks.push(fn);return callbacks.length;}};
+ const source='const window=globalThis.__warmFrameTestWindow;\n'+raw+'\n//frame'+(++fixtureSerial);globalThis.__warmFrameTestWindow=g;
+ let a;try{const m=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));a=m.createWarmSourceIngress(createWarmRuntime());}finally{delete globalThis.__warmFrameTestWindow;}
+ for(let i=0;i<16;i++)assert.equal(a.frameRequest({}),true);assert.equal(a.close().complete,true);
+ for(let i=0;i<16;i++){const p=a.controllerFrame();callbacks.shift()();await p;}assert.equal(a.healthy(),true);const pending=callbacks.length;assert.throws(()=>a.controllerFrame(),/raf/);assert.equal(callbacks.length,pending);assert.equal(a.healthy(),false);
+});
+test('E2 original scroll constructor capture preserves callable identity before setter',()=>{
+ const old=instrument.transform('core').code,now=instrument.transformWarm('core').code;const a=assignedArrow(old,'scrollToIndex'),b=assignedArrow(now,'scrollToIndex');
+ const instance={},trace=[],result=Function('__wh','return('+b+');').call(instance,{captureScroll(i,fn){assert.equal(i,instance);trace.push('capture');return fn;}});assert.equal(typeof result,'function');assert.deepEqual(trace,['capture']);assert.ok(a.includes('this.getOffsetForIndex'));
+});
+for(const mutation of ['scrollPaddingStart','scrollPaddingEnd','paddingStart','paddingEnd','scrollMargin','gap','horizontal','accessor'])test('E2 original motion refuses incompatible '+mutation+' before invoking original',async()=>{
+ const f=await freshMemoFixture(),i=f.instance;Object.assign(i.options,{horizontal:false,paddingStart:0,paddingEnd:0,scrollPaddingStart:0,scrollPaddingEnd:0,scrollMargin:0,gap:0});let calls=0,reads=0;const original=()=>{calls++;};i.scrollToIndex=f.ingress.captureScroll(i,original);i.getVirtualIndexes();assert.equal(f.ingress.sealPreparation().plan.status,'prepared-structural-only');
+ if(mutation==='accessor')Object.defineProperty(i.options,'scrollPaddingStart',{get(){reads++;return 0;}});else i.options[mutation]=mutation==='horizontal'?true:1;
+ assert.equal(f.ingress.moveTo(40),false);assert.equal(calls,0);assert.equal(reads,0);assert.equal(f.ingress.healthy(),false);
+});
+test('E2 original motion accepts fixed own options and preserves exact original throw identity',async()=>{
+ const f=await freshMemoFixture(),i=f.instance;Object.assign(i.options,{horizontal:false,paddingStart:0,paddingEnd:0,scrollPaddingStart:0,scrollPaddingEnd:0,scrollMargin:0,gap:0});const sentinel={originalScroll:true};let calls=0;const original=(index,options)=>{calls++;assert.equal(index,40);assert.deepEqual(options,{align:'start',behavior:'auto'});throw sentinel;};i.scrollToIndex=f.ingress.captureScroll(i,original);i.getVirtualIndexes();assert.equal(f.ingress.sealPreparation().plan.status,'prepared-structural-only');assert.throws(()=>f.ingress.moveTo(40),e=>e===sentinel);assert.equal(calls,1);assert.equal(f.ingress.healthy(),false);
+});
+for(const mutation of ['live-cache','live-count','live-key'])test('E2 motion rechecks current live '+mutation+' before original',async()=>{
+ const f=await freshMemoFixture(),i=f.instance;Object.assign(i.options,{horizontal:false,paddingStart:0,paddingEnd:0,scrollPaddingStart:0,scrollPaddingEnd:0,scrollMargin:0,gap:0});let calls=0;const original=()=>{calls++;};i.scrollToIndex=f.ingress.captureScroll(i,original);i.getVirtualIndexes();assert.equal(f.ingress.sealPreparation().plan.status,'prepared-structural-only');
+ if(mutation==='live-cache')i.itemSizeCache=new Map();else if(mutation==='live-count')i.options.count=101;else i.options.getItemKey=()=>1;
+ assert.equal(f.ingress.moveTo(40),false);assert.equal(calls,0);assert.equal(f.ingress.healthy(),false);
+});
+test('E2 scroll constructor capability must share the already captured original index owner',async()=>{const f=await freshMemoFixture(),fn=()=>{};assert.equal(f.ingress.captureScroll({},fn),fn);assert.equal(f.ingress.healthy(),false);});

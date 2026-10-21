@@ -72,3 +72,24 @@ export function encodeWarmSlot(name,value){
  if(value.slot===1){warmChronology(value.chronology);warmPlan(value.plan);}else warmNeed(value.chronology===null&&value.plan===null);
  const bytes=Buffer.from(JSON.stringify(value));if(bytes.length>262144)throw Error('warm-slot-limit');return bytes;
 }
+
+// Explicit runtime profile; older C32 codecs above remain exact.
+function warmRuntimePartial(p){
+ exact(p,['kind','phase','status','reason','fullH100Readiness','generations','counts','rows','epochs','closure','authority']);warmNeed(p.kind==='live-history-C-partial-v1'&&p.fullH100Readiness==='unavailable'&&Array.isArray(p.rows)&&p.rows.length===100&&Array.isArray(p.epochs)&&p.epochs.length<=3200);
+ warmNeed(p.phase==='selected'||p.phase==='preselection');warmNeed(p.status==='partial'||p.status==='unavailable');warmNeed(p.reason===null||warmReasons.includes(p.reason));
+ exact(p.generations,['owner','cache','layout','commit']);warmNeed([null,1].includes(p.generations.owner)&&[null,1].includes(p.generations.cache)&&warmInteger(p.generations.layout,1,21)&&warmID(p.generations.commit));
+ const limits={scopes:9109,renders:32,commits:64,nodes:3200,writes:6400,censuses:4,exports:4,options:64,detach:6400,layoutEvents:20,work:67108864};exact(p.counts,Object.keys(limits));for(const k of Object.keys(limits))warmNeed(warmInteger(p.counts[k],0,limits[k]));
+ for(let i=0;i<100;i++){const r=p.rows[i];warmNeed(Array.isArray(r)&&r.length===16&&r[0]===i&&r[1]===i&&warmID(r[2])&&warmID(r[3])&&(r[4]===null||typeof r[4]==='number'&&Number.isFinite(r[4])&&r[4]>0&&r[4]<=1e7)&&[null,1].includes(r[5])&&[null,1].includes(r[6])&&warmInteger(r[7],1,21));for(let j=8;j<12;j++)warmNeed(warmID(r[j]));warmNeed((r[12]===null||warmInteger(r[12],1,6400))&&(r[13]===null||r[13]===true)&&typeof r[14]==='boolean'&&typeof r[15]==='boolean');}
+ for(const e of p.epochs){warmNeed(Array.isArray(e)&&e.length===8);epochTuple(e);warmNeed(warmInteger(e[0],1,32768)&&warmInteger(e[2],1,32768));}
+ exact(p.closure,['active','pending','disposed','late','originalFailed','fontFailed']);warmNeed(warmInteger(p.closure.active,0,4608)&&warmInteger(p.closure.pending,0,8));for(const k of ['disposed','late','originalFailed','fontFailed'])warmNeed(typeof p.closure[k]==='boolean');warmAuthority(p.authority);
+}
+export function encodeWarmRuntimeSlot(name,value){
+ warmNeed(typeof name==='string'&&/^partial-0[1-4]\.json$/.test(name));exact(value,['kind','slot','partial','chronology','plan','fence','authority']);warmNeed(value.kind==='warm-history-C-wrapper-v1'&&value.slot===Number(name[9]));
+ // The browser's unchanged partialResult already serializes the original partial.
+ // Closed primitive validation here adds no second partial serialization pass.
+ warmRuntimePartial(value.partial);warmAuthority(value.authority);warmFence(value.fence);
+ if(value.slot===1){warmChronology(value.chronology);warmPlan(value.plan);}else warmNeed(value.chronology===null&&value.plan===null);
+ const bytes=Buffer.from(JSON.stringify(value));if(bytes.length>262144)throw Error('warm-slot-limit');return bytes;
+}
+
+export function warmFunctionalWriter(out,deadline){const used=new Set(),inventory=[];return{write(name,value){if(monotonicMs()>=deadline||used.has(name))throw Error('C-writer');const bytes=name.startsWith('partial-')?encodeWarmRuntimeSlot(name,value):encodeSlot(name,value);used.add(name);const r=writeExclusive(resolve(out,name),bytes);inventory.push(r);if(monotonicMs()>=deadline)throw Error('C-late');return r;},inventory(){return inventory.map(x=>({...x}));}};}

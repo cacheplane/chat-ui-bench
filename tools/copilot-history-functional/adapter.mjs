@@ -263,6 +263,21 @@ export function createWarmSourceIngress(runtime,baselineFactory,selectorFactory)
  let target=null,pair=null,dependency=null,calculation=null,extracting=null,dependencyBusy=null,calculateDependency=null,frameRequests=0,frameCallbacks=0,sourceFault=false,rangeEntries=0,geometry=null,rangeKernel=null,rangeExtractor=null;
  let preparationStarted=false,preparationAccepted=false,failedPlan=null,typedCapabilities=null,partialBusy=false,partialTicket=null,fenceBusy=false,fenceCalls=0,anchor=null,classifierEntries=0,coreEntries=0;
  if(baselineFactory){const p=continuityNative.prototype(Float64Array.prototype);typedCapabilities={length:continuityNative.descriptor(p,'length').get,buffer:continuityNative.descriptor(p,'buffer').get,tag:continuityNative.descriptor(p,Symbol.toStringTag).get,byteLength:continuityNative.descriptor(ArrayBuffer.prototype,'byteLength').get,resizable:continuityNative.descriptor(ArrayBuffer.prototype,'resizable')?.get??null,float64Prototype:Float64Array.prototype,arrayBufferPrototype:ArrayBuffer.prototype};}
+ let indexOwner=null,indexCallable=null,sealStarted=false,probe=null,scrollCallable=null,motionCalls=0;
+ const controllerWindow=typeof window==='undefined'?null:window,controllerRAF=controllerWindow?.requestAnimationFrame;
+ function captureScroll(instance,fn){if(instance!==indexOwner||typeof fn!=='function'||scrollCallable&&scrollCallable!==fn)sourceError();else scrollCallable=fn;return fn;}
+ function motionOptions(){const o=ownData(owner,'options');return ownData(o,'horizontal')===false&&ownData(o,'paddingStart')===0&&ownData(o,'paddingEnd')===0&&ownData(o,'scrollPaddingStart')===0&&ownData(o,'scrollPaddingEnd')===0&&ownData(o,'scrollMargin')===0&&ownData(o,'gap')===0;}
+ function moveTo(index){
+  let entered=false;try{
+   if(!healthy()||!preparationAccepted||motionCalls===12||!Number.isSafeInteger(index)||index<0||index>99||ownData(owner,'scrollToIndex')!==scrollCallable||!preparationOwned(counts.work)||!emptyLive(committedTarget)||!motionOptions()){sourceError();return false;}
+   motionCalls++;entered=true;continuityNative.apply(scrollCallable,owner,[index,{align:'start',behavior:'auto'}]);return healthy();
+  }catch(error){sourceError();if(entered)throw error;return false;}
+ }
+ function controllerFrame(){
+  if(!healthy()||typeof controllerRAF!=='function'||frameRequests===32){sourceError();throw Error('C-warm-raf');}frameRequests++;
+  return new Promise((resolve,reject)=>{try{continuityNative.apply(controllerRAF,controllerWindow,[()=>{if(!healthy()||frameCallbacks>=frameRequests){sourceError();reject(Error('C-warm-raf'));return;}frameCallbacks++;resolve();}]);}catch(error){sourceError();reject(error);}});
+ }
+ function captureIndexes(instance,fn){if(typeof fn!=='function'||indexCallable&&(indexOwner!==instance||indexCallable!==fn))sourceError();else{indexOwner=instance;indexCallable=fn;}return fn;}
  function kernel(calculate,extractor){if(typeof calculate!=='function'||typeof extractor!=='function'||rangeKernel&&(rangeKernel!==calculate||rangeExtractor!==extractor)){sourceError();return false;}rangeKernel=calculate;rangeExtractor=extractor;return true;}
  function chosen(instance){if(!runtime.active())return false;if(reason||closed)return runtime.fail('source-fault');return target===instance;}
  function rangeAdmission(instance){
@@ -270,19 +285,19 @@ export function createWarmSourceIngress(runtime,baselineFactory,selectorFactory)
   if(rangeEntries===256){sourceError();return false;}rangeEntries++;
   return runtime.active();
  }
- function rangeBegin(instance,outer,offset,lanes){
+ function rangeBegin(instance,outer,offset,lanes,measurements){
   if(!rangeAdmission(instance))return null;if(calculation||extracting)return runtime.fail('pair-reentrant');
-  const token={instance,outer,offset,lanes,result:null,flat:null};calculation=token;pair=null;dependency=null;geometry=null;return token;
+  const token={instance,outer,offset,lanes,measurements,result:null,flat:null};calculation=token;pair=null;dependency=null;geometry=null;return token;
  }
  function calculateDepsBegin(instance){if(!rangeAdmission(instance))return null;if(calculateDependency||calculation||extracting)return runtime.fail('pair-reentrant');const token={instance};calculateDependency=token;return token;}
- function calculateDepsEnd(instance,token,normal){if(!normal&&instance===target)sourceError();if(token&&calculateDependency===token){if(!normal){pair=null;dependency=null;}calculateDependency=null;}}
+ function calculateDepsEnd(instance,token,normal,value){if(probe&&instance===target){if(!token||!normal||probe.calculate)sourceError();else probe.calculate=value;}if(!normal&&instance===target)sourceError();if(token&&calculateDependency===token){if(!normal){pair=null;dependency=null;}calculateDependency=null;}}
  function rangeInput(instance,token,value){if(token&&calculation===token&&instance===target)token.flat=value;return value;}
  function rangeCalculated(instance,token,value){
   if(token&&calculation===token&&chosen(instance)){
    // Only the pinned calculateRangeImpl result reaches this source seam.
    const start=value.startIndex,end=value.endIndex;
    if(typeof start!=='number'||typeof end!=='number'||!Number.isInteger(start)||!Number.isInteger(end)||start<0||end<start||end>99||token.lanes!==1)runtime.fail('pair-stale');
-   else{token.result=value;pair={instance,result:value,outer:token.outer,offset:token.offset,start,end,flat:token.flat};}
+   else{token.result=value;pair={instance,result:value,outer:token.outer,offset:token.offset,start,end,flat:token.flat,measurements:token.measurements};}
   }return value;
  }
  function rangeNull(instance,token){if(token&&calculation===token){pair=null;dependency=null;}}
@@ -294,7 +309,7 @@ export function createWarmSourceIngress(runtime,baselineFactory,selectorFactory)
   if(value===null){if(pair)runtime.fail('pair-null');dependency=null;return;}
   if(!pair||pair.instance!==instance||pair.result!==value||pair.start!==start||pair.end!==end){runtime.fail('pair-stale');dependency=null;return;}dependency=pair;
  }
- function depsEnd(instance,token,normal){if(!normal&&instance===target)sourceError();if(token&&dependencyBusy===token){if(!normal){pair=null;dependency=null;}dependencyBusy=null;}}
+ function depsEnd(instance,token,normal,value){if(probe&&instance===target){if(!token||!normal||probe.index)sourceError();else probe.index=value;}if(!normal&&instance===target)sourceError();if(token&&dependencyBusy===token){if(!normal){pair=null;dependency=null;}dependencyBusy=null;}}
  function indexBegin(instance,extractor,overscan,count,start,end,lanes,pinnedExtractor){
   if(!rangeAdmission(instance))return null;if(extracting||calculation||dependencyBusy)return runtime.fail('pair-reentrant');
   if(start===null&&end===null){dependency=null;return null;}
@@ -318,18 +333,19 @@ export function createWarmSourceIngress(runtime,baselineFactory,selectorFactory)
  }
  function emit(t,i,n,v,d,z,r,c){try{return event(t,i,n,v,d,z,r,c);}catch{runtime.fail('source-fault');return false;}}
  function coreAdmission(){if(!target||!healthy())return false;if(runtime.active())return true;if(coreEntries===512){sourceError();return false;}coreEntries++;return false;}
- function estimate(total,first){if(!coreAdmission())return;try{event(21,-1,0,0,total,first);}catch{runtime.fail('source-fault');}}
+ function estimate(total,first){if(probe)sourceError();if(!coreAdmission())return;try{event(21,-1,0,0,total,first);}catch{runtime.fail('source-fault');}}
  function measureReturn(height,total,index){
   const s=scopes.at(-1);if(s?s.instance===target:!!render){const e=s?.node,matched=e&&s.index===index;emit(8,matched?index:-1,matched?e.id:0,height,total,0);}
   return height;
  }
- function coreEvent(instance,t,value,z){if(instance===target&&coreAdmission())emit(t,-1,0,t===18?value:0,0,z);}
+ function coreEvent(instance,t,value,z){if(probe&&instance===target)sourceError();if(instance===target&&coreAdmission())emit(t,-1,0,t===18?value:0,0,z);}
  function scrollValue(instance,value){coreEvent(instance,18,value,0);return value;}
  function deltaFacts(instance,index,size,itemSize){if(!chosen(instance))return;const s=scopes.at(-1),e=s?.node;if(!s||s.instance!==instance||s.index!==index||!e){runtime.fail('source-fault');return;}emit(9,index,e.id,size,itemSize,0);}
  function deltaBranch(instance,index,delta,branch){if(chosen(instance)){const s=scopes.at(-1),e=s?.node;if(!s||s.instance!==instance||s.index!==index||!e)runtime.fail('source-fault');else emit(10,index,e.id,delta,0,branch?1:0);}return branch;}
  function sourceError(){sourceFault=true;runtime.fail('source-fault');}
  function healthy(){return !sourceFault&&!reason&&!originalFailed&&!closed&&runtime.healthy();}
  function preparationOwned(start){const p=committedTarget;return healthy()&&!runtime.active()&&runtime.retained()===0&&!current&&!render&&!commits.length&&!scopes.length&&!fiberFrames.length&&target===owner&&!!owner&&!!mapping&&!!p&&p.mapping===mapping&&p.commit===sealed&&p.layout===layout&&mapping.owner===owner&&mapping.cacheRef===cache&&mapping.scroller===scroller&&mapping.layout===layout&&mapping.root===selectedRoot&&eligible&&baselineOwner===owner&&baselineCache===cache&&baselineScroller===scroller&&baselineLayout===layout&&counts.work===start;}
+ function sealOwned(start){const p=committedTarget;return healthy()&&runtime.active()&&!current&&!render&&!commits.length&&!scopes.length&&!fiberFrames.length&&target===owner&&!!owner&&!!mapping&&!!p&&p.mapping===mapping&&p.commit===sealed&&p.layout===layout&&mapping.owner===owner&&mapping.cacheRef===cache&&mapping.scroller===scroller&&mapping.layout===layout&&mapping.root===selectedRoot&&eligible&&baselineOwner===owner&&baselineCache===cache&&baselineScroller===scroller&&baselineLayout===layout&&counts.work===start;}
  function preparationCanonical(keys){
   const rows=mapping.rows,messages=mapping.messages,map=mapping.keys;
   if(ownData(rows,'length')!==100||ownData(messages,'length')!==100||continuityNative.apply(continuityNative.mapSize,map,[])!==100||continuityNative.prototype(map)!==continuityNative.mapPrototype||mapping.agentId!=='benchmark'||mapping.threadId!=='C-thread-1')return false;
@@ -355,6 +371,19 @@ export function createWarmSourceIngress(runtime,baselineFactory,selectorFactory)
   }catch{return unavailablePreparation();}finally{typedCapabilities=null;geometry=null;inputs=null;}
  }
  function fenceResult(historicalComplete,liveSubsetValid,fullWarmReady,connectedRows,why){return {historicalComplete,liveSubsetValid,fullWarmReady,connectedRows,reason:why,nativeGO:false,qualified:false,fps:null};}
+ function sealPreparation(){
+  if(sealStarted){partialTicket=null;anchor=null;probe=null;indexCallable=null;indexOwner=null;sourceError();return {chronology:null,plan:unavailablePreparation()};}sealStarted=true;
+  probe={calculate:null,index:null};let chronology=null,invoking=false;const refused={},start=counts.work;
+  try{
+   if(!sealOwned(start)||indexOwner!==target||!indexCallable||ownData(indexOwner,'getVirtualIndexes')!==indexCallable||!emptyLive(committedTarget)||calculateDependency||calculation||dependencyBusy||extracting||partialBusy||partialTicket||fenceBusy)throw refused;
+   invoking=true;continuityNative.apply(indexCallable,indexOwner,[]);invoking=false;
+   {const d=probe.calculate,x=probe.index,p=pair;
+   if(!sealOwned(start)||!emptyLive(committedTarget)||!d||!x||!p||dependency!==p||p.instance!==target||d.length!==4||x.length!==6||p.measurements!==d[0]||p.outer!==d[1]||p.offset!==d[2]||d[3]!==1||x[0]!==rangeExtractor||x[2]!==100||x[3]!==p.start||x[4]!==p.end||x[5]!==1||typeof x[1]!=='number'||!Number.isInteger(x[1])||x[1]<0||x[1]>10||!p.flat||current||render||commits.length||scopes.length||fiberFrames.length||calculateDependency||calculation||dependencyBusy||extracting||partialBusy||partialTicket||fenceBusy)throw refused;
+   geometry={flat:p.flat,viewport:p.outer,overscan:x[1]};}probe=null;indexCallable=null;indexOwner=null;
+   chronology=close();return {chronology,plan:prepare()};
+  }catch(error){sourceError();if(invoking)throw error;return {chronology,plan:unavailablePreparation()};}
+  finally{partialTicket=null;anchor=null;probe=null;indexCallable=null;indexOwner=null;}
+ }
  function partialFence(){try{const partial=sourceAdapter.partial();return {partial,fence:fence(partial)};}finally{partialTicket=null;}}
  function fence(partial){
   if(fenceBusy){partialTicket=null;anchor=null;sourceError();return fenceResult(false,false,false,0,'reentrant');}
@@ -389,34 +418,34 @@ export function createWarmSourceIngress(runtime,baselineFactory,selectorFactory)
   }catch{anchor=null;sourceError();return fenceResult(false,false,false,0,'source-shape');}finally{partialTicket=null;next=null;fenceBusy=false;}
  }
  function frameRequest(instance){
-  if(!target||instance!==target)return false;
+  if(probe&&instance===target)sourceError();  if(target&&instance!==target)return false;
   if(!healthy()||frameRequests===32){sourceError();return false;}frameRequests++;
-  if(runtime.active())emit(19,-1,0,0,0,0);return true;
+  if(target&&runtime.active())emit(19,-1,0,0,0,0);return true;
  }
  function frameEnter(instance){
-  if(!target||instance!==target)return false;
+  if(probe&&instance===target)sourceError();  if(target&&instance!==target)return false;
   if(!healthy()||frameCallbacks>=frameRequests){sourceError();return false;}frameCallbacks++;
-  if(runtime.active())emit(20,-1,0,0,0,0);return true;
+  if(target&&runtime.active())emit(20,-1,0,0,0,0);return true;
  }
  function frameEnd(instance,normal){if(!normal&&instance===target)sourceError();}
  function runFrameRequest(instance,call){try{return call();}catch(error){if(target===instance)sourceError();throw error;}}
  const sourceAdapter=Object.freeze({...adapter,
- renderStart(work,Component,root,rootWork){const r=adapter.renderStart(work,Component,root,rootWork);if(r)emit(0,-1,0,0,0,0,r,current);else if(reason)runtime.fail('source-fault');return r;},
+ renderStart(work,Component,root,rootWork){if(probe)sourceError();const r=adapter.renderStart(work,Component,root,rootWork);if(r)emit(0,-1,0,0,0,0,r,current);else if(reason)runtime.fail('source-fault');return r;},
  renderEnd(r,normal){if(r)emit(1,-1,0,0,0,normal?1:0,r,current);return adapter.renderEnd(r,normal);},
- commitStart(root,work){if(calculateDependency||calculation||dependencyBusy||extracting||partialBusy||partialTicket||fenceBusy){partialTicket=null;sourceError();}const c=adapter.commitStart(root,work);if(c)emit(2,-1,0,0,0,c.previousCommit?.id??0,render,c);else if(reason)runtime.fail('source-fault');return c;},
+ commitStart(root,work){if(probe)sourceError();if(calculateDependency||calculation||dependencyBusy||extracting||partialBusy||partialTicket||fenceBusy){partialTicket=null;sourceError();}const c=adapter.commitStart(root,work);if(c)emit(2,-1,0,0,0,c.previousCommit?.id??0,render,c);else if(reason)runtime.fail('source-fault');return c;},
  fiberStart(root,currentFiber,finished){if(!sourceFault&&runtime.healthy()){if(classifierEntries===30880)sourceError();else classifierEntries++;}return adapter.fiberStart(root,currentFiber,finished);},
  commitMutationEnd(c,normal){if(c)emit(3,-1,0,0,0,normal?1:0,render||c.renders[0],c);return adapter.commitMutationEnd(c,normal);},
  commitLayoutEnd(root,work,normal){const c=current;const value=adapter.commitLayoutEnd(root,work,normal);if(c)emit(4,-1,0,0,0,normal?1:0,render||c.renders[0],c);return value;},
  commitSpawnedEnd(root,work,normal){const c=current;const value=adapter.commitSpawnedEnd(root,work,normal);if(c)emit(5,-1,0,0,0,normal?1:0,render||c.renders[0],c);return value;},
- begin(instance,kind,refArg){const s=adapter.begin(instance,kind,refArg);if(s&&chosen(instance)){if(kind===1)emit(6,-1,0,0,0,1);else if(kind===3)emit(11,-1,0,0,0,0);}else if(reason)runtime.fail('source-fault');return s;},
+ begin(instance,kind,refArg){if(probe&&instance===target)sourceError();const s=adapter.begin(instance,kind,refArg);if(s&&chosen(instance)){if(kind===1)emit(6,-1,0,0,0,1);else if(kind===3)emit(11,-1,0,0,0,0);}else if(reason)runtime.fail('source-fault');return s;},
  end(instance,s,normal){if(s&&chosen(instance)){if(s.kind===1)emit(7,-1,0,0,0,normal?1:0);else if(s.kind===3)emit(13,-1,0,0,0,normal?1:0);}return adapter.end(instance,s,normal);},
- beginCleanup(instance,node){const s=adapter.beginCleanup(instance,node);if(s&&chosen(instance))emit(16,-1,0,0,0,0);else if(reason)runtime.fail('source-fault');return s;},
+ beginCleanup(instance,node){if(probe&&instance===target)sourceError();const s=adapter.beginCleanup(instance,node);if(s&&chosen(instance))emit(16,-1,0,0,0,0);else if(reason)runtime.fail('source-fault');return s;},
  endCleanup(instance,s,normal){if(s&&chosen(instance))emit(17,-1,0,0,0,normal?1:0);return adapter.endCleanup(instance,s,normal);},
  bind(instance,s,node,index){const value=adapter.bind(instance,s,node,index);if(s?.kind===2&&chosen(instance)){const e=s.node;emit(12,e?index:-1,e?.id??0,0,0,0);}return value;},
- partial(){const busy=partialBusy;partialTicket=null;if(busy||fenceBusy)sourceError();partialBusy=true;const start=counts.work;try{const value=adapter.partial();if(healthy()&&counts.work===start+270336)partialTicket=value;else sourceError();return value;}catch(error){sourceError();throw error;}finally{partialBusy=busy;}},
+ partial(){if(probe)sourceError();const busy=partialBusy;partialTicket=null;if(busy||fenceBusy)sourceError();partialBusy=true;const start=counts.work;try{const value=adapter.partial();if(healthy()&&counts.work===start+270336)partialTicket=value;else sourceError();return value;}catch(error){sourceError();throw error;}finally{partialBusy=busy;}},
  dispose(){partialTicket=null;anchor=null;geometry=null;typedCapabilities=null;pair=null;dependency=null;return adapter.dispose();},
  options(instance,merged,key){
-  const value=adapter.options(instance,merged,key);
+  if(probe)sourceError();const value=adapter.options(instance,merged,key);
   if(runtime.active()){
    if(reason)runtime.fail('source-fault');
    else if(render?.optionsOwner===instance&&render.optionsOK){if(target&&target!==instance)runtime.fail('pair-owner');else target=instance;}
@@ -424,7 +453,7 @@ export function createWarmSourceIngress(runtime,baselineFactory,selectorFactory)
   return value;
  }});
  function close(){if(calculateDependency||calculation||dependencyBusy||extracting)sourceError();if(sourceFault||reason||originalFailed||closed)runtime.fail('source-fault');pair=null;dependency=null;return runtime.close();}
- const ingress=Object.freeze({adapter:sourceAdapter,kernel,prepare,fence,partialFence,estimate,measureReturn,coreEvent,scrollValue,deltaFacts,deltaBranch,frameRequest,frameEnter,frameEnd,runFrameRequest,healthy,calculateDepsBegin,calculateDepsEnd,rangeBegin,rangeInput,rangeCalculated,rangeNull,rangeReturned,rangeEnd,depsBegin,depsEnd,rangeDeps,indexBegin,indexResult,indexEnd,close});
+ const ingress=Object.freeze({adapter:sourceAdapter,kernel,captureIndexes,captureScroll,moveTo,controllerFrame,abort:sourceError,sealPreparation,prepare,fence,partialFence,estimate,measureReturn,coreEvent,scrollValue,deltaFacts,deltaBranch,frameRequest,frameEnter,frameEnd,runFrameRequest,healthy,calculateDepsBegin,calculateDepsEnd,rangeBegin,rangeInput,rangeCalculated,rangeNull,rangeReturned,rangeEnd,depsBegin,depsEnd,rangeDeps,indexBegin,indexResult,indexEnd,close});
  warmSourceCapability={runtime,baselineFactory,selectorFactory,ingress};return ingress;
 }
 // WARM_SOURCE_CAPABILITY_END
