@@ -112,12 +112,25 @@ function emptyContinuity(c){
  if(!emptyLive(p))return 'c-empty-options';const target=emptyTarget(host,p);
  if(typeof target==='string')return target;
  if(!target)return 'c-tree-absent';
+ if(c.closedVisit&&target!==c.closedVisit)return 'c-bail-target';
  if(ownData(target,'type')!==component||ownData(target,'tag')!==0||ownData(target,'memoizedProps')!==p.props||ownData(target,'memoizedState')!==p.state||ownData(target,'updateQueue')!==p.queue||!emptyContexts(target,p))return 'c-empty-payload';
  if(mapping.agentId!=='benchmark'||mapping.threadId!=='C-thread-1'||!emptyPayload(c))return 'c-empty-payload';
  if(!emptyCache())return 'c-empty-cache';
  if(counts.work!==start||!emptyOwned(c,p))return 'c-empty-context';
  return null;
 }
+// CLOSED_BAILOUT_HELPER_BEGIN
+function deferClosedFiber(c,r,finished){
+ if(c.closedVisit){fail('commit','c-bail-repeat');return;}
+ c.closedVisit=finished;
+ const p=committedTarget;
+ if(!p){fail('commit','c-bail-e1');return;}if(!owner){fail('commit','c-bail-e2');return;}if(!mapping){fail('commit','c-bail-e3');return;}if(current!==c){fail('commit','c-bail-e4');return;}if(commits.at(-1)!==c){fail('commit','c-bail-e5');return;}if(c.previousCommit!==null){fail('commit','c-bail-e6');return;}if(c.frameDepth!==0){fail('commit','c-bail-e7');return;}if(c.renders.length){fail('commit','c-bail-e8');return;}if(c.nodes.length){fail('commit','c-bail-e9');return;}if(c.writes.length){fail('commit','c-bail-e10');return;}if(scopes.length){fail('commit','c-bail-e11');return;}if(fiberFrames.length){fail('commit','c-bail-e12');return;}if(p.mapping!==mapping){fail('commit','c-bail-e13');return;}if(p.commit!==sealed){fail('commit','c-bail-e14');return;}if(p.layout!==layout){fail('commit','c-bail-e15');return;}if(r.superseded){fail('commit','c-bail-e16');return;}if(r.count!==100){fail('commit','c-bail-e17');return;}if(!r.rows){fail('commit','c-bail-e18');return;}if(!r.optionsOK){fail('commit','c-bail-e19');return;}if(r.optionsOwner!==owner){fail('commit','c-bail-e20');return;}if(r.owner!==owner){fail('commit','c-bail-e21');return;}if(r.root!==c.root){fail('commit','c-bail-e22');return;}if(r.rootWork!==c.work){fail('commit','c-bail-e23');return;}if(r.cacheRef!==cache){fail('commit','c-bail-e24');return;}if(r.scroller!==scroller){fail('commit','c-bail-e25');return;}if(r.agentId!=='benchmark'){fail('commit','c-bail-e26');return;}if(r.threadId!=='C-thread-1'){fail('commit','c-bail-e27');return;}if(!same(mapping,r)){fail('commit','c-bail-e28');return;}
+ const certified=p.fiber;
+ if(finished!==certified){if(ownData(certified,'alternate')!==finished){fail('commit','c-bail-a1');return;}if(ownData(finished,'alternate')!==certified){fail('commit','c-bail-a2');return;}}if(ownData(finished,'type')!==component){fail('commit','c-bail-a3');return;}if(ownData(finished,'tag')!==0){fail('commit','c-bail-a4');return;}
+ const flags=ownData(finished,'flags');
+ if(typeof flags!=='number'||!Number.isSafeInteger(flags)||flags< -2147483648||flags>2147483647||(flags&4)!==0){fail('commit','c-bail-flags');return;}
+}
+// CLOSED_BAILOUT_HELPER_END
 function endCommit(root,work,normal,phase){
  const c=current;
  if(!c||c.root!==root||c.work!==work){fail('commit','c-end-identity');return;}
@@ -127,6 +140,9 @@ function endCommit(root,work,normal,phase){
  const joined=c.renders;let candidate=null,nextMapping=mapping,nextCarry=carry;
  for(const proposed of renders){if(!commitScalar(c,16,'l-cscan'))break;if(!proposed.closed&&!proposed.superseded&&proposed.done&&proposed.root===c.root&&proposed.rootWork===c.work&&proposed.rows&&proposed.count===100&&proposed.scroller&&!joined.includes(proposed))fail('commit','c-end-unjoined');}
  if(scopes.length||fiberFrames.some(f=>f.commit===c))fail('commit','c-end-active');
+ // CLOSED_BAILOUT_END_BEGIN
+ if(c.closedVisit){const site=c.renders.length?'c-bail-mixed':emptyContinuity(c);if(site!==null)fail('commit',site||'c-bail-context');closeCommit(c);return;}
+ // CLOSED_BAILOUT_END_END
  for(const r of joined){
   if(!r.done||r.superseded||r.owner.itemSizeCache!==r.cacheRef||r.owner.options.count!==r.count){fail('mapping','m-end-capture');break;}
   if(r.rows.length===0&&!owner&&r.count===0)continue;
@@ -189,9 +205,9 @@ const hooks={
  rows(rows,messages,keys,store,instance,scroll,transform,group,children,agentId,threadId){if(!render||render.rows||transform||group||children){fail('mapping','m-rows-shape');return null;}if(!liveRender(render)||!render.optionsOK||render.optionsOwner!==instance){fail('source-gap');return null;}if(owner&&owner!==instance){fail('generation');return null;}Object.assign(render,{rows,messages,keys,store,owner:instance,cacheRef:instance.itemSizeCache,scroller:scroll,count:instance.options.count,agentId,threadId,layout,seen:new Map()});if(nativeCandidateBaseline)nativeCandidateBaseline(instance,scroll,render);return render;},
  key(row,value){if(render?.rows){if(!commitScalar(render,8,'l-rkey'))return value;if((render.keyCalls??0)>=101)fail('limit','l-key-count');else{render.keyCalls=(render.keyCalls??0)+1;render.seen.set(row,value);}}return value;},
  mapping(r){if(!commitScalar(current,16,'l-map'))return;if(!current||!r||!current.renders.includes(r)){fail('commit','c-map-join');return;}r.map=true;},
- commitStart(root,work){if(commits.length>=8){fail('limit','l-commit-depth');return null;}if(!admit('commits',262144))return null;const c={id:id(),root,work,nodes:[],writes:[],renders:[],mutation:false,layout:false,scalar:15424,previousCommit:current,previousFiber:fiber,previousFrame:fiberFrames.at(-1),frameDepth:fiberFrames.length};commits.push(c);current=c;fiber=null;return c;},
+ commitStart(root,work){if(current?.closedVisit){fail('commit','c-bail-nested');return null;}if(commits.length>=8){fail('limit','l-commit-depth');return null;}if(!admit('commits',262144))return null;const c={id:id(),root,work,closedVisit:null,nodes:[],writes:[],renders:[],mutation:false,layout:false,scalar:15424,previousCommit:current,previousFiber:fiber,previousFrame:fiberFrames.at(-1),frameDepth:fiberFrames.length};commits.push(c);current=c;fiber=null;return c;},
  commitMutationEnd(c,normal){if(!c)return;if(!normal){fail('original-failure');closeCommit(c);return;}c.mutation=true;},
- fiberStart(root,currentFiber,finished){if(reason)return null;const c=current,host=c?.work;if(!c||root!==c.root||host?.tag!==3||host.stateNode!==root){fail('commit','c-fiber-root');return null;}if(!commitScalar(current,16,'l-fiber'))return null;const top=fiberFrames.at(-1),inside=top?.commit===current,r=renderByWork.get(finished);if(inside){if(finished.return!==fiber||(r&&r!==current.renders[0])){fail('commit','c-fiber-parent');return null;}}else{if(!r)return null;if((r.closed||r.superseded)&&r.count===0)return null;if(r.work!==finished||!r.done||r.closed||r.superseded||!r.rows||!r.optionsOK||r.optionsOwner!==r.owner||r.root!==current.root||r.rootWork!==current.work||r.cacheRef!==r.owner.itemSizeCache||r.agentId!=='benchmark'||r.threadId!=='C-thread-1'||current.renders.length){fail('commit','c-fiber-render');return null;}}if(!admitActive())return null;const token={commit:current,previous:fiber,fiber:finished};fiberFrames.push(token);fiber=finished;if(!inside)current.renders.push(r);return token;},
+ fiberStart(root,currentFiber,finished){if(reason)return null;const c=current,host=c?.work;if(!c||root!==c.root||host?.tag!==3||host.stateNode!==root){fail('commit','c-fiber-root');return null;}if(!commitScalar(current,16,'l-fiber'))return null;const top=fiberFrames.at(-1),inside=top?.commit===current,r=renderByWork.get(finished);if(inside){if(finished.return!==fiber||(r&&r!==current.renders[0])){fail('commit','c-fiber-parent');return null;}}else{if(!r)return null;if((r.closed||r.superseded)&&r.count===0)return null;if(r.work!==finished){fail('commit','c-fiber-r1');return null;}if(!r.done){fail('commit','c-fiber-r2');return null;}if(r.closed){deferClosedFiber(c,r,finished);return null;}if(r.superseded){fail('commit','c-fiber-r4');return null;}if(!r.rows){fail('commit','c-fiber-r5');return null;}if(!r.optionsOK){fail('commit','c-fiber-r6');return null;}if(r.optionsOwner!==r.owner){fail('commit','c-fiber-r7');return null;}if(r.root!==current.root){fail('commit','c-fiber-r8');return null;}if(r.rootWork!==current.work){fail('commit','c-fiber-r9');return null;}if(r.cacheRef!==r.owner.itemSizeCache){fail('commit','c-fiber-r10');return null;}if(r.agentId!=='benchmark'){fail('commit','c-fiber-r11');return null;}if(r.threadId!=='C-thread-1'){fail('commit','c-fiber-r12');return null;}if(current.renders.length){fail('commit','c-fiber-r13');return null;}}if(!admitActive())return null;const token={commit:current,previous:fiber,fiber:finished};fiberFrames.push(token);fiber=finished;if(!inside)current.renders.push(r);return token;},
  fiberEnd(token,normal){if(!normal)fail('original-failure');if(!token)return;if(fiberFrames.at(-1)!==token||current!==token.commit){fail('commit','c-fiber-end');return;}fiberFrames.pop();fiber=token.previous;},
  commitLayoutEnd(root,work,normal){endCommit(root,work,normal,1);},
  commitSpawnedEnd(root,work,normal){endCommit(root,work,normal,2);},
