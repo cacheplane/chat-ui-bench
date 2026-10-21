@@ -263,9 +263,18 @@ export function createWarmSourceIngress(runtime,baselineFactory,selectorFactory)
  let target=null,pair=null,dependency=null,calculation=null,extracting=null,dependencyBusy=null,calculateDependency=null,frameRequests=0,frameCallbacks=0,sourceFault=false,rangeEntries=0,geometry=null,rangeKernel=null,rangeExtractor=null;
  let preparationStarted=false,preparationAccepted=false,failedPlan=null,typedCapabilities=null,partialBusy=false,partialTicket=null,fenceBusy=false,fenceCalls=0,anchor=null,classifierEntries=0,coreEntries=0;
  if(baselineFactory){const p=continuityNative.prototype(Float64Array.prototype);typedCapabilities={length:continuityNative.descriptor(p,'length').get,buffer:continuityNative.descriptor(p,'buffer').get,tag:continuityNative.descriptor(p,Symbol.toStringTag).get,byteLength:continuityNative.descriptor(ArrayBuffer.prototype,'byteLength').get,resizable:continuityNative.descriptor(ArrayBuffer.prototype,'resizable')?.get??null,float64Prototype:Float64Array.prototype,arrayBufferPrototype:ArrayBuffer.prototype};}
+ let candidateRegistry=new Map(),candidateEntries=0;
  let indexOwner=null,indexCallable=null,sealStarted=false,probe=null,scrollCallable=null,motionCalls=0;
  const controllerWindow=typeof window==='undefined'?null:window,controllerRAF=controllerWindow?.requestAnimationFrame;
- function captureScroll(instance,fn){if(instance!==indexOwner||typeof fn!=='function'||scrollCallable&&scrollCallable!==fn)sourceError('01');else scrollCallable=fn;return fn;}
+
+ function capture(instance,fn,kind){
+ const key=kind-1;
+ if(target){if(instance!==target||indexOwner!==instance||(kind===1?indexCallable:scrollCallable)!==fn)sourceError(kind===1?'10':'01');return fn;}
+ let row=candidateRegistry.get(instance);
+ if(!row){if(kind!==1||candidateEntries===32){sourceError('10');return fn;}candidateEntries++;candidateRegistry.set(instance,row=[null,null]);}
+ if(typeof fn!=='function'||row[key]&&row[key]!==fn)sourceError(kind===1?'10':'01');else row[key]=fn;
+ return fn;
+ }
  function motionOptions(){const o=ownData(owner,'options');return ownData(o,'horizontal')===false&&ownData(o,'paddingStart')===0&&ownData(o,'paddingEnd')===0&&ownData(o,'scrollPaddingStart')===0&&ownData(o,'scrollPaddingEnd')===0&&ownData(o,'scrollMargin')===0&&ownData(o,'gap')===0;}
  function moveTo(index){
   let entered=false;try{
@@ -279,7 +288,7 @@ export function createWarmSourceIngress(runtime,baselineFactory,selectorFactory)
   if(frameRequests===32){sourceError('06');throw Error('C-warm-raf-'+runtime.diagnostic());}frameRequests++;
   return new Promise((resolve,reject)=>{try{continuityNative.apply(controllerRAF,controllerWindow,[()=>{if(!healthy()){sourceError('07');reject(Error('C-warm-raf-'+runtime.diagnostic()));return;}if(frameCallbacks>=frameRequests){sourceError('08');reject(Error('C-warm-raf-'+runtime.diagnostic()));return;}frameCallbacks++;resolve();}]);}catch(error){sourceError('09');reject(error);}});
  }
- function captureIndexes(instance,fn){if(typeof fn!=='function'||indexCallable&&(indexOwner!==instance||indexCallable!==fn))sourceError('10');else{indexOwner=instance;indexCallable=fn;}return fn;}
+
  function kernel(calculate,extractor){if(typeof calculate!=='function'||typeof extractor!=='function'||rangeKernel&&(rangeKernel!==calculate||rangeExtractor!==extractor)){sourceError('11');return false;}rangeKernel=calculate;rangeExtractor=extractor;return true;}
  function chosen(instance){if(!runtime.active())return false;if(reason||closed)return runtime.fail('source-fault','12');return target===instance;}
  function rangeAdmission(instance){
@@ -450,12 +459,12 @@ export function createWarmSourceIngress(runtime,baselineFactory,selectorFactory)
   if(probe)sourceError('65');const value=adapter.options(instance,merged,key);
   if(runtime.active()){
    if(reason)runtime.fail('source-fault','66');
-   else if(render?.optionsOwner===instance&&render.optionsOK){if(target&&target!==instance)runtime.fail('pair-owner','67');else target=instance;}
+   else if(render?.optionsOwner===instance&&render.optionsOK){const countDescriptor=continuityNative.descriptor(merged,'count');if(!countDescriptor||!('value'in countDescriptor))sourceError('10');else if(countDescriptor.value===100){if(target&&target!==instance)runtime.fail('pair-owner','67');else if(!target){const row=candidateRegistry?.get(instance);if(!row||typeof row[0]!=='function'||typeof row[1]!=='function')sourceError('10');else{target=instance;indexOwner=instance;indexCallable=row[0];scrollCallable=row[1];candidateRegistry=null;}}}}
   }
   return value;
  }});
  function close(){if(calculateDependency||calculation||dependencyBusy||extracting)sourceError('68');if(sourceFault||reason||originalFailed||closed)runtime.fail('source-fault','69');pair=null;dependency=null;return runtime.close();}
- const ingress=Object.freeze({adapter:sourceAdapter,kernel,captureIndexes,captureScroll,moveTo,controllerFrame,abort:sourceError,sealPreparation,prepare,fence,partialFence,estimate,measureReturn,coreEvent,scrollValue,deltaFacts,deltaBranch,frameRequest,frameEnter,frameEnd,runFrameRequest,healthy,calculateDepsBegin,calculateDepsEnd,rangeBegin,rangeInput,rangeCalculated,rangeNull,rangeReturned,rangeEnd,depsBegin,depsEnd,rangeDeps,indexBegin,indexResult,indexEnd,close});
+ const ingress=Object.freeze({adapter:sourceAdapter,kernel,capture,moveTo,controllerFrame,abort:sourceError,sealPreparation,prepare,fence,partialFence,estimate,measureReturn,coreEvent,scrollValue,deltaFacts,deltaBranch,frameRequest,frameEnter,frameEnd,runFrameRequest,healthy,calculateDepsBegin,calculateDepsEnd,rangeBegin,rangeInput,rangeCalculated,rangeNull,rangeReturned,rangeEnd,depsBegin,depsEnd,rangeDeps,indexBegin,indexResult,indexEnd,close});
  warmSourceCapability={runtime,baselineFactory,selectorFactory,ingress};return ingress;
 }
 // WARM_SOURCE_CAPABILITY_END

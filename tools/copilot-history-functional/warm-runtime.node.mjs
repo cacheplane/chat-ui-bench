@@ -38,7 +38,7 @@ test('original estimate callback needs one E21 at completed first-size seam with
 let fixtureSerial=0;
 async function privateIngress(runtime){
  const source=fs.readFileSync(new URL('adapter.mjs',import.meta.url),'utf8');
- const extra=`\nexport function sourceFixture(runtime){const ingress=createWarmSourceIngress(runtime),Component=function Target(){},root={},host={tag:3,stateNode:root},work={};root.current={alternate:host};adapter.component(Component);adapter.renderStart(work,Component,root,host);const key=i=>i,instance={itemSizeCache:new Map()};ingress.adapter.options(instance,{getItemKey:key,lanes:1,enabled:true,initialMeasurementsCache:[],count:0},key);return{ingress,instance,root,host,Component,state:()=>({reason,originalFailed,work:counts.work,sealed,eligible,owner,mapping,carry,exports:counts.exports,censuses:counts.censuses})};}\n//fixture${++fixtureSerial}`;
+ const extra=`\nexport function sourceFixture(runtime){const ingress=createWarmSourceIngress(runtime),Component=function Target(){},root={},host={tag:3,stateNode:root},work={};root.current={alternate:host};adapter.component(Component);adapter.renderStart(work,Component,root,host);const key=i=>i,instance={itemSizeCache:new Map()};instance.getVirtualIndexes=ingress.capture(instance,()=>[],1);instance.scrollToIndex=ingress.capture(instance,()=>{},2);ingress.adapter.options(instance,{getItemKey:key,lanes:1,enabled:true,initialMeasurementsCache:[],count:100},key);return{ingress,instance,root,host,Component,state:()=>({reason,originalFailed,work:counts.work,sealed,eligible,owner,mapping,carry,exports:counts.exports,censuses:counts.censuses})};}\n//fixture${++fixtureSerial}`;
  return(await import('data:text/javascript;base64,'+Buffer.from(source+extra).toString('base64'))).sourceFixture(runtime);
 }
 function estimateExperiment(text,observer,opts={}){
@@ -83,7 +83,7 @@ test('warm transform reverses every whole original and leaves default transform 
 function sourceParts(text){
  const ast=parseAst(text,{},'core.mjs'),parts={};
  function walk(n){if(!n||typeof n!=='object')return;
-  if(n.type==='AssignmentExpression'&&n.left?.object?.type==='ThisExpression'&&['calculateRange','getVirtualIndexes'].includes(n.left.property?.name)){const rhs=n.right.callee?.property?.name==='captureIndexes'?n.right.arguments[1]:n.right;parts[n.left.property.name]=rhs.arguments.map(a=>text.slice(a.start,a.end));}
+  if(n.type==='AssignmentExpression'&&n.left?.object?.type==='ThisExpression'&&['calculateRange','getVirtualIndexes'].includes(n.left.property?.name)){const rhs=n.right.callee?.property?.name==='capture'?n.right.arguments[1]:n.right;parts[n.left.property.name]=rhs.arguments.map(a=>text.slice(a.start,a.end));}
   if(n.type==='FunctionDeclaration'&&['calculateRangeImpl','findNearestBinarySearchFlat'].includes(n.id?.name))parts[n.id.name]=text.slice(n.start,n.end);
   if(n.type==='VariableDeclarator'&&['defaultRangeExtractor','findNearestBinarySearch'].includes(n.id?.name))parts[n.id.name]='const '+text.slice(n.start,n.end)+';';
   for(const v of Object.values(n))if(Array.isArray(v))v.forEach(walk);else if(v&&typeof v==='object')walk(v);
@@ -235,9 +235,10 @@ test('new warm encoder serializes the whole wrapper once and never repeats origi
 async function warmScopeFacts(runtime,options={}){
  const text=fs.readFileSync(new URL('./lifecycle.node.mjs',import.meta.url),'utf8'),ast=parseAst(text,{},'lifecycle.mjs'),declaration=ast.body.find(n=>n.type==='VariableDeclaration'&&n.declarations[0].id.name==='BOUNDARY_FIXTURE').declarations[0].init;
  let fixture=Function('return('+text.slice(declaration.start,declaration.end)+');')();
- fixture=fixture.replace('export function boundaryFacts(opts={}){','export function warmScopeFacts(runtime,opts={}){const adapter=createWarmSourceIngress(runtime).adapter;')
+ fixture=fixture.replace('export function boundaryFacts(opts={}){','export function warmScopeFacts(runtime,opts={}){const ingress=createWarmSourceIngress(runtime),adapter=ingress.adapter;')
   .replace('adapter.renderEnd(r,true);','for(let i=0;i<100;i++)adapter.key(rows[i],messages[i].id);adapter.renderEnd(r,true);')
   .replace('adapter.commitMutationEnd(c,true);const f=adapter.fiberStart(rr,null,w);if(map)adapter.mapping(r);','if(!opts.cleanup){adapter.commitMutationEnd(c,true);const f=adapter.fiberStart(rr,null,w);if(map)adapter.mapping(r);}')
+  .replace('adapter.options(ow,',"if(!ow.getVirtualIndexes){ow.getVirtualIndexes=ingress.capture(ow,()=>[],1);ow.scrollToIndex=ingress.capture(ow,()=>{},2);}adapter.options(ow,")
   .replace('return{adapter,root,instance,','return{ingress:createWarmSourceIngress(runtime),adapter,root,instance,')
   .replace('adapter.fiberEnd(f,true);adapter.commitLayoutEnd(rr,rw,true);','');
  const source=fs.readFileSync(new URL('./adapter.mjs',import.meta.url),'utf8');return(await import('data:text/javascript;base64,'+Buffer.from(source+fixture+'\n//scope'+(++fixtureSerial)).toString('base64'))).warmScopeFacts(runtime,options);
@@ -266,10 +267,10 @@ async function sourceCoreClass(text,ingress){
  let code=text;for(const[a,b]of removed.sort((x,y)=>y[0]-x[0]))code=code.slice(0,a)+code.slice(b);
  return Function(...names,'__lh','__wh',code+';return {Virtualizer,observeElementRect};')(...values,ingress.adapter,ingress);
 }
-async function virtualFixture(text){
- const runtime=createWarmRuntime(),source=fs.readFileSync(new URL('adapter.mjs',import.meta.url),'utf8'),extra=`\nexport function unbound(runtime){const ingress=createWarmSourceIngress(runtime),C=function Target(){},root={},host={tag:3,stateNode:root};root.current={alternate:host};adapter.component(C);adapter.renderStart({},C,root,host);return{ingress,state:()=>({reason,originalFailed,work:counts.work,owner,mapping,carry,sealed,eligible})};}\n//unbound${++fixtureSerial}`;
+async function virtualFixture(text,count=100,instantiate=true,initialRender=true){
+ const runtime=createWarmRuntime(),source=fs.readFileSync(new URL('adapter.mjs',import.meta.url),'utf8'),extra=`\nexport function unbound(runtime){const ingress=createWarmSourceIngress(runtime),C=function Target(){},root={},host={tag:3,stateNode:root};root.current={alternate:host};adapter.component(C);${initialRender?'adapter.renderStart({},C,root,host);':''}return{ingress,start(work){return adapter.renderStart(work,C,root,host);},end(r){adapter.renderEnd(r,true);},state:()=>({reason,originalFailed,work:counts.work,owner,mapping,carry,sealed,eligible,options:counts.options,renders:counts.renders})};}\n//unbound${++fixtureSerial}`;
  const f=(await import('data:text/javascript;base64,'+Buffer.from(source+extra).toString('base64'))).unbound(runtime),bindings=await sourceCoreClass(text,f.ingress),trace=[];
- const instance=new bindings.Virtualizer({count:100,estimateSize:()=>200,getScrollElement:()=>null,onChange(...args){trace.push(['change',args[0]===instance,args[1]]);},anchorTo:'end'});return{runtime,f,instance,trace,bindings};
+ const instance=instantiate?new bindings.Virtualizer({count,estimateSize:()=>200,getScrollElement:()=>null,onChange(...args){trace.push(['change',args[0]===instance,args[1]]);},anchorTo:'end'}):null;return{runtime,f,instance,trace,bindings};
 }
 test('diagnostic original constructor preserves first capture site through later RAF and close',async()=>{
  const x=await virtualFixture(instrument.transformWarm('core').code);assert.equal(x.f.ingress.healthy(),true);
@@ -283,8 +284,8 @@ test('diagnostic sticky runtime tag preserves old close reason and explicit unkn
 });
 test('diagnostic complete75 source-extracted failure calls latch exactly once without changing public reasons',()=>{
  const adapterText=fs.readFileSync(new URL('adapter.mjs',import.meta.url),'utf8'),runtimeText=fs.readFileSync(new URL('warm-runtime.mjs',import.meta.url),'utf8'),adapterAst=parseAst(adapterText,{},'adapter.mjs'),runtimeAst=parseAst(runtimeText,{},'runtime.mjs'),factory=adapterAst.body.find(n=>n.declaration?.id?.name==='createWarmSourceIngress').declaration;
- let sourceErrorText;const calls=[];function walk(n,text){if(!n||typeof n!=='object')return;if(n.type==='FunctionDeclaration'&&n.id?.name==='sourceError')sourceErrorText=text.slice(n.start,n.end);if(n.type==='CallExpression'&&(n.callee.name==='sourceError'||n.callee.object?.name==='runtime'&&n.callee.property?.name==='fail'||n.callee.name==='fail')){const site=n.arguments.at(-1);if(site?.type==='Literal'&&/^\d\d$/.test(site.value))calls.push({code:site.value,text:text.slice(n.start,n.end),reason:n.callee.name==='sourceError'?'source-fault':n.arguments[0].value});}for(const v of Object.values(n))if(Array.isArray(v))v.forEach(x=>walk(x,text));else if(v&&typeof v==='object')walk(v,text);}
- walk(factory,adapterText);walk(runtimeAst,runtimeText);assert.equal(calls.length,74);assert.deepEqual(calls.map(x=>x.code),Array.from({length:74},(_,i)=>String(i+1).padStart(2,'0')));assert.ok(sourceErrorText);
+ let sourceErrorText;const calls=[];function walk(n,text){if(!n||typeof n!=='object')return;if(n.type==='FunctionDeclaration'&&n.id?.name==='sourceError')sourceErrorText=text.slice(n.start,n.end);if(n.type==='CallExpression'&&(n.callee.name==='sourceError'||n.callee.object?.name==='runtime'&&n.callee.property?.name==='fail'||n.callee.name==='fail')){const site=n.arguments.at(-1);if(site?.type==='Literal'&&/^\d\d$/.test(site.value))calls.push({code:site.value,text:text.slice(n.start,n.end),reason:n.callee.name==='sourceError'?'source-fault':n.arguments[0].value});else if(n.callee.name==='sourceError'&&site?.type==='ConditionalExpression'){assert.equal(text.slice(site.test.start,site.test.end),'kind===1');for(const kind of[1,2]){const code=(kind===1?site.consequent:site.alternate).value;assert.ok(code==='10'||code==='01');calls.push({code,text:'(()=>{const kind='+kind+';return '+text.slice(n.start,n.end)+';})()',reason:'source-fault'});}}}for(const v of Object.values(n))if(Array.isArray(v))v.forEach(x=>walk(x,text));else if(v&&typeof v==='object')walk(v,text);}
+ walk(factory,adapterText);walk(runtimeAst,runtimeText);assert.equal(calls.length,79);assert.deepEqual([...new Set(calls.map(x=>x.code))].sort(),Array.from({length:74},(_,i)=>String(i+1).padStart(2,'0')));assert.ok(sourceErrorText);
  calls.push({code:'75',text:'sourceError()',reason:'source-fault'});for(const call of calls){const r=createWarmRuntime(),sourceError=Function('runtime','let sourceFault=false;return('+sourceErrorText+');')(r);Function('runtime','fail','sourceError','return('+call.text+');')(r,r.fail,sourceError);assert.equal(r.diagnostic(),call.code);r.fail('pair-owner','00');sourceError('01');const dto=r.close();assert.equal(dto.reason,call.reason);assert.equal(r.diagnostic(),call.code);assert.equal(dto.complete,false);assert.equal(dto.records,0);assert.equal(dto.text,'');assert.equal(dto.nativeGO,false);}
 });
 test('diagnostic real controller RAF branches distinguish entry callback quota and original throw',async()=>{
@@ -411,22 +412,24 @@ test('warm-only transform supplies reviewed factories and original core kernel w
  const old=instrument.transform('core'),now=instrument.transformWarm('core');assert.ok(!old.code.includes('warm-baseline.mjs'));assert.ok(!old.code.includes('warm-selector.mjs'));
  assert.match(now.code,/createWarmBaseline/);assert.match(now.code,/createWarmSelector/);assert.match(now.code,/__wh\.kernel\(calculateRangeImpl,defaultRangeExtractor\)/);assert.equal(instrument.reverseWarm(now),instrument.reverse(old));
 });
-async function preparationFixture(){
+async function preparationFixture(configure=(i,a)=>{i.getVirtualIndexes=a.capture(i,()=>[],1);i.scrollToIndex=a.capture(i,()=>{},2);}){
+ let initialCallbacks;const configureOwned=(i,a)=>{initialCallbacks=configure(i,a);};
  const life=fs.readFileSync(new URL('lifecycle.node.mjs',import.meta.url),'utf8'),tree=parseAst(life,{},'lifecycle');
  const string=name=>{const n=tree.body.find(n=>n.type==='VariableDeclaration'&&n.declarations[0].id.name===name).declarations[0].init;return Function('return('+life.slice(n.start,n.end)+');')();};
  const boundary=string('BOUNDARY_FIXTURE').replace('export function boundaryFacts(opts={}){','export function boundaryFacts(opts={}){const adapter=__fixtureIngress.adapter;')
   .replace('adapter.renderEnd(r,true);','for(let i=0;i<100;i++)adapter.key(rows[i],messages[i].id);adapter.renderEnd(r,true);')
-  .replace('if(map)adapter.mapping(r);adapter.fiberEnd(f,true);','if(map)adapter.mapping(r);change.onLayout?.();adapter.fiberEnd(f,true);');
+  .replace('if(map)adapter.mapping(r);adapter.fiberEnd(f,true);','if(map)adapter.mapping(r);change.onLayout?.();adapter.fiberEnd(f,true);')
+  .replace('adapter.options(ow,','if(!__fixtureConfigured){__fixtureConfigure(ow,__fixtureIngress);__fixtureConfigured=true;}adapter.options(ow,');
  const reactPin=instrument.registry.find(p=>p.path.endsWith('react-dom-client.production.js')),reactRaw=instrument.boundedRead(instrument.sourceRoot+'/'+reactPin.path,reactPin.bytes).toString();assert.equal(instrument.sha(reactRaw),reactPin.sha256);
  const declaration=name=>{const a=reactRaw.indexOf('function '+name+'('),b=reactRaw.indexOf('\nfunction ',a+10);assert.ok(a>=0&&b>a);return reactRaw.slice(a,b);};
  const react=Function(declaration('FiberNode')+declaration('createFiberImplClass')+declaration('createWorkInProgress')+declaration('bubbleProperties')+';return{FiberNode,createWorkInProgress,bubbleProperties};')();
  const source=fs.readFileSync(new URL('adapter.mjs',import.meta.url),'utf8');let establish;
  function walk(n){if(!n||typeof n!=='object')return;if(n.type==='VariableDeclarator'&&n.id.name==='establish')establish=source.slice(n.init.start,n.init.end);for(const v of Object.values(n))if(Array.isArray(v))v.forEach(walk);else if(v&&typeof v==='object')walk(v);}walk(parseAst(source,{},'adapter'));assert.ok(establish);
- const extra=`\nlet __fixtureIngress;\n${boundary}\n${string('CONTINUITY_FIXTURE')}\nexport function preparationFacts(runtime,baselineFactory,selectorFactory,react){__fixtureIngress=createWarmSourceIngress(runtime,baselineFactory,selectorFactory);const x=continuityFacts(react),f=x.f;let observed=0,style;const fontReady=true,document={fonts:{status:'loaded'}},getComputedStyle=()=>({fontFamily:'fixed',fontSize:'12px',display:'block'}),observer={observe(){observed++;}};continuityNative.nodeConnected=function(){const d=Object.getOwnPropertyDescriptor(this,'isConnected');if(!d||typeof d.value!=='boolean')throw TypeError('fixture DOM brand');return d.value;};const establish=${establish};establish(f.instance,f.scroll);return{x,f,ingress:__fixtureIngress,observed};}\n//preparation${++fixtureSerial}`;
- const {createWarmBaseline}=await import('./warm-baseline.mjs'),{createWarmSelector}=await import('./warm-selector.mjs'),runtime=createWarmRuntime(),f=(await import('data:text/javascript;base64,'+Buffer.from(source+extra).toString('base64'))).preparationFacts(runtime,createWarmBaseline,createWarmSelector,react);
+ const extra=`\nlet __fixtureIngress,__fixtureConfigure,__fixtureConfigured=false;\n${boundary}\n${string('CONTINUITY_FIXTURE')}\nexport function preparationFacts(runtime,baselineFactory,selectorFactory,react,configure){__fixtureConfigure=configure;__fixtureIngress=createWarmSourceIngress(runtime,baselineFactory,selectorFactory);const x=continuityFacts(react),f=x.f;let observed=0,style;const fontReady=true,document={fonts:{status:'loaded'}},getComputedStyle=()=>({fontFamily:'fixed',fontSize:'12px',display:'block'}),observer={observe(){observed++;}};continuityNative.nodeConnected=function(){const d=Object.getOwnPropertyDescriptor(this,'isConnected');if(!d||typeof d.value!=='boolean')throw TypeError('fixture DOM brand');return d.value;};const establish=${establish};establish(f.instance,f.scroll);return{x,f,ingress:__fixtureIngress,observed};}\n//preparation${++fixtureSerial}`;
+ const {createWarmBaseline}=await import('./warm-baseline.mjs'),{createWarmSelector}=await import('./warm-selector.mjs'),runtime=createWarmRuntime(),f=(await import('data:text/javascript;base64,'+Buffer.from(source+extra).toString('base64'))).preparationFacts(runtime,createWarmBaseline,createWarmSelector,react,configureOwned);
  const instance=f.f.instance,flat=new Float64Array(200);for(let i=0;i<100;i++){flat[2*i]=i*200;flat[2*i+1]=200;}
  instance._singleLaneMeasurements={flat};instance.isScrolling=false;instance.maybeNotify={updateDeps(){}};
- const c=rangeCallbacks(instrument.transformWarm('core').code,instance,f.ingress);f.ingress.kernel(c.kernel,c.extractor);instance.options.overscan=5;instance.options.rangeExtractor=c.extractor;let range=c.calculate(Array.from({length:100},(_,i)=>({start:i*200,end:(i+1)*200})),500,19500,1);instance.calculateRange=()=>range;c.indexes(...c.deps());
+ const c=initialCallbacks??rangeCallbacks(instrument.transformWarm('core').code,instance,f.ingress);f.ingress.kernel(c.kernel,c.extractor);instance.options.overscan=5;instance.options.rangeExtractor=c.extractor;let range=c.calculate(Array.from({length:100},(_,i)=>({start:i*200,end:(i+1)*200})),500,19500,1);instance.calculateRange??=()=>range;c.indexes(...c.deps());
  return{...f,runtime,flat,react,sourceCallbacks:c};
 }
 test('private preparation consumes established baseline and original range capability without old publication credit',async()=>{
@@ -577,16 +580,17 @@ test('postclose entry513 preserves original notify throw and original estimate g
  assert.deepEqual(now.trace,held.trace);assert.equal(held.thrown,held.sentinel);assert.equal(now.thrown,now.sentinel);assert.equal(f.ingress.healthy(),false);
 });
 
-async function freshMemoFixture(){
- const f=await preparationFixture(),instance=f.f.instance,code=instrument.transformWarm('core').code,pin=instrument.registry.find(p=>p.path.endsWith('/utils.js')),{memo}=await import(new URL('../../'+pin.path,import.meta.url)),c=f.sourceCallbacks,trace=[],sentinel={freshMemoOriginal:true};let viewport=500,offset=19500,throwAt=null;
+async function freshMemoFixture(scroll=()=>{}){
+ const code=instrument.transformWarm('core').code,pin=instrument.registry.find(p=>p.path.endsWith('/utils.js')),{memo}=await import(new URL('../../'+pin.path,import.meta.url)),trace=[],sentinel={freshMemoOriginal:true};let viewport=500,offset=19500,throwAt=null;
  const rows=Array.from({length:100},(_,i)=>({start:i*200,end:(i+1)*200}));
  const mark=n=>{trace.push(n);if(throwAt===n)throw sentinel;};
- instance.getMeasurements=()=>{mark('measurements');return rows;};instance.getSize=()=>{mark('size');return viewport;};instance.getScrollOffset=()=>{mark('offset');return offset;};
- // These are the actual pinned constructor RHS expressions and original memo,
- // not a manually populated dependency/pair or replacement memo implementation.
- const evaluate=name=>Function('memo','__wh','defaultRangeExtractor','calculateRangeImpl','return('+assignedArrow(code,name)+');').call(instance,memo,f.ingress,c.extractor,c.kernel);
- instance.calculateRange=evaluate('calculateRange');instance.getVirtualIndexes=evaluate('getVirtualIndexes');
- return{...f,instance,trace,sentinel,change(v,o=offset){viewport=v;offset=o;},throwOn(n){throwAt=n;}};
+ const f=await preparationFixture((instance,ingress)=>{
+  instance.getMeasurements=()=>{mark('measurements');return rows;};instance.getSize=()=>{mark('size');return viewport;};instance.getScrollOffset=()=>{mark('offset');return offset;};
+  const c=rangeCallbacks(code,instance,ingress);ingress.kernel(c.kernel,c.extractor);
+  const evaluate=name=>Function('memo','__wh','defaultRangeExtractor','calculateRangeImpl','return('+assignedArrow(code,name)+');').call(instance,memo,ingress,c.extractor,c.kernel);
+  instance.calculateRange=evaluate('calculateRange');instance.getVirtualIndexes=evaluate('getVirtualIndexes');instance.scrollToIndex=ingress.capture(instance,scroll,2);return c;
+ });
+ const instance=f.f.instance;return{...f,instance,trace,sentinel,change(v,o=offset){viewport=v;offset=o;},throwOn(n){throwAt=n;}};
 }
 test('E1 real pinned memo cached dependencies authenticate one atomic close and preparation',async()=>{
  const f=await freshMemoFixture();f.instance.getVirtualIndexes();f.instance.getVirtualIndexes();const before=f.x.snapshot();assert.equal(typeof f.ingress.sealPreparation,'function','E1 owned atomic source capability missing');
@@ -604,7 +608,7 @@ test('E1 cache-hit extractor need not emit a fabricated range record after curre
  const f=await freshMemoFixture();f.instance.getVirtualIndexes();const retained=f.runtime.retained();f.change(600,19400);const result=f.ingress.sealPreparation();assert.equal(result.chronology.records,retained);assert.equal(result.chronology.complete,true);assert.equal(result.plan.status,'prepared-structural-only');assert.equal(f.ingress.healthy(),true);
 });
 test('E1 missing captured callable and a second constructor candidate refuse without invoking application getters',async()=>{
- const f=await preparationFixture();let calls=0;const fn=()=>{calls++;},first={},second={};assert.equal(f.ingress.captureIndexes(first,fn),fn);assert.equal(f.ingress.captureIndexes(second,fn),fn);const result=f.ingress.sealPreparation();assert.equal(result.chronology,null);assert.equal(result.plan.status,'unavailable');assert.equal(calls,0);assert.equal(f.ingress.healthy(),false);
+ const f=await preparationFixture();let calls=0;const fn=()=>{calls++;},first={},second={};assert.equal(f.ingress.capture(first,fn,1),fn);assert.equal(f.ingress.capture(second,fn,1),fn);const result=f.ingress.sealPreparation();assert.equal(result.chronology,null);assert.equal(result.plan.status,'unavailable');assert.equal(calls,0);assert.equal(f.ingress.healthy(),false);
 });
 test('E1 every original probe dependency exception including warm-seal text is rethrown by exact identity',async()=>{
  for(const value of [{original:true},'warm-seal-stale',null,undefined]){
@@ -622,7 +626,7 @@ test('E1 constructor capture preserves assignment reference RHS setter order and
  const old=instrument.transform('core').code,now=instrument.transformWarm('core').code;
  for(const code of [old,now]){
   const trace=[],instance={},fn=()=>1;Object.defineProperty(instance,'getVirtualIndexes',{set(value){trace.push(['set',value]);}});
-  const original=assignedArrow(code,'getVirtualIndexes');const __wh={captureIndexes(i,v){trace.push(['capture',i,v]);return v;}};
+  const original=assignedArrow(code,'getVirtualIndexes');const __wh={capture(i,v,kind){assert.equal(kind,1);trace.push(['capture',i,v]);return v;}};
   Function('memo','__wh','this.getVirtualIndexes='+original+';').call(instance,()=>{trace.push(['memo']);return fn;},__wh);
   assert.equal(trace[0][0],'memo');assert.equal(trace.at(-1)[0],'set');assert.equal(trace.at(-1)[1],fn);assert.equal(trace.filter(x=>x[0]==='memo').length,1);if(code===now){assert.equal(trace[1][0],'capture');assert.equal(trace[1][1],instance);assert.equal(trace[1][2],fn);}
  }
@@ -705,19 +709,52 @@ test('E2 controller RAF shares core requests before selection and across chronol
 });
 test('E2 original scroll constructor capture preserves callable identity before setter',()=>{
  const old=instrument.transform('core').code,now=instrument.transformWarm('core').code;const a=assignedArrow(old,'scrollToIndex'),b=assignedArrow(now,'scrollToIndex');
- const instance={},trace=[],result=Function('__wh','return('+b+');').call(instance,{captureScroll(i,fn){assert.equal(i,instance);trace.push('capture');return fn;}});assert.equal(typeof result,'function');assert.deepEqual(trace,['capture']);assert.ok(a.includes('this.getOffsetForIndex'));
+ const instance={},trace=[],result=Function('__wh','return('+b+');').call(instance,{capture(i,fn,kind){assert.equal(kind,2);assert.equal(i,instance);trace.push('capture');return fn;}});assert.equal(typeof result,'function');assert.deepEqual(trace,['capture']);assert.ok(a.includes('this.getOffsetForIndex'));
 });
 for(const mutation of ['scrollPaddingStart','scrollPaddingEnd','paddingStart','paddingEnd','scrollMargin','gap','horizontal','accessor'])test('E2 original motion refuses incompatible '+mutation+' before invoking original',async()=>{
- const f=await freshMemoFixture(),i=f.instance;Object.assign(i.options,{horizontal:false,paddingStart:0,paddingEnd:0,scrollPaddingStart:0,scrollPaddingEnd:0,scrollMargin:0,gap:0});let calls=0,reads=0;const original=()=>{calls++;};i.scrollToIndex=f.ingress.captureScroll(i,original);i.getVirtualIndexes();assert.equal(f.ingress.sealPreparation().plan.status,'prepared-structural-only');
+ let calls=0,reads=0;const original=()=>{calls++;},f=await freshMemoFixture(original),i=f.instance;Object.assign(i.options,{horizontal:false,paddingStart:0,paddingEnd:0,scrollPaddingStart:0,scrollPaddingEnd:0,scrollMargin:0,gap:0});i.getVirtualIndexes();assert.equal(f.ingress.sealPreparation().plan.status,'prepared-structural-only');
  if(mutation==='accessor')Object.defineProperty(i.options,'scrollPaddingStart',{get(){reads++;return 0;}});else i.options[mutation]=mutation==='horizontal'?true:1;
  assert.equal(f.ingress.moveTo(40),false);assert.equal(calls,0);assert.equal(reads,0);assert.equal(f.ingress.healthy(),false);
 });
 test('E2 original motion accepts fixed own options and preserves exact original throw identity',async()=>{
- const f=await freshMemoFixture(),i=f.instance;Object.assign(i.options,{horizontal:false,paddingStart:0,paddingEnd:0,scrollPaddingStart:0,scrollPaddingEnd:0,scrollMargin:0,gap:0});const sentinel={originalScroll:true};let calls=0;const original=(index,options)=>{calls++;assert.equal(index,40);assert.deepEqual(options,{align:'start',behavior:'auto'});throw sentinel;};i.scrollToIndex=f.ingress.captureScroll(i,original);i.getVirtualIndexes();assert.equal(f.ingress.sealPreparation().plan.status,'prepared-structural-only');assert.throws(()=>f.ingress.moveTo(40),e=>e===sentinel);assert.equal(calls,1);assert.equal(f.ingress.healthy(),false);
+ const sentinel={originalScroll:true};let calls=0;const original=(index,options)=>{calls++;assert.equal(index,40);assert.deepEqual(options,{align:'start',behavior:'auto'});throw sentinel;},f=await freshMemoFixture(original),i=f.instance;Object.assign(i.options,{horizontal:false,paddingStart:0,paddingEnd:0,scrollPaddingStart:0,scrollPaddingEnd:0,scrollMargin:0,gap:0});i.getVirtualIndexes();assert.equal(f.ingress.sealPreparation().plan.status,'prepared-structural-only');assert.throws(()=>f.ingress.moveTo(40),e=>e===sentinel);assert.equal(calls,1);assert.equal(f.ingress.healthy(),false);
 });
 for(const mutation of ['live-cache','live-count','live-key'])test('E2 motion rechecks current live '+mutation+' before original',async()=>{
- const f=await freshMemoFixture(),i=f.instance;Object.assign(i.options,{horizontal:false,paddingStart:0,paddingEnd:0,scrollPaddingStart:0,scrollPaddingEnd:0,scrollMargin:0,gap:0});let calls=0;const original=()=>{calls++;};i.scrollToIndex=f.ingress.captureScroll(i,original);i.getVirtualIndexes();assert.equal(f.ingress.sealPreparation().plan.status,'prepared-structural-only');
+ let calls=0;const original=()=>{calls++;},f=await freshMemoFixture(original),i=f.instance;Object.assign(i.options,{horizontal:false,paddingStart:0,paddingEnd:0,scrollPaddingStart:0,scrollPaddingEnd:0,scrollMargin:0,gap:0});i.getVirtualIndexes();assert.equal(f.ingress.sealPreparation().plan.status,'prepared-structural-only');
  if(mutation==='live-cache')i.itemSizeCache=new Map();else if(mutation==='live-count')i.options.count=101;else i.options.getItemKey=()=>1;
  assert.equal(f.ingress.moveTo(40),false);assert.equal(calls,0);assert.equal(f.ingress.healthy(),false);
 });
-test('E2 scroll constructor capability must share the already captured original index owner',async()=>{const f=await freshMemoFixture(),fn=()=>{};assert.equal(f.ingress.captureScroll({},fn),fn);assert.equal(f.ingress.healthy(),false);});
+test('E2 scroll constructor capability must share the already captured original index owner',async()=>{const f=await freshMemoFixture(),fn=()=>{};assert.equal(f.ingress.capture({},fn,2),fn);assert.equal(f.ingress.healthy(),false);});
+
+// Original production initializer and wrapper; scheduler/effects below are authored.
+async function constructorWrapperFixture(){
+ const x=await virtualFixture(instrument.transformWarm('core').code,0,false,false),reactPin=instrument.registry.find(p=>p.path.endsWith('react-dom-client.production.js')),reactRaw=instrument.boundedRead(instrument.sourceRoot+'/'+reactPin.path,reactPin.bytes).toString();
+ const decl=(text,name)=>{const a=text.indexOf('function '+name+'('),b=text.indexOf('\nfunction ',a+10);assert.ok(a>=0&&b>a);return text.slice(a,b);};
+ const mount=Function(`let currentlyRenderingFiber=null,workInProgressHook=null,shouldDoubleInvokeUserFnsInHooksDEV=false;const setIsStrictModeForDevtools=()=>{throw Error('DEV branch');};${decl(reactRaw,'mountWorkInProgressHook')}\n${decl(reactRaw,'basicStateReducer')}\n${decl(reactRaw,'mountStateImpl')}\nreturn(f,init)=>{currentlyRenderingFiber=f;workInProgressHook=null;return mountStateImpl(init).memoizedState;};`)();
+ let retained=null,prior=null,refs=[],cursor=0,fiber=null;
+ const React={useReducer:()=>[0,()=>{}],useRef(v){if(!prior)refs.push({current:v});return refs[cursor++];},useState(init){return[prior?retained:mount(fiber,init),()=>{}];}};
+ // The original uninstrumented wrapper function is bounded by its next export.
+ const raw=fs.readFileSync(new URL('../../node_modules/@tanstack/react-virtual/dist/esm/index.js',import.meta.url),'utf8'),a=raw.indexOf('function useVirtualizerBase('),b=raw.indexOf('\nfunction ',a+10);assert.ok(a>=0&&b>a);
+ const invoke=Function('React','Virtualizer','flushSync','useIsomorphicLayoutEffect',raw.slice(a,b)+';return useVirtualizerBase;')(React,x.bindings.Virtualizer,()=>{throw Error('unexpected flush');},()=>{});
+ return{...x,attempt(count,previous=null){prior=previous;fiber=previous?.fiber??{memoizedState:null};refs=previous?.refs??[];cursor=0;retained=previous?.instance??null;const r=x.f.start(previous?.work??{});const instance=invoke({count,estimateSize:()=>200,getScrollElement:()=>null,anchorTo:'end'});x.f.end(r);return{instance,fiber,refs,work:r.work};}};
+}
+test('registry original lazy constructor retries retain no count0 target and select the eventual original pair',async()=>{
+ const x=await constructorWrapperFixture(),a=x.attempt(0),b=x.attempt(0);assert.notEqual(a.instance,b.instance);assert.equal(x.f.ingress.rangeBegin(a.instance,500,0,1),null);assert.equal(x.f.ingress.rangeBegin(b.instance,500,0,1),null);const c=x.attempt(100,b);assert.equal(c.instance,b.instance);assert.equal(x.f.ingress.healthy(),true);assert.equal(x.runtime.diagnostic(),'00');assert.ok(x.f.ingress.rangeBegin(c.instance,500,0,1));
+});
+test('registry32 constructor entries are nonrenewable when original property setter throws before options',async()=>{
+ const x=await virtualFixture(instrument.transformWarm('core').code,0,false),sentinel={originalSetter:true};Object.defineProperty(x.bindings.Virtualizer.prototype,'getVirtualIndexes',{set(){throw sentinel;},configurable:true});for(let i=0;i<32;i++)assert.throws(()=>new x.bindings.Virtualizer({}),e=>e===sentinel);assert.equal(x.f.ingress.healthy(),true);assert.throws(()=>new x.bindings.Virtualizer({}),e=>e===sentinel);assert.equal(x.runtime.diagnostic(),'10');
+});
+test('registry unknown count100 owner refuses after original options acceptance without invoking callables',async()=>{
+ const x=await virtualFixture(instrument.transformWarm('core').code,0,false),i={},key=n=>n;x.f.ingress.adapter.options(i,{getItemKey:key,lanes:1,enabled:true,initialMeasurementsCache:[],count:100},key);assert.equal(x.f.state().reason,null);assert.equal(x.runtime.diagnostic(),'10');assert.equal(x.f.ingress.healthy(),false);
+});
+for(const kind of[1,2])test('registry selected callable mismatch preserves sticky source diagnostic kind'+kind,async()=>{const x=await virtualFixture(instrument.transformWarm('core').code),fn=()=>{};assert.equal(x.f.ingress.capture(x.instance,fn,kind),fn);assert.equal(x.runtime.diagnostic(),kind===1?'10':'01');});
+for(const kind of[1,2])test('registry malformed constructor callable records exact first diagnostic kind'+kind,async()=>{const x=await virtualFixture(instrument.transformWarm('core').code,0,false),i={};if(kind===2)x.f.ingress.capture(i,()=>[],1);assert.equal(x.f.ingress.capture(i,null,kind),null);assert.equal(x.runtime.diagnostic(),kind===1?'10':'01');});
+test('registry selected property replacement cannot pass original seal or motion capability checks',async()=>{
+ const a=await freshMemoFixture();a.instance.getVirtualIndexes=()=>[];assert.equal(a.ingress.sealPreparation().plan.status,'unavailable');assert.equal(a.ingress.healthy(),false);
+ const b=await freshMemoFixture();Object.assign(b.instance.options,{horizontal:false,paddingStart:0,paddingEnd:0,scrollPaddingStart:0,scrollPaddingEnd:0,scrollMargin:0,gap:0});b.instance.getVirtualIndexes();assert.equal(b.ingress.sealPreparation().plan.status,'prepared-structural-only');let calls=0;b.instance.scrollToIndex=()=>{calls++;};assert.equal(b.ingress.moveTo(40),false);assert.equal(calls,0);
+});
+
+test('registry actual production wrapper admits31 bootstrap constructors and distinct100 on render32/options64',async()=>{
+ const x=await constructorWrapperFixture(),records=[];for(let i=0;i<31;i++)records.push(x.attempt(0));const last=x.attempt(100);assert.equal(new Set([...records.map(r=>r.instance),last.instance]).size,32);assert.equal(x.f.state().reason,null);assert.equal(x.f.state().renders,32);assert.equal(x.f.state().options,64);assert.equal(x.f.ingress.healthy(),true);for(const r of records)assert.equal(x.f.ingress.rangeBegin(r.instance,500,0,1),null);assert.ok(x.f.ingress.rangeBegin(last.instance,500,0,1));
+});
+test('registry scroll hook without prior index row refuses as entry admission without gaining authority',async()=>{const x=await virtualFixture(instrument.transformWarm('core').code,0,false),fn=()=>{};assert.equal(x.f.ingress.capture({},fn,2),fn);assert.equal(x.runtime.diagnostic(),'10');assert.equal(x.f.ingress.healthy(),false);});

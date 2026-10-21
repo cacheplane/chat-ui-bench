@@ -19,6 +19,8 @@ Offline controls include the private controller and real pinned source callbacks
 node --test --test-concurrency=1 --test-timeout=30000 tools/copilot-history-functional/warm-controller.node.mjs tools/copilot-history-functional/warm-runtime.node.mjs tools/copilot-history-functional/warm-selector.node.mjs tools/copilot-history-functional/warm-baseline.node.mjs
 ```
 
+Constructor capture admits at most32 preselection instances, including constructors that throw before their first options call. Count-zero attempts do not select an owner. The first legacy-accepted count100 instance selects its exact original index/scroll pair and drops the whole registry before returning; foreign owners and replaced properties still refuse. A33rd new instance refuses without renewing the counter. This narrower availability bound does not guarantee React scheduling or complete history coverage.
+
 The bounds assume one trusted lifecycle: one seal/close/preparation, at most12 motions, two fences and four outputs. Shared core/controller RAF admission remains32 before and after chronology close. Arbitrary private API repetition, caller retention, platform CPU and original activity after sticky refusal are outside that logical work model. Published partial graphs and the additional Node wrapper actor have separately bounded output/work ownership.
 
 Build the source contract once with `npm run build --workspace @chat-ui-bench/contract` after `npm ci`.
