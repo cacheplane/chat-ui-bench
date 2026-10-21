@@ -7,13 +7,16 @@ type Scope = 'defaults' | 'track_defaults' | 'interned_data' | 'event_category' 
 export interface StateOccurrence { scope: Scope; fieldNumber: number; wireType: 0 | 1 | 2 | 5; start: number; valueStart: number; end: number }
 export interface TrackDefaults { trackUuid?: string; counterTrackUuids?: string[]; doubleCounterTrackUuids?: string[] }
 export interface InternEntry { table: 'event_categories' | 'event_names'; iid: string; name: string }
+export interface AnnotationInternEntry extends Omit<InternEntry,'table'>{table:InternEntry['table']|'debug_annotation_names'}
 export interface ClockFields { clockId?: string; timestamp?: string; isIncremental?: boolean; unitMultiplierNs?: string }
 export interface StateFields { timestampClockId?: string; trackEventDefaults?: TrackDefaults; entries?: InternEntry[]; clocks?: ClockFields[]; primaryTraceClock?: string }
+export interface AnnotationStateFields extends Omit<StateFields,'entries'>{entries?:AnnotationInternEntry[]}
 export interface StateBodyFragment extends Readonly<typeof LABELS> {
   status: 'decoded_state_body_fragment'; kind: Kind; fields: StateFields; source: typeof STATE_BODY_SOURCE;
   bodyBytes: Uint8Array; occurrences: StateOccurrence[]; skippedFields: StateOccurrence[]; presentFieldNumbers: number[]; consumedBytes: number;
 }
 export interface StateBodyUnavailable { status: 'unavailable'; diagnostics: { code: string }[] }
+export interface AnnotationStateBodyFragment extends Omit<StateBodyFragment,'fields'>{fields:AnnotationStateFields}
 interface Context { bytes: Uint8Array; budget: WireBudget; occurrences: StateOccurrence[]; skippedFields: StateOccurrence[] }
 function visit(context: Context, start: number, end: number, scope: Scope, selected: (field: WireField) => boolean): void {
   const reader = new BodyReader(context.bytes, start, end, context.budget);
@@ -51,7 +54,7 @@ function members(context: Context, field: WireField, values: string[]): void {
   requireBody(field); const packed = new BodyReader(context.bytes, o.valueStart, o.end, context.budget);
   while (!packed.complete) { context.budget.chargeMember(); values.push(packed.varint().toString()); }
 }
-function defaults(context: Context, fields: StateFields, present: Set<number>): void {
+function defaults(context: Context, fields: Omit<StateFields,'entries'>, present: Set<number>): void {
   visit(context, 0, context.bytes.byteLength, 'defaults', field => {
     const o = field.occurrence;
     if (o.fieldNumber !== 58 && o.fieldNumber !== 11) return false;
@@ -73,16 +76,16 @@ function defaults(context: Context, fields: StateFields, present: Set<number>): 
   });
 }
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
-function interned(context: Context, fields: StateFields, present: Set<number>): void {
+function interned(context: Context, fields: AnnotationStateFields, present: Set<number>,annotations=false): void {
   let entryCount = 0; let stringBytes = 0;
-  const categoryIds = new Set<string>(); const nameIds = new Set<string>();
+  const categoryIds = new Set<string>(); const nameIds = new Set<string>();const annotationIds=new Set<string>();
   visit(context, 0, context.bytes.byteLength, 'interned_data', field => {
     const o = field.occurrence;
-    if (o.fieldNumber !== 1 && o.fieldNumber !== 2) return false;
+    if (o.fieldNumber !== 1 && o.fieldNumber !== 2&&!(annotations&&o.fieldNumber===3)) return false;
     context.budget.chargeMember();
     if (++entryCount > 4096) throw new WireError('intern-entry-capacity');
     requireBody(field); present.add(o.fieldNumber);
-    const table = o.fieldNumber === 1 ? 'event_categories' : 'event_names';
+    const table = o.fieldNumber === 1 ? 'event_categories' :o.fieldNumber===2? 'event_names':'debug_annotation_names';
     const seen = new Set<number>(); let iid: string | undefined; let name: string | undefined;
     visit(context, o.valueStart, o.end, table === 'event_categories' ? 'event_category' : 'event_name', entry => {
       const at = entry.occurrence;
@@ -102,14 +105,14 @@ function interned(context: Context, fields: StateFields, present: Set<number>): 
     });
     if (iid === undefined) throw new WireError('missing-intern-iid');
     if (name === undefined) throw new WireError('missing-intern-name');
-    const ids = table === 'event_categories' ? categoryIds : nameIds;
+    const ids = table === 'event_categories' ? categoryIds :table==='event_names'? nameIds:annotationIds;
     // Explicit body-only stricter policy, including identical repeats; no sequence lookup.
     if (ids.has(iid)) throw new WireError('duplicate-intern-iid'); ids.add(iid);
     (fields.entries ??= []).push({ table, iid, name });
     return true;
   });
 }
-function clocks(context: Context, fields: StateFields, present: Set<number>): void {
+function clocks(context: Context, fields: Omit<StateFields,'entries'>, present: Set<number>): void {
   let childCount = 0; const clockIds = new Set<string>();
   visit(context, 0, context.bytes.byteLength, 'clock_snapshot', field => {
     const o = field.occurrence;
@@ -136,14 +139,16 @@ function clocks(context: Context, fields: StateFields, present: Set<number>): vo
   });
 }
 /** Explicit standalone body only; success establishes no parent packet or capture origin. */
-export function decodeBrowserFrameStateBody(input: unknown, kind: unknown, policy: unknown): StateBodyFragment | StateBodyUnavailable {
+export function decodeBrowserFrameStateBody(input: unknown, kind: unknown, policy: unknown): StateBodyFragment | StateBodyUnavailable {return decodeState(input,kind,policy,false) as StateBodyFragment|StateBodyUnavailable;}
+export function decodeBrowserFrameAnnotationStateBody(input:unknown):AnnotationStateBodyFragment|StateBodyUnavailable{return decodeState(input,'interned_names',STATE_BODY_POLICY,true);}
+function decodeState(input: unknown, kind: unknown, policy: unknown,annotations:boolean): AnnotationStateBodyFragment | StateBodyUnavailable {
   try {
     if (policy !== STATE_BODY_POLICY) throw new WireError('unsupported-policy');
     if (kind !== 'defaults' && kind !== 'interned_names' && kind !== 'clock_snapshot') throw new WireError('unsupported-state-body-kind');
     const bytes = copyBody(input); const context: Context = { bytes, budget: new WireBudget(), occurrences: [], skippedFields: [] };
-    const fields: StateFields = {}; const present = new Set<number>();
+    const fields: AnnotationStateFields = {}; const present = new Set<number>();
     if (kind === 'defaults') defaults(context,fields,present);
-    else if (kind === 'interned_names') interned(context,fields,present);
+    else if (kind === 'interned_names') interned(context,fields,present,annotations);
     else clocks(context,fields,present);
     return { status: 'decoded_state_body_fragment', kind, fields, source: STATE_BODY_SOURCE, bodyBytes: bytes,
       occurrences: context.occurrences, skippedFields: context.skippedFields, presentFieldNumbers: [...present].sort((a,b)=>a-b), consumedBytes: bytes.byteLength, ...LABELS };

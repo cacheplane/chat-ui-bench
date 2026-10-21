@@ -37,6 +37,27 @@ test('D0-v8 refuses original framer mutation during final copy',async()=>{
   await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');
 });
 
+const d1AnnotationTestMember='packages/analyzer/src/browser-frame-annotation-fragments.test.ts';
+async function addD1FixtureMember(workspace:string) {
+  await mkdir(dirname(join(workspace,d1AnnotationTestMember)),{recursive:true});
+  await copyFile(join(repository,d1AnnotationTestMember),join(workspace,d1AnnotationTestMember));
+}
+test('D1-v9 retains exact annotation test member',async()=>{
+  const f=await fixture();await addD1FixtureMember(f.workspace);const receipt=await writer()(f.root,f);
+  const manifest=JSON.parse(await readFile(receipt!.path,'utf8')),record=manifest.records.find((row:{key:string})=>row.key===d1AnnotationTestMember);
+  expect(record).toBeDefined();
+  const original=await readFile(join(repository,d1AnnotationTestMember)),copied=await readFile(join(receipt!.directory,record.copied.path));
+  expect(copied.equals(original)).toBe(true);expect(record.before.fact).toEqual({byteLength:original.length,sha256:sha256(original)});expect(record.before).toEqual(record.after);
+});
+test('D1-v9 refuses missing annotation test member',async()=>{
+  const f=await fixture();await addD1FixtureMember(f.workspace);await unlink(join(f.workspace,d1AnnotationTestMember));
+  await expect(writer()(f.root,f)).rejects.toThrow();
+});
+test('D1-v9 refuses original annotation test mutation during final copy',async()=>{
+  const f=await fixture();await addD1FixtureMember(f.workspace);const injected=duringLastCopy(f,async()=>{const path=join(f.workspace,d1AnnotationTestMember),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});
+  await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');
+});
+
 function emptyHostObserver(observedAt=100) {
   const callbacks=new Map<number,(value:unknown)=>void>();let next=0;
   const body={isConnected:true,textContent:''};let currentBody=body;
@@ -107,7 +128,8 @@ const nativeCaptureMembers = [
   'packages/runner/dist/comparison-proto-native-capture.js',
   'packages/runner/dist/comparison-proto-native-capture.js.map',
 ];
-const source57 = [
+const source58 = [
+  d1AnnotationTestMember,
   ...d0FramerMembers.slice(0,2),
   ...nativeCaptureMembers.slice(0, 2),
   ...foundationSources,
@@ -242,7 +264,7 @@ async function fixture() {
   expect(metadata52).toEqual(expectedMetadata52);
   const assets = Object.keys(build.assetHashes).map(key => 'apps/threadplane/dist/' + key);
   const raw2 = ['apps/threadplane/.build-evidence.json', 'packages/runner/.comparison-build-evidence.json'];
-  const union = [...new Set([...source57, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output138, ...analyzerSelected12, ...metadata52, ...assets, ...raw2])].sort();
+  const union = [...new Set([...source58, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output138, ...analyzerSelected12, ...metadata52, ...assets, ...raw2])].sort();
   const copyKeys = union.filter(key => !raw2.includes(key) && key !== nativePath + '/package.json');
   const copyParents = [...new Set(copyKeys.map(key => dirname(join(workspace, key))))];
   for (const parent of copyParents) await mkdir(parent, {recursive: true});
@@ -291,7 +313,7 @@ async function fixture() {
   const seal = comparisonDatasetInventorySchema.parse({...versions, invocationId, status: 'sealed', configuration: config.configuration, invocationClaim: claim, invocationLedger: terminalLedger, root: '.', ledger: ledgerMember, members: members.sort((a, b) => a.path.localeCompare(b.path)), absentMembers: [], directories: [...datasetDirectories].sort(), slots, ownershipSettled: true, finalizationSucceeded: true});
   await writeFile(join(root, 'dataset-seal.json'), canonicalSerialize(seal) + '\n');
   const hashed = new Set([...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...Object.keys(probe.compiledHashes), ...assets]);
-  const paddingKeys = source57.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
+  const paddingKeys = source58.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
   return {root, workspace, evidenceRoot, context, union, paddingKeys};
 }
 const writer = () => helper.writeComparisonCiSnapshot;
@@ -344,13 +366,13 @@ test('CI off performs no filesystem access', async () => {
 test('closed original snapshot retains actual copy bytes and controlled Linux metadata', async () => {
   const f = await fixture(), receipt = await writer()(f.root, f); expect(receipt).not.toBeNull();
   const bytes = await readFile(receipt!.path), manifest = JSON.parse(bytes.toString());
-  expect(f.union).toHaveLength(308); expect(manifest.records).toHaveLength(308);
+  expect(f.union).toHaveLength(309); expect(manifest.records).toHaveLength(309);
   expect(bytes.length).toBe(receipt!.byteLength); expect(sha256(bytes)).toBe(receipt!.sha256);
-  expect(manifest.format).toBe('comparison-ci-original-snapshot-v8');
-  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source57).toEqual(source57); expect(manifest.inventories.output138).toHaveLength(138); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata52).toEqual(expectedMetadata52);
-  expect(Object.keys(manifest.inventories).sort()).toEqual(['source57','source23','product47','probe31','compiled16','output138','analyzerSelected12','contract42','raw2','assets','metadata52'].sort());
+  expect(manifest.format).toBe('comparison-ci-original-snapshot-v9');
+  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source58).toEqual(source58); expect(manifest.inventories.output138).toHaveLength(138); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata52).toEqual(expectedMetadata52);
+  expect(Object.keys(manifest.inventories).sort()).toEqual(['source58','source23','product47','probe31','compiled16','output138','analyzerSelected12','contract42','raw2','assets','metadata52'].sort());
   expect(manifest.inventories.source23).toEqual(source23); expect(manifest.inventories.analyzerSelected12).toEqual([...analyzerSelected12].sort());
-  expect(source57).toHaveLength(57); expect(source23).toHaveLength(23);
+  expect(source58).toHaveLength(58); expect(source23).toHaveLength(23);
   const protoMembers = [
     'packages/runner/src/comparison-proto-trace.ts',
     'packages/runner/src/comparison-proto-trace.test.ts',

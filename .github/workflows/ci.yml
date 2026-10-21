@@ -86,6 +86,9 @@ jobs:
       - name: Typecheck workspaces
         run: npm run typecheck 2>&1 | tee ci-logs/typecheck.log
 
+      - name: Typecheck annotation API isolation guards
+        run: node node_modules/typescript/bin/tsc --noEmit --target ES2023 --module NodeNext --moduleResolution NodeNext --strict --noUncheckedIndexedAccess --exactOptionalPropertyTypes --skipLibCheck --types node packages/analyzer/src/browser-frame-annotation-fragments.test.ts 2>&1 | tee ci-logs/annotation-type-guards.log
+
       - name: Typecheck separate scroll-cause diagnostic sources
         run: npm run typecheck:scroll-cause 2>&1 | tee ci-logs/scroll-cause-typecheck.log
 

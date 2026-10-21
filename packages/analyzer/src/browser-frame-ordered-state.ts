@@ -1,21 +1,25 @@
 import { createHash } from 'node:crypto';
+import {types} from 'node:util';
+import type {AnnotationBody} from './browser-frame-trace-framer.js';
 import { decodeBrowserFrameTrackDescriptorBody, TRACK_DESCRIPTOR_BODY_POLICY, type TrackDescriptorFields } from './browser-frame-track-descriptor-fragments.js';
 import { copyBody, WireError } from './browser-frame-protobuf-wire.js';
-import { decodeBrowserFramePacket, PACKET_POLICY, PACKET_SOURCE, type PacketFields, type PacketFragmentWithMembers } from './browser-frame-packet-fragments.js';
-import { decodeBrowserFrameStateBody, STATE_BODY_POLICY, type ClockFields } from './browser-frame-state-fragments.js';
-import type {EventFragmentWithMembers} from './browser-frame-track-event-fragments.js';
+import { decodeBrowserFramePacket,decodeBrowserFrameAnnotationPacket, PACKET_POLICY, PACKET_SOURCE, type PacketFields, type PacketFragmentWithMembers } from './browser-frame-packet-fragments.js';
+import { decodeBrowserFrameStateBody,decodeBrowserFrameAnnotationStateBody, STATE_BODY_POLICY, type ClockFields } from './browser-frame-state-fragments.js';
+import type {EventFragmentWithMembers,AnnotationEventFragment} from './browser-frame-track-event-fragments.js';
 export const ORDERED_STATE_POLICY = 'ordered-manual-browser-frame-state-v1';
 export const ORDERED_STATE_V2_POLICY = 'ordered-manual-browser-frame-evidence-v2';
+export const ORDERED_ANNOTATION_POLICY='ordered-manual-browser-frame-annotations-v1';
 
 const LABELS = Object.freeze({ normalizationCapability: 'ordered-manual-name-state-only', clockAdmission: 'not_evaluated', captureOrder: 'caller_declared', runtimeQualification: 'unestablished', sourceCoverage: 'unestablished', evaluationEligibility: false, scoringEligibility: false, rankingEligibility: false } as const);
 export class ProfileError extends Error {
   constructor(readonly code: string, readonly packetIndex?: number, readonly component?: string, readonly causeCode?: string) { super(code); }
 }
-interface Sequence { sequenceIndex: number; sequenceId: string; machineId?: string; valid: boolean; intervalVersion: number; defaultsVersionIndex: number | null; names:Map<string,number>;categories:Map<string,number> }
+interface Sequence { sequenceIndex: number; sequenceId: string; machineId?: string; valid: boolean; intervalVersion: number; defaultsVersionIndex: number | null; names:Map<string,number>;categories:Map<string,number>;annotationNames?:Map<string,number> }
 interface Location { packetIndex: number; scope: string; fieldNumber: number; wireType: number; start: number; valueStart: number; end: number }
 interface DefaultFields { timestampClockId?: string; trackEventDefaultsPresent?: true; trackUuid?: string }
 interface DefaultVersion { versionIndex: number; sequenceIndex: number; intervalVersion: number; packetIndex: number; location: Location; fields: DefaultFields }
 interface InternDefinition { definitionIndex:number;sequenceIndex:number;intervalVersion:number;table:'event_categories'|'event_names';iid:string;value:string;definedAt:Location }
+interface AnnotationInternDefinition extends Omit<InternDefinition,'table'>{table:InternDefinition['table']|'debug_annotation_names'}
 type Selection = {status:'selected';source:'packet'|'event'|'defaults';clockId?:string;trackUuid?:string;defaultsVersionIndex?:number} | {status:'unavailable';reason:string};
 interface EventFact { eventIndex: number; packetIndex: number; sequenceIndex: number; intervalVersion: number; defaultsVersionIndex: number|null; location: Location; name?: {kind:'literal';value:string} | {kind:'intern';definitionIndex:number}; literalCategories?: string[]; internedCategoryDefinitionIndexes?:number[]; type?: string; trackSelection: Selection; typedArgumentKinds:string[] }
 interface PacketFact { packetIndex: number; sequenceIndex: number; fields: PacketFields; valid: boolean; intervalVersion: number; stateEffect: 'none' | 'reset' | 'loss'; defaultsVersionIndex: number | null; clockSelection:Selection; eventOutcome:'absent'|'resolved'|'withheld_dependency'|'withheld_intern_invalid';eventIndex?:number;eventLocation?:Location;internLocation?:Location;internUpdateOutcome:'absent'|'applied'|'withheld_invalid';internNewDefinitions:number;internRepeatedDefinitions:number }
@@ -41,6 +45,10 @@ export interface OrderedEvidenceProjection extends Omit<OrderedStateProjection,'
  metadataPackets:readonly MetadataPacket[];descriptorObservations:readonly DescriptorObservation[];clockSnapshots:readonly ClockObservation[];lossObservations:readonly LossObservation[];
 }
 export interface OrderedStateUnavailable {status:'unavailable';diagnostics:readonly {code:string;packetIndex?:number;component?:string;cause?:string}[]}
+const ANNOTATION_AUTHORITY=Object.freeze({captureOrder:'caller_declared',embeddedOpaqueValidity:'not_evaluated',annotationCompleteness:'unestablished',clock:'not_evaluated',marks:'not_evaluated',target:'not_evaluated',population:'not_evaluated',metric:'not_evaluated',runtimeQualification:'unestablished',nativeGO:false,nativeSupported:false,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false,performance:false,FPS:'unavailable'}as const);
+interface AnnotationEvent extends ReturnType<typeof resolveAnnotations>{packetIndex:number;sequenceIndex:number;intervalVersion:number;eventLocation:Location}
+export interface OrderedAnnotationEvidence extends Omit<OrderedEvidenceProjection,'internDefinitions'>{internDefinitions:readonly AnnotationInternDefinition[]}
+export interface OrderedAnnotationProjection {status:'projected_ordered_manual_annotations';domain:string;source:typeof PACKET_SOURCE;orderedEvidence:OrderedAnnotationEvidence;annotationEvents:readonly AnnotationEvent[];authority:typeof ANNOTATION_AUTHORITY}
 export interface OwnedSlicePacket {packet:PacketFragmentWithMembers;bodySha256:string;bodyBytes:number;frameIndex:number}
 export interface RestrictedEventInput {rawEventIndex:number;packetIndex:number;sequenceIndex:number;intervalVersion:number;defaultsVersionIndex:number|null;eventLocation:Location;event:EventFragmentWithMembers;trackSelection:Selection;clockSelection:Selection;resolution:Exclude<RestrictedPacketFact['eventOutcome'],'absent'>;orderedEventIndex?:number}
 export interface RestrictedOrderedBuild {status:'built_restricted_state';ordered:Omit<OrderedEvidenceProjection,'status'|'packets'>&{status:'projected_restricted_slice_state';packets:readonly RestrictedPacketFact[]};rawEventInputs:RestrictedEventInput[]}
@@ -120,6 +128,28 @@ function preflight(input: unknown): { domain: string; packets: Uint8Array[] } {
   }
   return { domain,packets };
 }
+/** New API only: reject every Proxy layer before reflecting or copying it. */
+function annotationPreflight(input:unknown):{domain:string;packets:Uint8Array[]}{
+ if(input===null||typeof input!=='object'||types.isProxy(input))throw new ProfileError('invalid-envelope');
+ if(![null,Object.prototype].includes(Object.getPrototypeOf(input)))throw new ProfileError('invalid-envelope');
+ const fields=Object.getOwnPropertyDescriptors(input),field=fields.packets;
+ if(!field||!Object.hasOwn(field,'value'))throw new ProfileError('invalid-envelope');
+ const array:unknown=field.value;
+ if(array===null||typeof array!=='object'||types.isProxy(array)||!Array.isArray(array)||Object.getPrototypeOf(array)!==Array.prototype)throw new ProfileError('invalid-envelope');
+ const length=Object.getOwnPropertyDescriptor(array,'length')?.value;
+ if(typeof length!=='number'||!Number.isInteger(length)||length<0)throw new ProfileError('invalid-envelope');
+ if(length>1024)throw new ProfileError('packet-capacity');
+ const entries=Object.getOwnPropertyDescriptors(array);
+ for(let i=0;i<length;i++){
+  const entry=entries[String(i)];if(!entry||!Object.hasOwn(entry,'value'))throw new ProfileError('invalid-envelope');
+  if(types.isProxy(entry.value))throw new ProfileError('unsupported-byte-view',i);
+ }
+ return preflight(input);
+}
+/** Manual supplied packet order only; never a native boundary authority. */
+export function projectOrderedBrowserFrameAnnotations(input:unknown,policy:unknown):OrderedAnnotationProjection|OrderedStateUnavailable{
+ return project(input,policy,true,undefined,true)as OrderedAnnotationProjection|OrderedStateUnavailable;
+}
 /** Caller-declared standalone bodies; no capture ordering, EOF or clock authority. */
 export function projectOrderedBrowserFrameState(input:unknown,policy:unknown):OrderedStateProjection|OrderedStateUnavailable {
  return project(input,policy,false) as OrderedStateProjection|OrderedStateUnavailable;
@@ -128,15 +158,19 @@ export function projectOrderedBrowserFrameState(input:unknown,policy:unknown):Or
 export function projectOrderedBrowserFrameEvidence(input:unknown,policy:unknown):OrderedEvidenceProjection|OrderedStateUnavailable {
  return project(input,policy,true) as OrderedEvidenceProjection|OrderedStateUnavailable;
 }
-function project(input:unknown,policy:unknown,v2:boolean,slice?:{frames:readonly OwnedSlicePacket[];budget:Budget}):OrderedStateProjection|OrderedEvidenceProjection|OrderedStateUnavailable|RestrictedOrderedBuild {
+function project(input:unknown,policy:unknown,v2:boolean,slice?:{frames:readonly OwnedSlicePacket[];budget:Budget},annotations=false):OrderedStateProjection|OrderedEvidenceProjection|OrderedStateUnavailable|RestrictedOrderedBuild|OrderedAnnotationProjection {
   try {
-    if (policy !== (v2?ORDERED_STATE_V2_POLICY:ORDERED_STATE_POLICY)) throw new ProfileError('unsupported-policy');
-    const own = slice===undefined?preflight(input):{domain:'whole-supplied-restricted-trace-group-v1',packets:slice.frames.map(f=>f.packet.bodyBytes)};
-    const budget=slice?.budget??new Budget();
+    if (policy !== (annotations?ORDERED_ANNOTATION_POLICY:v2?ORDERED_STATE_V2_POLICY:ORDERED_STATE_POLICY)) throw new ProfileError('unsupported-policy');
+    const own = slice===undefined?(annotations?annotationPreflight(input):preflight(input)):{domain:'whole-supplied-restricted-trace-group-v1',packets:slice.frames.map(f=>f.packet.bodyBytes)};
+    const budget=slice?.budget??new Budget(annotations?'final-owned':'eager');
+    const annotationEvents:AnnotationEvent[]=[];
     budget.output({status:'projected_ordered_manual_state',domain:own.domain,source:PACKET_SOURCE,bodies:[],sequences:[],defaultsVersions:[],internDefinitions:[],packets:[],events:[],opaqueLocations:[],...LABELS});
     const bodies=own.packets.map((bytes,packetIndex)=>{const row={packetIndex,bytes:bytes.byteLength,sha256:createHash('sha256').update(bytes).digest('hex')};budget.output(row,packetIndex);return row;});
     const sequences: Sequence[] = []; const byKey = new Map<string,Sequence>(); const packets: RestrictedPacketFact[] = [];
-    const defaultsVersions:DefaultVersion[]=[];const events:EventFact[]=[];const opaqueLocations:Location[]=[];const internDefinitions:InternDefinition[]=[];
+    const defaultsVersions:DefaultVersion[]=[];const events:EventFact[]=[];const opaqueLocations:Location[]=[];const internDefinitions:AnnotationInternDefinition[]=[];
+    // Legacy Budget.release reads only .value. Preserve its declaration and pass
+    // this owned shared definition store through that value-only operation.
+    const releaseInterns=(table:Map<string,number>)=>budget.release(table,internDefinitions as InternDefinition[]);
     const rawEventInputs:RestrictedEventInput[]=[];
     const descriptorObservations:DescriptorObservation[]=[],clockSnapshots:ClockObservation[]=[],lossObservations:LossObservation[]=[],metadataPackets:MetadataPacket[]=[];
     const disclosures=new Map<string,{values:Map<string,string>;conflict:boolean;processSeen:boolean;threadSeen:boolean}>();
@@ -196,7 +230,7 @@ function project(input:unknown,policy:unknown,v2:boolean,slice?:{frames:readonly
       budget.output(row,row.packetIndex);opaqueKeys.add(key);opaqueLocations.push(row);
     }
     for (let packetIndex=0;packetIndex<own.packets.length;packetIndex++) {
-      const fragment = slice===undefined?decodeBrowserFramePacket(own.packets[packetIndex],PACKET_POLICY):slice.frames[packetIndex]!.packet;
+      const fragment = slice===undefined?(annotations?decodeBrowserFrameAnnotationPacket(own.packets[packetIndex],n=>budget.repeatedWork(n,packetIndex)):decodeBrowserFramePacket(own.packets[packetIndex],PACKET_POLICY)):slice.frames[packetIndex]!.packet;
       if (fragment.status === 'unavailable') throw new ProfileError('fragment-unavailable',packetIndex,'packet',fragment.diagnostics[0]?.code);
       budget.fieldsVisited(fragment.occurrences.length,packetIndex);
       budget.repeatedWork((fragment.event?.fields.categoryIids?.length??0)+(fragment.event?.fields.categories?.length??0)+(fragment.event?.graphics?.fields.surfaceTraceIds?.length??0),packetIndex);
@@ -214,14 +248,16 @@ function project(input:unknown,policy:unknown,v2:boolean,slice?:{frames:readonly
       let sequence = byKey.get(key);
       if (!sequence) {
         if (sequences.length >= 64) throw new ProfileError('sequence-capacity',packetIndex);
-        sequence = {sequenceIndex:sequences.length,sequenceId:fields.sequenceId,...(fields.machineId===undefined?{}:{machineId:fields.machineId}),valid:false,intervalVersion:0,defaultsVersionIndex:null,names:new Map(),categories:new Map()};
+        sequence = {sequenceIndex:sequences.length,sequenceId:fields.sequenceId,...(fields.machineId===undefined?{}:{machineId:fields.machineId}),valid:false,intervalVersion:0,defaultsVersionIndex:null,names:new Map(),categories:new Map(),...(annotations?{annotationNames:new Map<string,number>()}:{})};
         sequences.push(sequence);byKey.set(key,sequence);
       }
       const flags = BigInt(fields.sequenceFlags ?? '0');
       if (flags > 3n) throw new ProfileError('unsupported-sequence-flags',packetIndex);
       let stateEffect: PacketFact['stateEffect'] = 'none';
       if (fields.incrementalStateCleared === true || (flags & 1n) !== 0n) {
-        stateEffect='reset';sequence.intervalVersion++;sequence.valid=true;sequence.defaultsVersionIndex=null;budget.release(sequence.names,internDefinitions);budget.release(sequence.categories,internDefinitions);sequence.names.clear();sequence.categories.clear();
+        if(annotations)budget.repeatedWork(sequence.names.size+sequence.categories.size,packetIndex);
+        stateEffect='reset';sequence.intervalVersion++;sequence.valid=true;sequence.defaultsVersionIndex=null;releaseInterns(sequence.names);releaseInterns(sequence.categories);sequence.names.clear();sequence.categories.clear();
+        if(sequence.annotationNames){budget.repeatedWork(sequence.annotationNames.size,packetIndex);releaseInterns(sequence.annotationNames);sequence.annotationNames.clear();}
       } else if (fields.previousPacketDropped !== undefined && fields.previousPacketDropped !== '0') {
         stateEffect='loss';sequence.intervalVersion++;sequence.valid=false;
       }
@@ -245,14 +281,14 @@ function project(input:unknown,policy:unknown,v2:boolean,slice?:{frames:readonly
       const internAt=fragment.opaquePayloads.find(at=>at.fieldNumber===12);
       if(internAt){
         fact.internLocation={packetIndex,...internAt};
-        const decoded=decodeBrowserFrameStateBody(fragment.bodyBytes.slice(internAt.valueStart,internAt.end),'interned_names',STATE_BODY_POLICY);
+        const decoded=annotations?decodeBrowserFrameAnnotationStateBody(fragment.bodyBytes.slice(internAt.valueStart,internAt.end)):decodeBrowserFrameStateBody(fragment.bodyBytes.slice(internAt.valueStart,internAt.end),'interned_names',STATE_BODY_POLICY);
         if(decoded.status==='unavailable')throw new ProfileError('fragment-unavailable',packetIndex,'interned_names',decoded.diagnostics[0]?.code);
         budget.fieldsVisited(decoded.occurrences.length,packetIndex);budget.repeatedWork(decoded.fields.entries?.length??0,packetIndex);budget.internUpdates(decoded.fields.entries?.length??0,packetIndex);
         for(const at of decoded.skippedFields)opaque({packetIndex,...at,start:at.start+internAt.valueStart,valueStart:at.valueStart+internAt.valueStart,end:at.end+internAt.valueStart});
         fact.internUpdateOutcome=sequence.valid?'applied':'withheld_invalid';
-        const locations=decoded.occurrences.filter(at=>at.scope==='interned_data'&&(at.fieldNumber===1||at.fieldNumber===2));
+        const locations=decoded.occurrences.filter(at=>at.scope==='interned_data'&&(at.fieldNumber===1||at.fieldNumber===2||annotations&&at.fieldNumber===3));
         if(sequence.valid)for(const [index,entry] of (decoded.fields.entries??[]).entries()){
-          const table=entry.table==='event_names'?sequence.names:sequence.categories;
+          const table=entry.table==='event_names'?sequence.names:entry.table==='debug_annotation_names'?sequence.annotationNames!:sequence.categories;
           const previous=table.get(entry.iid);
           if(previous!==undefined){
             if(internDefinitions[previous]!.value!==entry.name)throw new ProfileError('intern-conflict',packetIndex);
@@ -272,6 +308,10 @@ function project(input:unknown,policy:unknown,v2:boolean,slice?:{frames:readonly
       if(fragment.event&&eventAt){
         fact.eventLocation={packetIndex,...eventAt};
         const e=fragment.event.fields;
+        if(annotations){
+         const resolved=resolveAnnotations((fragment.event as AnnotationEventFragment).annotations,iid=>{const definitionIndex=sequence.annotationNames!.get(iid);if(definitionIndex===undefined)return undefined;return {definitionIndex,value:internDefinitions[definitionIndex]!.value};},sequence.valid,budget,packetIndex);
+         annotationEvents.push({packetIndex,sequenceIndex:sequence.sequenceIndex,intervalVersion:sequence.intervalVersion,eventLocation:{packetIndex,...eventAt},...resolved});
+        }
         if(e.nameIid==='0'||e.categoryIids?.some(iid=>iid==='0'))throw new ProfileError('invalid-event-iid',packetIndex);
         const raw:RestrictedEventInput|undefined=slice===undefined?undefined:{rawEventIndex:rawEventInputs.length,packetIndex,sequenceIndex:sequence.sequenceIndex,intervalVersion:sequence.intervalVersion,defaultsVersionIndex:sequence.defaultsVersionIndex,eventLocation:{packetIndex,...eventAt},event:fragment.event as EventFragmentWithMembers,trackSelection:select(sequence,defaultsVersions,e.trackUuid,'track'),clockSelection:fact.clockSelection,resolution:'withheld_dependency'};
         if(!sequence.valid&&(flags&2n)!==0n)fact.eventOutcome='withheld_dependency';
@@ -308,11 +348,18 @@ function project(input:unknown,policy:unknown,v2:boolean,slice?:{frames:readonly
       }
       budget.output({status:'projected_ordered_manual_evidence',normalizationCapability:'ordered-manual-identity-evidence-only',associationStatus:'unestablished',associationReasons,metadataPackets:[],descriptorObservations:[],clockSnapshots:[],lossObservations:[]});
     }
-    const base:Omit<OrderedStateProjection,'packets'>&{packets:RestrictedPacketFact[]}={ status:'projected_ordered_manual_state',domain:own.domain,source:PACKET_SOURCE,bodies,sequences:sequenceRows,defaultsVersions,internDefinitions,packets,events,opaqueLocations:opaqueLocations.sort((a,b)=>a.packetIndex-b.packetIndex||a.start-b.start||a.end-b.end),...LABELS };
-    const result:typeof base|(Omit<OrderedEvidenceProjection,'packets'>&{packets:RestrictedPacketFact[]})=v2?{...base,status:'projected_ordered_manual_evidence',normalizationCapability:'ordered-manual-identity-evidence-only',associationStatus:'unestablished',associationReasons,metadataPackets,descriptorObservations,clockSnapshots,lossObservations}:base;
+    const base:Omit<OrderedStateProjection,'packets'|'internDefinitions'>&{packets:RestrictedPacketFact[];internDefinitions:AnnotationInternDefinition[]}={ status:'projected_ordered_manual_state',domain:own.domain,source:PACKET_SOURCE,bodies,sequences:sequenceRows,defaultsVersions,internDefinitions,packets,events,opaqueLocations:opaqueLocations.sort((a,b)=>a.packetIndex-b.packetIndex||a.start-b.start||a.end-b.end),...LABELS };
+    const result:typeof base|(Omit<OrderedAnnotationEvidence,'packets'>&{packets:RestrictedPacketFact[]})=v2?{...base,status:'projected_ordered_manual_evidence',normalizationCapability:'ordered-manual-identity-evidence-only',associationStatus:'unestablished',associationReasons,metadataPackets,descriptorObservations,clockSnapshots,lossObservations}:base;
     if(slice!==undefined){
       if(result.status!=='projected_ordered_manual_evidence')throw new ProfileError('invalid-internal-slice-mode');
-      return {status:'built_restricted_state',ordered:{...result,status:'projected_restricted_slice_state'},rawEventInputs};
+      // Slice callers always leave annotations=false, so their table domain is legacy.
+      return {status:'built_restricted_state',ordered:{...result,status:'projected_restricted_slice_state'},rawEventInputs} as RestrictedOrderedBuild;
+    }
+    if(annotations){
+     const output:OrderedAnnotationProjection={status:'projected_ordered_manual_annotations',domain:own.domain,source:PACKET_SOURCE,orderedEvidence:result as OrderedAnnotationEvidence,annotationEvents,authority:ANNOTATION_AUTHORITY};
+     budget.finishOwnedOutput(output);
+     if(Buffer.byteLength(JSON.stringify(output),'utf8')>4194304)throw new ProfileError('output-byte-capacity');
+     return freezeOwned(output);
     }
     // Final admission cap; bounded JSON serialization may transiently exceed it.
     if(Buffer.byteLength(JSON.stringify(result),'utf8')>4194304)throw new ProfileError('output-byte-capacity');
@@ -321,4 +368,33 @@ function project(input:unknown,policy:unknown,v2:boolean,slice?:{frames:readonly
   } catch (error) {
     return freezeOwned({status:'unavailable',diagnostics:[{code:error instanceof ProfileError ? error.code : 'invalid-ordered-state-input',...(error instanceof ProfileError && error.packetIndex !== undefined ? {packetIndex:error.packetIndex}: {}),...(error instanceof ProfileError && error.component!==undefined?{component:error.component}:{}),...(error instanceof ProfileError && error.causeCode!==undefined?{cause:error.causeCode}:{})}]});
   }
+}
+
+interface ResolutionBudget {repeatedWork(count:number,index:number):void;categoryReferences(count:number,index:number):void}
+/** Resolve every root name before selecting a candidate; no prefix promotion. */
+export function resolveAnnotations(input:readonly AnnotationBody[],lookup:(iid:string)=>{definitionIndex:number;value:string}|undefined,valid:boolean,budget:ResolutionBudget,index:number){
+ const annotations:Record<string,unknown>[]=[],keys:(string|undefined)[]=[],seen=new Set<string>();
+ let reason:string|undefined;
+ for(const body of input){
+  budget.repeatedWork(1,index);
+  let key=body.name;let name:Record<string,unknown>;
+  if(key!==undefined)name={kind:'literal',value:key};
+  else if(body.nameIid!==undefined){
+   budget.categoryReferences(1,index);const definition=valid?lookup(body.nameIid):undefined;
+   if(definition){key=definition.value;name={kind:'intern',definitionIndex:definition.definitionIndex};}
+   else name={kind:'unresolved',reason:'missing-or-invalid-annotation-name'};
+  }else name={kind:'unresolved',reason:'missing-annotation-name'};
+  if(key===undefined)reason??='unresolved-annotation-name';
+  else{budget.repeatedWork(1,index);if(seen.has(key))reason='duplicate-annotation-name';else{budget.repeatedWork(1,index);seen.add(key);}}
+  keys.push(key);
+  annotations.push({location:body.location,name,value:body.stringValue!==undefined&&!body.unsupported?{kind:'literal_string',value:body.stringValue}:{kind:'unsupported',reason:'unsupported-or-missing-annotation-value',opaqueLocations:body.opaqueLocations}});
+ }
+ let candidate:number|undefined;
+ for(let i=0;i<input.length;i++){budget.repeatedWork(1,index);if(keys[i]==='markName')candidate=i;}
+ let markName:{status:'withheld';reason:string}|{status:'absent'}|{status:'literal_string';value:string;annotationIndex:number};
+ if(reason!==undefined)markName={status:'withheld',reason};
+ else if(candidate===undefined)markName={status:'absent'};
+ else if(input[candidate]!.unsupported||input[candidate]!.stringValue===undefined)markName={status:'withheld',reason:'unsupported-mark-name-value'};
+ else markName={status:'literal_string',value:input[candidate]!.stringValue!,annotationIndex:candidate};
+ return {nameInventoryStatus:reason===undefined?'resolved' as const:'withheld' as const,annotations,markName};
 }

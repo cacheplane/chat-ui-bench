@@ -1,4 +1,5 @@
-import {WireError} from './browser-frame-protobuf-wire.js';
+import {BodyReader,WireError,type WireField} from './browser-frame-protobuf-wire.js';
+import type {ProjectionContext,PacketOccurrence} from './browser-frame-packet-fragments.js';
 
 export interface RootFrame {
   frameIndex:number;keyStart:number;keyEnd:number;lengthStart:number;lengthEnd:number;
@@ -75,4 +76,34 @@ export class TraceRootFramer {
     if(this.position!==this.expectedBytes)throw new WireError('out-of-bounds-length');
     return {status:'framed',frames:this.frames,framingBoundaryComplete:true,physicalEOF:false};
   }
+}
+
+/** Direct annotation envelopes; separate from the root framing machine above. */
+export interface AnnotationBody {
+ location:{start:number;end:number};name?:string;nameIid?:string;stringValue?:string;
+ unsupported:boolean;opaqueLocations:PacketOccurrence[];
+}
+export type AnnotationWork=(count:number)=>void;
+const WIRES=new Map([[1,0],[10,2],[2,0],[3,0],[4,0],[5,1],[7,0],[8,2],[9,2],[6,2],[17,0],[13,0],[16,2],[14,2],[11,2],[12,2]]);
+/** Direct envelope only. Length-delimited unsupported children are never inspected. */
+export function decodeAnnotation(context:ProjectionContext,start:number,end:number,literal:(field:WireField)=>string,work:AnnotationWork):AnnotationBody {
+ context.budget.chargeMember();
+ const row:AnnotationBody={location:{start,end},unsupported:false,opaqueLocations:[]};
+ const reader=new BodyReader(context.bytes,start,end,context.budget);
+ let name=false,value=false,descriptor=false;
+ while(!reader.complete){
+  const field=reader.next('root'),o={...field.occurrence,scope:'track_event' as const},n=o.fieldNumber;
+  context.occurrences.push(o);
+  if(WIRES.has(n)&&o.wireType!==WIRES.get(n))throw new WireError('annotation-wrong-wire-type');
+  if(n===1||n===10){
+   if(name)throw new WireError('duplicate-annotation-name-oneof');name=true;
+   if(n===10)row.name=literal(field);else{if(field.scalar===0n)throw new WireError('invalid-annotation-iid');row.nameIid=field.scalar!.toString();}
+  }else{
+   if([2,3,4,5,7,8,9,6,17].includes(n)){if(value)throw new WireError('duplicate-annotation-value-oneof');value=true;}
+   if(n===13||n===16){if(descriptor)throw new WireError('duplicate-annotation-proto-oneof');descriptor=true;}
+   if(n===6)row.stringValue=literal(field);
+   else {row.unsupported=true;work(1);row.opaqueLocations.push(o);}
+  }
+ }
+ return row;
 }
