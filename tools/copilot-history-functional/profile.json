@@ -26,9 +26,9 @@
   "pageCount": 1,
   "retries": 0,
   "sourceWork": {
-    "global": 67108160,
+    "global": 67108288,
     "cap": 67108864,
-    "initial": 1366336,
+    "initial": 1366464,
     "commit": 262144,
     "scalar": 15424,
     "active": 7728,
@@ -37,7 +37,7 @@
     "child": 752,
     "cleanup": 2926,
     "cleanupCeiling": 3072,
-    "commitPartition": 258578,
+    "commitPartition": 261202,
     "scope": "Admitted owned work through first refusal. Arbitrarily repeated postrefusal ingress/fault latching is outside total program/nativeCPU profile; no result after refusal or quota renewal.",
     "commitDiagnosticReserve": {
       "units": 64,
@@ -57,6 +57,40 @@
         "applicationReads": 0,
         "newPersistentFields": 0,
         "firstRefusalOnly": true
+      }
+    },
+    "historicalJoinedPartition": 258578,
+    "continuity": {
+      "scope": "Pinned ordinary React/canonical own data and captured native brands; hostile Proxy traps and mutated intrinsics are outside source attestation",
+      "initializationReserve": 128,
+      "captureReserve": 2560,
+      "dispatchReserve": 64,
+      "emptyNodeLimit": 3072,
+      "emptyDepthLimit": 128,
+      "contextLimit": 32,
+      "nodeUnits": 72,
+      "fixedUnits": 36864,
+      "emptyPartition": 258048,
+      "zeroCredit": true,
+      "globalUnallocated": 576,
+      "fixedLedger": {
+        "sharedEntry": 4096,
+        "canonicalPayload": 15360,
+        "cache": 6144,
+        "contextVisibilityLiveClosure": 9216,
+        "closeFault": 2048
+      },
+      "actualCaptureCensus": 2180,
+      "actualInitializationCensus": 79,
+      "treeDiagnostic": {
+        "oneShotFatalUpper": 64,
+        "positiveSetupDispatchUpper": 8,
+        "perVisitedNodeAddedWork": 0,
+        "contextPathCompleteUpper": 9000,
+        "reserve": 9216,
+        "applicationReads": 0,
+        "persistentFields": 0,
+        "serializedFields": 0
       }
     }
   },

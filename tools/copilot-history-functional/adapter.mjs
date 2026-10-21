@@ -1,13 +1,14 @@
 // Private lexical ingress only: imported exclusively by the pinned source transform.
 // Synthetic tests establish function behavior, never browser delivery or performance.
 const caps={scopes:12832,renders:32,commits:32,nodes:3200,writes:6400,censuses:4,exports:4,options:64,detach:6400,layoutEvents:20,work:67108864};
-const counts={scopes:0,renders:0,commits:0,nodes:0,writes:0,censuses:0,exports:0,options:0,detach:0,layoutEvents:0,work:1366336};
+const counts={scopes:0,renders:0,commits:0,nodes:0,writes:0,censuses:0,exports:0,options:0,detach:0,layoutEvents:0,work:1366464};
 let reason=null,owner=null,cache=null,scroller=null,mapping=null,render=null,current=null,fiber=null,component=null;
 let nativeCandidateBaseline=null,originalFailed=false,fontFailed=false,carry=null,selectedRoot=null,eligible=false,baselineWidth=null,refs=0,roEntries=0,batches=0;
 let next=0,layout=1,sealed=0,disposed=false,late=false,closed=false;
 let baselineOwner=null,baselineCache=null,baselineScroller=null,baselineLayout=null,provisionalNodeOwner=null;
 function liveRender(r){return !!r&&r===render&&!r.closed&&!r.superseded&&!r.done&&r.Component===component&&r.rootWork?.tag===3&&r.rootWork.stateNode===r.root&&r.root.current?.alternate===r.rootWork;}
 let firstSite=null,firstOptions=null;
+let committedTarget=null;
 function diagnostic(){return {site:firstSite,options:firstOptions?{...firstOptions}:null};}
 const moduleBindings=new Set();
 const bindingNames=['copilot','core','react','wrapper'],bindingCounts=[0,0,0,0],fiberFrames=[];
@@ -15,7 +16,7 @@ const renders=[],commits=[],scopes=[],epochs=[],origins=Array(101).fill(null),bi
 const nodeRows=new Map(),renderByWork=new Map();
 const expected=Array.from({length:100},(_,i)=>prose(i));
 const refusal='live-history-export-refused';
-function fail(value,site='unknown',facts=null){if(value==='original-failure')originalFailed=true;const first=reason===null;reason??=value;carry=null;eligible=false;if(first){firstSite=site;firstOptions=facts;}}
+function fail(value,site='unknown',facts=null){if(value==='original-failure')originalFailed=true;const first=reason===null;reason??=value;carry=null;eligible=false;if(first){committedTarget=null;firstSite=site;firstOptions=facts;}}
 function fontFailure(){fontFailed=true;fail('layout');}
 function id(){if(next===32768){fail('limit','l-id');throw 'live-history-id-refused';}return ++next;}
 function admit(kind,charge){if(reason&&kind!=='exports'&&kind!=='censuses')return false;if(counts[kind]>=caps[kind]||counts.work+charge>caps.work||(['scopes','renders','commits','nodes'].includes(kind)&&next===32768)){fail('limit','l-admit');return false;}counts[kind]++;counts.work+=charge;return true;}
@@ -57,6 +58,66 @@ function closeCommit(c){
 function pendingWrite(o){if(current){if(current.nodes.length+current.writes.length>=2048){fail('limit','l-pwrite');return;}current.writes.push(o);}else{if(!sealed||!bindings[o.row]?.commit){fail('commit','c-pwrite-seal');return;}o.commit=sealed;origins[o.row]=o;}}
 function carryFailureSite(prefix){return 'm-end-carry-p'+prefix;}
 function emptyCommitSite(c){if(reason!==null)return 'c-end-empty-owner';return 'c-empty-r'+(c.root===selectedRoot?1:0)+'p'+(c.previousCommit===null?1:0)+'n'+(c.nodes.length===0?1:0)+'w'+(c.writes.length===0?1:0)+'f'+(c.frameDepth===0?1:0)+'m'+(mapping!==null?1:0);}
+// Committed-target preservation. Bounds apply to owned work, not arbitrary getter CPU.
+// Continuity assumes the pinned ordinary React/canonical data model, not hostile Proxies.
+// NEW proof reads own data only; native operations never dispatch application methods.
+const continuityNative={descriptor:Object.getOwnPropertyDescriptor,prototype:Object.getPrototypeOf,apply:Reflect.apply,array:Array.isArray,mapPrototype:Map.prototype,mapGet:Map.prototype.get,mapEntries:Map.prototype.entries,mapSize:Object.getOwnPropertyDescriptor(Map.prototype,'size').get,mapNext:Object.getPrototypeOf(new Map().entries()).next,nodeConnected:typeof Node==='undefined'?null:Object.getOwnPropertyDescriptor(Node.prototype,'isConnected').get,elementWidth:typeof Element==='undefined'?null:Object.getOwnPropertyDescriptor(Element.prototype,'clientWidth').get};
+function ownData(object,key){const d=continuityNative.descriptor(object,key);if(!d||!('value'in d))throw 'continuity-data-refused';return d.value;}
+function nativeMap(map){if(continuityNative.prototype(map)!==continuityNative.mapPrototype)throw 'continuity-map-refused';return continuityNative.apply(continuityNative.mapSize,map,[]);}
+function connected(node){if(continuityNative.nodeConnected)return continuityNative.apply(continuityNative.nodeConnected,node,[]);if(typeof window!=='undefined')throw 'continuity-dom-refused';return ownData(node,'isConnected');}
+function width(node){if(continuityNative.elementWidth)return continuityNative.apply(continuityNative.elementWidth,node,[]);if(typeof window!=='undefined')throw 'continuity-dom-refused';return ownData(node,'clientWidth');}
+function captureTarget(c,r,nextMapping){
+ try{
+  const f=r.work,host=c.work;
+  if(ownData(f,'type')!==component||ownData(f,'tag')!==0||ownData(c.root,'current')!==host||ownData(r.owner,'itemSizeCache')!==r.cacheRef||!same(nextMapping,r))return null;
+  const props=ownData(f,'memoizedProps'),state=ownData(f,'memoizedState'),queue=ownData(f,'updateQueue'),dependencies=ownData(f,'dependencies'),contexts=[];
+  if(!props||typeof props!=='object'||!state||typeof state!=='object'||!queue||typeof queue!=='object')return null;
+  let d=dependencies===null?null:ownData(dependencies,'firstContext');
+  while(d!==null){if(contexts.length===32||!d||typeof d!=='object')return null;const context=ownData(d,'context'),value=ownData(d,'memoizedValue'),next=ownData(d,'next');contexts.push([d,context,value,next]);d=next;}
+  return {mapping:nextMapping,fiber:f,host,props,state,queue,contexts,key:r.optionsKey,commit:c.id,layout:r.layout};
+ }catch{return null;}
+}
+function emptyOwned(c,p){return !reason&&current===c&&commits.at(-1)===c&&c.previousCommit===null&&c.frameDepth===0&&!scopes.length&&!fiberFrames.length&&!c.nodes.length&&!c.writes.length&&c.root===selectedRoot&&p===committedTarget&&p.mapping===mapping&&p.commit===sealed&&p.layout===layout&&!!mapping&&mapping.owner===owner&&mapping.cacheRef===cache&&mapping.scroller===scroller&&mapping.layout===layout&&mapping.root===selectedRoot&&(!baselineOwner||(baselineOwner===owner&&baselineCache===cache&&baselineScroller===scroller&&baselineLayout===layout));}
+function emptyLive(p){const options=ownData(owner,'options'),initial=ownData(options,'initialMeasurementsCache');return ownData(owner,'itemSizeCache')===cache&&nativeMap(cache)<=128&&ownData(options,'count')===100&&ownData(options,'lanes')===1&&ownData(options,'enabled')===true&&ownData(options,'getItemKey')===p.key&&continuityNative.array(initial)&&ownData(initial,'length')===0&&connected(scroller)===true&&(!eligible||width(scroller)===baselineWidth);}
+function emptyContexts(f,p){const dependencies=ownData(f,'dependencies');let d=dependencies===null?null:ownData(dependencies,'firstContext');for(const e of p.contexts){if(d!==e[0]||ownData(d,'context')!==e[1]||ownData(d,'memoizedValue')!==e[2]||ownData(d,'next')!==e[3])return false;d=e[3];}return d===null;}
+function treeEntrySite(f,count){return !f?'c-tree-falsy':typeof f!=='object'?'c-tree-type':count===3072?'c-tree-limit':'c-tree-cycle';}
+function emptyVisible(path,refusal){const allowed=[0,1,3,5,6,7,8,9,10,11,12,13,14,15,22,23,24,26,27];for(let i=0;i<path.length;i++){const f=path[i],tag=ownData(f,'tag');if(!allowed.includes(tag)||(tag===3&&i!==0)||((tag===13||tag===22||tag===23)&&ownData(f,'memoizedState')!==null)){refusal.site=!allowed.includes(tag)?'c-tree-tag':tag===3&&i!==0?'c-tree-root':'c-tree-hidden';return false;}}return true;}
+function emptyTarget(host,p){
+ const seen=new Set(),path=[],certified=p.fiber,alternate=ownData(certified,'alternate'),refusal={site:null};let count=0,found=null,bad=false;
+ function visit(f,depth){
+  if(!f||typeof f!=='object'||count===3072||seen.has(f)){bad=treeEntrySite(f,count);return;}
+  count++;seen.add(f);path.push(f);
+  if(f===certified||(f===alternate&&ownData(f,'alternate')===certified)){if(found!==null||!emptyVisible(path,refusal)){bad=found!==null?'c-tree-duplicate':refusal.site;return;}found=f;}
+  for(let child=ownData(f,'child');child!==null;child=ownData(child,'sibling')){if(depth===127){bad='c-tree-depth';break;}visit(child,depth+1);if(bad)break;}
+  path.pop();
+ }
+ visit(host,0);return bad?bad:found;
+}
+function emptyPayload(c){
+ const rows=mapping.rows,messages=mapping.messages,keys=mapping.keys,length=ownData(rows,'length');
+ if(length!==ownData(messages,'length')||length<100||length>101)return false;nativeMap(keys);
+ for(let i=0;i<100;i++){
+  if(!commitScalar(c,32,'l-empty-verify'))return false;
+  const row=ownData(rows,i),m=ownData(messages,i),id=ownData(m,'id');
+  if(ownData(row,'type')!=='message'||ownData(row,'message')!==m||id!==`history-${i}`||ownData(m,'role')!==(i%2?'user':'assistant')||ownData(m,'content')!==expected[i]||continuityNative.apply(continuityNative.mapGet,keys,[id])!==id)return false;
+ }
+ if(length===101){if(!commitScalar(c,16,'l-empty-tail'))return false;const row=ownData(rows,100),m=ownData(messages,100),id=ownData(m,'id');if(ownData(row,'type')!=='message'||ownData(row,'message')!==m||!ascii(id,128)||id==='history-0'||/^history-\d+$/.test(id)||ownData(m,'role')!=='assistant'||continuityNative.apply(continuityNative.mapGet,keys,[id])!==id)return false;}
+ return true;
+}
+function emptyCache(){nativeMap(cache);const iterator=continuityNative.apply(continuityNative.mapEntries,cache,[]);let entries=0;for(;;){const item=continuityNative.apply(continuityNative.mapNext,iterator,[]);if(item.done)return true;const pair=item.value,key=pair[0],value=pair[1];if(++entries>128||!Number.isInteger(key)||key<0||key>100||!Number.isFinite(value)||value<=0||value>1e7)return false;}}
+function emptyContinuity(c){
+ const p=committedTarget;if(!p)return false;const start=counts.work;
+ if(!emptyOwned(c,p))return 'c-empty-context';const host=c.work,oldHost=p.host;
+ if(ownData(host,'tag')!==3||ownData(host,'stateNode')!==selectedRoot||ownData(selectedRoot,'current')!==host||ownData(host,'sibling')!==null||!(host===oldHost||(ownData(host,'alternate')===oldHost&&ownData(oldHost,'alternate')===host)))return 'c-empty-root';
+ if(!emptyLive(p))return 'c-empty-options';const target=emptyTarget(host,p);
+ if(typeof target==='string')return target;
+ if(!target)return 'c-tree-absent';
+ if(ownData(target,'type')!==component||ownData(target,'tag')!==0||ownData(target,'memoizedProps')!==p.props||ownData(target,'memoizedState')!==p.state||ownData(target,'updateQueue')!==p.queue||!emptyContexts(target,p))return 'c-empty-payload';
+ if(mapping.agentId!=='benchmark'||mapping.threadId!=='C-thread-1'||!emptyPayload(c))return 'c-empty-payload';
+ if(!emptyCache())return 'c-empty-cache';
+ if(counts.work!==start||!emptyOwned(c,p))return 'c-empty-context';
+ return null;
+}
 function endCommit(root,work,normal,phase){
  const c=current;
  if(!c||c.root!==root||c.work!==work){fail('commit','c-end-identity');return;}
@@ -83,13 +144,16 @@ function endCommit(root,work,normal,phase){
   if(baselineOwner&&(baselineOwner!==r.owner||baselineCache!==r.owner.itemSizeCache||baselineScroller!==r.scroller||baselineLayout!==r.layout)){fail('layout');break;}
   candidate=r;if(r.map||carried)nextMapping=r;nextCarry=null;
  }
- if(!joined.length&&owner)fail('commit',emptyCommitSite(c));
+ if(!joined.length&&owner){const site=emptyContinuity(c);if(site===null){closeCommit(c);return;}fail('commit',site||emptyCommitSite(c));}
+ const captureWork=counts.work,prepared=!reason&&candidate&&!c.previousCommit?captureTarget(c,candidate,nextMapping):null;
+ if(counts.work!==captureWork)fail('source-gap','c-certificate-context');
  if(!reason){for(const e of c.nodes){e.commit=c.id;const old=bindings[e.row];if(old)old.connected=false;bindings[e.row]=e;}
   for(const o of c.writes){o.commit=c.id;origins[o.row]=o;}
   c.done=true;
  }
  closeCommit(c);
  if(!current&&!reason){if(candidate){owner=candidate.owner;cache=owner.itemSizeCache;scroller=candidate.scroller;selectedRoot=c.root;mapping=nextMapping;}carry=nextCarry;if(owner)sealed=c.id;for(const r of renders)if(r.root===c.root&&r.rootWork===c.work){r.closed=true;r.seen?.clear();}}
+ if(!reason&&candidate&&!c.previousCommit){if(current||commits.length||counts.work!==captureWork)fail('source-gap','c-certificate-context');else if(prepared){const finalRoot=ownData(root,'current');if(!reason&&finalRoot===work&&!current&&!commits.length&&counts.work===captureWork&&sealed===c.id&&mapping===prepared.mapping&&owner===mapping.owner&&cache===mapping.cacheRef&&scroller===mapping.scroller&&layout===prepared.layout)committedTarget=prepared;else fail('source-gap','c-certificate-context');}else committedTarget=null;}
 }
 function exportResult(){
  const rows=[];
