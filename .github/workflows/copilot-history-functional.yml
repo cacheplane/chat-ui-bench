@@ -1,5 +1,5 @@
 name: Hosted unscored Copilot history functional diagnostic
-run-name: copilot-history-functional-${{ inputs.source_sha }}
+run-name: copilot-history-functional-${{ inputs.profile }}-${{ inputs.source_sha }}
 
 on:
   workflow_dispatch:
@@ -8,6 +8,14 @@ on:
         description: Exact source commit expected on the selected workflow ref
         required: true
         type: string
+      profile:
+        description: Closed functional diagnostic profile
+        required: true
+        default: default
+        type: choice
+        options:
+          - default
+          - warm-h100-v1
 
 permissions:
   contents: read
@@ -23,6 +31,7 @@ jobs:
     env:
       CI: true
       EXPECTED_SOURCE_SHA: ${{ inputs.source_sha }}
+      BENCHMARK_PROFILE: ${{ inputs.profile }}
       COPILOTKIT_TELEMETRY_DISABLED: '1'
       DO_NOT_TRACK: '1'
     defaults:
@@ -39,6 +48,8 @@ jobs:
           mkdir -p ci-logs "$RUNNER_TEMP/ci-evidence"
           [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"
+          case "$BENCHMARK_PROFILE" in default|warm-h100-v1) ;; *) exit 1 ;; esac
+          printf '%s\n' "$BENCHMARK_PROFILE" | tee ci-logs/profile.log
           git rev-parse HEAD | tee ci-logs/source-sha.log
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           echo "TMPDIR=$RUNNER_TEMP/ci-evidence" >> "$GITHUB_ENV"
@@ -59,10 +70,22 @@ jobs:
         run: node node_modules/playwright/cli.js install --with-deps chromium 2>&1 | tee ci-logs/browser-install.log
 
       - name: Check the inert functional source preflight
-        run: npm run diagnose:copilot-history-functional -- --preflight 2>&1 | tee ci-logs/preflight.log
+        run: |
+          case "$BENCHMARK_PROFILE" in
+            default) profile_args=() ;;
+            warm-h100-v1) profile_args=(--profile warm-h100-v1) ;;
+            *) exit 1 ;;
+          esac
+          npm run diagnose:copilot-history-functional -- --preflight "${profile_args[@]}" 2>&1 | tee ci-logs/preflight.log
 
       - name: Run one original functional diagnostic
-        run: npm run diagnose:copilot-history-functional -- --browser --run-id "ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --out "$RUNNER_TEMP/ci-evidence/copilot-history-functional-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" 2>&1 | tee ci-logs/diagnostic.log
+        run: |
+          case "$BENCHMARK_PROFILE" in
+            default) profile_args=() ;;
+            warm-h100-v1) profile_args=(--profile warm-h100-v1) ;;
+            *) exit 1 ;;
+          esac
+          npm run diagnose:copilot-history-functional -- --browser "${profile_args[@]}" --run-id "ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" --out "$RUNNER_TEMP/ci-evidence/copilot-history-functional-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" 2>&1 | tee ci-logs/diagnostic.log
 
       - name: Retain original success or refusal evidence
         if: always()

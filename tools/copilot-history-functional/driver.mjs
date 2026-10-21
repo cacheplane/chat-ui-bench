@@ -1,19 +1,20 @@
 import{returnJournal}from'./returns.mjs';
 import fs from 'node:fs';import {resolve,dirname} from 'node:path';import {fileURLToPath} from 'node:url';import {createRequire} from 'node:module';import childProcess from 'node:child_process';import {createHash} from 'node:crypto';
-import {commandLedger,ROUTES,hash,SLOTS,functionalWriter,writeExclusive,monotonicMs,CPhases,CStart,CEnvironment,CStaticLedger} from './policy.mjs';import {processWitnessClosed,validProfilePath} from '../copilot-module-binding/run.mjs';
+import {commandLedger,ROUTES,hash,SLOTS,functionalWriter,warmFunctionalWriter,writeExclusive,monotonicMs,CPhases,CStart,CEnvironment,CStaticLedger} from './policy.mjs';import {processWitnessClosed,validProfilePath} from '../copilot-module-binding/run.mjs';
 import {sourceRoot,here,boundedRead} from './instrument.mjs';
 const root=sourceRoot,require=createRequire(root+'/package.json');
 const read=(path,cap=8388608)=>boundedRead(path,cap);
 function gone(p){try{process.kill(-p.pid,0);return false;}catch(e){return e.code==='ESRCH';}}
 export function CPhysicalAdmission(w,groupAbsent){return w.forcedContainment===false&&groupAbsent===true&&processWitnessClosed(w);}
-export async function runFunctionalCase({out,nonce,runId,sourceBefore,sourceCheck,startTick=process.hrtime.bigint(),budget=160000}){
+export async function runFunctionalCase({out,nonce,runId,sourceBefore,sourceCheck,profileName,startTick=process.hrtime.bigint(),budget=160000}){
  const BUILD=out,OUT=out,pins=()=>hash(JSON.stringify(sourceCheck())),seal=hash(JSON.stringify(sourceBefore));
  if(pins()!==seal)throw Error('C-source-pin');
- const started=Number(startTick)/1e6,phases=CPhases(started,budget),deadline=phases.deadline,profile=JSON.parse(read(resolve(here,'profile.json'),65536)),buildBytes=read(resolve(BUILD,'build.json')),build=JSON.parse(buildBytes);
+ const started=Number(startTick)/1e6,phases=CPhases(started,budget),deadline=phases.deadline,profile=JSON.parse(read(resolve(here,profileName==='warm-h100-v1'?'warm-profile.json':'profile.json'),65536)),buildBytes=read(resolve(BUILD,'build.json')),build=JSON.parse(buildBytes);
+ if(profileName!==undefined&&profileName!=='warm-h100-v1'||(build.browser.selectedProfile??undefined)!==profileName)throw Error('C-profile');
  if(process.env.COPILOTKIT_TELEMETRY_DISABLED!=='1'||process.env.DO_NOT_TRACK!=='1')throw Error('C-environment');
  profile.executable=require('playwright').chromium.executablePath();
- const writer=functionalWriter(OUT,deadline),ledger=commandLedger(),portReturns=returnJournal(),operations=[],logs={stdout:[],stderr:[]},logCount={stdout:0,stderr:0};
- writer.write('intent.json',{kind:'C-intent',release:{kind:'explicit-public-functional',runId},deadline,sourceSeal:seal,buildSha256:hash(buildBytes)});
+ const writer=profileName?warmFunctionalWriter(OUT,deadline):functionalWriter(OUT,deadline),ledger=commandLedger(),portReturns=returnJournal(),operations=[],logs={stdout:[],stderr:[]},logCount={stdout:0,stderr:0};
+ writer.write('intent.json',{kind:'C-intent',release:{kind:'explicit-public-functional',runId,...(profileName?{profile:profileName}:{})},deadline,sourceSeal:seal,buildSha256:hash(buildBytes)});
  let page,context,browser,browserServer,server,proc,processClosed,profileDir,launchSettled=false,originalSpawn,observedSpawn,error=null,identity=null,layout=null,positive=false,invalidated=false,hostDisposed=false,closed=false,forcedContainment=false,requests=0,responseBytes=0,networkFailure=null;
  let phaseDeadline=phases.setup,remoteAdmission=null;
  const witness={exit:null,close:null,error:false,stdout:{end:false,close:false,error:false},stderr:{end:false,close:false,error:false}},streamClosed=[],cleanup={host:false,server:false,page:false,context:false,browser:false,control:false,process:false,profile:false},within=fn=>CStart(fn,phaseDeadline);
@@ -40,10 +41,10 @@ export async function runFunctionalCase({out,nonce,runId,sourceBefore,sourceChec
   await command('launch',()=>portReturns.capture('launch',()=>page.evaluate(()=>window.__liveHistoryC.command('launch'))));
   let observed;for(let i=1;i<=8;i++){observed=await command('observe-'+i,()=>portReturns.capture('observe-'+i,()=>page.evaluate(()=>window.__liveHistoryC.command('observe'))));if(observed.reason||JSON.stringify(observed.binding?.counts)!=='[1,1,1,1]'||observed.binding?.status!=='observed')throw Error('C-source-refusal');if(observed.hostReady&&observed.phase==='selected')break;}
   if(!observed?.hostReady||observed.phase!=='selected')throw Error('C-no-natural-selection');const history=server.context().history.map(m=>({id:m.id,role:m.role,text:m.content,status:'complete'}));await command('load-history',()=>portReturns.capture('load-history',()=>page.evaluate(h=>window.__liveHistoryC.command('load-history',h),history)));phaseDeadline=phases.observe(monotonicMs());layout=await command('baseline',()=>portReturns.capture('baseline',()=>page.evaluate(()=>window.__liveHistoryC.command('baseline'))));
-  const first=await command('snapshot-1',()=>page.evaluate(()=>window.__liveHistoryC.command('snapshot')));writer.write('partial-01.json',first);const second=await command('snapshot-2',()=>page.evaluate(()=>window.__liveHistoryC.command('snapshot')));writer.write('partial-02.json',second);positive=second.reason===null&&second.phase==='selected'&&second.rows.some(r=>r[15]===true&&r[14]===true);if(!positive)throw Error('C-no-natural-positive-write');
-  await command('invalidate-viewport',()=>page.setViewportSize({width:1281,height:720}));const third=await command('snapshot-3',()=>page.evaluate(()=>window.__liveHistoryC.command('snapshot')));writer.write('partial-03.json',third);invalidated=third.reason==='layout';if(!invalidated)throw Error('C-no-original-invalidation');const fourth=await command('snapshot-4',()=>page.evaluate(()=>window.__liveHistoryC.command('snapshot')));writer.write('partial-04.json',fourth);
+  const first=await command('snapshot-1',()=>page.evaluate(()=>window.__liveHistoryC.command('snapshot')));writer.write('partial-01.json',first);const second=await command('snapshot-2',()=>page.evaluate(()=>window.__liveHistoryC.command('snapshot')));writer.write('partial-02.json',second);positive=profileName?second.partial.reason===null&&second.partial.phase==='selected'&&second.fence.fullWarmReady===true:second.reason===null&&second.phase==='selected'&&second.rows.some(r=>r[15]===true&&r[14]===true);if(!positive)throw Error('C-no-natural-positive-write');
+  await command('invalidate-viewport',()=>page.setViewportSize({width:1281,height:720}));const third=await command('snapshot-3',()=>page.evaluate(()=>window.__liveHistoryC.command('snapshot')));writer.write('partial-03.json',third);if(profileName)invalidated=third.partial.reason==='layout'&&third.fence.fullWarmReady===false;else invalidated=third.reason==='layout';if(!invalidated)throw Error('C-no-original-invalidation');const fourth=await command('snapshot-4',()=>page.evaluate(()=>window.__liveHistoryC.command('snapshot')));writer.write('partial-04.json',fourth);if(profileName&&(fourth.partial.reason!=='layout'||fourth.fence.fullWarmReady!==false))throw Error('C-warm-layout');
   writer.write('layout-identity.json',{kind:'C-layout',identity,layout});if(networkFailure)throw Error(networkFailure);
- }catch(e){error??=typeof e.message==='string'&&/^C-[-a-z0-9]+$/.test(e.message)?e.message:'C-original-failure';}
+ }catch(e){if(profileName)error??=warmControllerError(e,true)??'C-original-failure';else error??=typeof e.message==='string'&&/^C-[-a-z0-9]+$/.test(e.message)?e.message:'C-original-failure';}
  finally{
   if(originalSpawn&&childProcess.spawn===observedSpawn)childProcess.spawn=originalSpawn;
   phaseDeadline=deadline;
@@ -62,4 +63,13 @@ export async function runFunctionalCase({out,nonce,runId,sourceBefore,sourceChec
  const portRecord=portReturns.seal();if(!portReturns.complete())error??='C-return-retention';
  let stable=false;try{stable=pins()===seal;}catch{}const complete=!forcedContainment&&!error&&!networkFailure&&positive&&invalidated&&stable&&Object.values(cleanup).every(v=>v===true)&&monotonicMs()<deadline;
  writer.write('phase.json',{kind:'C-phase',status:complete?'C-staging-pending-outer':'unavailable',reason:error??networkFailure,counts:{requests,staticResponseBytes:responseBytes,nativeResponseReservedBytes:16777216,totalResponseEnvelope:33554432,staticClosure,portReturns:portRecord},closure:{positive,invalidated,closed,forcedContainment}});writer.write('failure.json',{kind:'C-failure',reason:error??networkFailure});writer.write('outside-closure.json',{kind:'C-outside',required:'original outer CLI inventory join required',refs:[]});const closure={kind:'C-closure',status:complete?'C-staging-pending-outer':'unavailable',reason:error??networkFailure,inventory:writer.inventory(),external:[],process:{...witness,forcedContainment},cleanup,sourcePinsMatch:stable,withinDeadline:monotonicMs()<deadline,authority:{qualification:false,performance:false,nativeGO:false,warmReadiness:'unavailable',fullFunctional:'unavailable',append:'unavailable',FPS:'unavailable'}};writer.write('closure.json',closure);if(pins()!==seal)throw Error('C-source-pin');if(monotonicMs()>=deadline)throw Error('C-late');return closure;
+}
+
+// Observed controller-stage token in the pinned Playwright evaluate envelope.
+// This never authenticates a chronology first cause or changes availability.
+import {types as warmErrorTypes} from 'node:util';
+export function warmControllerError(error,direct=false){
+ if(warmErrorTypes.isProxy(error)||!warmErrorTypes.isNativeError(error))return null;
+ const d=Object.getOwnPropertyDescriptor(error,'message');if(!d||!Object.hasOwn(d,'value')||typeof d.value!=='string'||d.value.length>4096)return null;
+ const found=/^page\.evaluate: Error: (C-warm-(?:order|health|seal|plan|motion|raf|layout))(?=\n|$)/.exec(d.value);return found?found[1]:direct&&/^C-[-a-z0-9]+$/.test(d.value)?d.value:null;
 }

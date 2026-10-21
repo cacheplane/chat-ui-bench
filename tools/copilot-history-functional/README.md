@@ -2,15 +2,24 @@
 
 This sibling diagnostic renders the real Copilot app and observes source-owned virtualizer writes. It is unscored: FPS, performance qualification, and native readiness remain unavailable.
 
-The private warm preparation modules currently have source-only Node controls:
+An explicit warm run uses the same source-owned closure and cleanup policy:
 
 ```sh
-node --test --test-concurrency=1 --test-timeout=30000 tools/copilot-history-functional/warm-runtime.node.mjs tools/copilot-history-functional/warm-selector.node.mjs tools/copilot-history-functional/warm-baseline.node.mjs
+node tools/copilot-history-functional/run.mjs --preflight --profile warm-h100-v1
+node tools/copilot-history-functional/run.mjs --browser --profile warm-h100-v1 --run-id example-warm --out /absolute/absent/output
 ```
 
-They observe bounded event and range chronology, construct canonical baseline inputs, select a deterministic widest-gap route, and check historical measurement credit and current connected bindings across two fences. Synthetic controls establish these source properties; they do not establish that an actual browser can complete the route. The default diagnostic does not invoke the warm modules or install a new profile.
+The warm profile captures baseline chronology, authenticates fresh original memo dependencies, closes capture and prepares one deterministic route in the same stack. It runs at most12 original scroll-to-index calls, then checks100 historical origins and every connected latest binding at two fences. A route is a structural proposal; it does not guarantee browser coverage or settlement. Equal-size remounts do not renew origins. Only the exact `unavailable`/`no-gap` result allows a no-motion readiness check. Other unsafe/unavailable plans refuse.
 
-The additional work and reference bounds assume one trusted lifecycle: one close, one preparation, and two fences, with nonrenewable callback quotas. They do not cover arbitrary repeated private API calls or unrestricted caller retention. A future browser driver must enforce that lifecycle, bind fresh geometry, validate its complete itinerary, and account for transport and output ownership before use. Source controls grant no native readiness, performance qualification, ranking, or FPS.
+Four canonical output slots contain the original partial and all eight fence fields. Only the first contains baseline chronology and the compact plan. The third/fourth capture actual irreversible width invalidation without admitting new postrefusal RAF work. Warm success establishes functional provenance; native/FPS/performance authority remains unavailable. The default diagnostic loads no warm helpers or warm profile. The warm profile uses9,109 scopes,64 commits and32 renders under the same67,108,864 hard source cap; named work reservations replace stricter scope capacity. It adds a separately bounded original scroll/reconcile actor without claiming a total-page CPU limit. Observed `C-warm-*` controller error tokens identify a stage, not the chronology's first cause; detailed capture refusal counts may remain unavailable before the first output.
+
+Offline controls include the private controller and real pinned source callbacks:
+
+```sh
+node --test --test-concurrency=1 --test-timeout=30000 tools/copilot-history-functional/warm-controller.node.mjs tools/copilot-history-functional/warm-runtime.node.mjs tools/copilot-history-functional/warm-selector.node.mjs tools/copilot-history-functional/warm-baseline.node.mjs
+```
+
+The bounds assume one trusted lifecycle: one seal/close/preparation, at most12 motions, two fences and four outputs. Shared core/controller RAF admission remains32 before and after chronology close. Arbitrary private API repetition, caller retention, platform CPU and original activity after sticky refusal are outside that logical work model. Published partial graphs and the additional Node wrapper actor have separately bounded output/work ownership.
 
 Build the source contract once with `npm run build --workspace @chat-ui-bench/contract` after `npm ci`.
 
