@@ -71,5 +71,5 @@ import {types as warmErrorTypes} from 'node:util';
 export function warmControllerError(error,direct=false){
  if(warmErrorTypes.isProxy(error)||!warmErrorTypes.isNativeError(error))return null;
  const d=Object.getOwnPropertyDescriptor(error,'message');if(!d||!Object.hasOwn(d,'value')||typeof d.value!=='string'||d.value.length>4096)return null;
- const found=/^page\.evaluate: Error: (C-warm-(?:order|health|seal|plan|motion|raf|layout))(?=\n|$)/.exec(d.value);return found?found[1]:direct&&/^C-[-a-z0-9]+$/.test(d.value)?d.value:null;
+ const found=/^page\.evaluate: Error: (C-warm-(?:order|health|seal|plan|motion|raf(?:-(?:0[0-9]|[1-6][0-9]|7[0-5]))?|layout))(?=\n|$)/.exec(d.value);return found?found[1]:direct&&/^C-[-a-z0-9]+$/.test(d.value)&&(!d.value.startsWith('C-warm-raf-')||/^C-warm-raf-(?:0[0-9]|[1-6][0-9]|7[0-5])$(?![\s\S])/.test(d.value))?d.value:null;
 }
