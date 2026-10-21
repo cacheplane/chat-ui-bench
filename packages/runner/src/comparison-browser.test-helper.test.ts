@@ -15,6 +15,7 @@ import {
 import {parseLongThreadArgs} from './long-thread-cli.js';
 import {createLongThreadLedger} from './long-thread-run.js';
 import {runInNewContext} from 'node:vm';
+import {parseSync} from 'rolldown/experimental';
 
 const d0FramerMembers = [
   'packages/analyzer/src/browser-frame-trace-framer.ts',
@@ -55,6 +56,22 @@ test('D1-v9 refuses missing annotation test member',async()=>{
 });
 test('D1-v9 refuses original annotation test mutation during final copy',async()=>{
   const f=await fixture();await addD1FixtureMember(f.workspace);const injected=duringLastCopy(f,async()=>{const path=join(f.workspace,d1AnnotationTestMember),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});
+  await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');
+});
+
+const nativePhasePackageMember='packages/analyzer/package.json';
+test('native-phase-v10 retains exact analyzer package member',async()=>{
+  const f=await fixture(),receipt=await writer()(f.root,f);
+  const manifest=JSON.parse(await readFile(receipt!.path,'utf8')),record=manifest.records.find((row:{key:string})=>row.key===nativePhasePackageMember);
+  expect(record).toBeDefined();
+  const original=await readFile(join(repository,nativePhasePackageMember)),copied=await readFile(join(receipt!.directory,record.copied.path));
+  expect(copied.equals(original)).toBe(true);expect(record.before.fact).toEqual({byteLength:original.length,sha256:sha256(original)});expect(record.before).toEqual(record.after);
+});
+test('native-phase-v10 refuses missing analyzer package member',async()=>{
+  const f=await fixture();await unlink(join(f.workspace,nativePhasePackageMember));await expect(writer()(f.root,f)).rejects.toThrow();
+});
+test('native-phase-v10 refuses original analyzer package mutation during final copy',async()=>{
+  const f=await fixture(),injected=duringLastCopy(f,async()=>{const path=join(f.workspace,nativePhasePackageMember),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});
   await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');
 });
 
@@ -128,7 +145,8 @@ const nativeCaptureMembers = [
   'packages/runner/dist/comparison-proto-native-capture.js',
   'packages/runner/dist/comparison-proto-native-capture.js.map',
 ];
-const source58 = [
+const source59 = [
+  nativePhasePackageMember,
   d1AnnotationTestMember,
   ...d0FramerMembers.slice(0,2),
   ...nativeCaptureMembers.slice(0, 2),
@@ -264,7 +282,7 @@ async function fixture() {
   expect(metadata52).toEqual(expectedMetadata52);
   const assets = Object.keys(build.assetHashes).map(key => 'apps/threadplane/dist/' + key);
   const raw2 = ['apps/threadplane/.build-evidence.json', 'packages/runner/.comparison-build-evidence.json'];
-  const union = [...new Set([...source58, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output138, ...analyzerSelected12, ...metadata52, ...assets, ...raw2])].sort();
+  const union = [...new Set([...source59, ...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...output138, ...analyzerSelected12, ...metadata52, ...assets, ...raw2])].sort();
   const copyKeys = union.filter(key => !raw2.includes(key) && key !== nativePath + '/package.json');
   const copyParents = [...new Set(copyKeys.map(key => dirname(join(workspace, key))))];
   for (const parent of copyParents) await mkdir(parent, {recursive: true});
@@ -313,7 +331,7 @@ async function fixture() {
   const seal = comparisonDatasetInventorySchema.parse({...versions, invocationId, status: 'sealed', configuration: config.configuration, invocationClaim: claim, invocationLedger: terminalLedger, root: '.', ledger: ledgerMember, members: members.sort((a, b) => a.path.localeCompare(b.path)), absentMembers: [], directories: [...datasetDirectories].sort(), slots, ownershipSettled: true, finalizationSucceeded: true});
   await writeFile(join(root, 'dataset-seal.json'), canonicalSerialize(seal) + '\n');
   const hashed = new Set([...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...Object.keys(probe.compiledHashes), ...assets]);
-  const paddingKeys = source58.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
+  const paddingKeys = source59.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
   return {root, workspace, evidenceRoot, context, union, paddingKeys};
 }
 const writer = () => helper.writeComparisonCiSnapshot;
@@ -366,13 +384,13 @@ test('CI off performs no filesystem access', async () => {
 test('closed original snapshot retains actual copy bytes and controlled Linux metadata', async () => {
   const f = await fixture(), receipt = await writer()(f.root, f); expect(receipt).not.toBeNull();
   const bytes = await readFile(receipt!.path), manifest = JSON.parse(bytes.toString());
-  expect(f.union).toHaveLength(309); expect(manifest.records).toHaveLength(309);
+  expect(f.union).toHaveLength(310); expect(manifest.records).toHaveLength(310);
   expect(bytes.length).toBe(receipt!.byteLength); expect(sha256(bytes)).toBe(receipt!.sha256);
-  expect(manifest.format).toBe('comparison-ci-original-snapshot-v9');
-  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source58).toEqual(source58); expect(manifest.inventories.output138).toHaveLength(138); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata52).toEqual(expectedMetadata52);
-  expect(Object.keys(manifest.inventories).sort()).toEqual(['source58','source23','product47','probe31','compiled16','output138','analyzerSelected12','contract42','raw2','assets','metadata52'].sort());
+  expect(manifest.format).toBe('comparison-ci-original-snapshot-v10');
+  expect(manifest.context.platform).toBe('linux'); expect(manifest.inventories.source59).toEqual(source59); expect(manifest.inventories.output138).toHaveLength(138); expect(manifest.inventories.contract42).toHaveLength(42); expect(manifest.inventories.metadata52).toEqual(expectedMetadata52);
+  expect(Object.keys(manifest.inventories).sort()).toEqual(['source59','source23','product47','probe31','compiled16','output138','analyzerSelected12','contract42','raw2','assets','metadata52'].sort());
   expect(manifest.inventories.source23).toEqual(source23); expect(manifest.inventories.analyzerSelected12).toEqual([...analyzerSelected12].sort());
-  expect(source58).toHaveLength(58); expect(source23).toHaveLength(23);
+  expect(source59).toHaveLength(59); expect(source23).toHaveLength(23);
   const protoMembers = [
     'packages/runner/src/comparison-proto-trace.ts',
     'packages/runner/src/comparison-proto-trace.test.ts',
@@ -544,8 +562,44 @@ test.each([0, 1])('end-to-end file cap exact plus %i uses the largest unhashed m
   if (excess) await expect(writer()(f.root, f)).rejects.toThrow('pre-read file cap');
   else {const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8')); expect(manifest.records.find((row: {key: string}) => row.key === key).before.fact.byteLength).toBe(1024 * 1024);}
 });
-test.each([0, 1])('exact original lock cap 2MiB plus %i preserves every locked identity', {timeout: 30000}, async excess => {
+// Test-only synthetic lock-extremum text. Normal real-byte snapshots stay unchanged.
+function lockFixtureParse(text:string){const parsed=parseSync('controlled.ts',text,{lang:'ts',astType:'ts'});expect(parsed.errors).toEqual([]);return parsed;}
+function lockFixtureNodes(node:unknown,visit:(n:{type:string;start:number;end:number})=>void):void{
+  if(!node||typeof node!=='object'||!('type'in node))return;visit(node as {type:string;start:number;end:number});
+  for(const value of Object.values(node)){if(Array.isArray(value))for(const child of value)lockFixtureNodes(child,visit);else lockFixtureNodes(value,visit);}
+}
+function assertLockFixtureParity(original:string,candidate:string):void{
+  const a=lockFixtureParse(original),b=lockFixtureParse(candidate),normalized=(v:unknown)=>JSON.stringify(v,(key,value)=>['start','end','loc','range','span'].includes(key)?undefined:typeof value==='bigint'?{_bigint:String(value)}:value);
+  expect(normalized(b.program)).toBe(normalized(a.program));
+  const raw=(parsed:ReturnType<typeof lockFixtureParse>,text:string)=>{const literals:string[]=[];lockFixtureNodes(parsed.program,n=>{if(n.type==='Literal'||n.type==='TemplateLiteral')literals.push(text.slice(n.start,n.end));});return {literals,comments:parsed.comments.map(c=>text.slice(c.start,c.end))};};
+  expect(raw(b,candidate)).toEqual(raw(a,original));expect(candidate.match(/\r\n|\r|\n/g)).toEqual(original.match(/\r\n|\r|\n/g));
+}
+async function compactSyntheticLockFixture(f:Awaited<ReturnType<typeof fixture>>){
+  const rows:{key:string;originalBytes:number;compactedBytes:number;compactedSHA256:string}[]=[];
+  for(const key of f.paddingKeys){
+    const path=join(f.workspace,key),original=await readFile(path,'utf8');expect(Buffer.byteLength(original)).toBeLessThanOrEqual(1024*1024);
+    const pass=(text:string,leading:boolean)=>{const parsed=lockFixtureParse(text),mask=new Uint8Array(text.length);lockFixtureNodes(parsed.program,n=>{if(n.type==='Literal'||n.type==='TemplateLiteral')mask.fill(1,n.start,n.end);});for(const c of parsed.comments)mask.fill(1,c.start,c.end);
+      let candidate='';for(let i=0;i<text.length;){if(!mask[i]&&(text[i]===' '||text[i]==='\t')){let end=i+1;while(end<text.length&&!mask[end]&&(text[end]===' '||text[end]==='\t'))end++;const remove=leading?(i===0||text[i-1]==='\n'||text[i-1]==='\r'):/[(),;]/.test(candidate.at(-1)??'')||/[(),;]/.test(text[end]??'');if(!remove)candidate+=text.slice(i,end);i=end;}else candidate+=text[i++];}return candidate;};
+    const candidate=pass(pass(original,true),false);assertLockFixtureParity(original,candidate);await writeFile(path,candidate);
+    rows.push({key,originalBytes:Buffer.byteLength(original),compactedBytes:Buffer.byteLength(candidate),compactedSHA256:sha256(Buffer.from(candidate))});
+  }return rows;
+}
+test('uncompacted current 2MiB lock exceeds the joint budget and parity mutants refuse',async()=>{
+  const original='const value: string = "alpha"; // keep\nvoid value;\n';
+  for(const mutant of [original.replace('alpha','beta'),original.replace('// keep','// changed'),original.replace('void value;','')])expect.soft(()=>assertLockFixtureParity(original,mutant)).toThrow();
+  const f=await fixture(),lock=join(f.workspace,'package-lock.json'),originalLock=(await stat(lock)).size;
+  let unionBytes=0;for(const key of f.union)unionBytes+=(await stat(join(f.workspace,key))).size;
+  expect(unionBytes+2*1024*1024-originalLock).toBeGreaterThan(8*1024*1024);
+  const text=(await readFile(lock,'utf8')).trimEnd(),fixed=Buffer.byteLength(text.slice(0,-1)+',"controlledExtension":""}\n');
+  await lockExtension(f,JSON.stringify('x'.repeat(2*1024*1024-fixed)));
+  expect((await stat(lock)).size).toBe(2*1024*1024);await expect(writer()(f.root,f)).rejects.toThrow('pre-read aggregate cap');
+});
+test.each([0, 1])('synthetic AST-identical lock cap 2MiB plus %i preserves every locked identity', {timeout: 30000}, async excess => {
   const f = await fixture(), path = join(f.workspace, 'package-lock.json');
+  let beforeBytes=0;for(const key of f.union)beforeBytes+=(await stat(join(f.workspace,key))).size;
+  const originalLockBytes=(await stat(path)).size,compacted=await compactSyntheticLockFixture(f),saved=compacted.reduce((n,row)=>n+row.originalBytes-row.compactedBytes,0);
+  let afterBytes=0;for(const key of f.union)afterBytes+=(await stat(join(f.workspace,key))).size;
+  expect(beforeBytes-afterBytes).toBe(saved);expect(afterBytes+2*1024*1024+excess-originalLockBytes).toBeLessThanOrEqual(8*1024*1024);
   const original = (await readFile(path, 'utf8')).trimEnd();
   const fixedBytes = Buffer.byteLength(original.slice(0, -1) + ',"controlledExtension":""}\n');
   const target = 2 * 1024 * 1024 + excess;
@@ -554,6 +608,7 @@ test.each([0, 1])('exact original lock cap 2MiB plus %i preserves every locked i
   if (excess) await expect(writer()(f.root, f)).rejects.toThrow('regular bounded original');
   else {
     const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8'));
+    expect(manifest.records).toHaveLength(310);for(const changed of compacted){const record=manifest.records.find((entry:{key:string})=>entry.key===changed.key);expect(record.before.fact).toEqual({byteLength:changed.compactedBytes,sha256:changed.compactedSHA256});expect(record.after).toEqual(record.before);expect(record.copied.fact).toEqual(record.before.fact);expect(await readFile(join(receipt!.directory,record.copied.path))).toEqual(await readFile(join(f.workspace,changed.key)));}
     const row = manifest.records.find((entry: {key: string}) => entry.key === 'package-lock.json');
     expect(row.before.fact).toEqual({byteLength: target, sha256: sha256(bytes)});
     expect(row.after).toEqual(row.before); expect(row.copied.fact).toEqual(row.before.fact);

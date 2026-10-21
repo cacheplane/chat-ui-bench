@@ -76,3 +76,32 @@ establishes capture completeness or normalizes clocks. Machine/sequence
 identifiers, raw timestamps and selected clock/track sources remain unqualified.
 All native, performance, scoring and ranking authority stays false, with FPS
 unavailable.
+## Source-owned phase inventory join
+
+The runner's opt-in `inspectProtoNativePhase(owner)` accepts only the exact object
+created by that source instance's native capture factory. It is synchronous and
+one-shot: a genuine premature request is cached as unavailable. Unknown objects,
+cloned receipts and Proxies do not dispatch file reads. The analyzer package's
+`internal/whole-annotation` subpath is loaded lazily only after original finish and
+self-receipt-write fulfillment, without changing the factory methods or persisted
+receipt. The persisted self-write row remains truthfully pending in those bytes.
+
+A ready request performs one source-owned whole-file read, joining its extent,
+hash and observed device/inode to private original capture state. It requires a
+resolved supported-root `markName` inventory, exactly one occurrence of each
+private generated name, no selected-prefix foreign name and increasing packet
+indices. It projects two rows with raw sequence, machine, track, clock and time
+provenance. Decreasing timestamps remain unqualified; packet order is not clock
+or causal order. Unrelated classified roots outside the private prefix are counted.
+Unresolved siblings, observed state loss, malformed input or physical read failure
+withhold the pair. Reentry latches a cached refusal; it cannot publish later success.
+
+This is observed source-registry/supplied-file correspondence, not an inventory of
+all opaque/raw occurrences or proof of continuous inode, target or capture
+lifetime. All native, clock, target, population, duration, FPS and scoring authority
+stays false/unavailable. A cached result describes its read instant. Package
+subpath custody in the selected CI snapshot does not retain the complete called
+reader graph; future actual capture needs separately reviewed exact dependency
+custody and all existing functional/native release gates. No capture is enabled by
+this diagnostic. Output is bounded to8192 serialized bytes,4096 UTF8 including
+keys,256 nodes,16 objects and depth6; only fixed source-owned DTOs enter its guard.

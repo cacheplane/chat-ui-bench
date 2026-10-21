@@ -4,6 +4,8 @@ import * as fs from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {dirname,join,resolve} from 'node:path';
+import {types} from 'node:util';
+import type {readWholeAnnotationTrace} from '@chat-ui-bench/analyzer/internal/whole-annotation';
 import {createProtoTraceCollector,type ProtoClockPort,type ProtoTraceCollector,type ProtoTraceReceipt} from './comparison-proto-trace.js';
 import {createProtoPublicPorts,type ProtoPublicInputs} from './comparison-proto-public-ports.js';
 
@@ -13,6 +15,46 @@ import {createProtoPublicPorts,type ProtoPublicInputs} from './comparison-proto-
 const POLICY='pinned-proto-owned-native-transport-v1';
 const MAX_EXECUTABLE_BYTES=536870912;
 const ROLE_CAPS=Object.freeze({'intent.json':16384,'capture.json':262144,'target.json':65536,'marks.json':16384,'trace.pftrace':33554432,'receipt.json':262144});
+const PHASE_POLICY='source-owned-phase-registry-inventory-diagnostic-v1';
+const PHASE_AUTHORITY=Object.freeze({captureQualified:false,qualification:false,nativeSupported:false,clockAdmission:'not_evaluated',targetLifetime:'unestablished',population:'not_evaluated',FPS:null,duration:null,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false}as const);
+type PhaseRefusal='unregistered-owner'|'owner-not-ready'|'input-reference-unavailable'|'reader-unavailable'|'whole-input-unavailable'|'file-identity-unavailable'|'root-inventory-withheld'|'state-loss-observed'|'candidate-capacity'|'duplicate-start'|'duplicate-end'|'foreign-selected-prefix'|'missing-start'|'missing-end'|'wire-order-unavailable'|'result-capacity'|'internal-unavailable';
+export interface ProtoPhaseInventoryRow {
+ readonly phase:'start'|'end';readonly name:string;readonly packetIndex:number;readonly sequenceIndex:number;readonly intervalVersion:number;
+ readonly eventStart:number;readonly eventValueStart:number;readonly eventEnd:number;readonly bodySHA256:string;readonly annotationIndex:number;readonly definitionIndex:number|null;readonly nameSource:'literal'|'intern';
+ readonly clockId:string|null;readonly clockSource:'packet'|'defaults'|'unavailable';readonly trackUuid:string|null;readonly trackSource:'event'|'defaults'|'unavailable';
+ readonly machineStatus:'absent'|'present';readonly machineId:string|null;readonly sequenceId:string;readonly rawTimestamp:string|null;readonly timestampStatus:'absent'|'raw-unqualified';
+}
+interface PhaseBase {readonly policy:typeof PHASE_POLICY;readonly authority:typeof PHASE_AUTHORITY}
+export type ProtoPhaseInventoryDiagnostic=(PhaseBase&{readonly status:'unavailable';readonly reason:PhaseRefusal;readonly rows:readonly []})|(PhaseBase&{
+ readonly status:'phase-registry-inventory-diagnostic';readonly reason:null;readonly runId:string;readonly phaseId:string;readonly targetId:string;
+ readonly input:Readonly<{bytes:number;sha256:string;packetManifestSHA256:string;transitionManifestSHA256:string}>;
+ readonly counters:Readonly<{candidates:number;outsidePrefix:number;readAttempts:number;packets:number}>;readonly rows:readonly [ProtoPhaseInventoryRow,ProtoPhaseInventoryRow];
+});
+const phaseRefusal=(reason:PhaseRefusal):Readonly<ProtoPhaseInventoryDiagnostic>=>Object.freeze({policy:PHASE_POLICY,status:'unavailable',reason,rows:Object.freeze([])as readonly [],authority:PHASE_AUTHORITY});
+const UNKNOWN_PHASE=phaseRefusal('unregistered-owner');
+const phaseOwners=new WeakMap<object,()=>Readonly<ProtoPhaseInventoryDiagnostic>>();
+/** Exact source-created identity only. This DTO grants no native admission. */
+export function inspectProtoNativePhase(owner:unknown):Readonly<ProtoPhaseInventoryDiagnostic>{
+ if(owner===null||typeof owner!=='object'||types.isProxy(owner))return UNKNOWN_PHASE;
+ return phaseOwners.get(owner)?.()??UNKNOWN_PHASE;
+}
+type WholePhaseResult=ReturnType<typeof readWholeAnnotationTrace>;
+type PhaseCandidate=NonNullable<WholePhaseResult['study']>['candidates'][number];
+function phaseRow(row:PhaseCandidate,phase:'start'|'end',name:string):ProtoPhaseInventoryRow{
+ if(row.annotationIndex===null||row.sequenceId===null||(row.nameSource!=='literal'&&row.nameSource!=='intern')||(row.clockSource!=='packet'&&row.clockSource!=='defaults'&&row.clockSource!=='unavailable')||(row.trackSource!=='event'&&row.trackSource!=='defaults'&&row.trackSource!=='unavailable'))throw unavailable();
+ return {phase,name,packetIndex:row.packetIndex,sequenceIndex:row.sequenceIndex,intervalVersion:row.intervalVersion,eventStart:row.eventStart,eventValueStart:row.eventValueStart,eventEnd:row.eventEnd,bodySHA256:row.bodySHA256,annotationIndex:row.annotationIndex,definitionIndex:row.definitionIndex,nameSource:row.nameSource,clockId:row.clockId,clockSource:row.clockSource,trackUuid:row.trackUuid,trackSource:row.trackSource,machineStatus:row.machineStatus,machineId:row.machineId,sequenceId:row.sequenceId,rawTimestamp:row.rawTimestamp,timestampStatus:row.timestampStatus};
+}
+/** Private capacity guard for fixed source-constructed DTOs, not caller input. */
+function phaseOutput(value:ProtoPhaseInventoryDiagnostic):Readonly<ProtoPhaseInventoryDiagnostic>{
+ let nodes=0,objects=0,chars=0;
+ function visit(v:unknown,depth:number):void{
+  if(++nodes>256||depth>6)throw unavailable();
+  if(typeof v==='string'){chars+=Buffer.byteLength(v);return;}if(v===null||typeof v==='boolean'||typeof v==='number')return;
+  if(!v||typeof v!=='object'||++objects>16)throw unavailable();const array=Array.isArray(v);
+  for(const[key,child]of Object.entries(v)){if(!array)chars+=Buffer.byteLength(key);visit(child,depth+1);}Object.freeze(v);
+ }
+ visit(value,0);if(chars>4096||Buffer.byteLength(JSON.stringify(value))>8192)throw unavailable();return value;
+}
 type Role=keyof typeof ROLE_CAPS;
 type State='pending'|'fulfilled'|'rejected';
 type OriginalState=State|'not-dispatched';
@@ -96,6 +138,7 @@ export function createProtoNativeCapture(inputs:ProtoNativeCaptureInputs){
  let initialFrame:unknown,ownerTimer:unknown,ownerTimerSet=false;
  let rawIdentity:Identity|undefined,runtimePins:ProtoNativeRuntime|undefined;
  let outputDirectory='',runId='',phaseId='';
+ let phaseAttempted=false,phaseCached:Readonly<ProtoPhaseInventoryDiagnostic>|undefined,finishState:'not-dispatched'|'fulfilled'|'rejected'='not-dispatched';
  const removers:(()=>void)[]=[];
  const snapshot=():ProtoNativeCaptureReceipt=>structuredClone({...receipt,transport:collector?.snapshot()??receipt.transport,originalOperationsSettled:receipt.operations.every(op=>op.state!=='pending')&&(collector?.snapshot().originalOperationsSettled??true)});
  const fail=(code:string)=>{receipt.failureCount=Math.min(65535,receipt.failureCount+1);if(receipt.failures.length<32)receipt.failures.push(code);if(ended)receipt.status='unavailable';};
@@ -218,7 +261,42 @@ export function createProtoNativeCapture(inputs:ProtoNativeCaptureInputs){
  async function cleanup():Promise<ProtoNativeCaptureReceipt>{
   try{if(collector)await collector.close();else{try{await bounded('raw-close',closeRaw,10000,true);}finally{await finalizeSession();}}}catch{fail('cleanup');}return seal();
  }
- return {
+ // This frame returns only fixed primitives/two independent rows. The complete
+ // reader result and all candidate aliases die before output serialization.
+ function projectPrivate():ProtoPhaseInventoryDiagnostic{
+  const refuse=phaseRefusal;
+  try{
+   const t=receipt.transport,before=receipt.target.before,after=receipt.target.after;
+   let writes=0;for(const op of receipt.operations){if(op.state!=='fulfilled')return refuse('owner-not-ready');if(op.kind==='write-receipt')writes++;}
+   if(finishState!=='fulfilled'||!ended||receipt.status!=='closed'||receipt.failureCount||writes!==1||receipt.marks.length!==2||receipt.marks[0]?.phase!=='start'||receipt.marks[1]?.phase!=='end'||receipt.marks.some(m=>m.state!=='fulfilled'||m.targetId!==before?.targetId)||t?.outcome!=='protocol-closed'||!t.originalOperationsSettled||!t.completeClosureObserved||t.pending.length||receipt.runner.close!=='fulfilled'||receipt.runner.wait?.exitCode!==0||receipt.runner.wait.signal!==null||!before||!after||before.targetId!==after.targetId)return refuse('owner-not-ready');
+   const ref=receipt.persisted;
+   if(receipt.persistedWholeInput!=='verified'||!ref||!rawIdentity||!Number.isSafeInteger(rawIdentity.dev)||!Number.isSafeInteger(rawIdentity.ino)||rawIdentity.dev<0||rawIdentity.ino<0)return refuse('input-reference-unavailable');
+   let whole:WholePhaseResult;
+   try{const reader=createRequire(import.meta.url)('@chat-ui-bench/analyzer/internal/whole-annotation')as{readWholeAnnotationTrace:typeof readWholeAnnotationTrace};whole=reader.readWholeAnnotationTrace({path:join(outputDirectory,'trace.pftrace'),bytes:ref.bytes,sha256:ref.sha256},'pinned-whole-trace-ordered-annotations-diagnostic-v1');}catch{return refuse('reader-unavailable');}
+   if(phaseCached)return phaseCached;
+   const study=whole.study;
+   if(whole.status!=='complete-whole-annotation-diagnostic'||!whole.fullInputVerified||!whole.structuralContainerEOF||!study||study.status!=='whole-annotation-study'||!study.framingBoundaryComplete||whole.reader.bytes!==ref.bytes||whole.reader.sha256!==ref.sha256)return refuse('whole-input-unavailable');
+   if(whole.reader.before?.[0]!==String(rawIdentity.dev)||whole.reader.before?.[1]!==String(rawIdentity.ino)||whole.reader.after?.[0]!==String(rawIdentity.dev)||whole.reader.after?.[1]!==String(rawIdentity.ino))return refuse('file-identity-unavailable');
+   if(study.markInventoryAdmission!=='resolved-supported-roots')return refuse('root-inventory-withheld');
+   if(study.counters.losses)return refuse('state-loss-observed');
+   if(study.candidates.length>128)return refuse('candidate-capacity');
+   const a=receipt.marks[0]!,b=receipt.marks[1]!,prefix='native:'+runId+':'+phaseId+':';let start:PhaseCandidate|undefined,end:PhaseCandidate|undefined,outsidePrefix=0;
+   for(const row of study.candidates){
+    if(row.kind!=='literal_string'||row.value===null)return refuse('root-inventory-withheld');
+    if(row.value===a.name){if(start)return refuse('duplicate-start');start=row;}
+    else if(row.value===b.name){if(end)return refuse('duplicate-end');end=row;}
+    else if(row.value.startsWith(prefix))return refuse('foreign-selected-prefix');else outsidePrefix++;
+   }
+   if(!start)return refuse('missing-start');if(!end)return refuse('missing-end');if(start.packetIndex>=end.packetIndex)return refuse('wire-order-unavailable');
+   try{return {policy:PHASE_POLICY,status:'phase-registry-inventory-diagnostic',reason:null,runId,phaseId,targetId:before.targetId,input:{bytes:ref.bytes,sha256:ref.sha256,packetManifestSHA256:study.packetManifestSHA256,transitionManifestSHA256:study.transitionManifestSHA256},counters:{candidates:study.candidates.length,outsidePrefix,readAttempts:whole.reader.reads,packets:study.counters.packets},rows:[phaseRow(start,'start',a.name),phaseRow(end,'end',b.name)],authority:PHASE_AUTHORITY};}catch{return refuse('result-capacity');}
+  }catch{return refuse('internal-unavailable');}
+ }
+ function inspectPrivate():Readonly<ProtoPhaseInventoryDiagnostic>{
+  if(phaseAttempted)return phaseCached??=phaseRefusal('internal-unavailable');phaseAttempted=true;
+  const projected=projectPrivate();if(phaseCached)return phaseCached;
+  try{const checked=phaseOutput(projected);return phaseCached??=checked;}catch{return phaseCached??=phaseRefusal('result-capacity');}
+ }
+ const owner={
   start():Promise<ProtoNativeCaptureReceipt>{
    if(starting)return starting;
    starting=(async()=>{
@@ -246,9 +324,11 @@ export function createProtoNativeCapture(inputs:ProtoNativeCaptureInputs){
    return snapshot();
   },
   finish():Promise<ProtoNativeCaptureReceipt>{
-   if(finishing)return finishing;finishing=(async()=>{if(!collector||receipt.marks.length!==2||receipt.marks.some(row=>row.state!=='fulfilled')){fail('phase-sequence');return cleanup();}try{await collector.finish();}catch{fail('transport-finish');}return seal();})();return finishing;
+   if(finishing)return finishing;finishing=(async()=>{if(!collector||receipt.marks.length!==2||receipt.marks.some(row=>row.state!=='fulfilled')){fail('phase-sequence');return cleanup();}try{await collector.finish();}catch{fail('transport-finish');}return seal();})();
+   void finishing.then(()=>{finishState='fulfilled';},()=>{finishState='rejected';});return finishing;
   },
   close():Promise<ProtoNativeCaptureReceipt>{if(ended)return Promise.resolve(snapshot());if(closing)return closing;fail('explicit-close');closing=cleanup();return closing;},
   snapshot,
  };
+ phaseOwners.set(owner,inspectPrivate);return owner;
 }

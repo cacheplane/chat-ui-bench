@@ -7,6 +7,11 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./internal/whole-annotation": {
+      "types": "./dist/browser-frame-whole-trace-reader.d.ts",
+      "import": "./dist/browser-frame-whole-trace-reader.js",
+      "require": "./dist/browser-frame-whole-trace-reader.js"
     }
   },
   "scripts": {
