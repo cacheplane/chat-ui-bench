@@ -6,6 +6,8 @@ import {createHash} from 'node:crypto';
 import * as nativePhase from './comparison-proto-native-capture.js';
 import syncFs from 'node:fs';
 import {body as protoBody,join as protoJoin,text as protoText,uint as protoUint} from '../../analyzer/src/browser-frame-packet-fragments.test-helper.js';
+// Resolve the real source reader through Vitest; no production bundle is built.
+vi.mock('node:module',async importOriginal=>{const original=await importOriginal<typeof import('node:module')>(),reader=await import('../../analyzer/src/browser-frame-whole-trace-reader.js');return {...original,createRequire:(...args:Parameters<typeof original.createRequire>)=>{const require=original.createRequire(...args);return Object.assign((id:string)=>id==='@chat-ui-bench/analyzer/internal/whole-annotation'?reader:require(id),{resolve:require.resolve});}};});
 
 // Source-only owner tests: supplied authored public objects, real exclusive files,
 // no browser acquisition or trace input. This is not functional/native evidence.
@@ -52,7 +54,7 @@ function inspectPhase(owner:unknown):any {
  expect(inspect,'new synchronous source-owned phase inspection export').toBeTypeOf('function');
  return (inspect as (owner:unknown)=>unknown)(owner);
 }
-async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:ReturnType<typeof nativePhase.createProtoNativeCapture>,r:any,names:string[])=>Promise<void>,mode='pair'){
+async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:ReturnType<typeof nativePhase.createProtoNativeCapture>,r:any,names:string[])=>Promise<void>,mode='pair',modern=false){
  await fixture(async(h,create)=>{
   const names:string[]=[],mark=h.phase.mark,send=h.session.send;
   if(mode==='escaped'){h.inputs.runId='"\\'.repeat(16);h.inputs.phaseId='"\\'.repeat(16);h.setTarget({targetInfo:{targetId:'"\\'.repeat(128),type:'page',url:'https://authored.invalid/',browserContextId:'context'}});}
@@ -60,7 +62,7 @@ async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:Retur
   h.session.send=async(method,parameters)=>{
    if(method==='IO.read'){
     expect(names).toHaveLength(2);
-    const marker=(name:string,i:number,extra:Uint8Array[]=[])=>protoBody(1,protoJoin(protoUint(10,1n),protoUint(13,1n),protoUint(8,i?100n:900n),protoBody(11,protoJoin(protoBody(4,protoJoin(protoText(10,'markName'),protoText(6,name))),...extra))));
+    const marker=(name:string,i:number,extra:Uint8Array[]=[])=>protoBody(1,protoJoin(protoUint(10,1n),protoUint(13,1n),protoUint(8,i?100n:900n),protoBody(11,protoJoin(...(modern?[protoUint(9,3n),protoText(22,'blink.user_timing'),protoText(23,mode==='annotation'?'performance.mark':name),...(mode==='annotation'?[protoBody(4,protoJoin(protoText(10,'markName'),protoText(6,name)))]:[])]:[protoBody(4,protoJoin(protoText(10,'markName'),protoText(6,name)))]),...extra))));
     let packets=names.map((name,i)=>marker(name,i));
     if(mode==='duplicate-start')packets.push(marker(names[0]!,2));if(mode==='duplicate-end')packets.push(marker(names[1]!,2));
     if(mode==='foreign')packets.push(marker('native:authored-run:authored-phase:other',2));
@@ -68,7 +70,7 @@ async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:Retur
     if(mode==='missing-start')packets=packets.slice(1);if(mode==='missing-end')packets=packets.slice(0,1);
     if(mode==='reverse')packets.reverse();
     if(mode==='withheld')packets[0]=marker(names[0]!,0,[protoBody(4,protoJoin(protoUint(1,9n),protoText(6,'unresolved')))]);
-    if(mode==='loss')packets[1]=protoBody(1,protoJoin(protoUint(10,1n),protoUint(42,1n),protoBody(11,protoBody(4,protoJoin(protoText(10,'markName'),protoText(6,names[1]!))))));
+    if(mode==='loss')packets[1]=protoBody(1,protoJoin(protoUint(10,1n),protoUint(42,1n),protoBody(11,modern?protoJoin(protoUint(9,3n),protoText(22,'blink.user_timing'),protoText(23,names[1]!)):protoBody(4,protoJoin(protoText(10,'markName'),protoText(6,names[1]!))))));
     if(mode==='128'||mode==='129')for(let i=2;i<Number(mode);i++)packets.push(marker('unrelated-'+i,i));
     if(mode==='malformed-tail')packets.push(Uint8Array.of(10,2,0));
     const bytes=protoJoin(...packets);
@@ -76,11 +78,23 @@ async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:Retur
    }
    return send(method,parameters);
   };
+  if(modern){create=(nativePhase as unknown as Record<string,any>).createProtoNativeUserTimingCapture;expect(create).toBeTypeOf('function');}
   const owner=create(h.inputs);expect((await owner.start()).status).toBe('open');await owner.mark('start');await owner.mark('end');
   const finishing=owner.finish();expect(owner.finish()).toBe(finishing);const r=await finishing;expect(r.status).toBe('closed');
   await run(h,owner,r,names);
  });
 }
+it('versioned owner selects event-name policy at creation, caches one reader, and cannot enter legacy inspection',async()=>phaseFixture(async(_h,owner,_r,names)=>{
+ const inspect=(nativePhase as unknown as Record<string,any>).inspectProtoNativeUserTimingPhase;expect(inspect).toBeTypeOf('function');const read=vi.spyOn(syncFs,'openSync');try{expect(inspectPhase(owner).reason).toBe('unregistered-owner');const r=inspect(owner);expect(r).toMatchObject({status:'phase-registry-inventory-diagnostic',rows:names.map((name,i)=>({name,phase:i?'end':'start',representation:'event_name',annotationIndex:null})),authority:{FPS:null,qualification:false}});expect(r.policy).not.toBe('source-owned-phase-registry-inventory-diagnostic-v1');expect(read).toHaveBeenCalledTimes(1);expect(inspect(owner)).toBe(r);expect(read).toHaveBeenCalledTimes(1);}finally{read.mockRestore();}
+},'pair',true));
+const inspectTiming=(owner:unknown):any=>(nativePhase as unknown as Record<string,any>).inspectProtoNativeUserTimingPhase(owner);
+for(const [mode,reason]of [['duplicate-start','duplicate-start'],['duplicate-end','duplicate-end'],['foreign','foreign-selected-prefix'],['missing-start','missing-start'],['missing-end','missing-end'],['reverse','wire-order-unavailable'],['withheld','root-inventory-withheld'],['loss','state-loss-observed'],['129','whole-input-unavailable'],['malformed-tail','whole-input-unavailable']]as const)it('versioned owner keeps exact source-name and whole-input refusal '+mode,async()=>phaseFixture(async(_h,owner)=>{expect(inspectTiming(owner)).toMatchObject({status:'unavailable',reason,rows:[]});},mode,true));
+it('versioned owner keeps the filtered annotation representation explicit',async()=>phaseFixture(async(_h,owner)=>{expect(inspectTiming(owner)).toMatchObject({status:'phase-registry-inventory-diagnostic',rows:[{representation:'annotation',annotationIndex:0},{representation:'annotation',annotationIndex:0}]});},'annotation',true));
+it('versioned owner retains fixed output guards with maximally escaped identifiers',async()=>phaseFixture(async(_h,owner)=>{const r=inspectTiming(owner);expect(r.status).toBe('phase-registry-inventory-diagnostic');expect(Buffer.byteLength(JSON.stringify(r))).toBeLessThanOrEqual(8192);expect(Object.keys(r.rows[0])).toHaveLength(22);expect(Object.isFrozen(r.rows[0])).toBe(true);},'escaped',true));
+for(const mode of ['outside','128'])it('versioned owner inventories unfiltered outside-prefix candidates '+mode,async()=>phaseFixture(async(_h,owner)=>{expect(inspectTiming(owner)).toMatchObject({status:'phase-registry-inventory-diagnostic',counters:{candidates:mode==='128'?128:3,outsidePrefix:mode==='128'?126:1}});},mode,true));
+it('versioned owner pre-ready inspection caches refusal and legacy owners cannot change policy',async()=>fixture(async(h,create)=>{const old=create(h.inputs),fresh=nativePhase.createProtoNativeUserTimingCapture(h.inputs),read=vi.spyOn(syncFs,'lstatSync');try{expect(inspectTiming(old).reason).toBe('unregistered-owner');const r=inspectTiming(fresh);expect(r.reason).toBe('owner-not-ready');await fresh.start();await fresh.mark('start');await fresh.mark('end');await fresh.finish();expect(inspectTiming(fresh)).toBe(r);expect(read).not.toHaveBeenCalled();}finally{read.mockRestore();}}));
+it('versioned owner reentry keeps the first immutable refusal with one original descriptor',async()=>phaseFixture(async(_h,owner)=>{const original=syncFs.lstatSync;let entered=false,inner:any;const read=vi.spyOn(syncFs,'openSync'),stat=vi.spyOn(syncFs,'lstatSync').mockImplementation((...args:any[])=>{if(!entered){entered=true;inner=inspectTiming(owner);}return(original as any)(...args);});try{const r=inspectTiming(owner);expect(inner).toMatchObject({status:'unavailable',reason:'internal-unavailable',rows:[]});expect(r).toBe(inner);expect(Object.isFrozen(r)).toBe(true);expect(read).toHaveBeenCalledTimes(1);expect(inspectTiming(owner)).toBe(r);}finally{stat.mockRestore();read.mockRestore();}},'pair',true));
+for(const mode of ['hash','close','stat','EOF']as const)it('versioned owner withdraws its complete pair on late '+mode+' failure',async()=>phaseFixture(async(h,owner)=>{let spy:any;if(mode==='hash'){const p=join(h.directory,'trace.pftrace'),b=await readFile(p);b[b.length-1]^=1;await writeFile(p,b);}if(mode==='close'){const close=syncFs.closeSync;spy=vi.spyOn(syncFs,'closeSync').mockImplementation(fd=>{close(fd);throw Error('authored-close');});}if(mode==='stat'){const original=syncFs.fstatSync;let calls=0;spy=vi.spyOn(syncFs,'fstatSync').mockImplementation((...args:any[])=>{const s=(original as any)(...args);if(++calls===2)s.ctimeNs+=1n;return s;});}if(mode==='EOF'){const read=syncFs.readSync;spy=vi.spyOn(syncFs,'readSync').mockImplementation((...args:any[])=>{if(args[3]===1){args[1][args[2]]=0;return 1;}return(read as any)(...args);});}try{const r=inspectTiming(owner);expect(r).toMatchObject({status:'unavailable',reason:'whole-input-unavailable',rows:[]});expect(inspectTiming(owner)).toBe(r);}finally{spy?.mockRestore();}},'pair',true));
 it('phase join source-owned generated names bind the whole supplied file without clock authority',async()=>phaseFixture(async(_h,owner,_r,names)=>{
  const result=inspectPhase(owner);
  expect(result).toMatchObject({status:'phase-registry-inventory-diagnostic',reason:null,runId:'authored-run',phaseId:'authored-phase',rows:[{phase:'start',name:names[0],rawTimestamp:'900'},{phase:'end',name:names[1],rawTimestamp:'100'}],authority:{qualification:false,captureQualified:false,nativeSupported:false,FPS:null,duration:null,clockAdmission:'not_evaluated'}});

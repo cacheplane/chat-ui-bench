@@ -1,4 +1,4 @@
-import {createWholeAnnotationStudy,WHOLE_ANNOTATION_POLICY,WHOLE_ANNOTATION_AUTHORITY,finishWholeAnnotationOutput}from'./browser-frame-ordered-state.js';
+import {createWholeAnnotationStudy,WHOLE_ANNOTATION_POLICY,WHOLE_ANNOTATION_AUTHORITY,finishWholeAnnotationOutput,createWholeUserTimingStudy,WHOLE_USER_TIMING_POLICY,type WholeUserTimingStudy}from'./browser-frame-ordered-state.js';
 import fs from'node:fs';import{types}from'node:util';import{createHash}from'node:crypto';
 import{resolve}from'node:path';
 import{createD0StructuralStudy,D0_POLICY,D0_LIMITS,D0_AUTHORITY,encodeD0Result,type D0Result}from'./browser-frame-whole-trace.js';
@@ -63,14 +63,23 @@ export function readD0PersistedTrace(value:unknown,policy:unknown){
 
 /** Opt-in whole ordered annotation diagnostic. No native clock/target admission. */
 export function readWholeAnnotationTrace(value:unknown,policy:unknown){
+ return readWholeAnnotationEngine(value,policy,false);
+}
+export type WholeUserTimingTrace=Omit<ReturnType<typeof readWholeAnnotationTrace>,'policy'|'study'>&{policy:typeof WHOLE_USER_TIMING_POLICY;study:WholeUserTimingStudy|null};
+/** Explicit versioned selection uses the same original descriptor reader once. */
+export function readWholeUserTimingTrace(value:unknown,policy:unknown):WholeUserTimingTrace{
+ return readWholeAnnotationEngine(value,policy,true) as WholeUserTimingTrace;
+}
+function readWholeAnnotationEngine(value:unknown,policy:unknown,userTiming:boolean){
  let reason:string|null=null,ref:Reference|null=null,study:ReturnType<ReturnType<typeof createWholeAnnotationStudy>['finish']>|null=null;
  let out:ReturnType<typeof readOwnedFile>={reason:null,EOF:false,closed:false,identityMatch:false,hashMatch:false,reads:0,bytes:0,hash:null,before:null,after:null};
- try{if(policy!==WHOLE_ANNOTATION_POLICY)throw Error();ref=reference(value);}catch{reason='invalid-reference';}
- if(ref){const s=createWholeAnnotationStudy(ref.bytes,WHOLE_ANNOTATION_POLICY);out=readOwnedFile(ref,s);reason=out.reason;study=s.finish();}
+ const selectedPolicy=userTiming?WHOLE_USER_TIMING_POLICY:WHOLE_ANNOTATION_POLICY;
+ try{if(policy!==selectedPolicy)throw Error();ref=reference(value);}catch{reason='invalid-reference';}
+ if(ref){const s=userTiming?createWholeUserTimingStudy(ref.bytes,selectedPolicy):createWholeAnnotationStudy(ref.bytes,selectedPolicy);out=readOwnedFile(ref,s);reason=out.reason;study=s.finish();}
  const fullInputVerified=reason===null&&out.EOF&&out.closed&&out.identityMatch&&out.hashMatch;
  const complete=fullInputVerified&&study?.status==='whole-annotation-study'&&study.framingBoundaryComplete;
  if(!complete)reason??=study?.reason??'whole-annotation-unavailable';
  if(!complete&&study)study={...study,status:'unavailable',reason:reason??'whole-annotation-unavailable',semanticProcessing:'unavailable',markInventoryAdmission:'not_evaluated',candidates:[]};
- const result={policy:WHOLE_ANNOTATION_POLICY,status:complete?'complete-whole-annotation-diagnostic':'unavailable',reason,fullInputVerified,structuralContainerEOF:fullInputVerified&&study?.framingBoundaryComplete===true,reader:{kind:'source-owned-persisted-file',EOF:out.EOF,closed:out.closed,identityMatch:out.identityMatch,hashMatch:out.hashMatch,reads:out.reads,bytes:out.bytes,sha256:out.hash,before:out.before,after:out.after},study,authority:WHOLE_ANNOTATION_AUTHORITY};
+ const result={policy:selectedPolicy,status:complete?'complete-whole-annotation-diagnostic':'unavailable',reason,fullInputVerified,structuralContainerEOF:fullInputVerified&&study?.framingBoundaryComplete===true,reader:{kind:'source-owned-persisted-file',EOF:out.EOF,closed:out.closed,identityMatch:out.identityMatch,hashMatch:out.hashMatch,reads:out.reads,bytes:out.bytes,sha256:out.hash,before:out.before,after:out.after},study,authority:WHOLE_ANNOTATION_AUTHORITY};
  try{return finishWholeAnnotationOutput(result);}catch{const unavailable={...result,status:'unavailable',reason:'result-capacity',study:study===null?null:{...study,status:'unavailable',reason:'result-capacity',semanticProcessing:'unavailable',markInventoryAdmission:'not_evaluated',candidates:[]}};return finishWholeAnnotationOutput(unavailable);}
 }

@@ -1,6 +1,15 @@
 import {expect,test,vi}from'vitest';import fs from'node:fs';import os from'node:os';import path from'node:path';import{createHash}from'node:crypto';
 import{readD0PersistedTrace}from'./browser-frame-whole-trace-reader.js';import{D0_POLICY}from'./browser-frame-whole-trace.js';
 import{body}from'./browser-frame-packet-fragments.test-helper.js';
+import * as timingReader from './browser-frame-whole-trace-reader.js';
+import * as timingPolicy from './browser-frame-ordered-state.js';
+import {join as protoJoin,text as protoText,uint as protoUint} from './browser-frame-packet-fragments.test-helper.js';
+test('explicit UserTiming reader authenticates the original file then withdraws on hash or close failure',()=>{
+ const api=timingReader as unknown as Record<string,any>,policies=timingPolicy as unknown as Record<string,any>;expect(api.readWholeUserTimingTrace).toBeTypeOf('function');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'timing-authored-')),p=path.join(dir,'authored.bin'),b=body(1,protoJoin(protoUint(10,1n),protoUint(13,1n),body(11,protoJoin(protoUint(9,3n),protoText(22,'blink.user_timing'),protoText(23,'phase')))));fs.writeFileSync(p,b);
+ const ref={path:p,bytes:b.length,sha256:createHash('sha256').update(b).digest('hex')};
+ try{expect(api.readWholeUserTimingTrace(ref,policies.WHOLE_USER_TIMING_POLICY)).toMatchObject({fullInputVerified:true,structuralContainerEOF:true,study:{candidates:[{representation:'event_name',value:'phase'}]}});expect(api.readWholeUserTimingTrace({...ref,sha256:'0'.repeat(64)},policies.WHOLE_USER_TIMING_POLICY)).toMatchObject({status:'unavailable',reason:'reader-hash',study:{candidates:[]}});const close=fs.closeSync;vi.spyOn(fs,'closeSync').mockImplementation(fd=>{close(fd);throw Error('authored-close');});expect(api.readWholeUserTimingTrace(ref,policies.WHOLE_USER_TIMING_POLICY)).toMatchObject({status:'unavailable',reason:'reader-close',study:{candidates:[]}});}finally{vi.restoreAllMocks();fs.rmSync(dir,{recursive:true,force:true});}
+});
 test('D0 source-owned file reader alone joins physical EOF and exact persisted hash',()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'D0-synthetic-'));try{const p=path.join(dir,'authored.bin'),bytes=Uint8Array.of(10,0);fs.writeFileSync(p,bytes);
  const r=readD0PersistedTrace({path:p,bytes:2,sha256:createHash('sha256').update(bytes).digest('hex')},D0_POLICY);
