@@ -31,7 +31,7 @@ export function createWarmRuntime(){
  function fail(code,site='00'){if(!closed)refusal??=code+'|'+site;return false;}
  function append(range,args){
   if(closed||refusal)return false;if(busy)return fail('pair-reentrant','70');
-  if(range?ranges===16:events===448)return fail('record-capacity','71');busy=true;
+  if(range?ranges===16:events===448)return fail('record-capacity',range?'76':'77');busy=true;
   try{const text=range?formatRange(...args):formatEvent(...args);if(text===null)return fail('invalid-record','72');if(args[0][0]!==queue.length+1)return fail('ordinal','73');if(bytes+text.length>49152)return fail('byte-capacity','74');queue.push(text);bytes+=text.length;if(range)ranges++;else events++;return true;}finally{busy=false;}
  }
  function close(){
@@ -39,7 +39,7 @@ export function createWarmRuntime(){
   closed=true;const records=queue.length,text=queue.join('');queue.length=0;
   return Object.freeze({status:refusal?'unavailable':'captured-baseline-only',reason:refusal===null?null:refusal.slice(0,-3),complete:refusal===null,records,bytes,text,fullWarmReady:false,nativeGO:false});
  }
- return Object.freeze({formatRange,formatEvent,range:(...args)=>append(true,args),event:(...args)=>append(false,args),ordinal:()=>queue.length+1,active:()=>!closed&&!refusal,healthy:()=>refusal===null,retained:()=>queue.length,diagnostic:()=>refusal===null?'00':refusal.slice(-2),fail,close});
+ return Object.freeze({formatRange,formatEvent,range:(...args)=>append(true,args),event:(...args)=>append(false,args),ordinal:()=>queue.length+1,active:()=>!closed&&!refusal,healthy:()=>!refusal,retained:()=>queue.length,diagnostic:()=>refusal===null?'00':refusal.slice(-2),fail,close});
 }
 let sourceRuntime=null;
 // Used only by the opt-in source transform; default imports do not create it.
