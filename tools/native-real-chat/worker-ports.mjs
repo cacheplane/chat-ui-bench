@@ -1,21 +1,21 @@
 import {RuntimeGate,Navigation,GRAMMAR}from'./worker-core.mjs';
 const unavailable=()=>new Error('native-chat-ports-unavailable');
-export async function createChatPorts({session,page,context,browser,url,history,releaseApplication,ownerFactory,inspect,runtime,outputDirectory,runner,clock,healthy}){
+export async function createChatPorts({session,page,context,browser,url,history,releaseApplication,ownerFactory,inspect,runtime,outputDirectory,runner,clock,healthy,stage}){
  const gate=new RuntimeGate(session),nav=new Navigation(),removers=[];let host=null,scroller=null,wheelPromise=null,backend=null,selected=null,lastGeometry=null,armed=false,closed=false,contextClosed=false,teardownAllowed=false,detaching=null;const originalDetach={state:'not-dispatched',health:true};
  const on=(event,fn)=>{const listener=e=>{if(nav.failed||teardownAllowed)return;try{fn(e);}catch{nav.failed=true;for(const remove of removers)remove();}};session.on(event,listener);removers.push(()=>session.off(event,listener));};
  on('Page.frameNavigated',e=>nav.navigate(e));on('Runtime.executionContextsCleared',()=>nav.clear());on('Runtime.executionContextCreated',e=>nav.context(e));on('Runtime.executionContextDestroyed',e=>nav.destroy(e));const contextClose=()=>contextClosed=true;context.on('close',contextClose);removers.push(()=>context.off('close',contextClose));
  const identity=()=>{healthy();nav.assert();if(page.isClosed()||!browser.isConnected()||page.context()!==context||context.browser()!==browser||contextClosed||page.url()!==url||page.frames().length!==1)throw unavailable();};
  const send=async(method,params)=>{healthy();const reply=await gate.send(method,params);if(reply.exceptionDetails)throw unavailable();return reply;};
  async function call(name,{objectId,value,args=[]}={}){const reply=await send('Runtime.callFunctionOn',{functionDeclaration:GRAMMAR[name],...(objectId?{objectId}:{uniqueContextId:selected?.uniqueId}),arguments:args.map(value=>({value})),awaitPromise:name==='loadHistory'||name==='twoRAF',returnByValue:value!==false});const r=reply.result;if(!r||r.type==='undefined')throw unavailable();return value===false?r:r.value;}
- await session.send('Page.enable');await send('Runtime.enable',{});await session.send('Page.navigate',{url});
- for(let i=0;i<64;i++){healthy();if(nav.frame?.url===url&&nav.clearSeen&&nav.contexts.length===1){selected=nav.select(url);if(await call('bootstrap'))break;}if(i===63)throw unavailable();await new Promise(r=>setTimeout(r,50));}
- identity();host=(await call('hostHandle',{value:false})).objectId;if(typeof host!=='string')throw unavailable();
+ stage?.('20');await session.send('Page.enable');stage?.('21');await send('Runtime.enable',{});stage?.('22');await session.send('Page.navigate',{url});
+ stage?.('23');for(let i=0;i<64;i++){healthy();if(nav.frame?.url===url&&nav.clearSeen&&nav.contexts.length===1){selected=nav.select(url);if(await call('bootstrap'))break;}if(i===63)throw unavailable();await new Promise(r=>setTimeout(r,50));}
+ stage?.('24');identity();host=(await call('hostHandle',{value:false})).objectId;if(typeof host!=='string')throw unavailable();
  // Context facade supplies only the source-owned isClosed state absent from the
  // pinned SDK API; all original methods/events and page topology are forwarded.
  const contextPort={browser:()=>browser,isClosed:()=>contextClosed,pages:()=>context.pages().map(p=>p===page?pagePort:p),on:(...a)=>context.on(...a),off:(...a)=>context.off(...a)};
  const pagePort={context:()=>contextPort,isClosed:()=>page.isClosed(),mainFrame:()=>page.mainFrame(),frames:()=>page.frames(),url:()=>page.url(),on:(...a)=>page.on(...a),off:(...a)=>page.off(...a)};
  const ownerSession={on:(...a)=>session.on(...a),off:(...a)=>session.off(...a),send:(...a)=>session.send(...a),detach(){if(!detaching)detaching=(async()=>{try{healthy();nav.assert();}catch{originalDetach.health=false;}teardownAllowed=true;for(const remove of removers){try{remove();}catch{originalDetach.health=false;}}removers.length=0;originalDetach.state='pending';try{await session.detach();originalDetach.state='fulfilled';}catch(e){originalDetach.state='rejected';throw e;}if(!originalDetach.health)throw unavailable();})();return detaching;}};
- const owner=ownerFactory({session:ownerSession,page:pagePort,context:contextPort,browser,clock,outputDirectory,runtime,runId:'native-real-chat-v1',phaseId:'history100-up',phase:{async mark(name){if(typeof name!=='string'||name.length>128||!name.startsWith('native:native-real-chat-v1:history100-up:'))throw unavailable();identity();if(await call('phaseMark',{args:[name]})!==true)throw unavailable();}},runner});
+ stage?.('25');const owner=ownerFactory({session:ownerSession,page:pagePort,context:contextPort,browser,clock,outputDirectory,runtime,runId:'native-real-chat-v1',phaseId:'history100-up',phase:{async mark(name){if(typeof name!=='string'||name.length>128||!name.startsWith('native:native-real-chat-v1:history100-up:'))throw unavailable();identity();if(await call('phaseMark',{args:[name]})!==true)throw unavailable();}},runner});
  return{history,owner,inspect,identity,
  async load(value){identity();if(await call('loadHistory',{objectId:host,args:[value]})!==true)throw unavailable();},
  async transcript(){identity();const snapshot=await call('readTranscript',{objectId:host});return snapshot.transcript;},
