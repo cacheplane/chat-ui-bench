@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { decodeBrowserFramePacket, PACKET_POLICY } from './browser-frame-packet-fragments.js';
+import * as packetDecoders from './browser-frame-packet-fragments.js';
 import { body, int32, join, tag, text, uint, vi } from './browser-frame-packet-fragments.test-helper.js';
 
 test('empty standalone body retains absence and denies semantic eligibility', () => {
@@ -48,6 +49,25 @@ test.each([6, 12, 35, 59, 60])('duplicate opaque selected %i denied', field => d
 const DATA_MEMBERS = [11,60,117,118,120,122,129,2,90,9,4,5,6,7,89,33,34,35,37,74,75,38,40,39,45,46,109,47,48,49,51,52,53,54,131,57,62,63,65,66,67,68,69,134,135,70,71,73,77,78,82,83,84,86,91,124,125,126,127,128,130,61,64,43,44,1,36,50,133,72,95,99,100,101,102,103,107,110,111,113,115,119,123,132,138,900];
 test.each(DATA_MEMBERS.filter(n => ![50,133,107,124,125].includes(n)))('pinned data member %i participates in oneof guard', field => denied(join(body(field, new Uint8Array()), body(11, new Uint8Array())), 'duplicate-data-oneof'));
 test.each([50,133,107,124,125])('unsupported packet payload %i denied', field => denied(body(field, new Uint8Array()), 'unsupported-packet-payload'));
+const wholeTimingV3=(bytes:Uint8Array)=>{
+  const decode=(packetDecoders as unknown as Record<string,any>).decodeWholeUserTimingPacketV3;
+  expect(decode).toBeTypeOf('function');return decode(bytes,()=>{});
+};
+test.each([50,133,107,124,125])('V3 alone names refused payload field %i without changing admission or precedence',field=>{
+  for(const input of [body(field,new Uint8Array()),uint(field,0n),join(body(6,new Uint8Array()),body(field,new Uint8Array()))]){
+    expect(wholeTimingV3(input)).toEqual({status:'unavailable',diagnostics:[{code:'unsupported-packet-payload-field-'+field}]});
+    expect(packetDecoders.decodeWholeAnnotationPacket(input,()=>{})).toEqual({status:'unavailable',diagnostics:[{code:'unsupported-packet-payload'}]});
+    denied(input,'unsupported-packet-payload');
+  }
+  const truncated=join(tag(field,2),vi(2n),Uint8Array.of(0));
+  expect(wholeTimingV3(truncated)).toEqual(packetDecoders.decodeWholeAnnotationPacket(truncated,()=>{}));
+  denied(truncated,'out-of-bounds-length');
+});
+test('V3 packet entry preserves every other successful or failed projection',()=>{
+  for(const input of [new Uint8Array(),uint(8,5n),body(19000,Uint8Array.of(255)),join(body(6,new Uint8Array()),body(11,new Uint8Array())),join(uint(8,1n),uint(8,2n))]){
+    expect(wholeTimingV3(input)).toEqual(packetDecoders.decodeWholeAnnotationPacket(input,()=>{}));
+  }
+});
 test('opaque unknown fields preserve source order and all supported wire types', () => {
   const input = join(uint(19000, 7n), join(tag(20001, 1), new Uint8Array(8)), body(20002, Uint8Array.of(255)), join(tag(20003, 5), new Uint8Array(4)));
   const result = decoded(input);
