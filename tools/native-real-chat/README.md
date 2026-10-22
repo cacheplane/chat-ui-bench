@@ -22,6 +22,12 @@ Controls use authored sessions, trace packets, processes, streams, and protocol
 responses. They test the genuine existing capture owner's original finish
 promise and cached inspector without collecting a browser trace.
 
+The worker explicitly selects the V5 UserTiming diagnostic. V5 validates bounded
+counter-default UUID metadata and records only each list's presence and length;
+it does not interpret counter events, values or identities. V1–V4 retain their
+existing behavior. This diagnostic establishes no physical qualification,
+clock/target admission or FPS authority.
+
 ## Modified idle-host functional checks
 
 The opt-in configuration is **Threadplane 0.3.2 + benchmark idle-host CSS v1

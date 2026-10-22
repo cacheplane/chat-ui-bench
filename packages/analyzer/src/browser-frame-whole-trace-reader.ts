@@ -1,8 +1,8 @@
 import {createWholeAnnotationStudy,WHOLE_ANNOTATION_POLICY,WHOLE_ANNOTATION_AUTHORITY,finishWholeAnnotationOutput,createWholeUserTimingStudy,WHOLE_USER_TIMING_POLICY,type WholeUserTimingStudy}from'./browser-frame-ordered-state.js';
 import fs from'node:fs';import{types}from'node:util';import{createHash}from'node:crypto';
 import{resolve}from'node:path';
-import{createWholeUserTimingStudyV4,WHOLE_USER_TIMING_V4_POLICY,createWholeUserTimingStudyV3,WHOLE_USER_TIMING_V3_POLICY}from'./browser-frame-ordered-state.js';
-import type{WholeAnnotationStudy,WholeUserTimingStudyV3,WholeUserTimingStudyV4}from'./browser-frame-ordered-state.js';
+import{createWholeUserTimingStudyV5,WHOLE_USER_TIMING_V5_POLICY,createWholeUserTimingStudyV4,WHOLE_USER_TIMING_V4_POLICY,createWholeUserTimingStudyV3,WHOLE_USER_TIMING_V3_POLICY}from'./browser-frame-ordered-state.js';
+import type{WholeAnnotationStudy,WholeUserTimingStudyV3,WholeUserTimingStudyV4,WholeUserTimingStudyV5}from'./browser-frame-ordered-state.js';
 export{isClosedStudyFailureCode}from'./browser-frame-ordered-state.js';
 export type{ClosedStudyFailureCode}from'./browser-frame-ordered-state.js';
 import{createD0StructuralStudy,D0_POLICY,D0_LIMITS,D0_AUTHORITY,encodeD0Result,type D0Result}from'./browser-frame-whole-trace.js';
@@ -83,12 +83,17 @@ export type WholeUserTimingTraceV4=Omit<WholeUserTimingTraceV3,'policy'|'study'>
 export function readWholeUserTimingTraceV4(value:unknown,policy:unknown):WholeUserTimingTraceV4{
  return readWholeAnnotationEngine(value,policy,true,true,true) as WholeUserTimingTraceV4;
 }
-function readWholeAnnotationEngine(value:unknown,policy:unknown,userTiming:boolean,diagnosticV3=false,provenance=false){
- let reason:string|null=null,ref:Reference|null=null,study:WholeAnnotationStudy|WholeUserTimingStudy|WholeUserTimingStudyV3|WholeUserTimingStudyV4|null=null;
+export type WholeUserTimingTraceV5=Omit<WholeUserTimingTraceV4,'policy'|'study'>&{policy:typeof WHOLE_USER_TIMING_V5_POLICY;study:WholeUserTimingStudyV5|null};
+export function readWholeUserTimingTraceV5(value:unknown,policy:unknown):WholeUserTimingTraceV5{
+ return readWholeAnnotationEngine(value,policy,2,true,true) as WholeUserTimingTraceV5;
+}
+// Numeric2 selects V5 metadata validation without adding an engine argument.
+function readWholeAnnotationEngine(value:unknown,policy:unknown,userTiming:boolean|2,diagnosticV3=false,provenance=false){
+ let reason:string|null=null,ref:Reference|null=null,study:WholeAnnotationStudy|WholeUserTimingStudy|WholeUserTimingStudyV3|WholeUserTimingStudyV4|WholeUserTimingStudyV5|null=null;
  let out:ReturnType<typeof readOwnedFile>={reason:null,EOF:false,closed:false,identityMatch:false,hashMatch:false,reads:0,bytes:0,hash:null,before:null,after:null};
- const selectedPolicy=provenance?WHOLE_USER_TIMING_V4_POLICY:diagnosticV3?WHOLE_USER_TIMING_V3_POLICY:userTiming?WHOLE_USER_TIMING_POLICY:WHOLE_ANNOTATION_POLICY;
+ const selectedPolicy=userTiming===2?WHOLE_USER_TIMING_V5_POLICY:provenance?WHOLE_USER_TIMING_V4_POLICY:diagnosticV3?WHOLE_USER_TIMING_V3_POLICY:userTiming?WHOLE_USER_TIMING_POLICY:WHOLE_ANNOTATION_POLICY;
  try{if(policy!==selectedPolicy)throw Error();ref=reference(value);}catch{reason='invalid-reference';}
- if(ref){const s=provenance?createWholeUserTimingStudyV4(ref.bytes,selectedPolicy):diagnosticV3?createWholeUserTimingStudyV3(ref.bytes,selectedPolicy):userTiming?createWholeUserTimingStudy(ref.bytes,selectedPolicy):createWholeAnnotationStudy(ref.bytes,selectedPolicy);out=readOwnedFile(ref,s);reason=out.reason;study=s.finish();}
+ if(ref){const s=userTiming===2?createWholeUserTimingStudyV5(ref.bytes,selectedPolicy):provenance?createWholeUserTimingStudyV4(ref.bytes,selectedPolicy):diagnosticV3?createWholeUserTimingStudyV3(ref.bytes,selectedPolicy):userTiming?createWholeUserTimingStudy(ref.bytes,selectedPolicy):createWholeAnnotationStudy(ref.bytes,selectedPolicy);out=readOwnedFile(ref,s);reason=out.reason;study=s.finish();}
  const fullInputVerified=reason===null&&out.EOF&&out.closed&&out.identityMatch&&out.hashMatch;
  const complete=fullInputVerified&&study?.status==='whole-annotation-study'&&study.framingBoundaryComplete;
  if(!complete)reason??=study?.reason??'whole-annotation-unavailable';

@@ -56,7 +56,7 @@ function inspectPhase(owner:unknown):any {
  expect(inspect,'new synchronous source-owned phase inspection export').toBeTypeOf('function');
  return (inspect as (owner:unknown)=>unknown)(owner);
 }
-async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:ReturnType<typeof nativePhase.createProtoNativeCapture>,r:any,names:string[])=>Promise<void>,mode='pair',modern:boolean|'v3'|'v4'=false){
+async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:ReturnType<typeof nativePhase.createProtoNativeCapture>,r:any,names:string[])=>Promise<void>,mode='pair',modern:boolean|'v3'|'v4'|'v5'=false){
  await fixture(async(h,create)=>{
   const names:string[]=[],mark=h.phase.mark,send=h.session.send;
   if(mode==='escaped'){h.inputs.runId='"\\'.repeat(16);h.inputs.phaseId='"\\'.repeat(16);h.setTarget({targetInfo:{targetId:'"\\'.repeat(128),type:'page',url:'https://authored.invalid/',browserContextId:'context'}});}
@@ -64,7 +64,7 @@ async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:Retur
   h.session.send=async(method,parameters)=>{
    if(method==='IO.read'){
     expect(names).toHaveLength(2);
-    const marker=(name:string,i:number,extra:Uint8Array[]=[])=>protoBody(1,protoJoin(protoUint(10,1n),protoUint(13,1n),protoUint(8,i?100n:900n),protoBody(11,protoJoin(...(modern?[protoUint(9,3n),protoText(22,'blink.user_timing'),protoText(23,mode==='annotation'?'performance.mark':name),...(mode==='annotation'?[protoBody(4,protoJoin(protoText(10,'markName'),protoText(6,name)))]:[])]:[protoBody(4,protoJoin(protoText(10,'markName'),protoText(6,name)))]),...extra))));
+    const marker=(name:string,i:number,extra:Uint8Array[]=[])=>protoBody(1,protoJoin(protoUint(10,1n),...(mode.startsWith('counter-defaults')?[]:[protoUint(13,1n)]),protoUint(8,i?100n:900n),protoBody(11,protoJoin(...(modern?[protoUint(9,3n),protoText(22,'blink.user_timing'),protoText(23,mode==='annotation'?'performance.mark':name),...(mode==='annotation'?[protoBody(4,protoJoin(protoText(10,'markName'),protoText(6,name)))]:[])]:[protoBody(4,protoJoin(protoText(10,'markName'),protoText(6,name)))]),...extra))));
     let packets=names.map((name,i)=>marker(name,i));
     if(mode==='duplicate-start')packets.push(marker(names[0]!,2));if(mode==='duplicate-end')packets.push(marker(names[1]!,2));
     if(mode==='foreign')packets.push(marker('native:authored-run:authored-phase:other',2));
@@ -79,12 +79,14 @@ async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:Retur
     if(mode.startsWith('unsupported-field-'))packets.push(protoBody(1,protoBody(Number(mode.slice('unsupported-field-'.length)),new Uint8Array())));
     if(mode.startsWith('provenance124'))packets.push(protoBody(1,protoJoin(protoInt32(3,0n),protoUint(8,17n),protoUint(10,1n),protoUint(58,6n),protoBody(124,protoBody(2,protoBody(1,protoJoin(protoUint(1,0n),protoInt32(2,-1n))))))));
     if(mode==='provenance124-then125')packets.push(protoBody(1,protoBody(125,new Uint8Array())));
+    if(mode.startsWith('counter-defaults'))packets.unshift(protoBody(1,protoJoin(protoUint(10,1n),protoUint(13,1n),protoBody(59,protoJoin(protoUint(58,3n),protoBody(11,protoJoin(protoUint(11,7n),protoUint(31,1234n))))))));
+    if(mode==='counter-defaults-late125')packets.push(protoBody(1,protoBody(125,new Uint8Array())));
     const bytes=protoJoin(...packets);
     return {data:Buffer.from(bytes).toString('base64'),base64Encoded:true,eof:true};
    }
    return send(method,parameters);
   };
-  if(modern){create=(nativePhase as unknown as Record<string,any>)[modern==='v4'?'createProtoNativeUserTimingCaptureV4':modern==='v3'?'createProtoNativeUserTimingCaptureV3':'createProtoNativeUserTimingCapture'];expect(create,'versioned capture factory').toBeTypeOf('function');}
+  if(modern){create=(nativePhase as unknown as Record<string,any>)[modern==='v5'?'createProtoNativeUserTimingCaptureV5':modern==='v4'?'createProtoNativeUserTimingCaptureV4':modern==='v3'?'createProtoNativeUserTimingCaptureV3':'createProtoNativeUserTimingCapture'];expect(create,'versioned capture factory').toBeTypeOf('function');}
   const owner=create(h.inputs);expect((await owner.start()).status).toBe('open');await owner.mark('start');await owner.mark('end');
   const finishing=owner.finish();expect(owner.finish()).toBe(finishing);const r=await finishing;expect(r.status).toBe('closed');
   await run(h,owner,r,names);
@@ -92,6 +94,15 @@ async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:Retur
 }
 const inspectTimingV3=(owner:unknown):any=>{const inspect=(nativePhase as unknown as Record<string,any>).inspectProtoNativeUserTimingPhaseV3;expect(inspect).toBeTypeOf('function');return inspect(owner);};
 const inspectTimingV4=(owner:unknown):any=>{const inspect=(nativePhase as unknown as Record<string,any>).inspectProtoNativeUserTimingPhaseV4;expect(inspect).toBeTypeOf('function');return inspect(owner);};
+const inspectTimingV5=(owner:unknown):any=>{const inspect=(nativePhase as unknown as Record<string,any>).inspectProtoNativeUserTimingPhaseV5;expect(inspect).toBeTypeOf('function');return inspect(owner);};
+it('V5 owner accepts counter-default metadata with one original inspection and fixed false authority',async()=>phaseFixture(async(_h,owner,_r,names)=>{
+ const read=vi.spyOn(syncFs,'openSync');try{expect(inspectTimingV4(owner)).toMatchObject({reason:'unregistered-owner',wholeInputFailure:null});expect(read).not.toHaveBeenCalled();const r=inspectTimingV5(owner);expect(r).toMatchObject({policy:'source-owned-user-timing-phase-inventory-diagnostic-v5',status:'phase-registry-inventory-diagnostic',wholeInputFailure:null,counters:{packets:3},rows:names.map(name=>({name,trackUuid:'7',clockId:'3'})),authority:{nativeSupported:false,FPS:null,duration:null,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false}});expect(inspectTimingV5(owner)).toBe(r);expect(read).toHaveBeenCalledTimes(1);expect(Object.isFrozen(r)).toBe(true);}finally{read.mockRestore();}
+},'counter-defaults','v5'));
+it('V5 preserves late whole failure and original closed reader observations',async()=>phaseFixture(async(_h,owner)=>{expect(inspectTimingV5(owner)).toMatchObject({status:'unavailable',rows:[],wholeInputFailure:{reader:{EOF:true,closed:true,fullInputVerified:true},firstSemanticDiagnostic:{packetIndex:3,cause:'unsupported-packet-payload-field-125'}}});},'counter-defaults-late125','v5'));
+it('V5 refuses other-version owners without IO and caches premature inspection',async()=>fixture(async(h,create)=>{
+ const factory=(nativePhase as unknown as Record<string,any>).createProtoNativeUserTimingCaptureV5;expect(factory).toBeTypeOf('function');const old=create(h.inputs),v2=nativePhase.createProtoNativeUserTimingCapture(h.inputs),v3=nativePhase.createProtoNativeUserTimingCaptureV3(h.inputs),v4=nativePhase.createProtoNativeUserTimingCaptureV4(h.inputs),v5=factory(h.inputs),read=vi.spyOn(syncFs,'openSync');try{for(const x of [null,{},new Proxy({},{get(){throw Error('no reflection');}}),old,v2,v3,v4])expect(inspectTimingV5(x)).toMatchObject({reason:'unregistered-owner',wholeInputFailure:null});const first=inspectTimingV5(v5);expect(first).toMatchObject({reason:'owner-not-ready',wholeInputFailure:null});await v5.start();await v5.mark('start');await v5.mark('end');await v5.finish();expect(inspectTimingV5(v5)).toBe(first);expect(read).not.toHaveBeenCalled();}finally{read.mockRestore();}
+}));
+
 it('V4 owner admits bounded protobuf124 while preserving one-shot inspection and all false authority',async()=>phaseFixture(async(_h,owner,_r,names)=>{
  const read=vi.spyOn(syncFs,'openSync');try{
   expect(inspectPhase(owner).reason).toBe('unregistered-owner');expect(inspectTiming(owner).reason).toBe('unregistered-owner');expect(inspectTimingV3(owner).reason).toBe('unregistered-owner');expect(read).not.toHaveBeenCalled();
@@ -105,10 +116,10 @@ it('V3 owner continues refusing identical protobuf124 bytes',async()=>phaseFixtu
 it('V4 premature inspection caches its first refusal and rejects all other-version owners without IO',async()=>fixture(async(h,create)=>{
  const factory=(nativePhase as unknown as Record<string,any>).createProtoNativeUserTimingCaptureV4;expect(factory).toBeTypeOf('function');const old=create(h.inputs),v2=nativePhase.createProtoNativeUserTimingCapture(h.inputs),v3=nativePhase.createProtoNativeUserTimingCaptureV3(h.inputs),v4=factory(h.inputs),read=vi.spyOn(syncFs,'openSync');try{for(const owner of [null,{},new Proxy({},{get(){throw Error('no reflection');}}),old,v2,v3])expect(inspectTimingV4(owner)).toMatchObject({reason:'unregistered-owner',wholeInputFailure:null});const first=inspectTimingV4(v4);expect(first).toMatchObject({policy:'source-owned-user-timing-phase-inventory-diagnostic-v4',reason:'owner-not-ready',wholeInputFailure:null});await v4.start();await v4.mark('start');await v4.mark('end');await v4.finish();expect(inspectTimingV4(v4)).toBe(first);expect(read).not.toHaveBeenCalled();}finally{read.mockRestore();}
 }));
-for(const mode of ['hash','close','stat','EOF']as const)it('V4 withholds its complete phase pair on original physical '+mode+' refusal',async()=>phaseFixture(async(h,owner)=>{
+for(const version of ['v4','v5']as const)for(const mode of ['hash','close','stat','EOF']as const)it(version+' withholds its complete phase pair on original physical '+mode+' refusal',async()=>phaseFixture(async(h,owner)=>{
  let spy:any;if(mode==='hash'){const path=join(h.directory,'trace.pftrace'),bytes=await readFile(path);bytes[bytes.length-1]^=1;await writeFile(path,bytes);}if(mode==='close'){const close=syncFs.closeSync;spy=vi.spyOn(syncFs,'closeSync').mockImplementation(fd=>{close(fd);throw Error('authored-close');});}if(mode==='stat'){const original=syncFs.fstatSync;let calls=0;spy=vi.spyOn(syncFs,'fstatSync').mockImplementation((...args:any[])=>{const s=(original as any)(...args);if(++calls===2)s.ctimeNs+=1n;return s;});}if(mode==='EOF'){const read=syncFs.readSync;spy=vi.spyOn(syncFs,'readSync').mockImplementation((...args:any[])=>{if(args[3]===1){args[1][args[2]]=0;return 1;}return(read as any)(...args);});}
- try{const result=inspectTimingV4(owner);expect(result).toMatchObject({status:'unavailable',reason:'whole-input-unavailable',rows:[],wholeInputFailure:{reader:{fullInputVerified:false}}});expect(inspectTimingV4(owner)).toBe(result);}finally{spy?.mockRestore();}
-},'provenance124','v4'));
+ try{const inspect=version==='v5'?inspectTimingV5:inspectTimingV4,result=inspect(owner);expect(result).toMatchObject({status:'unavailable',reason:'whole-input-unavailable',rows:[],wholeInputFailure:{reader:{fullInputVerified:false}}});expect(inspect(owner)).toBe(result);}finally{spy?.mockRestore();}
+},version==='v5'?'counter-defaults':'provenance124',version));
 for(const field of [50,133,107,124,125])it('V3 owner projects original fixed unsupported payload cause '+field,async()=>phaseFixture(async(_h,owner)=>{
  const read=vi.spyOn(syncFs,'openSync');try{
   const r=inspectTimingV3(owner);
