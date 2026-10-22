@@ -4,6 +4,14 @@ import{body}from'./browser-frame-packet-fragments.test-helper.js';
 import * as timingReader from './browser-frame-whole-trace-reader.js';
 import * as timingPolicy from './browser-frame-ordered-state.js';
 import {join as protoJoin,text as protoText,uint as protoUint} from './browser-frame-packet-fragments.test-helper.js';
+test('v3 alone retains the first original decoder cause and keeps v1/v2 bytes unchanged',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'timing-v3-authored-')),p=path.join(dir,'authored.bin'),b=protoJoin(body(1,protoJoin(protoUint(8,1n),protoUint(8,2n))),body(1,protoJoin(protoUint(8,3n),protoUint(8,4n))));fs.writeFileSync(p,b);
+ const ref={path:p,bytes:b.length,sha256:createHash('sha256').update(b).digest('hex')};
+ try{const v1=timingReader.readWholeAnnotationTrace(ref,timingPolicy.WHOLE_ANNOTATION_POLICY),v2=timingReader.readWholeUserTimingTrace(ref,timingPolicy.WHOLE_USER_TIMING_POLICY),v3=timingReader.readWholeUserTimingTraceV3(ref,timingPolicy.WHOLE_USER_TIMING_V3_POLICY);expect(v1.study?.diagnostics).toEqual([{code:'fragment-unavailable',packetIndex:0,component:'packet'}]);expect(v2.study?.diagnostics).toEqual(v1.study?.diagnostics);expect(v3.study?.diagnostics).toEqual([{code:'fragment-unavailable',packetIndex:0,component:'packet',cause:'duplicate-selected-field'}]);expect(v3).toMatchObject({reason:'fragment-unavailable',fullInputVerified:true,structuralContainerEOF:true,study:{counters:{packets:2,decodedPackets:1,processedPackets:0},candidates:[]}});expect(JSON.stringify(v1)).toBe(JSON.stringify(v2).replaceAll(timingPolicy.WHOLE_USER_TIMING_POLICY,timingPolicy.WHOLE_ANNOTATION_POLICY));}finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('closed study failure membership never coerces arbitrary causes',()=>{
+ expect(timingPolicy.isClosedStudyFailureCode('duplicate-selected-field')).toBe(true);for(const value of [undefined,null,1,'private path','x'.repeat(65536),new Proxy({},{get(){throw Error('no coercion');}})])expect(timingPolicy.isClosedStudyFailureCode(value)).toBe(false);
+});
 test('explicit UserTiming reader authenticates the original file then withdraws on hash or close failure',()=>{
  const api=timingReader as unknown as Record<string,any>,policies=timingPolicy as unknown as Record<string,any>;expect(api.readWholeUserTimingTrace).toBeTypeOf('function');
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'timing-authored-')),p=path.join(dir,'authored.bin'),b=body(1,protoJoin(protoUint(10,1n),protoUint(13,1n),body(11,protoJoin(protoUint(9,3n),protoText(22,'blink.user_timing'),protoText(23,'phase')))));fs.writeFileSync(p,b);
