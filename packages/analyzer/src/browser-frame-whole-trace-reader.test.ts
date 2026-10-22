@@ -4,6 +4,31 @@ import{body}from'./browser-frame-packet-fragments.test-helper.js';
 import * as timingReader from './browser-frame-whole-trace-reader.js';
 import * as timingPolicy from './browser-frame-ordered-state.js';
 import {join as protoJoin,text as protoText,uint as protoUint} from './browser-frame-packet-fragments.test-helper.js';
+test.each([50,133,107,124,125])('V3 original reader retains fixed unsupported payload cause %i; V1/V2 remain generic',field=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'payload-cause-authored-')),p=path.join(dir,'authored.bin'),b=body(1,body(field,new Uint8Array()));fs.writeFileSync(p,b);
+ const ref={path:p,bytes:b.length,sha256:createHash('sha256').update(b).digest('hex')};
+ try{
+  const v1=timingReader.readWholeAnnotationTrace(ref,timingPolicy.WHOLE_ANNOTATION_POLICY),v2=timingReader.readWholeUserTimingTrace(ref,timingPolicy.WHOLE_USER_TIMING_POLICY),v3=timingReader.readWholeUserTimingTraceV3(ref,timingPolicy.WHOLE_USER_TIMING_V3_POLICY);
+  expect(v3).toMatchObject({status:'unavailable',reason:'fragment-unavailable',fullInputVerified:true,structuralContainerEOF:true,reader:{EOF:true,closed:true,identityMatch:true,hashMatch:true},study:{counters:{packets:1,decodedPackets:1,processedPackets:0},diagnostics:[{code:'fragment-unavailable',packetIndex:0,component:'packet',cause:'unsupported-packet-payload-field-'+field}]}});
+  expect(v1.study?.diagnostics).toEqual([{code:'fragment-unavailable',packetIndex:0,component:'packet'}]);expect(v2.study?.diagnostics).toEqual(v1.study?.diagnostics);
+  expect(JSON.stringify(v1)).toBe(JSON.stringify(v2).replaceAll(timingPolicy.WHOLE_USER_TIMING_POLICY,timingPolicy.WHOLE_ANNOTATION_POLICY));
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('V3 preserves first refusal while hashing and framing a chunk-split opaque tail to original EOF',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'payload-tail-authored-')),p=path.join(dir,'authored.bin');
+ const b=protoJoin(body(1,new Uint8Array()),body(1,body(50,new Uint8Array())),body(1,body(133,new Uint8Array())),body(1,body(19000,new Uint8Array(70000))));fs.writeFileSync(p,b);
+ const ref={path:p,bytes:b.length,sha256:createHash('sha256').update(b).digest('hex')},read=fs.readSync;
+ vi.spyOn(fs,'readSync').mockImplementation((fd,buffer,offset,length,position)=>read(fd,buffer,offset,Math.min(16384,length),position));
+ try{
+  const r=timingReader.readWholeUserTimingTraceV3(ref,timingPolicy.WHOLE_USER_TIMING_V3_POLICY);
+  expect(r).toMatchObject({status:'unavailable',fullInputVerified:true,structuralContainerEOF:true,reader:{bytes:b.length,sha256:ref.sha256,EOF:true,closed:true,identityMatch:true,hashMatch:true},study:{counters:{packets:4,decodedPackets:2,processedPackets:1},diagnostics:[{code:'fragment-unavailable',packetIndex:1,component:'packet',cause:'unsupported-packet-payload-field-50'}],candidates:[]}});
+  expect(r.reader.reads).toBeGreaterThan(2);expect(r.study?.diagnostics).toHaveLength(1);
+ }finally{vi.restoreAllMocks();fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('only the five literal payload detail codes enter the closed failure set',()=>{
+ for(const field of [50,133,107,124,125])expect(timingPolicy.isClosedStudyFailureCode('unsupported-packet-payload-field-'+field)).toBe(true);
+ for(const value of ['unsupported-packet-payload-field-51','unsupported-packet-payload-field-0133','unsupported-packet-payload-field-NaN','unsupported-packet-payload-field-133/private'])expect(timingPolicy.isClosedStudyFailureCode(value)).toBe(false);
+});
 test('v3 alone retains the first original decoder cause and keeps v1/v2 bytes unchanged',()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'timing-v3-authored-')),p=path.join(dir,'authored.bin'),b=protoJoin(body(1,protoJoin(protoUint(8,1n),protoUint(8,2n))),body(1,protoJoin(protoUint(8,3n),protoUint(8,4n))));fs.writeFileSync(p,b);
  const ref={path:p,bytes:b.length,sha256:createHash('sha256').update(b).digest('hex')};

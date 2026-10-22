@@ -76,6 +76,7 @@ async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:Retur
     if(mode==='128'||mode==='129')for(let i=2;i<Number(mode);i++)packets.push(marker('unrelated-'+i,i));
     if(mode==='malformed-tail')packets.push(Uint8Array.of(10,2,0));
     if(mode==='duplicate-timestamp')packets.push(protoBody(1,protoJoin(protoUint(8,1n),protoUint(8,2n))));
+    if(mode.startsWith('unsupported-field-'))packets.push(protoBody(1,protoBody(Number(mode.slice('unsupported-field-'.length)),new Uint8Array())));
     const bytes=protoJoin(...packets);
     return {data:Buffer.from(bytes).toString('base64'),base64Encoded:true,eof:true};
    }
@@ -88,6 +89,13 @@ async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:Retur
  });
 }
 const inspectTimingV3=(owner:unknown):any=>{const inspect=(nativePhase as unknown as Record<string,any>).inspectProtoNativeUserTimingPhaseV3;expect(inspect).toBeTypeOf('function');return inspect(owner);};
+for(const field of [50,133,107,124,125])it('V3 owner projects original fixed unsupported payload cause '+field,async()=>phaseFixture(async(_h,owner)=>{
+ const read=vi.spyOn(syncFs,'openSync');try{
+  const r=inspectTimingV3(owner);
+  expect(r).toMatchObject({reason:'whole-input-unavailable',rows:[],wholeInputFailure:{reason:'fragment-unavailable',reader:{EOF:true,closed:true,identityMatch:true,hashMatch:true,fullInputVerified:true,structuralContainerEOF:true},study:{packets:3,decodedPackets:3,processedPackets:2},firstSemanticDiagnostic:{code:'fragment-unavailable',packetIndex:2,component:'packet',cause:'unsupported-packet-payload-field-'+field}},authority:{FPS:null,qualification:false,nativeSupported:false}});
+  expect(Buffer.byteLength(JSON.stringify(r))).toBeLessThanOrEqual(8192);expect(inspectTimingV3(owner)).toBe(r);expect(read).toHaveBeenCalledTimes(1);
+ }finally{read.mockRestore();}
+},'unsupported-field-'+field,'v3'));
 for(const value of [null,undefined,false,0])it('v3 authored guard withholds an invalid first diagnostic '+String(value),async()=>phaseFixture(async(_h,owner)=>{guardFault.project=whole=>({...whole,study:{...whole.study,diagnostics:[value]}});try{expect(inspectTimingV3(owner)).toMatchObject({reason:'whole-input-unavailable',rows:[],wholeInputFailure:null});}finally{guardFault.project=null;}},'duplicate-timestamp','v3'));
 for(const value of [undefined,false,0])it('v3 authored guard withholds an invalid study instead of fabricating null '+String(value),async()=>phaseFixture(async(_h,owner)=>{guardFault.project=whole=>({...whole,study:value});try{expect(inspectTimingV3(owner)).toMatchObject({reason:'whole-input-unavailable',rows:[],wholeInputFailure:null});}finally{guardFault.project=null;}},'duplicate-timestamp','v3'));
 for(const field of ['counters','diagnostics'])it('v3 authored guard preserves refusal when an observed member is missing '+field,async()=>phaseFixture(async(_h,owner)=>{guardFault.project=whole=>({...whole,study:{...whole.study,[field]:null}});try{expect(inspectTimingV3(owner)).toMatchObject({reason:'whole-input-unavailable',rows:[],wholeInputFailure:null});}finally{guardFault.project=null;}},'duplicate-timestamp','v3'));

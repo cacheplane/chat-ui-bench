@@ -23,6 +23,8 @@ const DATA = new Set([11,60,117,118,120,122,129,2,90,9,4,5,6,7,89,33,34,35,37,74
 const UNSUPPORTED = new Set([50,133,107,124,125]);
 const OPAQUE = new Set([6,12,35,59,60]);
 const SELECTED = new Set([8,58,10,13,42,98,79,41,87,11,...OPAQUE]);
+// Private profiles: 0 standalone, 1 legacy whole input, 2 V3 refusal detail.
+const WHOLE_PROFILE=1,WHOLE_TIMING_V3_PROFILE=2;
 export function scalar(field: WireField): bigint {
   if (field.occurrence.wireType !== 0 || field.scalar === undefined) throw new WireError('selected-field-wrong-wire-type');
   return field.scalar;
@@ -58,9 +60,14 @@ export function decodeBrowserFrameAnnotationPacket(input:unknown,work:Annotation
 /** Internal fixed whole-profile entry; no caller numeric limits. */
 export function decodeWholeAnnotationPacket(input:unknown,work:AnnotationWork):AnnotationPacketFragment|PacketUnavailable{
  if(wholeByteInputDenied(input))return{status:'unavailable',diagnostics:[{code:'unsupported-byte-view'}]};
- return decodePacket(input,PACKET_POLICY,false,work,true) as AnnotationPacketFragment|PacketUnavailable;
+ return decodePacket(input,PACKET_POLICY,false,work,WHOLE_PROFILE) as AnnotationPacketFragment|PacketUnavailable;
 }
-function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotationWork?:AnnotationWork,whole=false):PacketFragment|PacketUnavailable {
+/** Internal V3-only entry: distinguish fixed refused payloads without admitting them. */
+export function decodeWholeUserTimingPacketV3(input:unknown,work:AnnotationWork):AnnotationPacketFragment|PacketUnavailable{
+ if(wholeByteInputDenied(input))return{status:'unavailable',diagnostics:[{code:'unsupported-byte-view'}]};
+ return decodePacket(input,PACKET_POLICY,false,work,WHOLE_TIMING_V3_PROFILE) as AnnotationPacketFragment|PacketUnavailable;
+}
+function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotationWork?:AnnotationWork,whole=0):PacketFragment|PacketUnavailable {
   try {
     if (policy !== PACKET_POLICY) throw new WireError('unsupported-policy');
     const bytes = copyBody(input); const budget = whole?newWholeWireBudget():new WireBudget();
@@ -71,7 +78,16 @@ function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotat
     while (!reader.complete) {
       const field = reader.next('root'); const o: PacketOccurrence = { ...field.occurrence, scope: 'packet' };
       context.occurrences.push(o);
-      if (UNSUPPORTED.has(o.fieldNumber)) throw new WireError('unsupported-packet-payload');
+      if (UNSUPPORTED.has(o.fieldNumber)) {
+        if(whole===WHOLE_TIMING_V3_PROFILE)switch(o.fieldNumber){
+          case 50:throw new WireError('unsupported-packet-payload-field-50');
+          case 133:throw new WireError('unsupported-packet-payload-field-133');
+          case 107:throw new WireError('unsupported-packet-payload-field-107');
+          case 124:throw new WireError('unsupported-packet-payload-field-124');
+          case 125:throw new WireError('unsupported-packet-payload-field-125');
+        }
+        throw new WireError('unsupported-packet-payload');
+      }
       if (DATA.has(o.fieldNumber)) {
         if (dataSeen) throw new WireError('duplicate-data-oneof');
         dataSeen = true; requireBody(field);
