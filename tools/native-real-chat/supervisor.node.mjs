@@ -9,6 +9,43 @@ test('zero original process exit without independent group absence refuses',asyn
 test('synchronous original fork failure closes both owned raw FDs',async()=>authored(async(run,r,count,files)=>{await assert.rejects(run(),/authored-fork-failure/);assert.deepEqual(files(),{opened:2,closed:2});assert.equal(await fs.readFile(r+'/worker.stdout.bin','utf8'),'');await assert.rejects(fs.stat(r+'/outer.json'),{code:'ENOENT'});},{missing:false,forkThrow:true}));
 test('absolute cleanup deadline refusal still dispatches both original FD closes without inventing EOF',async()=>authored(async(run,r,count,files)=>{await assert.rejects(run());assert.deepEqual(files(),{opened:2,closed:2});await assert.rejects(fs.stat(r+'/outer.json'),{code:'ENOENT'});},{missing:false,expireAfterFork:true}));
 
+async function captureClock(action,{closeMs=11000,bookendMs=18000,fireAtBookend=true}={}){
+ return authored(async(run,root)=>{
+  const clock=process.hrtime.bigint,anchor=clock(),open=fs.open,set=globalThis.setTimeout,clear=globalThis.clearTimeout;
+  let elapsed=0,capture=null,fired=false;
+  process.hrtime.bigint=()=>anchor+BigInt(elapsed)*1000000n;
+  globalThis.setTimeout=(call,delay,...args)=>{
+   if(delay===17000){capture={call,cleared:false};return capture;}
+   return set(call,delay,...args);
+  };
+  globalThis.clearTimeout=handle=>{if(handle===capture){capture.cleared=true;return;}return clear(handle);};
+  fs.open=async(filename,...args)=>{
+   if(filename===root+'/source'&&capture){
+    elapsed=bookendMs;
+    if(fireAtBookend&&!capture.cleared&&elapsed>=17000){fired=true;capture.call();}
+   }
+   const file=await open(filename,...args);
+   if(filename===root+'/worker.stdout.bin'){
+    const write=file.write.bind(file);file.write=(...args)=>{elapsed=closeMs;return write(...args);};
+   }
+   return file;
+  };
+  try{return await action(run,root,()=>({captureCleared:capture?.cleared,fired}));}
+  finally{process.hrtime.bigint=clock;fs.open=open;globalThis.setTimeout=set;globalThis.clearTimeout=clear;}
+ },{missing:false});
+}
+test('capture timer ends at original worker closure while final source checks retain their 19s budget',async()=>captureClock(async(run,root,timer)=>{
+ const result=await run();assert.equal(result.status,'original-process-closed');
+ assert.deepEqual(timer(),{captureCleared:true,fired:false});assert.equal(result.captureDeadlineMs,17000);assert.equal(result.cleanupAndFinalizationDeadlineMs,19000);
+ assert(result.operations.every(row=>row.state==='fulfilled'&&!row.timedOut));assert.equal(result.sourceBookends.stable,true);
+}));
+test('worker closure at 17s refuses even when the capture timer callback has not run',async()=>captureClock(async(run)=>{
+ await assert.rejects(run());
+},{closeMs:17000,bookendMs:17000,fireAtBookend:false}));
+test('timely worker closure does not extend the 19s finalization deadline',async()=>captureClock(async(run)=>{
+ await assert.rejects(run());
+},{bookendMs:19000}));
+
 test('idle host supervisor rejects new identity under old API and hostile input before fork',async()=>{
  const api=await import('./run.mjs');assert.equal(typeof api.runIdleHostOriginal,'function');const fork=cp.fork,release=process.env.NATIVE_REAL_CHAT_ONCE_RELEASE;let forks=0,reads=0;cp.fork=()=>{forks++;throw Error('unexpected-fork');};
  const hostile=new Proxy({},{get(){reads++;throw Error('proxy');},ownKeys(){reads++;throw Error('proxy');}});try{
