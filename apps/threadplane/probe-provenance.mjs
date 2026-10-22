@@ -53,13 +53,19 @@ export function parseProbeRecord(bytes,contract){
 }
 /** Read-only reacquisition; never manufactures a fresh build record from current dist. */
 export async function comparisonInstrumentationBuildEvidence(root=workspaceRoot,options={}){
+ return instrumentationBuildEvidence(root,options,false);
+}
+export async function comparisonNativeIdleHostInstrumentationBuildEvidence(root=workspaceRoot,options={}){
+ return instrumentationBuildEvidence(root,options,true);
+}
+async function instrumentationBuildEvidence(root,options,nativeIdleHost){
  const {ops=filesystem,lifecycle}=options;root=await acquire(lifecycle,()=>ops.realpath(root));const original=await checkedRead(root,join(root,probeRecordKey),ops,lifecycle),contract=await loadContract(root,options);lifecycle?.assertActive();const record=parseProbeRecord(original.bytes,contract);
  const source=await snapshotProbeInputs(root,options),compiled=await snapshotCompiledInputs(root,options);lifecycle?.assertActive();
  const current={kind:'comparison-instrumentation-build',formatVersion:1,...probeRecordInputs(source),compiledHashes:hashes(compiled)};
  if(contract.canonicalSerialize(current)!==contract.canonicalSerialize(record))throw new Error('Current instrumentation inputs differ from recorded build');
  await assertProbeInputsUnchanged(root,source,options);await assertCompiledInputsUnchanged(root,compiled,options);
  const again=await checkedRead(root,join(root,probeRecordKey),ops,lifecycle);lifecycle?.assertActive();assertFactsUnchanged({identity:again.identity,sha256:again.sha256},{identity:original.identity,sha256:original.sha256},'Instrumentation record');
- const {threadplaneBuildEvidence}=await acquire(lifecycle,()=>import('./provenance.mjs')),product=await threadplaneBuildEvidence(root,options);lifecycle?.assertActive();
+ const productApi=await acquire(lifecycle,()=>import('./provenance.mjs')),product=await (nativeIdleHost?productApi.nativeIdleHostBuildEvidence:productApi.threadplaneBuildEvidence)(root,options);lifecycle?.assertActive();
  for(const [key,digest] of Object.entries(record.sourceHashes)){lifecycle?.assertActive();if(Object.hasOwn(product.sourceHashes,key)&&product.sourceHashes[key]!==digest)throw new Error('Product/probe shared source differs');}
  for(const key of contractCompiledKeys){lifecycle?.assertActive();if(product.sourceHashes[key]!==record.compiledHashes[key])throw new Error('Product/probe shared compiled input differs');}
  await assertProbeInputsUnchanged(root,source,options);await assertCompiledInputsUnchanged(root,compiled,options);

@@ -22,6 +22,42 @@ Controls use authored sessions, trace packets, processes, streams, and protocol
 responses. They test the genuine existing capture owner's original finish
 promise and cached inspector without collecting a browser trace.
 
+## Modified idle-host functional checks
+
+The opt-in configuration is **Threadplane 0.3.2 + benchmark idle-host CSS v1
+(modified configuration)**. It uses the published `@threadplane/chat@0.3.2`
+package without changing its version. In a fresh checkout with locked
+dependencies installed, run either:
+
+```sh
+npm run build:threadplane:idle-host-css
+npm run test:browser:threadplane:idle-host-css
+```
+
+The first command invokes the named modified-build API, including its package
+prerequisites. The second builds that configuration and runs only its explicit
+functional browser config. Run stock checks and these modified checks in
+separate fresh checkouts with separately owned outputs: the modified build uses
+`apps/threadplane/dist` and replaces the product/probe build records in its own
+checkout. The CI job `Modified idle-host layout conformance` retains its logs
+and temporary `functional-build-bookends.json` independently of stock Serial
+browser evidence. The Unit job runs the Node-only authentication and authored
+visibility fault controls once.
+
+These are functional checks, not native acquisition or performance evidence.
+FPS remains null; they establish no native-support or maintained comparison
+profile claim. A subsequent layout change requires the original Unit, Serial,
+Instrumentation, Native, and Custody gates plus the modified-layout job, all
+from the original attempt on the exact reviewed head. The existing trace PR
+retains its original five gates.
+
+The test-only `functional-build.mjs`, `functional-build.node.mjs`,
+`functional-fixture.ts`, and
+`vitest.threadplane.native-idle-host.browser.config.ts` stay outside runtime
+copy rosters and compiler inputs. This README remains tracked and reviewed;
+its unused runtime-copy role is replaced by the variant CSS under the separate
+helper proof.
+
 ## Owned preparation and acquisition
 
 `prepareActual` executes the fixed fixture entry in a separate preparation

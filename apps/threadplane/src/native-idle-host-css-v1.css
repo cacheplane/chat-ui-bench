@@ -1,0 +1,1 @@
+bench-app chat .chat-scroll > chat-typing-indicator:empty { display: none; }

@@ -58,6 +58,9 @@ jobs:
       - name: Run unit tests
         run: npm test 2>&1 | tee ci-logs/unit.log
 
+      - name: Test Node-only modified idle-host authentication and visibility controls
+        run: node --test apps/threadplane/functional-build.node.mjs 2>&1 | tee ci-logs/threadplane-idle-host-source-controls.log
+
       - name: Test portable controlled H100 observer
         run: |
           set -o pipefail
@@ -308,6 +311,62 @@ jobs:
             ${{ runner.temp }}/ci-evidence/comparison-profile-output-*/
           include-hidden-files: true
           if-no-files-found: warn
+          retention-days: 7
+
+  modified-idle-host:
+    name: Modified idle-host layout conformance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: true
+      NG_BUILD_MAX_WORKERS: 2
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.20.0'
+          cache: npm
+
+      - name: Prepare evidence directories
+        run: |
+          mkdir -p ci-logs "$RUNNER_TEMP/ci-evidence"
+          echo "TMPDIR=$RUNNER_TEMP/ci-evidence" >> "$GITHUB_ENV"
+
+      - name: Set up npm 11
+        run: |
+          npm install --global npm@11 2>&1 | tee ci-logs/npm-setup.log
+          node --version | tee ci-logs/node-version.log
+          npm --version | tee ci-logs/npm-version.log
+
+      - name: Install locked dependencies
+        run: npm ci 2>&1 | tee ci-logs/install.log
+
+      - name: Audit locked development and production dependencies
+        run: npm audit --audit-level=high 2>&1 | tee ci-logs/audit.log
+
+      - name: Install Playwright Chromium and system dependencies
+        run: npx playwright install --with-deps chromium 2>&1 | tee ci-logs/browser-install.log
+
+      - name: Build and test modified idle-host layout
+        run: npm run test:browser:threadplane:idle-host-css 2>&1 | tee ci-logs/threadplane-idle-host-browser.log
+
+      - name: Preserve modified idle-host logs and functional build bookends
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: modified-idle-host-conformance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-logs/
+            ${{ runner.temp }}/ci-evidence/threadplane-conformance-independent-*/
+          if-no-files-found: error
           retention-days: 7
 
   conformance:
