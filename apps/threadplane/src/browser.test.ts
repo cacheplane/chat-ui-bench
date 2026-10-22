@@ -413,14 +413,17 @@ async function readTypingPresentation(page:Page){return page.evaluate(()=>{
   return {box:box(dot),display:style.display,visibility:style.visibility,effectiveOpacity,visibleWidth:Math.max(0,right-left),visibleHeight:Math.max(0,bottom-top),animation:style.animationName,running:dot.getAnimations().some(animation=>animation.playState==='running')};
  })};
 });}
-functionalTest('native idle-host CSS functional real typing dots stay visible then stream and hide idle host',async context=>runOwnedNativeCase(context,'functional-active-typing',async owned=>{
+functionalTest('native idle-host CSS functional typing presentation after explicit viewport placement streams then hides idle host',async context=>runOwnedNativeCase(context,'functional-active-typing',async owned=>{
  const projection=registeredFunctionalProjection(),producer=await createFunctionalProjectionServer(projection);owned.close(()=>producer.close());
  const page=await pageFor(undefined,owned);await idleIndicator(page);
  await page.evaluate(history=>window.benchHost!.loadHistory(history),projection.fixture.history);await functionalHistory(page,projection.fixture);await idleIndicator(page);
  await page.evaluate(url=>window.benchHost!.connectReplay(url),producer.url);
  const status=page.locator('chat .chat-scroll > chat-typing-indicator [role="status"][aria-label="Assistant is typing"]');
  await status.waitFor({state:'visible'});expect(await status.isVisible()).toBe(true);
+ // Position the held pending-response indicator before measuring its viewport presentation.
+ await status.scrollIntoViewIfNeeded();
  const active=await readTypingPresentation(page);
+ console.log(JSON.stringify({functional:'typing-presentation',presentationSetup:'explicit-status-scroll-into-view; functional-only',dots:active.dots,FPS:null}));
  expect(active.loading).toBe(true);expect(active.text).toBe('');expect(active.hostEmpty).toBe(false);expect(active.display).not.toBe('none');expect(active.host.width).toBeGreaterThan(0);expect(active.host.height).toBeGreaterThan(0);expect(active.status.width).toBeGreaterThan(0);expect(active.status.height).toBeGreaterThan(0);expect(active.label).toBe('Assistant is typing');
  assertVisibleTypingDots(active.dots);
  producer.releaseResponse();await page.waitForFunction(()=>window.benchHost!.readProgress().delivery==='streaming'&&Boolean(window.benchHost!.readProgress().activeMessage?.text));
@@ -430,17 +433,19 @@ functionalTest('native idle-host CSS functional real typing dots stay visible th
  const actual=await page.evaluate(()=>window.benchHost!.readTranscript());expect(validateRuntimeTranscript(projection.fixture,actual)).toEqual([]);expect(actual.transcript).toHaveLength(101);expect(actual.loading).toBe(false);expect(actual.delivery).toBe('complete');expect(actual.outcome).toBe('success');
  const dom=await page.evaluate(()=>window.benchHost!.readActiveDom());expect(dom.mountedMessageCount).toBe(101);expect(projectProseDomText(dom.text!)).toBe(projectProseDomText(actual.transcript.at(-1)!.text));expect(await page.locator('chat textarea.chat-input__textarea').inputValue()).toBe('Functional composer');
  const indicator=await idleIndicator(page);assertFunctionalRequests(page,producer.url);
- console.log(JSON.stringify({functional:'active-typing',indicator,fixture:projection.label,controlledHold:'before-assistant-start; functional-only; exact canonical history100/events',digests:projection.digests,FPS:null}));
+ console.log(JSON.stringify({functional:'active-typing',presentationSetup:'explicit-status-scroll-into-view; functional-only',indicator,fixture:projection.label,controlledHold:'before-assistant-start; functional-only; exact canonical history100/events',digests:projection.digests,FPS:null}));
  await page.evaluate(()=>window.benchHost?.dispose());
 }));
 
 // Real CSS fault controls use the actual held typing fixture; no benchmark score.
-functionalTest('native idle-host CSS functional typing visibility rejects hidden and transparent CSS mutants',async context=>runOwnedNativeCase(context,'functional-typing-visibility-mutants',async owned=>{
+functionalTest('native idle-host CSS functional typing presentation after explicit viewport placement rejects hidden and transparent CSS mutants',async context=>runOwnedNativeCase(context,'functional-typing-visibility-mutants',async owned=>{
  const projection=registeredFunctionalProjection(),producer=await createFunctionalProjectionServer(projection);owned.close(()=>producer.close());
  const page=await pageFor(undefined,owned);
  await page.evaluate(history=>window.benchHost!.loadHistory(history),projection.fixture.history);
  await page.evaluate(url=>window.benchHost!.connectReplay(url),producer.url);
  const status=page.locator('chat .chat-scroll > chat-typing-indicator [role="status"][aria-label="Assistant is typing"]');await status.waitFor({state:'visible'});
+ // Use the same explicit viewing position for the baseline and all visibility mutants.
+ await status.scrollIntoViewIfNeeded();
  assertVisibleTypingDots((await readTypingPresentation(page)).dots);
  const dotSelector='chat .chat-scroll > chat-typing-indicator .chat-typing__dot';
  for(const [name,css] of [
