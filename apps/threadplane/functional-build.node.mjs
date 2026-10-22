@@ -34,3 +34,25 @@ for(const [name,fault] of [
 ])test('rejects allocated animated '+name,()=>{
  const dots=visibleDots();Object.assign(dots[1],fault);assert.throws(()=>assertVisibleTypingDots(dots),/Typing dot .* fails visibility\/style\/geometry checks/);
 });
+
+// Pure response-order controls: fake owned writer, no server/DOM/timing claim.
+const {writeGatedFunctionalResponse}=await import('./functional-build.mjs');
+const startFrame='data: '+JSON.stringify({sequence:0,scheduledMs:0,messageId:'response-100',type:'assistant-start',text:''})+'\n\n';
+test('functional response writes no assistant-start before release and original start once afterward',async()=>{
+ const gate=Promise.withResolvers(),controller=new AbortController(),frames=[];
+ const task=writeGatedFunctionalResponse({gate:gate.promise,signal:controller.signal,writeStart:()=>frames.push(startFrame),writeRemaining:()=>frames.push('owned continuation')});
+ try{
+  await Promise.resolve();assert.deepEqual(frames,[]);
+  gate.resolve();gate.resolve();await task;
+  assert.deepEqual(frames,[startFrame,'owned continuation']);assert.equal(frames.filter(frame=>frame===startFrame).length,1);
+ }finally{gate.resolve();await Promise.allSettled([task]);}
+});
+test('functional response aborted during hold writes no start or continuation',async()=>{
+ const gate=Promise.withResolvers(),controller=new AbortController(),frames=[],reason=Error('owned response closed');
+ const task=writeGatedFunctionalResponse({gate:gate.promise,signal:controller.signal,writeStart:()=>frames.push(startFrame),writeRemaining:()=>frames.push('owned continuation')});
+ controller.abort(reason);gate.resolve();await assert.rejects(task,error=>error===reason);assert.deepEqual(frames,[]);
+});
+test('functional start writer failure propagates and prevents continuation',async()=>{
+ const gate=Promise.withResolvers(),controller=new AbortController(),failure=Error('owned writer failed');let continued=false;
+ gate.resolve();await assert.rejects(writeGatedFunctionalResponse({gate:gate.promise,signal:controller.signal,writeStart:()=>{throw failure;},writeRemaining:()=>{continued=true;}}),error=>error===failure);assert.equal(continued,false);
+});

@@ -33,3 +33,8 @@ export function assertVisibleTypingDots(dots) {
   if(!(dot.box.width>0&&dot.box.height>0&&dot.display!=='none'&&dot.visibility==='visible'&&Number.isFinite(dot.effectiveOpacity)&&dot.effectiveOpacity>0&&dot.visibleWidth>0&&dot.visibleHeight>0&&dot.animation!=='none'&&dot.running===true))throw Error(`Typing dot ${index} fails visibility/style/geometry checks`);
  }
 }
+
+/** Node-only functional response ordering; callbacks retain original event bytes. */
+export async function writeGatedFunctionalResponse({gate,signal,writeStart,writeRemaining}) {
+ await gate;signal.throwIfAborted();await writeStart();signal.throwIfAborted();await writeRemaining();
+}

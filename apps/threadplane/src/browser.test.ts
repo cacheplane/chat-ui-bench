@@ -423,14 +423,14 @@ functionalTest('native idle-host CSS functional real typing dots stay visible th
  const active=await readTypingPresentation(page);
  expect(active.loading).toBe(true);expect(active.text).toBe('');expect(active.hostEmpty).toBe(false);expect(active.display).not.toBe('none');expect(active.host.width).toBeGreaterThan(0);expect(active.host.height).toBeGreaterThan(0);expect(active.status.width).toBeGreaterThan(0);expect(active.status.height).toBeGreaterThan(0);expect(active.label).toBe('Assistant is typing');
  assertVisibleTypingDots(active.dots);
- producer.releaseFirstText();await page.waitForFunction(()=>window.benchHost!.readProgress().delivery==='streaming'&&Boolean(window.benchHost!.readProgress().activeMessage?.text));
+ producer.releaseResponse();await page.waitForFunction(()=>window.benchHost!.readProgress().delivery==='streaming'&&Boolean(window.benchHost!.readProgress().activeMessage?.text));
  expect((await page.evaluate(()=>window.benchHost!.readProgress())).activeMessage!.text.length).toBeGreaterThan(0);
  await page.locator('chat textarea.chat-input__textarea').fill('Functional composer');
  await page.evaluate(()=>window.benchHost!.waitForReplay());
  const actual=await page.evaluate(()=>window.benchHost!.readTranscript());expect(validateRuntimeTranscript(projection.fixture,actual)).toEqual([]);expect(actual.transcript).toHaveLength(101);expect(actual.loading).toBe(false);expect(actual.delivery).toBe('complete');expect(actual.outcome).toBe('success');
  const dom=await page.evaluate(()=>window.benchHost!.readActiveDom());expect(dom.mountedMessageCount).toBe(101);expect(projectProseDomText(dom.text!)).toBe(projectProseDomText(actual.transcript.at(-1)!.text));expect(await page.locator('chat textarea.chat-input__textarea').inputValue()).toBe('Functional composer');
  const indicator=await idleIndicator(page);assertFunctionalRequests(page,producer.url);
- console.log(JSON.stringify({functional:'active-typing',indicator,fixture:projection.label,controlledHold:'after-assistant-start-before-first-content; functional-only',digests:projection.digests,FPS:null}));
+ console.log(JSON.stringify({functional:'active-typing',indicator,fixture:projection.label,controlledHold:'before-assistant-start; functional-only; exact canonical history100/events',digests:projection.digests,FPS:null}));
  await page.evaluate(()=>window.benchHost?.dispose());
 }));
 
@@ -457,6 +457,6 @@ functionalTest('native idle-host CSS functional typing visibility rejects hidden
   assertVisibleTypingDots((await readTypingPresentation(page)).dots);
  }
  assertFunctionalRequests(page,producer.url);
- console.log(JSON.stringify({functional:'typing-visibility-css-mutants',fixture:projection.label,controlledHold:'after-assistant-start-before-first-content; functional-only',mutants:['visibility:hidden dots','opacity:0 dots','opacity:0 ancestor'],FPS:null}));
+ console.log(JSON.stringify({functional:'typing-visibility-css-mutants',fixture:projection.label,controlledHold:'before-assistant-start; functional-only; exact canonical history100/events',mutants:['visibility:hidden dots','opacity:0 dots','opacity:0 ancestor'],FPS:null}));
  await page.evaluate(()=>window.benchHost?.dispose());
 }));
