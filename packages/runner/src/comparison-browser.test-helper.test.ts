@@ -25,7 +25,9 @@ const d0FramerMembers = [
 async function addD0FixtureMembers(workspace:string) {
   for(const key of d0FramerMembers){await mkdir(dirname(join(workspace,key)),{recursive:true});await copyFile(join(repository,key),join(workspace,key));}
 }
-test.each(d0FramerMembers)('D0-v8 retains exact selected framer member %s',async key=>{
+// Full snapshots and final-copy mutation controls traverse all 310 members.
+// Pure and preflight controls keep the default deadline; lock extrema retain 30s.
+test.each(d0FramerMembers)('D0-v8 retains exact selected framer member %s',{timeout:10000},async key=>{
   const f=await fixture();await addD0FixtureMembers(f.workspace);const receipt=await writer()(f.root,f);
   const manifest=JSON.parse(await readFile(receipt!.path,'utf8')),record=manifest.records.find((row:{key:string})=>row.key===key);
   expect(record).toBeDefined();expect((await readFile(join(receipt!.directory,record.copied.path))).equals(await readFile(join(repository,key)))).toBe(true);
@@ -33,7 +35,7 @@ test.each(d0FramerMembers)('D0-v8 retains exact selected framer member %s',async
 test.each(d0FramerMembers)('D0-v8 refuses missing selected framer member %s',async key=>{
   const f=await fixture();await addD0FixtureMembers(f.workspace);await unlink(join(f.workspace,key));await expect(writer()(f.root,f)).rejects.toThrow();
 });
-test('D0-v8 refuses original framer mutation during final copy',async()=>{
+test('D0-v8 refuses original framer mutation during final copy',{timeout:10000},async()=>{
   const f=await fixture();await addD0FixtureMembers(f.workspace);const injected=duringLastCopy(f,async()=>{const path=join(f.workspace,d0FramerMembers[0]!),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});
   await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');
 });
@@ -43,7 +45,7 @@ async function addD1FixtureMember(workspace:string) {
   await mkdir(dirname(join(workspace,d1AnnotationTestMember)),{recursive:true});
   await copyFile(join(repository,d1AnnotationTestMember),join(workspace,d1AnnotationTestMember));
 }
-test('D1-v9 retains exact annotation test member',async()=>{
+test('D1-v9 retains exact annotation test member',{timeout:10000},async()=>{
   const f=await fixture();await addD1FixtureMember(f.workspace);const receipt=await writer()(f.root,f);
   const manifest=JSON.parse(await readFile(receipt!.path,'utf8')),record=manifest.records.find((row:{key:string})=>row.key===d1AnnotationTestMember);
   expect(record).toBeDefined();
@@ -54,13 +56,13 @@ test('D1-v9 refuses missing annotation test member',async()=>{
   const f=await fixture();await addD1FixtureMember(f.workspace);await unlink(join(f.workspace,d1AnnotationTestMember));
   await expect(writer()(f.root,f)).rejects.toThrow();
 });
-test('D1-v9 refuses original annotation test mutation during final copy',async()=>{
+test('D1-v9 refuses original annotation test mutation during final copy',{timeout:10000},async()=>{
   const f=await fixture();await addD1FixtureMember(f.workspace);const injected=duringLastCopy(f,async()=>{const path=join(f.workspace,d1AnnotationTestMember),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});
   await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');
 });
 
 const nativePhasePackageMember='packages/analyzer/package.json';
-test('native-phase-v10 retains exact analyzer package member',async()=>{
+test('native-phase-v10 retains exact analyzer package member',{timeout:10000},async()=>{
   const f=await fixture(),receipt=await writer()(f.root,f);
   const manifest=JSON.parse(await readFile(receipt!.path,'utf8')),record=manifest.records.find((row:{key:string})=>row.key===nativePhasePackageMember);
   expect(record).toBeDefined();
@@ -70,7 +72,7 @@ test('native-phase-v10 retains exact analyzer package member',async()=>{
 test('native-phase-v10 refuses missing analyzer package member',async()=>{
   const f=await fixture();await unlink(join(f.workspace,nativePhasePackageMember));await expect(writer()(f.root,f)).rejects.toThrow();
 });
-test('native-phase-v10 refuses original analyzer package mutation during final copy',async()=>{
+test('native-phase-v10 refuses original analyzer package mutation during final copy',{timeout:10000},async()=>{
   const f=await fixture(),injected=duringLastCopy(f,async()=>{const path=join(f.workspace,nativePhasePackageMember),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});
   await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');
 });
@@ -384,7 +386,7 @@ async function lockExtension(f: Fixture, scalarOrContainer: string) {
 test('CI off performs no filesystem access', async () => {
   expect(await writer()('/not-present', {context: {ci: 'false', runId: undefined, runAttempt: undefined, repository: undefined, workflowRef: undefined, eventName: undefined, sha: undefined, platform: 'darwin', architecture: 'arm64'}, open: (() => {throw Error('must not open');}) as typeof open})).toBeNull();
 });
-test('closed original snapshot retains actual copy bytes and controlled Linux metadata', async () => {
+test('closed original snapshot retains actual copy bytes and controlled Linux metadata', {timeout:10000}, async () => {
   const f = await fixture(), receipt = await writer()(f.root, f); expect(receipt).not.toBeNull();
   const bytes = await readFile(receipt!.path), manifest = JSON.parse(bytes.toString());
   expect(f.union).toHaveLength(310); expect(manifest.records).toHaveLength(310);
@@ -433,7 +435,7 @@ test('closed original snapshot retains actual copy bytes and controlled Linux me
   expect(receipt!.work.jsonFiles).toBe(68);
   expect(manifest.limits).toMatchObject({fileBytes: 1024 * 1024, lockBytes: 2 * 1024 * 1024, originalBytes: 8 * 1024 * 1024, files: 311, jsonFiles: 69, manifestBytes: 23348128, readBytes: 170428224, writeBytes: 31736736});
 });
-test.each(['read', 'close'] as const)('shared ancestor sibling churn after %s preserves the original snapshot', async seam => {
+test.each(['read', 'close'] as const)('shared ancestor sibling churn after %s preserves the original snapshot', {timeout:10000}, async seam => {
   const f = await fixture(), ancestor = dirname(f.workspace), before = await stat(ancestor, {bigint: true});
   const source = join(f.workspace, seam === 'read' ? 'apps/threadplane/.build-evidence.json' : '.github/workflows/ci.yml');
   let selected = false, changed = false, readBytes = false;
@@ -480,15 +482,15 @@ test('equal workspace and evidence roots fail at the domain obligation', async (
   await cp(f.root, root, {recursive: true});
   await expect(writer()(root, {...f, evidenceRoot: f.workspace})).rejects.toThrow('root domains');
 });
-test('earlier own copy corruption is rejected at lifetime closure', async () => {
+test('earlier own copy corruption is rejected at lifetime closure', {timeout:10000}, async () => {
   const f = await fixture(), injected = duringLastCopy(f, async own => {const path = join(own, 'workspace/.github/workflows/ci.yml'), bytes = await readFile(path); bytes[0] = bytes[0]! ^ 1; await writeFile(path, bytes);});
   await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('own physical member identity');
 });
-test('earlier own copy replacement with identical bytes is rejected at lifetime closure', async () => {
+test('earlier own copy replacement with identical bytes is rejected at lifetime closure', {timeout:10000}, async () => {
   const f = await fixture(), injected = duringLastCopy(f, async own => {const path = join(own, 'workspace/.github/workflows/ci.yml'), bytes = await readFile(path); await unlink(path); await writeFile(path, bytes);});
   await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('own physical member identity');
 });
-test('earlier own directory replacement fails its original creation identity', async () => {
+test('earlier own directory replacement fails its original creation identity', {timeout:10000}, async () => {
   const f = await fixture(), injected = duringLastCopy(f, async own => {
     const original = join(own, 'workspace/.github'), moved = join(f.evidenceRoot, 'moved-own-github');
     await rename(original, moved); await mkdir(join(original, 'workflows'), {recursive: true});
@@ -496,27 +498,27 @@ test('earlier own directory replacement fails its original creation identity', a
   });
   await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('own directory creation identity');
 });
-test.each(['file', 'directory'])('extra own %s admitted after an earlier copy fails closure', async kind => {
+test.each(['file', 'directory'])('extra own %s admitted after an earlier copy fails closure', {timeout:10000}, async kind => {
   const f = await fixture(), injected = duringLastCopy(f, async own => {const path = join(own, 'workspace/extra-own'); if (kind === 'file') await writeFile(path, 'extra'); else await mkdir(path);});
   await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow(kind === 'file' ? 'unexpected own member' : 'extra copied directory');
 });
-test('earlier own nonregular copy fails closure', async () => {
+test('earlier own nonregular copy fails closure', {timeout:10000}, async () => {
   const f = await fixture(), injected = duringLastCopy(f, async own => {const path = join(own, 'workspace/.github/workflows/ci.yml'); await unlink(path); await mkdir(path);});
   await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('extra copied directory');
 });
-test('earlier own symlink copy fails closure', async () => {
+test('earlier own symlink copy fails closure', {timeout:10000}, async () => {
   const f = await fixture(), injected = duringLastCopy(f, async own => {const path = join(own, 'workspace/.github/workflows/ci.yml'); await unlink(path); await symlink(join(f.workspace, '.github/workflows/ci.yml'), path);});
   await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('symlink');
 });
-test.each(['output', 'asset'])('scoped %s membership mutation after copy fails final closure', async scope => {
+test.each(['output', 'asset'])('scoped %s membership mutation after copy fails final closure', {timeout:10000}, async scope => {
   const f = await fixture(), injected = duringLastCopy(f, async () => {await mkdir(join(f.workspace, scope === 'output' ? 'packages/contract/dist/extra' : 'apps/threadplane/dist/extra'));});
   await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow(scope === 'output' ? 'unexpected output directory' : 'asset directory entry cap');
 });
-test('scoped served asset bytes changed after copy fail original lifetime identity', async () => {
+test('scoped served asset bytes changed after copy fail original lifetime identity', {timeout:10000}, async () => {
   const f = await fixture(), asset = f.union.find(key => key.startsWith('apps/threadplane/dist/'))!, injected = duringLastCopy(f, async () => {const path = join(f.workspace, asset), bytes = await readFile(path); bytes[0] = bytes[0]! ^ 1; await writeFile(path, bytes);});
   await expect(writer()(f.root, {...f, open: injected})).rejects.toThrow('original identity changed');
 });
-test('scoped unselected output bytes changed after copy fail original lifetime identity', async () => {
+test('scoped unselected output bytes changed after copy fail original lifetime identity', {timeout:10000}, async () => {
   const f = await fixture(), key = f.union.find(key => key.startsWith('packages/contract/dist/') && key.endsWith('.d.ts'))!, injected = duringLastCopy(f, async () => {
     const path = join(f.workspace, key), bytes = await readFile(path); bytes[0] = bytes[0]! ^ 1; await writeFile(path, bytes);
   });
@@ -555,7 +557,7 @@ test.each(['stat', 'read', 'write'])('falsy descriptor %s and genuine close erro
   expect(caught).toBeInstanceOf(AggregateError); expect((caught as AggregateError).errors).toEqual([false, closeError]);
   expect((caught as AggregateError).errors[0]).toBe(false); expect((caught as AggregateError).errors[1]).toBe(closeError);
 });
-test.each([0, 1])('end-to-end file cap exact plus %i uses the largest unhashed maintained source', async excess => {
+for (const excess of [0, 1]) test(`end-to-end file cap exact plus ${excess} uses the largest unhashed maintained source`, {timeout:excess===0?10000:5000}, async () => {
   const f = await fixture(), candidates = await Promise.all(f.paddingKeys.map(async key => ({key, bytes: (await stat(join(f.workspace, key))).size})));
   candidates.sort((a, b) => b.bytes - a.bytes || a.key.localeCompare(b.key));
   const key = candidates[0]!.key, path = join(f.workspace, key), bytes = await readFile(path);
@@ -634,7 +636,7 @@ test('foreign package-lock basename retains the ordinary 1MiB policy', () => {
   expect(() => helper.comparisonCiSnapshotBudget(0, 1024 * 1024 + 1, helper.comparisonCiSnapshotFileCap(foreign), 'foreign lock cap')).toThrow('foreign lock cap');
   expect(() => helper.comparisonCiSnapshotFileCap('../package-lock.json')).toThrow('normalized relative key');
 });
-test.each([0, 1])('end-to-end union cap exact plus %i preserves every hashed record', async excess => {
+for (const excess of [0, 1]) test(`end-to-end union cap exact plus ${excess} preserves every hashed record`, {timeout:excess===0?10000:5000}, async () => {
   const f = await fixture(); await padUnion(f, 8 * 1024 * 1024 + excess);
   if (excess) await expect(writer()(f.root, f)).rejects.toThrow('pre-read aggregate cap');
   else {const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8')); expect(manifest.originalBytes).toBe(8 * 1024 * 1024);}
@@ -664,7 +666,7 @@ test.each(['missing', 'extra', 'relocated'] as const)('current physical metadata
 });
 test('duplicate decoded metadata keys fail bounded parsing', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'package-lock.json'), '{"packages":{},"\\u0070ackages":{}}'); await expect(writer()(f.root, f)).rejects.toThrow('duplicate key');});
 test('metadata depth fails bounded parsing', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'package-lock.json'), '{"packages":{},"nested":' + '['.repeat(34) + 'null' + ']'.repeat(34) + '}'); await expect(writer()(f.root, f)).rejects.toThrow('depth/AWU');});
-test.each([32, 33])('metadata exact depth %i retains valid lock packages and matching source records', async depth => {
+for (const depth of [32, 33]) test(`metadata exact depth ${depth} retains valid lock packages and matching source records`, {timeout:depth===32?10000:5000}, async () => {
   const f = await fixture(); await lockExtension(f, '['.repeat(depth - 1) + 'null' + ']'.repeat(depth - 1));
   if (depth === 32) expect(await writer()(f.root, f)).not.toBeNull();
   else await expect(writer()(f.root, f)).rejects.toThrow('depth/AWU');
@@ -680,4 +682,4 @@ test('metadata finite overflow fails its numeric bound with valid lock packages'
 test('invalid UTF8 metadata fails closed', async () => {const f = await fixture(); await writeFile(join(f.workspace, 'package-lock.json'), Buffer.from([0x7b, 0xff, 0x7d])); await expect(writer()(f.root, f)).rejects.toThrow();});
 
 test.each([...foundationSources,...foundationOutputs])('snapshot-v6 rejects missing selected foundation member %s',async key=>{const f=await fixture();await unlink(join(f.workspace,key));await expect(writer()(f.root,f)).rejects.toThrow();});
-test('snapshot-v6 selected analyzer bytes retain original lifetime closure',async()=>{const f=await fixture(),key='packages/analyzer/dist/browser-frame-ordered-state.d.ts',injected=duringLastCopy(f,async()=>{const path=join(f.workspace,key),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');});
+test('snapshot-v6 selected analyzer bytes retain original lifetime closure',{timeout:10000},async()=>{const f=await fixture(),key='packages/analyzer/dist/browser-frame-ordered-state.d.ts',injected=duringLastCopy(f,async()=>{const path=join(f.workspace,key),bytes=await readFile(path);bytes[0]=bytes[0]!^1;await writeFile(path,bytes);});await expect(writer()(f.root,{...f,open:injected})).rejects.toThrow('original identity changed');});
