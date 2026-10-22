@@ -5,7 +5,7 @@ import type {FileHandle} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {dirname,join,resolve} from 'node:path';
 import {types} from 'node:util';
-import type {readWholeAnnotationTrace,readWholeUserTimingTrace,readWholeUserTimingTraceV3,isClosedStudyFailureCode,ClosedStudyFailureCode} from '@chat-ui-bench/analyzer/internal/whole-annotation';
+import type {readWholeAnnotationTrace,readWholeUserTimingTrace,readWholeUserTimingTraceV3,readWholeUserTimingTraceV4,isClosedStudyFailureCode,ClosedStudyFailureCode} from '@chat-ui-bench/analyzer/internal/whole-annotation';
 import {createProtoTraceCollector,type ProtoClockPort,type ProtoTraceCollector,type ProtoTraceReceipt} from './comparison-proto-trace.js';
 import {createProtoPublicPorts,type ProtoPublicInputs} from './comparison-proto-public-ports.js';
 
@@ -18,6 +18,7 @@ const ROLE_CAPS=Object.freeze({'intent.json':16384,'capture.json':262144,'target
 const PHASE_POLICY='source-owned-phase-registry-inventory-diagnostic-v1';
 const USER_TIMING_PHASE_POLICY='source-owned-user-timing-phase-inventory-diagnostic-v2';
 const USER_TIMING_PHASE_V3_POLICY='source-owned-user-timing-phase-inventory-diagnostic-v3';
+const USER_TIMING_PHASE_V4_POLICY='source-owned-user-timing-phase-inventory-diagnostic-v4';
 const PHASE_AUTHORITY=Object.freeze({captureQualified:false,qualification:false,nativeSupported:false,clockAdmission:'not_evaluated',targetLifetime:'unestablished',population:'not_evaluated',FPS:null,duration:null,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false}as const);
 type PhaseRefusal='unregistered-owner'|'owner-not-ready'|'input-reference-unavailable'|'reader-unavailable'|'whole-input-unavailable'|'file-identity-unavailable'|'root-inventory-withheld'|'state-loss-observed'|'candidate-capacity'|'duplicate-start'|'duplicate-end'|'foreign-selected-prefix'|'missing-start'|'missing-end'|'wire-order-unavailable'|'result-capacity'|'internal-unavailable';
 export interface ProtoPhaseInventoryRow {
@@ -42,15 +43,17 @@ export interface WholeInputFailure {
  readonly firstSemanticDiagnostic:Readonly<{code:ClosedWholeFailureCode;packetIndex:number|null;component:null|'packet'|'defaults'|'interned_names'|'track_descriptor'|'clock_snapshot';cause:ClosedStudyFailureCode|'unavailable-code'|null}>|null;
 }
 export type ProtoUserTimingPhaseInventoryDiagnosticV3=Omit<Extract<ProtoUserTimingPhaseInventoryDiagnostic,{status:'unavailable'}>,'policy'>&{readonly policy:typeof USER_TIMING_PHASE_V3_POLICY;readonly wholeInputFailure:WholeInputFailure|null}|Omit<Extract<ProtoUserTimingPhaseInventoryDiagnostic,{status:'phase-registry-inventory-diagnostic'}>,'policy'>&{readonly policy:typeof USER_TIMING_PHASE_V3_POLICY;readonly wholeInputFailure:WholeInputFailure|null};
-type PrivatePhaseDiagnostic=ProtoPhaseInventoryDiagnostic|ProtoUserTimingPhaseInventoryDiagnostic|ProtoUserTimingPhaseInventoryDiagnosticV3;
+export type ProtoUserTimingPhaseInventoryDiagnosticV4=Omit<Extract<ProtoUserTimingPhaseInventoryDiagnosticV3,{status:'unavailable'}>,'policy'>&{readonly policy:typeof USER_TIMING_PHASE_V4_POLICY}|Omit<Extract<ProtoUserTimingPhaseInventoryDiagnosticV3,{status:'phase-registry-inventory-diagnostic'}>,'policy'>&{readonly policy:typeof USER_TIMING_PHASE_V4_POLICY};
+type PrivatePhaseDiagnostic=ProtoPhaseInventoryDiagnostic|ProtoUserTimingPhaseInventoryDiagnostic|ProtoUserTimingPhaseInventoryDiagnosticV3|ProtoUserTimingPhaseInventoryDiagnosticV4;
 const phaseRefusal=(reason:PhaseRefusal):Readonly<ProtoPhaseInventoryDiagnostic>=>Object.freeze({policy:PHASE_POLICY,status:'unavailable',reason,rows:Object.freeze([])as readonly [],authority:PHASE_AUTHORITY});
 const UNKNOWN_PHASE=phaseRefusal('unregistered-owner');
 const phaseOwners=new WeakMap<object,()=>Readonly<ProtoPhaseInventoryDiagnostic>>();
-const userTimingPhaseOwners=new WeakMap<object,{policy:typeof USER_TIMING_PHASE_POLICY|typeof USER_TIMING_PHASE_V3_POLICY;inspect:()=>Readonly<PrivatePhaseDiagnostic>}>();
+const userTimingPhaseOwners=new WeakMap<object,{policy:typeof USER_TIMING_PHASE_POLICY|typeof USER_TIMING_PHASE_V3_POLICY|typeof USER_TIMING_PHASE_V4_POLICY;inspect:()=>Readonly<PrivatePhaseDiagnostic>}>();
 const userTimingPhaseRefusal=(reason:PhaseRefusal):Readonly<ProtoUserTimingPhaseInventoryDiagnostic>=>Object.freeze({policy:USER_TIMING_PHASE_POLICY,status:'unavailable',reason,rows:Object.freeze([])as readonly [],authority:PHASE_AUTHORITY});
 const UNKNOWN_USER_TIMING_PHASE=userTimingPhaseRefusal('unregistered-owner');
 const userTimingPhaseV3Refusal=(reason:PhaseRefusal,wholeInputFailure:WholeInputFailure|null=null):Readonly<ProtoUserTimingPhaseInventoryDiagnosticV3>=>Object.freeze({policy:USER_TIMING_PHASE_V3_POLICY,status:'unavailable',reason,rows:Object.freeze([])as readonly [],wholeInputFailure,authority:PHASE_AUTHORITY});
 const UNKNOWN_USER_TIMING_PHASE_V3=userTimingPhaseV3Refusal('unregistered-owner');
+const userTimingPhaseV4Refusal=(reason:PhaseRefusal,wholeInputFailure:WholeInputFailure|null=null):Readonly<ProtoUserTimingPhaseInventoryDiagnosticV4>=>Object.freeze({policy:USER_TIMING_PHASE_V4_POLICY,status:'unavailable',reason,rows:Object.freeze([])as readonly [],wholeInputFailure,authority:PHASE_AUTHORITY});
 /** Exact source-created identity only. This DTO grants no native admission. */
 export function inspectProtoNativePhase(owner:unknown):Readonly<ProtoPhaseInventoryDiagnostic>{
  if(owner===null||typeof owner!=='object'||types.isProxy(owner))return UNKNOWN_PHASE;
@@ -65,7 +68,11 @@ export function inspectProtoNativeUserTimingPhaseV3(owner:unknown):Readonly<Prot
  if(owner===null||typeof owner!=='object'||types.isProxy(owner))return UNKNOWN_USER_TIMING_PHASE_V3;
  const entry=userTimingPhaseOwners.get(owner);return entry?.policy===USER_TIMING_PHASE_V3_POLICY?entry.inspect()as ProtoUserTimingPhaseInventoryDiagnosticV3:UNKNOWN_USER_TIMING_PHASE_V3;
 }
-type WholePhaseResult=ReturnType<typeof readWholeAnnotationTrace>|ReturnType<typeof readWholeUserTimingTrace>|ReturnType<typeof readWholeUserTimingTraceV3>;
+export function inspectProtoNativeUserTimingPhaseV4(owner:unknown):Readonly<ProtoUserTimingPhaseInventoryDiagnosticV4>{
+ if(owner===null||typeof owner!=='object'||types.isProxy(owner))return userTimingPhaseV4Refusal('unregistered-owner');
+ const entry=userTimingPhaseOwners.get(owner);return entry?.policy===USER_TIMING_PHASE_V4_POLICY?entry.inspect()as ProtoUserTimingPhaseInventoryDiagnosticV4:userTimingPhaseV4Refusal('unregistered-owner');
+}
+type WholePhaseResult=ReturnType<typeof readWholeAnnotationTrace>|ReturnType<typeof readWholeUserTimingTrace>|ReturnType<typeof readWholeUserTimingTraceV3>|ReturnType<typeof readWholeUserTimingTraceV4>;
 /** Copy bounded observations only; physical reason and first study diagnostic are distinct. */
 function wholeInputFailure(whole:WholePhaseResult,studyCode:typeof isClosedStudyFailureCode):WholeInputFailure|null{
  try{
@@ -180,9 +187,12 @@ export function createProtoNativeUserTimingCapture(inputs:ProtoNativeCaptureInpu
  return createNativeCapture(inputs,true);
 }
 export function createProtoNativeUserTimingCaptureV3(inputs:ProtoNativeCaptureInputs){
- return createNativeCapture(inputs,true,true);
+ return createNativeCapture(inputs,true,3);
 }
-function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,diagnosticV3=false){
+export function createProtoNativeUserTimingCaptureV4(inputs:ProtoNativeCaptureInputs){
+ return createNativeCapture(inputs,true,4);
+}
+function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,diagnosticVersion=0){
  const receipt:ProtoNativeCaptureReceipt={schemaVersion:1,policy:POLICY,status:'open',failures:[],failureCount:0,createdRoles:[],operations:[],originalOperationsSettled:true,transport:null,persistedWholeInput:'unavailable',persisted:null,
   target:{before:null,after:null,events:[],eventCount:0},runtime:{status:'unavailable',assumption:'trusted-pinned-vendor-build-correspondence',executable:null,playwrightVersion:null,browserRevision:null,product:null,revision:null,launchFlags:[],headless:null},marks:[],runner:{close:'not-dispatched',wait:null},
   analysis:'not_evaluated',qualification:false,captureQualified:false,fpsEligibility:false,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false,nativeSupported:false,targetLifetime:'unestablished',clockAdmission:'not_evaluated'};
@@ -194,7 +204,8 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
  let rawIdentity:Identity|undefined,runtimePins:ProtoNativeRuntime|undefined;
  let outputDirectory='',runId='',phaseId='';
  let phaseAttempted=false,phaseCached:Readonly<PrivatePhaseDiagnostic>|undefined,finishState:'not-dispatched'|'fulfilled'|'rejected'='not-dispatched';
- const refusePhase=diagnosticV3?userTimingPhaseV3Refusal:userTiming?userTimingPhaseRefusal:phaseRefusal;
+ const phasePolicy=diagnosticVersion===4?USER_TIMING_PHASE_V4_POLICY:diagnosticVersion===3?USER_TIMING_PHASE_V3_POLICY:userTiming?USER_TIMING_PHASE_POLICY:PHASE_POLICY;
+ const refusePhase=diagnosticVersion===4?userTimingPhaseV4Refusal:diagnosticVersion===3?userTimingPhaseV3Refusal:userTiming?userTimingPhaseRefusal:phaseRefusal;
  const removers:(()=>void)[]=[];
  const snapshot=():ProtoNativeCaptureReceipt=>structuredClone({...receipt,transport:collector?.snapshot()??receipt.transport,originalOperationsSettled:receipt.operations.every(op=>op.state!=='pending')&&(collector?.snapshot().originalOperationsSettled??true)});
  const fail=(code:string)=>{receipt.failureCount=Math.min(65535,receipt.failureCount+1);if(receipt.failures.length<32)receipt.failures.push(code);if(ended)receipt.status='unavailable';};
@@ -328,10 +339,10 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
    const ref=receipt.persisted;
    if(receipt.persistedWholeInput!=='verified'||!ref||!rawIdentity||!Number.isSafeInteger(rawIdentity.dev)||!Number.isSafeInteger(rawIdentity.ino)||rawIdentity.dev<0||rawIdentity.ino<0)return refuse('input-reference-unavailable');
    let whole:WholePhaseResult,studyCode:typeof isClosedStudyFailureCode;
-   try{const reader=createRequire(import.meta.url)('@chat-ui-bench/analyzer/internal/whole-annotation')as{readWholeAnnotationTrace:typeof readWholeAnnotationTrace;readWholeUserTimingTrace:typeof readWholeUserTimingTrace;readWholeUserTimingTraceV3:typeof readWholeUserTimingTraceV3;isClosedStudyFailureCode:typeof isClosedStudyFailureCode},reference={path:join(outputDirectory,'trace.pftrace'),bytes:ref.bytes,sha256:ref.sha256};studyCode=reader.isClosedStudyFailureCode;whole=diagnosticV3?reader.readWholeUserTimingTraceV3(reference,'pinned-whole-trace-user-timing-marks-diagnostic-v3'):userTiming?reader.readWholeUserTimingTrace(reference,'pinned-whole-trace-user-timing-marks-diagnostic-v2'):reader.readWholeAnnotationTrace(reference,'pinned-whole-trace-ordered-annotations-diagnostic-v1');}catch{return refuse('reader-unavailable');}
+   try{const reader=createRequire(import.meta.url)('@chat-ui-bench/analyzer/internal/whole-annotation')as{readWholeAnnotationTrace:typeof readWholeAnnotationTrace;readWholeUserTimingTrace:typeof readWholeUserTimingTrace;readWholeUserTimingTraceV3:typeof readWholeUserTimingTraceV3;readWholeUserTimingTraceV4:typeof readWholeUserTimingTraceV4;isClosedStudyFailureCode:typeof isClosedStudyFailureCode},reference={path:join(outputDirectory,'trace.pftrace'),bytes:ref.bytes,sha256:ref.sha256};studyCode=reader.isClosedStudyFailureCode;whole=diagnosticVersion===4?reader.readWholeUserTimingTraceV4(reference,'pinned-whole-trace-user-timing-marks-diagnostic-v4'):diagnosticVersion===3?reader.readWholeUserTimingTraceV3(reference,'pinned-whole-trace-user-timing-marks-diagnostic-v3'):userTiming?reader.readWholeUserTimingTrace(reference,'pinned-whole-trace-user-timing-marks-diagnostic-v2'):reader.readWholeAnnotationTrace(reference,'pinned-whole-trace-ordered-annotations-diagnostic-v1');}catch{return refuse('reader-unavailable');}
    if(phaseCached)return phaseCached;
    const study=whole.study;
-   if(whole.status!=='complete-whole-annotation-diagnostic'||!whole.fullInputVerified||!whole.structuralContainerEOF||!study||study.status!=='whole-annotation-study'||!study.framingBoundaryComplete||whole.reader.bytes!==ref.bytes||whole.reader.sha256!==ref.sha256)return diagnosticV3?userTimingPhaseV3Refusal('whole-input-unavailable',wholeInputFailure(whole,studyCode)):refuse('whole-input-unavailable');
+   if(whole.status!=='complete-whole-annotation-diagnostic'||!whole.fullInputVerified||!whole.structuralContainerEOF||!study||study.status!=='whole-annotation-study'||!study.framingBoundaryComplete||whole.reader.bytes!==ref.bytes||whole.reader.sha256!==ref.sha256)return diagnosticVersion===4?userTimingPhaseV4Refusal('whole-input-unavailable',wholeInputFailure(whole,studyCode)):diagnosticVersion===3?userTimingPhaseV3Refusal('whole-input-unavailable',wholeInputFailure(whole,studyCode)):refuse('whole-input-unavailable');
    if(whole.reader.before?.[0]!==String(rawIdentity.dev)||whole.reader.before?.[1]!==String(rawIdentity.ino)||whole.reader.after?.[0]!==String(rawIdentity.dev)||whole.reader.after?.[1]!==String(rawIdentity.ino))return refuse('file-identity-unavailable');
    if(study.markInventoryAdmission!=='resolved-supported-roots')return refuse('root-inventory-withheld');
    if(study.counters.losses)return refuse('state-loss-observed');
@@ -344,7 +355,7 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
     else if(row.value.startsWith(prefix))return refuse('foreign-selected-prefix');else outsidePrefix++;
    }
    if(!start)return refuse('missing-start');if(!end)return refuse('missing-end');if(start.packetIndex>=end.packetIndex)return refuse('wire-order-unavailable');
-   try{return {policy:diagnosticV3?USER_TIMING_PHASE_V3_POLICY:userTiming?USER_TIMING_PHASE_POLICY:PHASE_POLICY,...(diagnosticV3?{wholeInputFailure:null}:{}),status:'phase-registry-inventory-diagnostic',reason:null,runId,phaseId,targetId:before.targetId,input:{bytes:ref.bytes,sha256:ref.sha256,packetManifestSHA256:study.packetManifestSHA256,transitionManifestSHA256:study.transitionManifestSHA256},counters:{candidates:study.candidates.length,outsidePrefix,readAttempts:whole.reader.reads,packets:study.counters.packets},rows:[phaseRow(start,'start',a.name,userTiming),phaseRow(end,'end',b.name,userTiming)],authority:PHASE_AUTHORITY}as PrivatePhaseDiagnostic;}catch{return refuse('result-capacity');}
+   try{return {policy:phasePolicy,...(diagnosticVersion?{wholeInputFailure:null}:{}),status:'phase-registry-inventory-diagnostic',reason:null,runId,phaseId,targetId:before.targetId,input:{bytes:ref.bytes,sha256:ref.sha256,packetManifestSHA256:study.packetManifestSHA256,transitionManifestSHA256:study.transitionManifestSHA256},counters:{candidates:study.candidates.length,outsidePrefix,readAttempts:whole.reader.reads,packets:study.counters.packets},rows:[phaseRow(start,'start',a.name,userTiming),phaseRow(end,'end',b.name,userTiming)],authority:PHASE_AUTHORITY}as PrivatePhaseDiagnostic;}catch{return refuse('result-capacity');}
   }catch{return refuse('internal-unavailable');}
  }
  function inspectPrivate():Readonly<PrivatePhaseDiagnostic>{
@@ -386,5 +397,5 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
   close():Promise<ProtoNativeCaptureReceipt>{if(ended)return Promise.resolve(snapshot());if(closing)return closing;fail('explicit-close');closing=cleanup();return closing;},
   snapshot,
  };
- if(userTiming)userTimingPhaseOwners.set(owner,{policy:diagnosticV3?USER_TIMING_PHASE_V3_POLICY:USER_TIMING_PHASE_POLICY,inspect:inspectPrivate});else phaseOwners.set(owner,inspectPrivate as()=>Readonly<ProtoPhaseInventoryDiagnostic>);return owner;
+ if(userTiming)userTimingPhaseOwners.set(owner,{policy:diagnosticVersion===4?USER_TIMING_PHASE_V4_POLICY:diagnosticVersion===3?USER_TIMING_PHASE_V3_POLICY:USER_TIMING_PHASE_POLICY,inspect:inspectPrivate});else phaseOwners.set(owner,inspectPrivate as()=>Readonly<ProtoPhaseInventoryDiagnostic>);return owner;
 }

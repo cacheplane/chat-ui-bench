@@ -25,6 +25,8 @@ const OPAQUE = new Set([6,12,35,59,60]);
 const SELECTED = new Set([8,58,10,13,42,98,79,41,87,11,...OPAQUE]);
 // Private profiles: 0 standalone, 1 legacy whole input, 2 V3 refusal detail.
 const WHOLE_PROFILE=1,WHOLE_TIMING_V3_PROFILE=2;
+const WHOLE_PROVENANCE_PROFILE=3,PROVENANCE_FIELDS=32,PROVENANCE_REFUSAL='unsupported-packet-payload-field-124';
+const decodePacket=createPacketDecoder();
 export function scalar(field: WireField): bigint {
   if (field.occurrence.wireType !== 0 || field.scalar === undefined) throw new WireError('selected-field-wrong-wire-type');
   return field.scalar;
@@ -67,7 +69,17 @@ export function decodeWholeUserTimingPacketV3(input:unknown,work:AnnotationWork)
  if(wholeByteInputDenied(input))return{status:'unavailable',diagnostics:[{code:'unsupported-byte-view'}]};
  return decodePacket(input,PACKET_POLICY,false,work,WHOLE_TIMING_V3_PROFILE) as AnnotationPacketFragment|PacketUnavailable;
 }
-function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotationWork?:AnnotationWork,whole=0):PacketFragment|PacketUnavailable {
+/** A fresh whole-study gate; callers cannot renew it at packet/sequence boundaries. */
+export function createWholeProvenancePacketDecoder(){
+ const decode=createPacketDecoder();
+ return function(input:unknown,work:AnnotationWork):AnnotationPacketFragment|PacketUnavailable{
+  if(wholeByteInputDenied(input))return{status:'unavailable',diagnostics:[{code:'unsupported-byte-view'}]};
+  return decode(input,PACKET_POLICY,false,work,WHOLE_PROVENANCE_PROFILE) as AnnotationPacketFragment|PacketUnavailable;
+ };
+}
+function createPacketDecoder(){
+ let provenanceSeen=false;
+ return function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotationWork?:AnnotationWork,whole=0):PacketFragment|PacketUnavailable {
   try {
     if (policy !== PACKET_POLICY) throw new WireError('unsupported-policy');
     const bytes = copyBody(input); const budget = whole?newWholeWireBudget():new WireBudget();
@@ -79,7 +91,11 @@ function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotat
       const field = reader.next('root'); const o: PacketOccurrence = { ...field.occurrence, scope: 'packet' };
       context.occurrences.push(o);
       if (UNSUPPORTED.has(o.fieldNumber)) {
-        if(whole===WHOLE_TIMING_V3_PROFILE)switch(o.fieldNumber){
+       if(whole===WHOLE_PROVENANCE_PROFILE&&o.fieldNumber===124){
+        if(provenanceSeen)throw new WireError(PROVENANCE_REFUSAL);
+        provenanceSeen=true;provenanceSubset(bytes,field,budget,annotationWork!);
+       }else{
+        if(whole>=WHOLE_TIMING_V3_PROFILE)switch(o.fieldNumber){
           case 50:throw new WireError('unsupported-packet-payload-field-50');
           case 133:throw new WireError('unsupported-packet-payload-field-133');
           case 107:throw new WireError('unsupported-packet-payload-field-107');
@@ -87,6 +103,7 @@ function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotat
           case 125:throw new WireError('unsupported-packet-payload-field-125');
         }
         throw new WireError('unsupported-packet-payload');
+       }
       }
       if (DATA.has(o.fieldNumber)) {
         if (dataSeen) throw new WireError('duplicate-data-oneof');
@@ -114,4 +131,42 @@ function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotat
   } catch (error) {
     return { status: 'unavailable', diagnostics: [{ code: error instanceof WireError ? error.code : 'invalid-packet-input' }] };
   }
+ };
+}
+
+/** Closed emitter-shaped subset, not a general TraceProvenance implementation. */
+function provenanceSubset(bytes:Uint8Array,payload:WireField,budget:WireBudget,work:AnnotationWork):void{
+ const outer=new BodyReader(bytes,0,bytes.byteLength,budget);let mask=0,visits=0,count=0;
+ while(!outer.complete){
+  if(++visits>6)throw new WireError(PROVENANCE_REFUSAL);
+  work(1);const f=outer.next('root');let bit=0;
+  switch(f.occurrence.fieldNumber){
+   case 3:canonicalInt32(f);bit=1;break;
+   case 8:scalar(f);bit=2;break;
+   case 10:if(scalar(f)!==1n)throw new WireError(PROVENANCE_REFUSAL);bit=4;break;
+   case 58:if(scalar(f)!==6n)throw new WireError(PROVENANCE_REFUSAL);bit=8;break;
+   case 124:requireBody(f);bit=16;break;
+   default:throw new WireError(PROVENANCE_REFUSAL);
+  }
+  if(mask&bit)throw new WireError(PROVENANCE_REFUSAL);mask|=bit;
+ }
+ if(mask!==31)throw new WireError(PROVENANCE_REFUSAL);
+ function window(f:WireField){return new BodyReader(bytes,f.occurrence.valueStart,f.occurrence.end,budget);}
+ function next(reader:BodyReader){if(++count>PROVENANCE_FIELDS)throw new WireError(PROVENANCE_REFUSAL);work(1);return reader.next('root');}
+ const provenance=window(payload);
+ while(!provenance.complete){
+  const f=next(provenance);if(f.occurrence.fieldNumber!==2||f.occurrence.wireType!==2)throw new WireError(PROVENANCE_REFUSAL);
+  const buffer=window(f);
+  while(!buffer.complete){
+   const entry=next(buffer);if(entry.occurrence.fieldNumber!==1||entry.occurrence.wireType!==2)throw new WireError(PROVENANCE_REFUSAL);
+   const sequence=window(entry);let seen=0;
+   while(!sequence.complete){
+    const value=next(sequence),number=value.occurrence.fieldNumber;
+    if(number!==1&&number!==2)throw new WireError(PROVENANCE_REFUSAL);
+    if(seen&number)throw new WireError(PROVENANCE_REFUSAL);seen|=number;
+    if(number===1)uint32(value);else canonicalInt32(value);
+   }
+   if(seen!==3)throw new WireError(PROVENANCE_REFUSAL);
+  }
+ }
 }
