@@ -5,16 +5,20 @@ import {tmpdir} from 'node:os';
 import {spawn} from 'node:child_process';
 import * as probe from './probe-provenance.mjs';
 const api=await import('./build.mjs').catch(()=>({})) as any;
-async function fixture(){
+async function fixture({readOnlyStyleCopy=false}={}){
  const root=await fs.realpath(await fs.mkdtemp(join(tmpdir(),'build-lineage-')));
  for(const key of probe.probeSourceKeys){await fs.mkdir(join(root,key,'..'),{recursive:true});if(key==='apps/threadplane/build.mjs')await fs.writeFile(join(root,key),'build fixture');else await fs.copyFile(resolve(key),join(root,key));}
  await fs.cp(resolve('apps/threadplane/src'),join(root,'apps/threadplane/src'),{recursive:true});
+ if(readOnlyStyleCopy)await fs.chmod(join(root,'apps/threadplane/src/native-idle-host-css-v1.css'),0o444);
+ // fs.cp preserves source modes; only this owned fixture copy must permit mutation controls.
+ await fs.chmod(join(root,'apps/threadplane/src/native-idle-host-css-v1.css'),0o600);
  const native=`@typescript/typescript-${process.platform}-${process.arch}`;
  for(const name of ['typescript',native]){const key=`node_modules/${name}/package.json`;await fs.mkdir(join(root,key,'..'),{recursive:true});await fs.copyFile(resolve(key),join(root,key));}
  const exe=`node_modules/${native}/lib/tsc${process.platform==='win32'?'.exe':''}`;await fs.mkdir(join(root,exe,'..'),{recursive:true});await fs.writeFile(join(root,exe),'native fixture');
  const app=join(root,'apps/threadplane'),manifest=JSON.parse(await fs.readFile(join(app,'package.json'),'utf8')),lock=JSON.parse(await fs.readFile(join(root,'package-lock.json'),'utf8'));
- const names=['@angular/core','@threadplane/chat','@threadplane/langgraph','@threadplane/render','@threadplane/telemetry'];manifest.dependencies=Object.fromEntries(names.map(name=>[name,manifest.dependencies[name]]));manifest.devDependencies={typescript:'5.9.3'};
- for(const name of [...names,'typescript']){const version=name==='typescript'?'5.9.3':manifest.dependencies[name],directory=`apps/threadplane/node_modules/${name}`;await fs.mkdir(join(root,directory),{recursive:true});await fs.writeFile(join(root,directory,'package.json'),JSON.stringify({name,version,main:'index.js'}));await fs.writeFile(join(root,directory,'index.js'),'');lock.packages[directory]={version,integrity:'sha512-YQ=='};}
+ const names=['@angular/core','@threadplane/chat','@threadplane/langgraph','@threadplane/render','@threadplane/telemetry'];manifest.dependencies=Object.fromEntries(names.map(name=>[name,manifest.dependencies[name]]));manifest.devDependencies={typescript:'5.9.3','@angular/cli':'21.2.26'};
+ for(const name of [...names,'typescript','@angular/cli']){const version=manifest.devDependencies[name]??manifest.dependencies[name],directory=`apps/threadplane/node_modules/${name}`;await fs.mkdir(join(root,directory),{recursive:true});await fs.writeFile(join(root,directory,'package.json'),JSON.stringify({name,version,main:'index.js'}));await fs.writeFile(join(root,directory,'index.js'),'');lock.packages[directory]={version,integrity:name==='@threadplane/chat'?'sha512-htsWljhDogT6fOsmZrOvC+wFDRPhiQR/rvfwTJ2dYd/H6MiwPm3twxSr+KdNbaNRnARb62kUvPaigm0VA3cuGw==':'sha512-YQ=='};}
+ await fs.mkdir(join(app,'node_modules/@angular/cli/bin'));await fs.writeFile(join(app,'node_modules/@angular/cli/bin/ng.js'),'authored CLI source fixture; never executed by mocked builds');
  await fs.writeFile(join(root,'package-lock.json'),JSON.stringify(lock));await fs.writeFile(join(app,'package.json'),JSON.stringify(manifest));
  // Schema imports use genuine compiled contract modules, separately from command injection.
  await fs.cp(resolve('packages/contract/dist'),join(root,'packages/contract/dist'),{recursive:true});
@@ -24,6 +28,83 @@ async function fixture(){
 async function emitted(root:string){for(const key of probe.probeCompiledKeys.filter(key=>key.startsWith('packages/runner/'))){await fs.mkdir(join(root,key,'..'),{recursive:true});await fs.writeFile(join(root,key),'emitted runner fixture');}}
 async function assets(root:string){await fs.mkdir(join(root,'apps/threadplane/dist'),{recursive:true});await fs.writeFile(join(root,'apps/threadplane/dist/index.html'),'<html>actual fixture bytes</html>');}
 const recordPaths=['apps/threadplane/.build-evidence.json',probe.probeRecordKey];
+test('native idle host stock inactive style mutation stays outside exact stock hashes and cannot grant variant identity',async()=>{
+ const root=await fixture();try{
+  const p=await import('./provenance.mjs') as any,key=p.nativeIdleHostVariant.styleKey;
+  const expected=(await p.productSourceKeys(root)).filter((value:string)=>value!==key).concat(probe.contractCompiledKeys).sort();
+  const style=join(root,key),before=await fs.readFile(style);await fs.appendFile(style,' ');expect(await fs.readFile(style)).toEqual(Buffer.concat([before,Buffer.from(' ')]));
+  const calls:any[]=[];const result=await api.buildThreadplane({root,runCommand:async(command:any)=>{calls.push(command);if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng')await assets(root);}});
+  expect(Object.keys(result.product.sourceHashes).sort()).toEqual(expected);expect(result.product.sourceHashes).not.toHaveProperty(key);
+  expect(calls.at(-1).args).toEqual(['build','threadplane','--configuration','production']);expect(await p.threadplaneBuildEvidence(root)).toEqual(result.product);
+  await expect(p.nativeIdleHostBuildEvidence(root)).rejects.toThrow();await expect(api.buildNativeIdleHostVariant({root,runCommand:async()=>{throw Error('must not run');}})).rejects.toThrow('style bytes');
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test('native idle host fixture permits byte mutation after a read-only stylesheet copy',async()=>{
+ const key='apps/threadplane/src/native-idle-host-css-v1.css',source=resolve(key),before=await fs.readFile(source),sourceMode=(await fs.stat(source)).mode,root=await fixture({readOnlyStyleCopy:true});
+ try{
+  const copied=join(root,key);expect((await fs.stat(copied)).mode&0o200).toBe(0o200);expect(await fs.readFile(copied)).toEqual(before);
+  await fs.appendFile(copied,' ');expect(await fs.readFile(copied)).toEqual(Buffer.concat([before,Buffer.from(' ')]));expect(await fs.readFile(source)).toEqual(before);expect((await fs.stat(source)).mode).toBe(sourceMode);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test('native idle host default runner uses the app-resolved CLI despite ambient ng',async()=>{
+ expect(typeof api.runNativeIdleHostCommand).toBe('function');const root=await fs.realpath(await fs.mkdtemp(join(tmpdir(),'native-cli-source-control-'))),app=join(root,'apps/threadplane'),cli=join(root,'node_modules/@angular/cli'),bin=join(root,'ambient'),receipt=join(root,'receipt.json'),ambient=join(root,'ambient-used'),prior=process.env.PATH;
+ try{
+  await fs.mkdir(app,{recursive:true});await fs.writeFile(join(app,'package.json'),'{}');await fs.mkdir(join(cli,'bin'),{recursive:true});await fs.writeFile(join(cli,'package.json'),JSON.stringify({name:'@angular/cli',version:'21.2.26',bin:{ng:'./bin/ng.js'}}));
+  await fs.writeFile(join(cli,'bin/ng.js'),`require('node:fs').writeFileSync(${JSON.stringify(receipt)},JSON.stringify({execPath:process.execPath,argv:process.argv.slice(1)}));`);
+  await fs.mkdir(bin);await fs.writeFile(join(bin,'ng'),`#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(ambient)},'ambient');`,{mode:0o755});process.env.PATH=bin+':'+prior;
+  const args=['build','threadplane','--configuration','production','--styles','src/styles.css','src/native-idle-host-css-v1.css'];await api.runNativeIdleHostCommand({command:'ng',args,cwd:app});
+  expect(JSON.parse(await fs.readFile(receipt,'utf8'))).toEqual({execPath:process.execPath,argv:[join(cli,'bin/ng.js'),...args]});await expect(fs.access(ambient)).rejects.toThrow();
+  await api.runCommand({command:'ng',args:[],cwd:app});expect(await fs.readFile(ambient,'utf8')).toBe('ambient');
+ }finally{process.env.PATH=prior;await fs.rm(root,{recursive:true,force:true});}
+});
+test('native idle host missing app CLI resolution invalidates evidence before any command',async()=>{
+ const root=await fixture();try{await fs.rm(join(root,'apps/threadplane/node_modules/@angular/cli/bin/ng.js'));for(const key of recordPaths)await fs.writeFile(join(root,key),'old');let calls=0;
+  await expect(api.buildNativeIdleHostVariant({root,runCommand:async(command:any)=>{calls++;if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng')await assets(root);}})).rejects.toThrow();expect(calls).toBe(0);for(const key of recordPaths)await expect(fs.access(join(root,key))).rejects.toThrow();
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test('native idle host selection is explicit and publishes a distinct closed product envelope',async()=>{
+ expect(typeof api.buildNativeIdleHostVariant).toBe('function');const root=await fixture();try{
+  const calls:any[]=[];const result=await api.buildNativeIdleHostVariant({root,runCommand:async(command:any)=>{calls.push(command);if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng')await assets(root);}});
+  expect(calls.at(-1)).toEqual({command:'ng',args:['build','threadplane','--configuration','production','--styles','src/styles.css','src/native-idle-host-css-v1.css'],cwd:join(root,'apps/threadplane')});
+  expect(calls.slice(0,-1).map(c=>c.args.at(-1))).toEqual(['@chat-ui-bench/contract','@chat-ui-bench/producer','@chat-ui-bench/analyzer','@chat-ui-bench/runner']);
+  const p=await import('./provenance.mjs') as any,bytes=await fs.readFile(join(root,recordPaths[0]!));
+  expect(JSON.parse(bytes.toString())).toEqual({kind:'native-idle-host-css-product-v1',variant:p.nativeIdleHostVariant,angularSelection:p.nativeIdleHostAngularSelection,build:result.product});
+  const contract=await import('@chat-ui-bench/contract');expect(()=>p.parseProductRecord(bytes,contract)).toThrow();
+  await expect(p.threadplaneBuildEvidence(root)).rejects.toThrow();
+  expect(await p.nativeIdleHostBuildEvidence(root)).toEqual(result.product);
+  const helper=await fs.readFile(resolve('packages/runner/src/comparison-browser.test-helper.ts'),'utf8'),stock47=JSON.parse(helper.match(/"product47": (\[[\s\S]*?\n  \])/ )![1]!);
+  expect(Object.keys(result.product.sourceHashes).sort()).toEqual([...stock47,p.nativeIdleHostVariant.styleKey].sort());expect(result.product.sourceHashes[p.nativeIdleHostVariant.styleKey]).toBe(p.nativeIdleHostVariant.styleSha256);
+  await expect(probe.comparisonInstrumentationBuildEvidence(root)).rejects.toThrow();
+  expect(await (probe as any).comparisonNativeIdleHostInstrumentationBuildEvidence(root)).toEqual(result.probe);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test.each(['pre-Angular','probe-publication','product-publication'])('native idle host inventory rejects actual style mutation at %s bookend',async stage=>{
+ const root=await fixture();try{
+  const p=await import('./provenance.mjs') as any,style=join(root,p.nativeIdleHostVariant.styleKey),before=await fs.readFile(style);let mutated=false,angular=false;
+  const mutate=async()=>{await fs.appendFile(style,' ');expect(await fs.readFile(style)).toEqual(Buffer.concat([before,Buffer.from(' ')]));mutated=true;};
+  const ops={...fs,rename:async(from:any,to:any)=>{await fs.rename(from,to);if(to===join(root,stage==='probe-publication'?recordPaths[1]!:recordPaths[0]!)&&stage!=='pre-Angular')await mutate();}};
+  await expect(api.buildNativeIdleHostVariant({root,ops,runCommand:async(command:any)=>{if(command.args.at(-1)==='@chat-ui-bench/runner'){await emitted(root);if(stage==='pre-Angular')await mutate();}if(command.command==='ng'){angular=true;await assets(root);}}})).rejects.toThrow('style bytes');
+  expect(mutated).toBe(true);expect(angular).toBe(stage!=='pre-Angular');for(const key of recordPaths)await expect(fs.access(join(root,key))).rejects.toThrow();
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test.each([1,2])('native idle host reader rejects actual style mutation in current inventory %s',async inventory=>{
+ const root=await fixture();try{
+  await api.buildNativeIdleHostVariant({root,runCommand:async(command:any)=>{if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng')await assets(root);}});
+  const p=await import('./provenance.mjs') as any,style=join(root,p.nativeIdleHostVariant.styleKey),before=await fs.readFile(style);let reads=0,mutated=false;
+  const ops={...fs,readdir:async(path:any,...args:any[])=>{const value=await (fs.readdir as any)(path,...args);if(path===join(root,'apps/threadplane/dist')&&++reads===inventory){await fs.appendFile(style,' ');expect(await fs.readFile(style)).toEqual(Buffer.concat([before,Buffer.from(' ')]));mutated=true;}return value;}};
+  const records=await Promise.all(recordPaths.map(key=>fs.readFile(join(root,key))));await expect(p.nativeIdleHostBuildEvidence(root,{ops})).rejects.toThrow('style bytes');expect(mutated).toBe(true);expect(reads).toBe(inventory);expect(await Promise.all(recordPaths.map(key=>fs.readFile(join(root,key))))).toEqual(records);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+test.each(['before','during','command'])('native idle host %s failure leaves no successful evidence',async stage=>{
+ expect(typeof api.buildNativeIdleHostVariant).toBe('function');const root=await fixture();try{
+  for(const key of recordPaths)await fs.writeFile(join(root,key),'old');
+  const style=join(root,'apps/threadplane/src/native-idle-host-css-v1.css'),original=await fs.readFile(style);let mutated=false;
+  const mutate=async()=>{await fs.appendFile(style,' ');expect(await fs.readFile(style)).toEqual(Buffer.concat([original,Buffer.from(' ')]));mutated=true;};
+  if(stage==='before')await mutate();
+  let calls=0;await expect(api.buildNativeIdleHostVariant({root,runCommand:async(command:any)=>{calls++;if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng'){if(stage==='command')throw new Error('Angular failed');await assets(root);await mutate();}}})).rejects.toThrow();
+  expect(mutated).toBe(stage!=='command');expect(calls).toBe(stage==='before'?0:5);for(const key of recordPaths)await expect(fs.access(join(root,key))).rejects.toThrow();
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
 test('cold Node-only wrapper import needs no compiled workspace dependency',async()=>{
  expect(typeof api.buildThreadplane).toBe('function');const root=await fixture();try{
   await fs.rm(join(root,'packages/contract/dist'),{recursive:true});

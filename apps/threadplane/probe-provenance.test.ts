@@ -24,6 +24,9 @@ import {tmpdir} from 'node:os';
 import crypto from 'node:crypto';
 import {syncBuiltinESMExports} from 'node:module';
 const api=await import('./probe-provenance.mjs').catch(()=>({})) as any;
+test('native idle host probe selection has a separate explicit entry and unchanged stock key declaration',()=>{
+ expect(typeof api.comparisonNativeIdleHostInstrumentationBuildEvidence).toBe('function');expect(api.probeSourceKeys).toHaveLength(31);expect(api.probeSourceKeys).toContain('apps/threadplane/build.mjs');expect(api.probeSourceKeys).toContain('apps/threadplane/provenance.mjs');
+});
 const {ComparisonOwnership}=await import('../../packages/runner/dist/comparison-ownership.js');
 function probeControls(target?:[string,string]){
  let active=true,hit=false;const revoked=new Error('probe generation revoked'),ledger:string[]=[],resources:any[]=[];

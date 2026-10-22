@@ -76,6 +76,43 @@ test('rejects stale asset/source/package inventories rather than relabeling an o
     expect(()=>api.assertBuildMatches(recorded,structuredClone(recorded))).not.toThrow();
 });
 const api = await import('./provenance.mjs').catch(() => ({})) as any;
+test('native idle host stock inventory preserves exact original membership and named variant adds only its fixed style',async()=>{
+ const helper=await fs.readFile(resolve('packages/runner/src/comparison-browser.test-helper.ts'),'utf8');
+ const product47=JSON.parse(helper.match(/"product47": (\[[\s\S]*?\n  \])/ )![1]!);
+ const source34=product47.filter((key:string)=>!probe.contractCompiledKeys.includes(key));
+ expect(await api.productSourceKeys()).toEqual(source34);
+ expect(await api.nativeIdleHostProductSourceKeys()).toEqual([...source34,api.nativeIdleHostVariant.styleKey].sort());
+ expect([...await api.productSourceKeys(),...probe.contractCompiledKeys].sort()).toEqual(product47);
+ for(const [name,actual] of [['probe31',probe.probeSourceKeys],['compiled16',probe.probeCompiledKeys]] as const)expect(actual).toEqual(JSON.parse(helper.match(new RegExp('"'+name+'": (\\[[\\s\\S]*?\\n  \\])'))![1]!));
+});
+test('native idle host named inventory entry points preserve revoked lifecycle acquisition protections',async()=>{
+ const c=productControls();c.revoke();for(const call of [()=>api.nativeIdleHostProductSourceKeys(process.cwd(),c),()=>api.snapshotNativeIdleHostProductInputs(process.cwd(),c),()=>api.assertNativeIdleHostProductInputsUnchanged(process.cwd(),{},c),()=>api.nativeIdleHostProductBuildInventory(process.cwd(),c)])await expect(call()).rejects.toBe(c.revoked);expect(c.ledger).toEqual([]);
+});
+test('native idle host inactive stock stylesheet exclusion still refuses a nonregular entry',async()=>{
+ const root=await productFixture();try{const path=join(root,api.nativeIdleHostVariant.styleKey);await fs.symlink(join(root,'apps/threadplane/src/host.ts'),path);await expect(api.productSourceKeys(root)).rejects.toThrow('Unexpected build entry');await expect(api.nativeIdleHostProductSourceKeys(root)).rejects.toThrow('Unexpected build entry');}finally{await fs.rm(root,{recursive:true,force:true});}
+});
+const idleDescriptor={schemaVersion:1,id:'threadplane-0.3.2-idle-host-css-v1',basePackage:'@threadplane/chat@0.3.2',styleKey:'apps/threadplane/src/native-idle-host-css-v1.css',styleSha256:'e19ff7e4d8deeea0813bcb0023835307f94cd85aa63075e4f15f2889b8718923'};
+function idleEnvelope(){return {kind:'native-idle-host-css-product-v1',variant:{...idleDescriptor},angularSelection:{configuration:'production',styles:['src/styles.css','src/native-idle-host-css-v1.css']},build:adapterBuildSchema.parse({packages:[{name:'@threadplane/chat',version:'0.3.2',integrity:'sha512-htsWljhDogT6fOsmZrOvC+wFDRPhiQR/rvfwTJ2dYd/H6MiwPm3twxSr+KdNbaNRnARb62kUvPaigm0VA3cuGw==',resolutionPath:'apps/threadplane/node_modules/@threadplane/chat'}],framework:{name:'Angular',version:'21.2.25'},production:true,sourceHashes:{[idleDescriptor.styleKey]:idleDescriptor.styleSha256,'apps/threadplane/build.mjs':'a'.repeat(64)},copiedSourceHashes:{},assetHashes:{'index.html':'b'.repeat(64)},settings:{optimization:true,sourceMaps:false}})};}
+test('native idle host descriptor and exact style bytes are fixed',async()=>{
+ expect(api.nativeIdleHostVariant).toEqual(idleDescriptor);expect(api.nativeIdleHostVariantLabel).toBe('Threadplane 0.3.2 + benchmark idle-host CSS v1 (modified configuration)');
+ expect(await fs.readFile(resolve(idleDescriptor.styleKey),'utf8')).toBe('bench-app chat .chat-scroll > chat-typing-indicator:empty { display: none; }\n');
+});
+test('native idle host explicit parser unwraps only canonical selected evidence',()=>{
+ expect(typeof api.parseNativeIdleHostProductRecord).toBe('function');const value=idleEnvelope(),bytes=Buffer.from(JSON.stringify(value,null,2)+'\n');expect(api.parseNativeIdleHostProductRecord(bytes,{adapterBuildSchema})).toEqual(value.build);expect(()=>api.parseProductRecord(bytes,{adapterBuildSchema})).toThrow();
+});
+test('native idle host owned reader rejects a revoked entry without acquisitions',async()=>{
+ expect(typeof api.nativeIdleHostBuildEvidence).toBe('function');const c=productControls();c.revoke();await expect(api.nativeIdleHostBuildEvidence(process.cwd(),c)).rejects.toBe(c.revoked);expect(c.ledger).toEqual([]);
+});
+test('native idle host parser rejects a well-formed integrity for a different package archive',()=>{
+ const value=idleEnvelope();value.build.packages[0].integrity='sha512-Yg==';expect(()=>api.parseNativeIdleHostProductRecord(Buffer.from(JSON.stringify(value,null,2)+'\n'),{adapterBuildSchema})).toThrow('package');
+});
+test.each(['id','descriptor-extra','selection-missing','styles-order','selection-extra','style-hash-missing','style-hash-wrong','wrapper-missing','package-version','package-integrity','package-missing','envelope-extra','stock','duplicate','whitespace'])('native idle host parser rejects %s',mode=>{
+ expect(typeof api.parseNativeIdleHostProductRecord).toBe('function');const value:any=idleEnvelope();
+ if(mode==='id')value.variant.id='stock';if(mode==='descriptor-extra')value.variant.extra=true;if(mode==='selection-missing')delete value.angularSelection;if(mode==='styles-order')value.angularSelection.styles.reverse();if(mode==='selection-extra')value.angularSelection.command='ng';
+ if(mode==='style-hash-missing')delete value.build.sourceHashes[idleDescriptor.styleKey];if(mode==='style-hash-wrong')value.build.sourceHashes[idleDescriptor.styleKey]='a'.repeat(64);if(mode==='wrapper-missing')delete value.build.sourceHashes['apps/threadplane/build.mjs'];if(mode==='package-version')value.build.packages[0].version='0.3.1';if(mode==='package-integrity')value.build.packages[0].integrity='';if(mode==='package-missing')value.build.packages=[];if(mode==='envelope-extra')value.extra=true;
+ let bytes=Buffer.from(JSON.stringify(mode==='stock'?value.build:value,null,2)+'\n');if(mode==='duplicate')bytes=Buffer.from(bytes.toString().replace('"schemaVersion": 1','"schemaVersion": 1, "schemaVersion": 1'));if(mode==='whitespace')bytes=Buffer.concat([bytes,Buffer.from(' ')]);
+ expect(()=>api.parseNativeIdleHostProductRecord(bytes,{adapterBuildSchema})).toThrow();
+});
 test('cold product declarations preserve old keys and cover all contract sources and build helpers',async()=>{
  const keys=await api.productSourceKeys();
  for(const key of ['package.json','package-lock.json','apps/threadplane/provenance.mjs','apps/threadplane/dependency-closure.mjs','packages/contract/src/fixture.ts','packages/contract/src/comparison.ts','packages/contract/src/capture-bridge.ts','packages/contract/src/index.ts','apps/threadplane/src/main.ts','apps/threadplane/src/host.ts'])expect(keys).toContain(key);

@@ -3,7 +3,25 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {dirname,resolve,join,relative} from 'node:path';
 import {collectResolvedPackages,checkedRead,checkedJSON,checkedPath,containedKey,packagePath} from './dependency-closure.mjs';
-import {commonBuildKeys,contractSourceKeys,contractCompiledKeys,snapshotFiles,hashes,assertFactsUnchanged,loadContract,workspaceRoot} from './probe-provenance.mjs';
+import {commonBuildKeys,contractSourceKeys,contractCompiledKeys,snapshotFiles,hashes,assertFactsUnchanged,assertExactKeys,loadContract,workspaceRoot} from './probe-provenance.mjs';
+export const nativeIdleHostVariant=Object.freeze({schemaVersion:1,id:'threadplane-0.3.2-idle-host-css-v1',basePackage:'@threadplane/chat@0.3.2',styleKey:'apps/threadplane/src/native-idle-host-css-v1.css',styleSha256:'e19ff7e4d8deeea0813bcb0023835307f94cd85aa63075e4f15f2889b8718923'});
+export const nativeIdleHostVariantLabel='Threadplane 0.3.2 + benchmark idle-host CSS v1 (modified configuration)';
+export const nativeIdleHostAngularSelection=Object.freeze({configuration:'production',styles:Object.freeze(['src/styles.css','src/native-idle-host-css-v1.css'])});
+const nativeIdleHostBaseIntegrity='sha512-htsWljhDogT6fOsmZrOvC+wFDRPhiQR/rvfwTJ2dYd/H6MiwPm3twxSr+KdNbaNRnARb62kUvPaigm0VA3cuGw==';
+export async function assertNativeIdleHostStyle(root,options={}){
+ const {ops=filesystem,lifecycle}=options;lifecycle?.assertActive();const read=await checkedRead(root,join(root,nativeIdleHostVariant.styleKey),ops,lifecycle);lifecycle?.assertActive();
+ if(read.byteLength!==77||read.sha256!==nativeIdleHostVariant.styleSha256)throw new Error('Native idle host style bytes differ');
+}
+export function parseNativeIdleHostProductRecord(bytes,contract){
+ const envelope=JSON.parse(bytes.toString('utf8'));assertExactKeys(envelope,['kind','variant','angularSelection','build'],'native idle host product');
+ if(envelope.kind!=='native-idle-host-css-product-v1')throw new Error('Unsupported native idle host product kind');
+ assertExactKeys(envelope.variant,Object.keys(nativeIdleHostVariant),'native idle host variant');assertBuildMatches(envelope.variant,nativeIdleHostVariant);
+ assertExactKeys(envelope.angularSelection,Object.keys(nativeIdleHostAngularSelection),'native idle host Angular selection');assertBuildMatches(envelope.angularSelection,nativeIdleHostAngularSelection);
+ const build=contract.adapterBuildSchema.parse(envelope.build),packages=build.packages.filter(p=>p.name==='@threadplane/chat');
+ if(packages.length!==1||packages[0].version!=='0.3.2'||packages[0].integrity!==nativeIdleHostBaseIntegrity||!packages[0].resolutionPath.split('/').includes('node_modules'))throw new Error('Native idle host base package identity differs');
+ if(build.sourceHashes[nativeIdleHostVariant.styleKey]!==nativeIdleHostVariant.styleSha256||!Object.hasOwn(build.sourceHashes,'apps/threadplane/build.mjs'))throw new Error('Native idle host source hashes differ');
+ if(!bytes.equals(Buffer.from(JSON.stringify({kind:envelope.kind,variant:nativeIdleHostVariant,angularSelection:nativeIdleHostAngularSelection,build},null,2)+'\n')))throw new Error('Noncanonical native idle host product record bytes');return build;
+}
 /** Optional options.lifecycle: assertActive(): void;
  * adopt({name: string, close(): Promise<void>}): Promise<void>.
  * Uses ComparisonOwnershipContext's shape without importing runner code.
@@ -22,8 +40,11 @@ export function productionSettings(configuration){
 }
 function stable(value){if(Array.isArray(value))return value.map(stable);if(value!==null&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(key=>[key,stable(value[key])]));return value;}
 export function assertBuildMatches(current,recorded){if(JSON.stringify(stable(current))!==JSON.stringify(stable(recorded)))throw new Error('Current source, dependencies or assets differ from the recorded production build; rebuild before capture');}
-export async function productSourceKeys(root=workspaceRoot,options={}){const {ops=filesystem,lifecycle}=options;root=await acquire(lifecycle,()=>ops.realpath(root));const paths=await files(root,join(root,'apps/threadplane/src'),options);lifecycle?.assertActive();return [...commonBuildKeys,...contractSourceKeys,...paths.filter(path=>!path.endsWith('.test.ts')).map(path=>containedKey(root,path))].sort();}
-export async function snapshotProductInputs(root=workspaceRoot,options={}){
+export async function productSourceKeys(root=workspaceRoot,options={}){const {ops=filesystem,lifecycle}=options;root=await acquire(lifecycle,()=>ops.realpath(root));const paths=await files(root,join(root,'apps/threadplane/src'),options);lifecycle?.assertActive();return [...commonBuildKeys,...contractSourceKeys,...paths.filter(path=>!path.endsWith('.test.ts')).map(path=>containedKey(root,path)).filter(key=>key!==nativeIdleHostVariant.styleKey)].sort();}
+export async function nativeIdleHostProductSourceKeys(root=workspaceRoot,options={}){const keys=await productSourceKeys(root,options);await assertNativeIdleHostStyle(root,options);return [...keys,nativeIdleHostVariant.styleKey].sort();}
+export async function snapshotProductInputs(root=workspaceRoot,options={}){return snapshotSelectedProductInputs(root,options,productSourceKeys);}
+export async function snapshotNativeIdleHostProductInputs(root=workspaceRoot,options={}){return snapshotSelectedProductInputs(root,options,nativeIdleHostProductSourceKeys);}
+async function snapshotSelectedProductInputs(root,options,sourceKeys){
  const {ops=filesystem,lifecycle}=options;root=await acquire(lifecycle,()=>ops.realpath(root));const app=join(root,'apps/threadplane');
  lifecycle?.assertActive();const appRequire=createRequire(join(app,'package.json'));lifecycle?.assertActive();
  const angularCore=await packagePath('@angular/core',join(app,'package.json'),ops,lifecycle);await checkedPath(root,angularCore,ops,{},lifecycle);
@@ -35,13 +56,16 @@ export async function snapshotProductInputs(root=workspaceRoot,options={}){
  const configuration=await checkedJSON(root,join(app,'angular.json'),ops,lifecycle);
  const settings=productionSettings(configuration);
  const packages=await collectResolvedPackages(root,join(app,'package.json'),ops,lifecycle);
- const facts=await snapshotFiles(root,await productSourceKeys(root,options),options);
+ const facts=await snapshotFiles(root,await sourceKeys(root,options),options);
  const metadata=await snapshotFiles(root,packages.map(p=>`${p.resolutionPath}/package.json`),options);lifecycle?.assertActive();
  return {facts,metadata,packages,settings};
 }
 export async function assertProductInputsUnchanged(root,expected,options={}){options.lifecycle?.assertActive();const current=await snapshotProductInputs(root,options);options.lifecycle?.assertActive();assertFactsUnchanged(current,expected,'Product source/config/dependencies');}
-export async function productBuildInventory(root=workspaceRoot,options={}){
- const {ops=filesystem,lifecycle}=options;root=await acquire(lifecycle,()=>ops.realpath(root));const app=join(root,'apps/threadplane'),input=await snapshotProductInputs(root,options),compiled=await snapshotFiles(root,contractCompiledKeys,options);
+export async function assertNativeIdleHostProductInputsUnchanged(root,expected,options={}){options.lifecycle?.assertActive();const current=await snapshotNativeIdleHostProductInputs(root,options);options.lifecycle?.assertActive();assertFactsUnchanged(current,expected,'Product source/config/dependencies');}
+export async function productBuildInventory(root=workspaceRoot,options={}){return selectedProductBuildInventory(root,options,snapshotProductInputs);}
+export async function nativeIdleHostProductBuildInventory(root=workspaceRoot,options={}){return selectedProductBuildInventory(root,options,snapshotNativeIdleHostProductInputs);}
+async function selectedProductBuildInventory(root,options,snapshot){
+ const {ops=filesystem,lifecycle}=options;root=await acquire(lifecycle,()=>ops.realpath(root));const app=join(root,'apps/threadplane'),input=await snapshot(root,options),compiled=await snapshotFiles(root,contractCompiledKeys,options);
  const sourceHashes={...hashes(input.facts),...hashes(compiled)};
  const assetFiles=await files(root,join(app,'dist'),options);lifecycle?.assertActive();
  if(assetFiles.some(path=>path.endsWith('.map')))throw new Error('Unexpected production source map');
@@ -53,6 +77,11 @@ export function parseProductRecord(bytes,contract){const recorded=contract.adapt
 export async function threadplaneBuildEvidence(root=workspaceRoot,options={}){
  const {ops=filesystem,lifecycle}=options;root=await acquire(lifecycle,()=>ops.realpath(root));const path=join(root,'apps/threadplane/.build-evidence.json'),original=await checkedRead(root,path,ops,lifecycle),recorded=parseProductRecord(original.bytes,await loadContract(root,options)),current=await productBuildInventory(root,options);lifecycle?.assertActive();assertBuildMatches(current,recorded);
  assertBuildMatches(await productBuildInventory(root,options),current);const again=await checkedRead(root,path,ops,lifecycle);lifecycle?.assertActive();assertFactsUnchanged({identity:again.identity,sha256:again.sha256},{identity:original.identity,sha256:original.sha256},'Product record');return recorded;
+}
+export async function nativeIdleHostBuildEvidence(root=workspaceRoot,options={}){
+ const {ops=filesystem,lifecycle}=options;root=await acquire(lifecycle,()=>ops.realpath(root));const path=join(root,'apps/threadplane/.build-evidence.json'),original=await checkedRead(root,path,ops,lifecycle),recorded=parseNativeIdleHostProductRecord(original.bytes,await loadContract(root,options));
+ await assertNativeIdleHostStyle(root,options);const current=await nativeIdleHostProductBuildInventory(root,options);lifecycle?.assertActive();assertBuildMatches(current,recorded);
+ assertBuildMatches(await nativeIdleHostProductBuildInventory(root,options),current);await assertNativeIdleHostStyle(root,options);const again=await checkedRead(root,path,ops,lifecycle);lifecycle?.assertActive();assertFactsUnchanged({identity:again.identity,sha256:again.sha256},{identity:original.identity,sha256:original.sha256},'Native idle host product record');return recorded;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  if(process.argv[2]==='--write-build-record')throw new Error('Build records are published only by the successful build.mjs sequence');
