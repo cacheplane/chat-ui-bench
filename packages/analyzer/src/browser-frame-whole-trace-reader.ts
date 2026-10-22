@@ -1,6 +1,10 @@
 import {createWholeAnnotationStudy,WHOLE_ANNOTATION_POLICY,WHOLE_ANNOTATION_AUTHORITY,finishWholeAnnotationOutput,createWholeUserTimingStudy,WHOLE_USER_TIMING_POLICY,type WholeUserTimingStudy}from'./browser-frame-ordered-state.js';
 import fs from'node:fs';import{types}from'node:util';import{createHash}from'node:crypto';
 import{resolve}from'node:path';
+import{createWholeUserTimingStudyV3,WHOLE_USER_TIMING_V3_POLICY}from'./browser-frame-ordered-state.js';
+import type{WholeAnnotationStudy,WholeUserTimingStudyV3}from'./browser-frame-ordered-state.js';
+export{isClosedStudyFailureCode}from'./browser-frame-ordered-state.js';
+export type{ClosedStudyFailureCode}from'./browser-frame-ordered-state.js';
 import{createD0StructuralStudy,D0_POLICY,D0_LIMITS,D0_AUTHORITY,encodeD0Result,type D0Result}from'./browser-frame-whole-trace.js';
 interface Reference {path:string;bytes:number;sha256:string}
 function reference(value:unknown):Reference {
@@ -62,20 +66,25 @@ export function readD0PersistedTrace(value:unknown,policy:unknown){
 }
 
 /** Opt-in whole ordered annotation diagnostic. No native clock/target admission. */
-export function readWholeAnnotationTrace(value:unknown,policy:unknown){
- return readWholeAnnotationEngine(value,policy,false);
+export type WholeAnnotationTrace=Omit<ReturnType<typeof readWholeAnnotationEngine>,'policy'|'study'>&{policy:typeof WHOLE_ANNOTATION_POLICY;study:WholeAnnotationStudy|null};
+export function readWholeAnnotationTrace(value:unknown,policy:unknown):WholeAnnotationTrace{
+ return readWholeAnnotationEngine(value,policy,false) as WholeAnnotationTrace;
 }
 export type WholeUserTimingTrace=Omit<ReturnType<typeof readWholeAnnotationTrace>,'policy'|'study'>&{policy:typeof WHOLE_USER_TIMING_POLICY;study:WholeUserTimingStudy|null};
 /** Explicit versioned selection uses the same original descriptor reader once. */
 export function readWholeUserTimingTrace(value:unknown,policy:unknown):WholeUserTimingTrace{
  return readWholeAnnotationEngine(value,policy,true) as WholeUserTimingTrace;
 }
-function readWholeAnnotationEngine(value:unknown,policy:unknown,userTiming:boolean){
- let reason:string|null=null,ref:Reference|null=null,study:ReturnType<ReturnType<typeof createWholeAnnotationStudy>['finish']>|null=null;
+export type WholeUserTimingTraceV3=Omit<WholeUserTimingTrace,'policy'|'study'>&{policy:typeof WHOLE_USER_TIMING_V3_POLICY;study:WholeUserTimingStudyV3|null};
+export function readWholeUserTimingTraceV3(value:unknown,policy:unknown):WholeUserTimingTraceV3{
+ return readWholeAnnotationEngine(value,policy,true,true) as WholeUserTimingTraceV3;
+}
+function readWholeAnnotationEngine(value:unknown,policy:unknown,userTiming:boolean,diagnosticV3=false){
+ let reason:string|null=null,ref:Reference|null=null,study:WholeAnnotationStudy|WholeUserTimingStudy|WholeUserTimingStudyV3|null=null;
  let out:ReturnType<typeof readOwnedFile>={reason:null,EOF:false,closed:false,identityMatch:false,hashMatch:false,reads:0,bytes:0,hash:null,before:null,after:null};
- const selectedPolicy=userTiming?WHOLE_USER_TIMING_POLICY:WHOLE_ANNOTATION_POLICY;
+ const selectedPolicy=diagnosticV3?WHOLE_USER_TIMING_V3_POLICY:userTiming?WHOLE_USER_TIMING_POLICY:WHOLE_ANNOTATION_POLICY;
  try{if(policy!==selectedPolicy)throw Error();ref=reference(value);}catch{reason='invalid-reference';}
- if(ref){const s=userTiming?createWholeUserTimingStudy(ref.bytes,selectedPolicy):createWholeAnnotationStudy(ref.bytes,selectedPolicy);out=readOwnedFile(ref,s);reason=out.reason;study=s.finish();}
+ if(ref){const s=diagnosticV3?createWholeUserTimingStudyV3(ref.bytes,selectedPolicy):userTiming?createWholeUserTimingStudy(ref.bytes,selectedPolicy):createWholeAnnotationStudy(ref.bytes,selectedPolicy);out=readOwnedFile(ref,s);reason=out.reason;study=s.finish();}
  const fullInputVerified=reason===null&&out.EOF&&out.closed&&out.identityMatch&&out.hashMatch;
  const complete=fullInputVerified&&study?.status==='whole-annotation-study'&&study.framingBoundaryComplete;
  if(!complete)reason??=study?.reason??'whole-annotation-unavailable';

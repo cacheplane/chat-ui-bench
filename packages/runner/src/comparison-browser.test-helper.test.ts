@@ -335,9 +335,9 @@ async function fixture() {
   const hashed = new Set([...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...Object.keys(probe.compiledHashes), ...assets,
     probe.compiler.resolutionPath + '/package.json', probe.nativeCompiler.resolutionPath + '/package.json']);
   const paddingKeys = source59.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
-  // Only the synthetic lock extremum may compact additional unlocked, named JavaScript copies.
-  const syntheticLockPaddingKeys = [...new Set([...paddingKeys, ...output138.filter(key => key.endsWith('.js') && !hashed.has(key))])].sort();
-  return {root, workspace, evidenceRoot, context, union, paddingKeys, syntheticLockPaddingKeys, syntheticLockProtectedKeys: [...hashed]};
+  // Only synthetic file/lock extrema may compact additional unlocked, named JavaScript copies.
+  const syntheticExtremumPaddingKeys = [...new Set([...paddingKeys, ...output138.filter(key => key.endsWith('.js') && !hashed.has(key))])].sort();
+  return {root, workspace, evidenceRoot, context, union, paddingKeys, syntheticExtremumPaddingKeys, syntheticExtremumProtectedKeys: [...hashed]};
 }
 const writer = () => helper.writeComparisonCiSnapshot;
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -557,8 +557,9 @@ test.each(['stat', 'read', 'write'])('falsy descriptor %s and genuine close erro
   expect(caught).toBeInstanceOf(AggregateError); expect((caught as AggregateError).errors).toEqual([false, closeError]);
   expect((caught as AggregateError).errors[0]).toBe(false); expect((caught as AggregateError).errors[1]).toBe(closeError);
 });
-for (const excess of [0, 1]) test(`end-to-end file cap exact plus ${excess} uses the largest unhashed maintained source`, {timeout:excess===0?10000:5000}, async () => {
-  const f = await fixture(), candidates = await Promise.all(f.paddingKeys.map(async key => ({key, bytes: (await stat(join(f.workspace, key))).size})));
+for (const excess of [0, 1]) test(`end-to-end file cap exact plus ${excess} uses the largest synthetic AST-identical unhashed maintained source`, {timeout:excess===0?10000:5000}, async () => {
+  const f = await fixture(); await compactSyntheticExtremumFixture(f);
+  const candidates = await Promise.all(f.paddingKeys.map(async key => ({key, bytes: (await stat(join(f.workspace, key))).size})));
   candidates.sort((a, b) => b.bytes - a.bytes || a.key.localeCompare(b.key));
   const key = candidates[0]!.key, path = join(f.workspace, key), bytes = await readFile(path);
   let unionBytes = 0; for (const member of f.union) unionBytes += (await stat(join(f.workspace, member))).size;
@@ -567,7 +568,7 @@ for (const excess of [0, 1]) test(`end-to-end file cap exact plus ${excess} uses
   if (excess) await expect(writer()(f.root, f)).rejects.toThrow('pre-read file cap');
   else {const receipt = await writer()(f.root, f), manifest = JSON.parse(await readFile(receipt!.path, 'utf8')); expect(manifest.records.find((row: {key: string}) => row.key === key).before.fact.byteLength).toBe(1024 * 1024);}
 });
-// Test-only synthetic lock-extremum text. Normal real-byte snapshots stay unchanged.
+// Test-only synthetic file/lock-extremum text. Normal real-byte snapshots stay unchanged.
 function lockFixtureParse(text:string){const parsed=parseSync('controlled.ts',text,{lang:'ts',astType:'ts'});expect(parsed.errors).toEqual([]);return parsed;}
 function lockFixtureNodes(node:unknown,visit:(n:{type:string;start:number;end:number})=>void):void{
   if(!node||typeof node!=='object'||!('type'in node))return;visit(node as {type:string;start:number;end:number});
@@ -579,9 +580,9 @@ function assertLockFixtureParity(original:string,candidate:string):void{
   const raw=(parsed:ReturnType<typeof lockFixtureParse>,text:string)=>{const literals:string[]=[];lockFixtureNodes(parsed.program,n=>{if(n.type==='Literal'||n.type==='TemplateLiteral')literals.push(text.slice(n.start,n.end));});return {literals,comments:parsed.comments.map(c=>text.slice(c.start,c.end))};};
   expect(raw(b,candidate)).toEqual(raw(a,original));expect(candidate.match(/\r\n|\r|\n/g)).toEqual(original.match(/\r\n|\r|\n/g));
 }
-async function compactSyntheticLockFixture(f:Awaited<ReturnType<typeof fixture>>){
+async function compactSyntheticExtremumFixture(f:Awaited<ReturnType<typeof fixture>>){
   const rows:{key:string;originalBytes:number;compactedBytes:number;compactedSHA256:string}[]=[];
-  for(const key of f.syntheticLockPaddingKeys){
+  for(const key of f.syntheticExtremumPaddingKeys){
     const path=join(f.workspace,key),original=await readFile(path,'utf8');expect(Buffer.byteLength(original)).toBeLessThanOrEqual(1024*1024);
     const pass=(text:string,leading:boolean)=>{const parsed=lockFixtureParse(text),mask=new Uint8Array(text.length);lockFixtureNodes(parsed.program,n=>{if(n.type==='Literal'||n.type==='TemplateLiteral')mask.fill(1,n.start,n.end);});for(const c of parsed.comments)mask.fill(1,c.start,c.end);
       let candidate='';for(let i=0;i<text.length;){if(!mask[i]&&(text[i]===' '||text[i]==='\t')){let end=i+1;while(end<text.length&&!mask[end]&&(text[end]===' '||text[end]==='\t'))end++;const remove=leading?(i===0||text[i-1]==='\n'||text[i-1]==='\r'):/[(),;]/.test(candidate.at(-1)??'')||/[(),;]/.test(text[end]??'');if(!remove)candidate+=text.slice(i,end);i=end;}else candidate+=text[i++];}return candidate;};
@@ -590,9 +591,9 @@ async function compactSyntheticLockFixture(f:Awaited<ReturnType<typeof fixture>>
   }return rows;
 }
 test('synthetic lock compaction preserves every build-bound and non-padding member',async()=>{
-  const f=await fixture(),protectedKeys=new Set(f.syntheticLockProtectedKeys);
-  const preserved=await Promise.all(f.union.filter(key=>!f.syntheticLockPaddingKeys.includes(key)||protectedKeys.has(key)).map(async key=>({key,bytes:await readFile(join(f.workspace,key))})));
-  const compacted=await compactSyntheticLockFixture(f);
+  const f=await fixture(),protectedKeys=new Set(f.syntheticExtremumProtectedKeys);
+  const preserved=await Promise.all(f.union.filter(key=>!f.syntheticExtremumPaddingKeys.includes(key)||protectedKeys.has(key)).map(async key=>({key,bytes:await readFile(join(f.workspace,key))})));
+  const compacted=await compactSyntheticExtremumFixture(f);
   expect(compacted.some(row=>row.key.endsWith('.js')&&row.compactedBytes<row.originalBytes)).toBe(true);
   for(const row of compacted)expect(protectedKeys.has(row.key)).toBe(false);
   for(const row of preserved)expect((await readFile(join(f.workspace,row.key))).equals(row.bytes)).toBe(true);
@@ -610,7 +611,7 @@ test('uncompacted current 2MiB lock exceeds the joint budget and parity mutants 
 test.each([0, 1])('synthetic AST-identical lock cap 2MiB plus %i preserves every locked identity', {timeout: 30000}, async excess => {
   const f = await fixture(), path = join(f.workspace, 'package-lock.json');
   let beforeBytes=0;for(const key of f.union)beforeBytes+=(await stat(join(f.workspace,key))).size;
-  const originalLockBytes=(await stat(path)).size,compacted=await compactSyntheticLockFixture(f),saved=compacted.reduce((n,row)=>n+row.originalBytes-row.compactedBytes,0);
+  const originalLockBytes=(await stat(path)).size,compacted=await compactSyntheticExtremumFixture(f),saved=compacted.reduce((n,row)=>n+row.originalBytes-row.compactedBytes,0);
   let afterBytes=0;for(const key of f.union)afterBytes+=(await stat(join(f.workspace,key))).size;
   expect(beforeBytes-afterBytes).toBe(saved);expect(afterBytes+2*1024*1024+excess-originalLockBytes).toBeLessThanOrEqual(8*1024*1024);
   const original = (await readFile(path, 'utf8')).trimEnd();
