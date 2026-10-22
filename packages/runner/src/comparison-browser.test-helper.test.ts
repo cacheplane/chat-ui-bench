@@ -580,16 +580,30 @@ function assertLockFixtureParity(original:string,candidate:string):void{
   const raw=(parsed:ReturnType<typeof lockFixtureParse>,text:string)=>{const literals:string[]=[];lockFixtureNodes(parsed.program,n=>{if(n.type==='Literal'||n.type==='TemplateLiteral')literals.push(text.slice(n.start,n.end));});return {literals,comments:parsed.comments.map(c=>text.slice(c.start,c.end))};};
   expect(raw(b,candidate)).toEqual(raw(a,original));expect(candidate.match(/\r\n|\r|\n/g)).toEqual(original.match(/\r\n|\r|\n/g));
 }
+function compactSyntheticExtremumText(original:string):string{
+  const pass=(text:string,leading:boolean)=>{const parsed=lockFixtureParse(text),mask=new Uint8Array(text.length);lockFixtureNodes(parsed.program,n=>{if(n.type==='Literal'||n.type==='TemplateLiteral')mask.fill(1,n.start,n.end);});for(const c of parsed.comments)mask.fill(1,c.start,c.end);
+      let candidate='';for(let i=0;i<text.length;){if(!mask[i]&&(text[i]===' '||text[i]==='\t')){let end=i+1;while(end<text.length&&!mask[end]&&(text[end]===' '||text[end]==='\t'))end++;const remove=leading?(i===0||text[i-1]==='\n'||text[i-1]==='\r'):/[(),;{}\[\]:=]/.test(candidate.at(-1)??'')||/[(),;{}\[\]:=]/.test(text[end]??'');if(!remove)candidate+=text.slice(i,end);i=end;}else candidate+=text[i++];}return candidate;};
+  const candidate=pass(pass(original,true),false);assertLockFixtureParity(original,candidate);return candidate;
+}
 async function compactSyntheticExtremumFixture(f:Awaited<ReturnType<typeof fixture>>){
   const rows:{key:string;originalBytes:number;compactedBytes:number;compactedSHA256:string}[]=[];
   for(const key of f.syntheticExtremumPaddingKeys){
     const path=join(f.workspace,key),original=await readFile(path,'utf8');expect(Buffer.byteLength(original)).toBeLessThanOrEqual(1024*1024);
-    const pass=(text:string,leading:boolean)=>{const parsed=lockFixtureParse(text),mask=new Uint8Array(text.length);lockFixtureNodes(parsed.program,n=>{if(n.type==='Literal'||n.type==='TemplateLiteral')mask.fill(1,n.start,n.end);});for(const c of parsed.comments)mask.fill(1,c.start,c.end);
-      let candidate='';for(let i=0;i<text.length;){if(!mask[i]&&(text[i]===' '||text[i]==='\t')){let end=i+1;while(end<text.length&&!mask[end]&&(text[end]===' '||text[end]==='\t'))end++;const remove=leading?(i===0||text[i-1]==='\n'||text[i-1]==='\r'):/[(),;]/.test(candidate.at(-1)??'')||/[(),;]/.test(text[end]??'');if(!remove)candidate+=text.slice(i,end);i=end;}else candidate+=text[i++];}return candidate;};
-    const candidate=pass(pass(original,true),false);assertLockFixtureParity(original,candidate);await writeFile(path,candidate);
+    const candidate=compactSyntheticExtremumText(original);await writeFile(path,candidate);
     rows.push({key,originalBytes:Buffer.byteLength(original),compactedBytes:Buffer.byteLength(candidate),compactedSHA256:sha256(Buffer.from(candidate))});
   }return rows;
 }
+test('synthetic horizontal punctuation compaction keeps raw syntax and every newline',()=>{
+  const original='  const value: { label: string; values: number[] } = { label: "a = [ b ]", values: [ 1, 2 ] };\r\n'
+    +'  const pattern = /a [=] b/g; /* keep { = } */\n'
+    +'  const template = `raw { = } ${ value.label }`; // keep [ : ]\n';
+  const candidate=compactSyntheticExtremumText(original);
+  expect(candidate).toContain('const value:{label:string;values:number[]}={label:"a = [ b ]",values:[1,2]};');
+  expect(candidate).toContain('/a [=] b/g');expect(candidate).toContain('`raw { = } ${ value.label }`');
+  expect(candidate).toContain('/* keep { = } */');expect(candidate).toContain('// keep [ : ]');
+  expect(candidate.match(/\r\n|\r|\n/g)).toEqual(original.match(/\r\n|\r|\n/g));
+  for(const mutant of [candidate.replace('"a = [ b ]"','"a=[b]"'),candidate.replace('raw { = }','raw{}'),candidate.replace('/* keep { = } */','/* keep{} */'),candidate.replace('\r\n','\n')])expect(()=>assertLockFixtureParity(original,mutant)).toThrow();
+});
 test('synthetic lock compaction preserves every build-bound and non-padding member',async()=>{
   const f=await fixture(),protectedKeys=new Set(f.syntheticExtremumProtectedKeys);
   const preserved=await Promise.all(f.union.filter(key=>!f.syntheticExtremumPaddingKeys.includes(key)||protectedKeys.has(key)).map(async key=>({key,bytes:await readFile(join(f.workspace,key))})));
