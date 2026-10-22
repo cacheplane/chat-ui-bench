@@ -44,6 +44,11 @@ and temporary `functional-build-bookends.json` independently of stock Serial
 browser evidence. The Unit job runs the Node-only authentication and authored
 visibility fault controls once.
 
+The two typing-presentation cases hold the response before assistant-start and
+explicitly scroll the pending indicator into view. They then require positive
+viewport intersection, visible dots and running animations, and reject hidden
+or transparent mutations. This setup makes no automatic-follow claim.
+
 These are functional checks, not native acquisition or performance evidence.
 FPS remains null; they establish no native-support or maintained comparison
 profile claim. A subsequent layout change requires the original Unit, Serial,
@@ -54,9 +59,9 @@ retains its original five gates.
 The test-only `functional-build.mjs`, `functional-build.node.mjs`,
 `functional-fixture.ts`, and
 `vitest.threadplane.native-idle-host.browser.config.ts` stay outside runtime
-copy rosters and compiler inputs. This README remains tracked and reviewed;
-its unused runtime-copy role is replaced by the variant CSS under the separate
-helper proof.
+copy rosters and compiler inputs. This README remains tracked, reviewed and in
+the runtime-copy roster. The variant CSS replaces only the unserved build
+statistics file in that roster under the separate helper proof.
 
 ## Owned preparation and acquisition
 
