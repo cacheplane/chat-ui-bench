@@ -1,3 +1,4 @@
+const envelopeError='invalid-envelope',policyError='unsupported-policy',capacityError='result-capacity';
 import {copyWholeAnnotationChunk} from './browser-frame-whole-trace.js';
 import { createHash } from 'node:crypto';
 import {types} from 'node:util';
@@ -15,7 +16,7 @@ const LABELS = Object.freeze({ normalizationCapability: 'ordered-manual-name-sta
 export class ProfileError extends Error {
   constructor(readonly code: string, readonly packetIndex?: number, readonly component?: string, readonly causeCode?: string) { super(code); }
 }
-interface Sequence { sequenceIndex: number; sequenceId: string; machineId?: string; valid: boolean; intervalVersion: number; defaultsVersionIndex: number | null; names:Map<string,number>;categories:Map<string,number>;annotationNames?:Map<string,number> }
+interface Sequence extends SequenceFact { defaultsVersionIndex: number | null; names:Map<string,number>;categories:Map<string,number>;annotationNames?:Map<string,number> }
 interface Location { packetIndex: number; scope: string; fieldNumber: number; wireType: number; start: number; valueStart: number; end: number }
 interface DefaultFields { timestampClockId?: string; trackEventDefaultsPresent?: true; trackUuid?: string }
 interface DefaultVersion { versionIndex: number; sequenceIndex: number; intervalVersion: number; packetIndex: number; location: Location; fields: DefaultFields }
@@ -107,20 +108,20 @@ function freezeOwned<T>(value: T): T {
   return value;
 }
 function preflight(input: unknown): { domain: string; packets: Uint8Array[] } {
-  if (input === null || typeof input !== 'object' || ![null,Object.prototype].includes(Object.getPrototypeOf(input))) throw new ProfileError('invalid-envelope');
+  if (input === null || typeof input !== 'object' || ![null,Object.prototype].includes(Object.getPrototypeOf(input))) throw new ProfileError(envelopeError);
   const fields = Object.getOwnPropertyDescriptors(input);
-  if (Reflect.ownKeys(fields).length !== 2 || !fields.domain || !fields.packets || !Object.hasOwn(fields.domain,'value') || !Object.hasOwn(fields.packets,'value')) throw new ProfileError('invalid-envelope');
+  if (Reflect.ownKeys(fields).length !== 2 || !fields.domain || !fields.packets || !Object.hasOwn(fields.domain,'value') || !Object.hasOwn(fields.packets,'value')) throw new ProfileError(envelopeError);
   const domain: unknown = fields.domain.value; const source: unknown = fields.packets.value;
-  if (typeof domain !== 'string' || !/^[\x20-\x7e]{1,128}$/.test(domain) || !Array.isArray(source) || Object.getPrototypeOf(source) !== Array.prototype) throw new ProfileError('invalid-envelope');
+  if (typeof domain !== 'string' || !/^[\x20-\x7e]{1,128}$/.test(domain) || !Array.isArray(source) || Object.getPrototypeOf(source) !== Array.prototype) throw new ProfileError(envelopeError);
   const length: unknown = Object.getOwnPropertyDescriptor(source,'length')?.value;
-  if (typeof length !== 'number' || !Number.isInteger(length) || length < 0) throw new ProfileError('invalid-envelope');
+  if (typeof length !== 'number' || !Number.isInteger(length) || length < 0) throw new ProfileError(envelopeError);
   if (length > 1024) throw new ProfileError('packet-capacity');
   const entries = Object.getOwnPropertyDescriptors(source);
-  if (Reflect.ownKeys(entries).length !== length + 1) throw new ProfileError('invalid-envelope');
+  if (Reflect.ownKeys(entries).length !== length + 1) throw new ProfileError(envelopeError);
   const packets: Uint8Array[] = []; let bytes = 0;
   for (let index=0;index<length;index++) {
     const entry = entries[String(index)];
-    if (!entry || !Object.hasOwn(entry,'value')) throw new ProfileError('invalid-envelope');
+    if (!entry || !Object.hasOwn(entry,'value')) throw new ProfileError(envelopeError);
     let owned: Uint8Array;
     try { owned = copyBody(entry.value); }
     catch (error) { throw new ProfileError(error instanceof WireError && ['unsupported-byte-view','unavailable-byte-storage','byte-capacity'].includes(error.code) ? error.code : 'invalid-ordered-state-input',index); }
@@ -131,18 +132,18 @@ function preflight(input: unknown): { domain: string; packets: Uint8Array[] } {
 }
 /** New API only: reject every Proxy layer before reflecting or copying it. */
 function annotationPreflight(input:unknown):{domain:string;packets:Uint8Array[]}{
- if(input===null||typeof input!=='object'||types.isProxy(input))throw new ProfileError('invalid-envelope');
- if(![null,Object.prototype].includes(Object.getPrototypeOf(input)))throw new ProfileError('invalid-envelope');
+ if(input===null||typeof input!=='object'||types.isProxy(input))throw new ProfileError(envelopeError);
+ if(![null,Object.prototype].includes(Object.getPrototypeOf(input)))throw new ProfileError(envelopeError);
  const fields=Object.getOwnPropertyDescriptors(input),field=fields.packets;
- if(!field||!Object.hasOwn(field,'value'))throw new ProfileError('invalid-envelope');
+ if(!field||!Object.hasOwn(field,'value'))throw new ProfileError(envelopeError);
  const array:unknown=field.value;
- if(array===null||typeof array!=='object'||types.isProxy(array)||!Array.isArray(array)||Object.getPrototypeOf(array)!==Array.prototype)throw new ProfileError('invalid-envelope');
+ if(array===null||typeof array!=='object'||types.isProxy(array)||!Array.isArray(array)||Object.getPrototypeOf(array)!==Array.prototype)throw new ProfileError(envelopeError);
  const length=Object.getOwnPropertyDescriptor(array,'length')?.value;
- if(typeof length!=='number'||!Number.isInteger(length)||length<0)throw new ProfileError('invalid-envelope');
+ if(typeof length!=='number'||!Number.isInteger(length)||length<0)throw new ProfileError(envelopeError);
  if(length>1024)throw new ProfileError('packet-capacity');
  const entries=Object.getOwnPropertyDescriptors(array);
  for(let i=0;i<length;i++){
-  const entry=entries[String(i)];if(!entry||!Object.hasOwn(entry,'value'))throw new ProfileError('invalid-envelope');
+  const entry=entries[String(i)];if(!entry||!Object.hasOwn(entry,'value'))throw new ProfileError(envelopeError);
   if(types.isProxy(entry.value))throw new ProfileError('unsupported-byte-view',i);
  }
  return preflight(input);
@@ -174,9 +175,10 @@ function createOrderedReducer(domain:string,bodies:BodyFact[],budget:Budget,v2:b
     const context=(packetIndex:number,fields:PacketFields,sequence?:Sequence):EvidenceContext=>({packetIndex,bodySha256:whole?.bodySHA256??bodies[packetIndex]!.sha256,machineContext:machine(fields),sequenceContext:sequence===undefined?{status:'absent'}:{status:'present',sequenceId:sequence.sequenceId,sequenceIndex:sequence.sequenceIndex,intervalVersion:sequence.intervalVersion}});
     function observe(packetIndex:number,fragment:Exclude<ReturnType<typeof decodeBrowserFramePacket>,{status:'unavailable'}>,sequence?:Sequence):void {
       // Fragment type is inferred from the packet decoder; all rows below are owned.
-      const fields=fragment.fields,ctx=context(packetIndex,fields,sequence),flags=BigInt(fields.sequenceFlags??'0');
-      const loss:LossObservation={...ctx,resetObserved:fields.incrementalStateCleared===true||(flags&1n)!==0n,dropObserved:fields.previousPacketDropped!==undefined&&fields.previousPacketDropped!=='0',...(fields.previousPacketDropped===undefined?{}:{previousPacketDropped:fields.previousPacketDropped}),historyCompleteness:'unestablished'};
-      budget.repeatedWork(1,packetIndex);budget.output(loss,packetIndex);if(whole){whole.counters.resets+=Number(loss.resetObserved);whole.counters.losses+=Number(!loss.resetObserved&&loss.dropObserved);}else lossObservations.push(loss);
+      const fields=fragment.fields,ctx=context(packetIndex,fields,sequence),flags=BigInt(fields.sequenceFlags??'0'),resetObserved=fields.incrementalStateCleared===true||(flags&1n)!==0n,dropObserved=fields.previousPacketDropped!==undefined&&fields.previousPacketDropped!=='0';
+      budget.repeatedWork(1,packetIndex);
+      if(whole){whole.counters.resets+=Number(resetObserved);whole.counters.losses+=Number(!resetObserved&&dropObserved);}
+      else {const loss:LossObservation={...ctx,resetObserved,dropObserved,...(fields.previousPacketDropped===undefined?{}:{previousPacketDropped:fields.previousPacketDropped}),historyCompleteness:'unestablished'};budget.output(loss,packetIndex);lossObservations.push(loss);}
       for(const at of fragment.opaquePayloads){
         if(at.fieldNumber!==60&&at.fieldNumber!==6)continue;
         const location={packetIndex,...at};
@@ -248,6 +250,7 @@ function createOrderedReducer(domain:string,bodies:BodyFact[],budget:Budget,v2:b
       if (fields.sequenceId === '0') throw new ProfileError('zero-sequence-id',packetIndex);
       const key = `${fields.machineId === undefined ? 'absent' : 'present:'+fields.machineId}:${fields.sequenceId}`;
       let sequence = byKey.get(key);
+      const observed=sequence!==undefined;
       if (!sequence) {
         if (sequences.length >= 64) throw new ProfileError('sequence-capacity',packetIndex);
         if(whole)whole.budget.persist(key+fields.sequenceId+(fields.machineId??''),packetIndex);
@@ -264,6 +267,12 @@ function createOrderedReducer(domain:string,bodies:BodyFact[],budget:Budget,v2:b
       } else if (fields.previousPacketDropped !== undefined && fields.previousPacketDropped !== '0') {
         stateEffect='loss';sequence.intervalVersion++;sequence.valid=false;
       }
+      if(whole?.sequenceStart){
+        const ledger=whole.sequenceStart;
+        budget.repeatedWork(1,packetIndex);
+        if(fields.firstPacketOnSequence===true&&observed){ledger.contradictions++;throw new ProfileError('invalid-whole-annotation-input',packetIndex);}
+        if(stateEffect==='loss'){ledger.raw++;if(fields.firstPacketOnSequence===true&&fields.previousPacketDropped==='1')ledger.explained++;else ledger.unexplained++;}
+      }
       if(whole){whole.transition.sequenceIndex=sequence.sequenceIndex;whole.transition.intervalVersion=sequence.intervalVersion;whole.transition.stateEffect=stateEffect==='none'?'N':stateEffect==='reset'?'R':'L';}
       if(v2)observe(packetIndex,fragment,sequence);
       for(const at of fragment.skippedFields)opaque({packetIndex,...at});
@@ -275,7 +284,7 @@ function createOrderedReducer(domain:string,bodies:BodyFact[],budget:Budget,v2:b
         budget.fieldsVisited(decoded.occurrences.length,packetIndex);
         const child=decoded.fields.trackEventDefaults;
         budget.repeatedWork((child?.counterTrackUuids?.length??0)+(child?.doubleCounterTrackUuids?.length??0),packetIndex);
-        if(child?.counterTrackUuids!==undefined||child?.doubleCounterTrackUuids!==undefined){if(whole?.userTiming!==2)throw new ProfileError('unsupported-counter-defaults',packetIndex);}
+        if(child?.counterTrackUuids!==undefined||child?.doubleCounterTrackUuids!==undefined){if(whole?.userTiming!==2&&whole?.userTiming!==3)throw new ProfileError('unsupported-counter-defaults',packetIndex);}
         const value:DefaultFields={...(decoded.fields.timestampClockId===undefined?{}:{timestampClockId:decoded.fields.timestampClockId}),...(child===undefined?{}:{trackEventDefaultsPresent:true as const,...(child.trackUuid===undefined?{}:{trackUuid:child.trackUuid})})};
         if(whole){if(defaultsVersions.length>=1024)throw new ProfileError('defaults-capacity',packetIndex);if(child?.counterTrackUuids!==undefined||child?.doubleCounterTrackUuids!==undefined){budget.repeatedWork(1,packetIndex);whole.note('counter-defaults',[child.counterTrackUuids!==undefined,child.counterTrackUuids?.length??0,child.doubleCounterTrackUuids!==undefined,child.doubleCounterTrackUuids?.length??0]);}whole.budget.persist((value.timestampClockId??'')+(value.trackUuid??''),packetIndex);whole.counters.defaultsVersions++;whole.note('defaults',[value.timestampClockId??null,value.trackUuid??null,value.trackEventDefaultsPresent??false]);}
         sequence.defaultsVersionIndex=defaultsVersions.length;
@@ -389,7 +398,7 @@ function createOrderedReducer(domain:string,bodies:BodyFact[],budget:Budget,v2:b
 
 function project(input:unknown,policy:unknown,v2:boolean,slice?:{frames:readonly OwnedSlicePacket[];budget:Budget},annotations=false):OrderedStateProjection|OrderedEvidenceProjection|OrderedStateUnavailable|RestrictedOrderedBuild|OrderedAnnotationProjection {
   try {
-    if (policy !== (annotations?ORDERED_ANNOTATION_POLICY:v2?ORDERED_STATE_V2_POLICY:ORDERED_STATE_POLICY)) throw new ProfileError('unsupported-policy');
+    if (policy !== (annotations?ORDERED_ANNOTATION_POLICY:v2?ORDERED_STATE_V2_POLICY:ORDERED_STATE_POLICY)) throw new ProfileError(policyError);
     const own = slice===undefined?(annotations?annotationPreflight(input):preflight(input)):{domain:'whole-supplied-restricted-trace-group-v1',packets:slice.frames.map(f=>f.packet.bodyBytes)};
     const budget=slice?.budget??new Budget(annotations?'final-owned':'eager');
     budget.output({status:'projected_ordered_manual_state',domain:own.domain,source:PACKET_SOURCE,bodies:[],sequences:[],defaultsVersions:[],internDefinitions:[],packets:[],events:[],opaqueLocations:[],...LABELS});
@@ -440,6 +449,7 @@ export const WHOLE_USER_TIMING_POLICY='pinned-whole-trace-user-timing-marks-diag
 export const WHOLE_USER_TIMING_V3_POLICY='pinned-whole-trace-user-timing-marks-diagnostic-v3';
 export const WHOLE_USER_TIMING_V4_POLICY='pinned-whole-trace-user-timing-marks-diagnostic-v4';
 export const WHOLE_USER_TIMING_V5_POLICY='pinned-whole-trace-user-timing-marks-diagnostic-v5';
+export const WHOLE_USER_TIMING_V6_POLICY='pinned-whole-trace-user-timing-marks-diagnostic-v6';
 export interface WholeAnnotationCandidate {
  packetIndex:number;sequenceIndex:number;intervalVersion:number;eventStart:number;eventValueStart:number;eventEnd:number;bodySHA256:string;
  kind:'literal_string'|'withheld';value:string|null;reason:string|null;annotationIndex:number|null;nameSource:'literal'|'intern'|'unresolved';definitionIndex:number|null;
@@ -451,11 +461,14 @@ export type WholeUserTimingCandidate=Omit<WholeAnnotationCandidate,'kind'|'value
  {representation:'withheld';kind:'withheld';value:null;reason:string;annotationIndex:null});
 export interface WholeAnnotationDiagnostic {code:string;packetIndex:number|null;component:string|null}
 export interface WholeAnnotationDiagnosticV3 extends WholeAnnotationDiagnostic {cause:ClosedStudyFailureCode|'unavailable-code'|null}
-export type WholeAnnotationStudy=Omit<ReturnType<ReturnType<typeof createWholeAnnotationEngine>['finish']>,'policy'|'diagnostics'>&{policy:typeof WHOLE_ANNOTATION_POLICY;diagnostics:WholeAnnotationDiagnostic[]};
+type StudyPort<T>=Readonly<{feed(input:unknown):void;finish():T}>;
+export type WholeAnnotationStudy=Omit<ReturnType<ReturnType<typeof createWholeAnnotationEngine>['finish']>,'policy'|'diagnostics'|'sequenceStart'>&{policy:typeof WHOLE_ANNOTATION_POLICY;diagnostics:WholeAnnotationDiagnostic[]};
 export type WholeUserTimingStudy=Omit<WholeAnnotationStudy,'policy'|'candidates'>&{policy:typeof WHOLE_USER_TIMING_POLICY;candidates:WholeUserTimingCandidate[]};
 export type WholeUserTimingStudyV3=Omit<WholeUserTimingStudy,'policy'|'diagnostics'>&{policy:typeof WHOLE_USER_TIMING_V3_POLICY;diagnostics:WholeAnnotationDiagnosticV3[]};
-export type WholeUserTimingStudyV4=Omit<WholeUserTimingStudyV3,'policy'>&{policy:typeof WHOLE_USER_TIMING_V4_POLICY};
-export type WholeUserTimingStudyV5=Omit<WholeUserTimingStudyV4,'policy'>&{policy:typeof WHOLE_USER_TIMING_V5_POLICY};
+type Policy<T,P>=Omit<T,'policy'>&{policy:P};
+export type WholeUserTimingStudyV4=Policy<WholeUserTimingStudyV3,typeof WHOLE_USER_TIMING_V4_POLICY>;
+export type WholeUserTimingStudyV5=Policy<WholeUserTimingStudyV4,typeof WHOLE_USER_TIMING_V5_POLICY>;
+export type WholeUserTimingStudyV6=Policy<WholeUserTimingStudyV5,typeof WHOLE_USER_TIMING_V6_POLICY>&{sequenceStart:SequenceStart};
 /** Length checks bound fixed-name comparisons independently of arbitrary names. */
 function userTimingMark(event:AnnotationEventFragment,sequence:Sequence,resolved:ReturnType<typeof resolveAnnotations>,final:{outcome:string;definitions:readonly {value:string}[]}):{representation:WholeUserTimingCandidate['representation'];mark:{status:'absent'}|{status:'withheld';reason:string}|{status:'literal_string';value:string;annotationIndex:number|null};source?:'literal'|'intern';definitionIndex?:number}{
  const absent={representation:'withheld' as const,mark:{status:'absent' as const}},refuse=(reason:string)=>({representation:'withheld' as const,mark:{status:'withheld' as const,reason}}),e=event.fields;
@@ -490,42 +503,47 @@ class WholeStudyBudget extends Budget {
  persist(v:string,i:number){const n=Buffer.byteLength(v);if(n>262144-this.usage.persistentUTF8)throw new ProfileError('persistent-string-capacity',i);this.usage.persistentUTF8+=n;}
 }
 // Private same-arity selector: 2 is V5 metadata-only UserTiming; booleans preserve older profiles.
-type UserTimingMode=boolean|2;
-interface WholeMode {userTiming:UserTimingMode;semantic:ReturnType<typeof createHash>;note(label:string,fields:readonly(string|number|boolean|null)[]):void;transition:{sequenceIndex:number|null;intervalVersion:number|null;defaultsVersionIndex:number|null;stateEffect:string;eventOutcome:string;newDefinitions:number;repeatedDefinitions:number};bodySHA256:string;budget:WholeStudyBudget;counters:ReturnType<typeof wholeCounters>;event(i:number,s:Sequence,f:PacketFields,at:Location,e:AnnotationEventFragment,r:ReturnType<typeof resolveAnnotations>,track:Selection,clock:Selection,final?:{outcome:string;definitions:readonly {value:string}[]}):void}
-const WHOLE_REFUSALS=new Set(["unsupported-packet-payload-field-50","unsupported-packet-payload-field-133","unsupported-packet-payload-field-107","unsupported-packet-payload-field-124","unsupported-packet-payload-field-125","annotation-wrong-wire-type","byte-capacity","candidate-capacity","candidate-string-capacity","chunk-capacity","clock-child-capacity","defaults-capacity","definition-capacity","disclosure-capacity","duplicate-annotation-name-oneof","duplicate-annotation-proto-oneof","duplicate-annotation-value-oneof","duplicate-clock-id","duplicate-data-oneof","duplicate-intern-iid","duplicate-name-oneof","duplicate-selected-field","field-capacity","fragment-unavailable","frame-capacity","framer-closed","framer-reentry","input-byte-capacity","input-length","int32-overflow","intern-conflict","intern-entry-capacity","intern-update-capacity","invalid-annotation-iid","invalid-byte-window","invalid-envelope","invalid-event-iid","invalid-field-number","invalid-framer-profile","invalid-intern-iid","invalid-internal-slice-mode","invalid-output-mode","invalid-utf8","invalid-whole-annotation-input","live-intern-entry-capacity","live-intern-string-capacity","manifest-capacity","member-capacity","missing-intern-definition","missing-intern-iid","missing-intern-name","missing-sequence-id","non-profile-bool","opaque-location-capacity","out-of-bounds-length","output-already-finalized","output-byte-capacity","output-node-capacity","output-string-capacity","packet-body-capacity","packet-capacity","persistent-string-capacity","read-capacity","reference-capacity","repeated-work-capacity","result-capacity","result-shape","selected-field-wrong-wire-type","sequence-capacity","stream-closed","stream-reentry","string-capacity","string-total-capacity","transition-capacity","truncated-fixed-field","truncated-varint","uint32-overflow","uint64-varint-overflow","unavailable-byte-storage","unexpected-body-end","unknown-selected-enum","unsupported-byte-view","unsupported-counter-defaults","unsupported-legacy-event","unsupported-packet-payload","unsupported-payload-kind","unsupported-policy","unsupported-sequence-flags","unsupported-state-body-kind","unsupported-trace-root-field","unsupported-wire-type","zero-sequence-id"]as const);
+type UserTimingMode=boolean|2|3;
+type SequenceStart={raw:number;explained:number;unexplained:number;contradictions:number};
+interface WholeMode {sequenceStart?:SequenceStart;userTiming:UserTimingMode;semantic:ReturnType<typeof createHash>;note(label:string,fields:readonly(string|number|boolean|null)[]):void;transition:{sequenceIndex:number|null;intervalVersion:number|null;defaultsVersionIndex:number|null;stateEffect:string;eventOutcome:string;newDefinitions:number;repeatedDefinitions:number};bodySHA256:string;budget:WholeStudyBudget;counters:ReturnType<typeof wholeCounters>;event(i:number,s:Sequence,f:PacketFields,at:Location,e:AnnotationEventFragment,r:ReturnType<typeof resolveAnnotations>,track:Selection,clock:Selection,final?:{outcome:string;definitions:readonly {value:string}[]}):void}
+const WHOLE_REFUSALS=new Set(["unsupported-packet-payload-field-50","unsupported-packet-payload-field-133","unsupported-packet-payload-field-107","unsupported-packet-payload-field-124","unsupported-packet-payload-field-125","annotation-wrong-wire-type","byte-capacity","candidate-capacity","candidate-string-capacity","chunk-capacity","clock-child-capacity","defaults-capacity","definition-capacity","disclosure-capacity","duplicate-annotation-name-oneof","duplicate-annotation-proto-oneof","duplicate-annotation-value-oneof","duplicate-clock-id","duplicate-data-oneof","duplicate-intern-iid","duplicate-name-oneof","duplicate-selected-field","field-capacity","fragment-unavailable","frame-capacity","framer-closed","framer-reentry","input-byte-capacity","input-length","int32-overflow","intern-conflict","intern-entry-capacity","intern-update-capacity","invalid-annotation-iid","invalid-byte-window",envelopeError,"invalid-event-iid","invalid-field-number","invalid-framer-profile","invalid-intern-iid","invalid-internal-slice-mode","invalid-output-mode","invalid-utf8","invalid-whole-annotation-input","live-intern-entry-capacity","live-intern-string-capacity","manifest-capacity","member-capacity","missing-intern-definition","missing-intern-iid","missing-intern-name","missing-sequence-id","non-profile-bool","opaque-location-capacity","out-of-bounds-length","output-already-finalized","output-byte-capacity","output-node-capacity","output-string-capacity","packet-body-capacity","packet-capacity","persistent-string-capacity","read-capacity","reference-capacity","repeated-work-capacity",capacityError,"result-shape","selected-field-wrong-wire-type","sequence-capacity","stream-closed","stream-reentry","string-capacity","string-total-capacity","transition-capacity","truncated-fixed-field","truncated-varint","uint32-overflow","uint64-varint-overflow","unavailable-byte-storage","unexpected-body-end","unknown-selected-enum","unsupported-byte-view","unsupported-counter-defaults","unsupported-legacy-event","unsupported-packet-payload","unsupported-payload-kind",policyError,"unsupported-sequence-flags","unsupported-state-body-kind","unsupported-trace-root-field","unsupported-wire-type","zero-sequence-id"]as const);
 export const WHOLE_ANNOTATION_AUTHORITY=Object.freeze({annotations:'diagnostic-only',orderedState:'diagnostic-only',clock:'not_evaluated',marks:'not_evaluated',targetLifetime:'unestablished',population:'not_evaluated',metric:'not_evaluated',captureCompleteness:'unestablished',runtimeQualification:'unestablished',evaluationEligibility:false,nativeGO:false,nativeSupported:false,performance:false,scoringEligibility:false,rankingEligibility:false,FPS:'unavailable'}as const);
 /** Fixed whole-profile serialization admission, including every escaped key/value. */
 function admitWholeOutput(value:unknown):void{
  const active=new Set<object>();
  let nodes=0,objects=0,utf8=0,bytes=1;
- function string(s:string){if(s.length>65536)throw new ProfileError('result-capacity');utf8+=Buffer.byteLength(s);if(utf8>65536)throw new ProfileError('result-capacity');bytes+=2;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);if(c<32)bytes+=c===8||c===9||c===10||c===12||c===13?2:6;else if(c===34||c===92)bytes+=2;else if(c<128)bytes++;else if(c<2048)bytes+=2;else if(c>=55296&&c<=56319&&i+1<s.length&&s.charCodeAt(i+1)>=56320&&s.charCodeAt(i+1)<=57343){bytes+=4;i++;}else bytes+=c>=55296&&c<=57343?6:3;if(bytes>262144)throw new ProfileError('result-capacity');}}
- function visit(v:unknown,depth:number,rootReader=false,observedReaderBytes=false){if(++nodes>32768||depth>16)throw new ProfileError('result-capacity');if(v===null){bytes+=4;return;}if(typeof v==='boolean'){bytes+=v?4:5;return;}if(typeof v==='number'){if(!Number.isSafeInteger(v)||v<0||v>(observedReaderBytes?33554433:33554432))throw new ProfileError('result-shape');bytes+=String(v).length;return;}if(typeof v==='string'){string(v);return;}if(typeof v!=='object'||types.isProxy(v)||active.has(v)||++objects>4096)throw new ProfileError('result-shape');const array=Array.isArray(v);if(Object.getPrototypeOf(v)!==(array?Array.prototype:Object.prototype))throw new ProfileError('result-shape');active.add(v);const keys=Object.keys(v);if(keys.length>32768)throw new ProfileError('result-capacity');if(array){const n=Object.getOwnPropertyDescriptor(v,'length')?.value;if(!Number.isInteger(n)||n!==keys.length||!keys.every((key,index)=>key===String(index)))throw new ProfileError('result-shape');}if(Reflect.ownKeys(v).length!==keys.length+(array?1:0))throw new ProfileError('result-shape');bytes+=2+Math.max(0,keys.length-1);for(const key of keys){if(!array){if(key.length>64)throw new ProfileError('result-shape');string(key);bytes++;}const d=Object.getOwnPropertyDescriptor(v,key);if(!d||!Object.hasOwn(d,'value'))throw new ProfileError('result-shape');visit(d.value,depth+1,depth===0&&key==='reader',rootReader&&key==='bytes');}active.delete(v);}
- visit(value,0);if(bytes>262144)throw new ProfileError('result-capacity');
+ function string(s:string){if(s.length>65536)throw new ProfileError(capacityError);utf8+=Buffer.byteLength(s);if(utf8>65536)throw new ProfileError(capacityError);bytes+=2;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);if(c<32)bytes+=c===8||c===9||c===10||c===12||c===13?2:6;else if(c===34||c===92)bytes+=2;else if(c<128)bytes++;else if(c<2048)bytes+=2;else if(c>=55296&&c<=56319&&i+1<s.length&&s.charCodeAt(i+1)>=56320&&s.charCodeAt(i+1)<=57343){bytes+=4;i++;}else bytes+=c>=55296&&c<=57343?6:3;if(bytes>262144)throw new ProfileError(capacityError);}}
+ function visit(v:unknown,depth:number,rootReader=false,observedReaderBytes=false){if(++nodes>32768||depth>16)throw new ProfileError(capacityError);if(v===null){bytes+=4;return;}if(typeof v==='boolean'){bytes+=v?4:5;return;}if(typeof v==='number'){if(!Number.isSafeInteger(v)||v<0||v>(observedReaderBytes?33554433:33554432))throw new ProfileError('result-shape');bytes+=String(v).length;return;}if(typeof v==='string'){string(v);return;}if(typeof v!=='object'||types.isProxy(v)||active.has(v)||++objects>4096)throw new ProfileError('result-shape');const array=Array.isArray(v);if(Object.getPrototypeOf(v)!==(array?Array.prototype:Object.prototype))throw new ProfileError('result-shape');active.add(v);const keys=Object.keys(v);if(keys.length>32768)throw new ProfileError(capacityError);if(array){const n=Object.getOwnPropertyDescriptor(v,'length')?.value;if(!Number.isInteger(n)||n!==keys.length||!keys.every((key,index)=>key===String(index)))throw new ProfileError('result-shape');}if(Reflect.ownKeys(v).length!==keys.length+(array?1:0))throw new ProfileError('result-shape');bytes+=2+Math.max(0,keys.length-1);for(const key of keys){if(!array){if(key.length>64)throw new ProfileError('result-shape');string(key);bytes++;}const d=Object.getOwnPropertyDescriptor(v,key);if(!d||!Object.hasOwn(d,'value'))throw new ProfileError('result-shape');visit(d.value,depth+1,depth===0&&key==='reader',rootReader&&key==='bytes');}active.delete(v);}
+ visit(value,0);if(bytes>262144)throw new ProfileError(capacityError);
 }
 /** Whole-input synthetic diagnostic only. Physical evidence is unavailable here. */
-export function createWholeAnnotationStudy(expectedBytes:number,policy:unknown):Readonly<{feed(input:unknown):void;finish():WholeAnnotationStudy}>{
- if(policy!==WHOLE_ANNOTATION_POLICY)throw new WireError('unsupported-policy');
- return createWholeAnnotationEngine(expectedBytes,false) as Readonly<{feed(input:unknown):void;finish():WholeAnnotationStudy}>;
+export function createWholeAnnotationStudy(expectedBytes:number,policy:unknown) {
+ if(policy!==WHOLE_ANNOTATION_POLICY)throw new WireError(policyError);
+ return createWholeAnnotationEngine(expectedBytes,false) as StudyPort<WholeAnnotationStudy>;
 }
 /** Explicit source-shape inventory; no producer, clock or target authenticity. */
-export function createWholeUserTimingStudy(expectedBytes:number,policy:unknown):Readonly<{feed(input:unknown):void;finish():WholeUserTimingStudy}>{
- if(policy!==WHOLE_USER_TIMING_POLICY)throw new WireError('unsupported-policy');
- return createWholeAnnotationEngine(expectedBytes,true) as Readonly<{feed(input:unknown):void;finish():WholeUserTimingStudy}>;
+export function createWholeUserTimingStudy(expectedBytes:number,policy:unknown) {
+ if(policy!==WHOLE_USER_TIMING_POLICY)throw new WireError(policyError);
+ return createWholeAnnotationEngine(expectedBytes,true) as StudyPort<WholeUserTimingStudy>;
 }
 /** V3 alone retains a bounded first cause from the original semantic catch. */
-export function createWholeUserTimingStudyV3(expectedBytes:number,policy:unknown):Readonly<{feed(input:unknown):void;finish():WholeUserTimingStudyV3}>{
- if(policy!==WHOLE_USER_TIMING_V3_POLICY)throw new WireError('unsupported-policy');
- return createWholeAnnotationEngine(expectedBytes,true,true) as Readonly<{feed(input:unknown):void;finish():WholeUserTimingStudyV3}>;
+export function createWholeUserTimingStudyV3(expectedBytes:number,policy:unknown) {
+ if(policy!==WHOLE_USER_TIMING_V3_POLICY)throw new WireError(policyError);
+ return createWholeAnnotationEngine(expectedBytes,true,true) as StudyPort<WholeUserTimingStudyV3>;
 }
 /** Fixed single-provenance subset; all physical and semantic authority remains diagnostic. */
-export function createWholeUserTimingStudyV4(expectedBytes:number,policy:unknown):Readonly<{feed(input:unknown):void;finish():WholeUserTimingStudyV4}>{
- if(policy!==WHOLE_USER_TIMING_V4_POLICY)throw new WireError('unsupported-policy');
- return createWholeAnnotationEngine(expectedBytes,true,true,true) as Readonly<{feed(input:unknown):void;finish():WholeUserTimingStudyV4}>;
+export function createWholeUserTimingStudyV4(expectedBytes:number,policy:unknown) {
+ if(policy!==WHOLE_USER_TIMING_V4_POLICY)throw new WireError(policyError);
+ return createWholeAnnotationEngine(expectedBytes,true,true,true) as StudyPort<WholeUserTimingStudyV4>;
 }
 /** V5 validates ephemeral counter-default metadata; no counter values or state are interpreted. */
-export function createWholeUserTimingStudyV5(expectedBytes:number,policy:unknown):Readonly<{feed(input:unknown):void;finish():WholeUserTimingStudyV5}>{
- if(policy!==WHOLE_USER_TIMING_V5_POLICY)throw new WireError('unsupported-policy');
- return createWholeAnnotationEngine(expectedBytes,2,true,true) as Readonly<{feed(input:unknown):void;finish():WholeUserTimingStudyV5}>;
+export function createWholeUserTimingStudyV5(expectedBytes:number,policy:unknown) {
+ if(policy!==WHOLE_USER_TIMING_V5_POLICY)throw new WireError(policyError);
+ return createWholeAnnotationEngine(expectedBytes,2,true,true) as StudyPort<WholeUserTimingStudyV5>;
+}
+export function createWholeUserTimingStudyV6(expectedBytes:number,policy:unknown) {
+ if(policy!==WHOLE_USER_TIMING_V6_POLICY)throw new WireError(policyError);
+ return createWholeAnnotationEngine(expectedBytes,3,true,true) as StudyPort<WholeUserTimingStudyV6>;
 }
 export type ClosedStudyFailureCode=typeof WHOLE_REFUSALS extends Set<infer Code>?Code:never;
 export function isClosedStudyFailureCode(value:unknown):value is ClosedStudyFailureCode{return typeof value==='string'&&value.length<=64&&WHOLE_REFUSALS.has(value as ClosedStudyFailureCode);}
@@ -538,7 +556,7 @@ function createWholeAnnotationEngine(expectedBytes:number,userTiming:UserTimingM
  const diagnostics:{code:string;packetIndex:number|null;component:string|null;cause?:string|null}[]=[];
  function fail(code:string,index:number|null=null,component:string|null=null,cause?:unknown){failure??=code;if(diagnostics.length===0)diagnostics.push({code,packetIndex:index,component,...(diagnosticV3?{cause:cause===undefined?null:isClosedStudyFailureCode(cause)?cause:'unavailable-code'}:{})});}
  function errorCode(e:unknown){return(e instanceof ProfileError||e instanceof WireError)&&isClosedStudyFailureCode(e.code)?e.code:'invalid-whole-annotation-input';}
- const mode:WholeMode={userTiming,semantic:createHash('sha256'),note(label,fields){mode.semantic.update(label+'\n','ascii');for(const value of fields){if(typeof value==='string')mode.semantic.update('s'+Buffer.byteLength(value)+':','ascii').update(value,'utf8');else mode.semantic.update(value===null?'n;':typeof value==='boolean'?value?'t;':'f;':'i'+value+';','ascii');}mode.semantic.update('\n','ascii');},transition:{sequenceIndex:null,intervalVersion:null,defaultsVersionIndex:null,stateEffect:'O',eventOutcome:'A',newDefinitions:0,repeatedDefinitions:0},bodySHA256:'',budget,counters,event(i,sequence,fields,at,event,resolved,track,clock,final){
+ const mode:WholeMode={...(userTiming===3?{sequenceStart:{raw:0,explained:0,unexplained:0,contradictions:0}}:{}),userTiming,semantic:createHash('sha256'),note(label,fields){mode.semantic.update(label+'\n','ascii');for(const value of fields){if(typeof value==='string')mode.semantic.update('s'+Buffer.byteLength(value)+':','ascii').update(value,'utf8');else mode.semantic.update(value===null?'n;':typeof value==='boolean'?value?'t;':'f;':'i'+value+';','ascii');}mode.semantic.update('\n','ascii');},transition:{sequenceIndex:null,intervalVersion:null,defaultsVersionIndex:null,stateEffect:'O',eventOutcome:'A',newDefinitions:0,repeatedDefinitions:0},bodySHA256:'',budget,counters,event(i,sequence,fields,at,event,resolved,track,clock,final){
   counters.trackEvents++;counters.annotationEntries+=event.annotations.length;if(event.annotations.length)counters.eventsWithAnnotations++;
   if(resolved.nameInventoryStatus==='withheld'){counters.withheldRootInventories++;withheld=true;}else counters.resolvedRootInventories++;
   if(userTiming&&resolved.markName.status==='withheld')withheld=true;
@@ -560,7 +578,7 @@ function createWholeAnnotationEngine(expectedBytes:number,userTiming:UserTimingM
    try{const packet=decodeWholePacket(current,n=>budget.repeatedWork(n,frame.frameIndex));counters.decodedPackets++;if(packet.status==='unavailable')throw new ProfileError('fragment-unavailable',frame.frameIndex,'packet',packet.diagnostics[0]?.code);mode.bodySHA256=sha;reducer.consume(frame.frameIndex,packet);counters.processedPackets++;const state=reducer.state();Object.assign(budget.usage,state);const t=mode.transition,transition=`${frame.frameIndex},${t.sequenceIndex??'-'},${t.intervalVersion??'-'},${t.stateEffect},${t.defaultsVersionIndex??'-'},${t.newDefinitions},${t.repeatedDefinitions},${t.eventOutcome},${counters.markLiteral},${counters.markWithheld},${mode.semantic.digest('hex')},${sha}\n`;if(transition.length>192)throw new ProfileError('transition-capacity');transitionHash.update(transition,'ascii');}catch(e){semanticFailed=true;fail(errorCode(e),frame.frameIndex,e instanceof ProfileError?e.component??null:null,e instanceof ProfileError?e.causeCode:undefined);}
   },
  });
- return Object.freeze({feed(input:unknown):void{if(active){rootFailed=true;fail('stream-reentry');throw new WireError('stream-reentry');}if(closed)throw new WireError('stream-closed');active=true;try{if(counters.feedCalls>=4096)throw new WireError('read-capacity');counters.feedCalls++;const owned=copyWholeAnnotationChunk(input);if(owned.byteLength>expectedBytes-rawBytes)throw new WireError('byte-capacity');rawHash.update(owned);rawBytes+=owned.byteLength;if(!rootFailed)framer.feed(owned);}catch(e){rootFailed=true;body=null;fail(errorCode(e));}finally{active=false;}},finish(){if(active||closed)throw new WireError('stream-closed');closed=true;let boundary=false;if(!rootFailed)try{framer.finish();boundary=true;}catch(e){rootFailed=true;fail(errorCode(e));}if(rawBytes!==expectedBytes){boundary=false;fail('input-length');}const good=failure===null&&!semanticFailed&&!rootFailed;const result={policy:userTiming===2?WHOLE_USER_TIMING_V5_POLICY:provenance?WHOLE_USER_TIMING_V4_POLICY:diagnosticV3?WHOLE_USER_TIMING_V3_POLICY:userTiming?WHOLE_USER_TIMING_POLICY:WHOLE_ANNOTATION_POLICY,status:good?'whole-annotation-study' as const:'unavailable' as const,reason:failure,inputRef:{bytes:rawBytes,sha256:rawHash.digest('hex')},framingBoundaryComplete:boundary,physicalEOF:false as const,structuralContainerEOF:false as const,semanticProcessing:good?'complete-supported-schema':'unavailable',markInventoryAdmission:good?withheld?'withheld':'resolved-supported-roots':'not_evaluated',counters,budgets:budget.usage,packetManifestSHA256:packetHash.digest('hex'),transitionManifestSHA256:transitionHash.digest('hex'),anchors,candidates:good?candidates:[],diagnostics,authority:WHOLE_ANNOTATION_AUTHORITY};body=null;try{admitWholeOutput(result);}catch(e){fail(errorCode(e));result.status='unavailable';result.reason=failure;result.semanticProcessing='unavailable';result.markInventoryAdmission='not_evaluated';result.candidates=[];admitWholeOutput(result);}return freezeOwned(result);}});
+ return Object.freeze({feed(input:unknown):void{if(active){rootFailed=true;fail('stream-reentry');throw new WireError('stream-reentry');}if(closed)throw new WireError('stream-closed');active=true;try{if(counters.feedCalls>=4096)throw new WireError('read-capacity');counters.feedCalls++;const owned=copyWholeAnnotationChunk(input);if(owned.byteLength>expectedBytes-rawBytes)throw new WireError('byte-capacity');rawHash.update(owned);rawBytes+=owned.byteLength;if(!rootFailed)framer.feed(owned);}catch(e){rootFailed=true;body=null;fail(errorCode(e));}finally{active=false;}},finish(){if(active||closed)throw new WireError('stream-closed');closed=true;let boundary=false;if(!rootFailed)try{framer.finish();boundary=true;}catch(e){rootFailed=true;fail(errorCode(e));}if(rawBytes!==expectedBytes){boundary=false;fail('input-length');}if(mode.sequenceStart)try{budget.repeatedWork(1,0);transitionHash.update('sequence-start-v6:'+JSON.stringify(mode.sequenceStart)+'\n','ascii');}catch(e){fail(errorCode(e));}const good=failure===null&&!semanticFailed&&!rootFailed;const result={...(mode.sequenceStart?{sequenceStart:mode.sequenceStart}:{}),policy:userTiming===3?WHOLE_USER_TIMING_V6_POLICY:userTiming===2?WHOLE_USER_TIMING_V5_POLICY:provenance?WHOLE_USER_TIMING_V4_POLICY:diagnosticV3?WHOLE_USER_TIMING_V3_POLICY:userTiming?WHOLE_USER_TIMING_POLICY:WHOLE_ANNOTATION_POLICY,status:good?'whole-annotation-study' as const:'unavailable' as const,reason:failure,inputRef:{bytes:rawBytes,sha256:rawHash.digest('hex')},framingBoundaryComplete:boundary,physicalEOF:false as const,structuralContainerEOF:false as const,semanticProcessing:good?'complete-supported-schema':'unavailable',markInventoryAdmission:good?withheld?'withheld':'resolved-supported-roots':'not_evaluated',counters,budgets:budget.usage,packetManifestSHA256:packetHash.digest('hex'),transitionManifestSHA256:transitionHash.digest('hex'),anchors,candidates:good?candidates:[],diagnostics,authority:WHOLE_ANNOTATION_AUTHORITY};body=null;try{admitWholeOutput(result);}catch(e){fail(errorCode(e));result.status='unavailable';result.reason=failure;result.semanticProcessing='unavailable';result.markInventoryAdmission='not_evaluated';result.candidates=[];admitWholeOutput(result);}return freezeOwned(result);}});
 }
 
 /** Bounded owned-JSON structure guard; not a closed-schema/source authenticator. */
