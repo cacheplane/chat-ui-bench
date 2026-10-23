@@ -105,3 +105,31 @@ reader graph; future actual capture needs separately reviewed exact dependency
 custody and all existing functional/native release gates. No capture is enabled by
 this diagnostic. Output is bounded to8192 serialized bytes,4096 UTF8 including
 keys,256 nodes,16 objects and depth6; only fixed source-owned DTOs enter its guard.
+
+## Explicit V6 sequence-start diagnostic
+
+`createWholeUserTimingStudyV6`, `readWholeUserTimingTraceV6`,
+`createProtoNativeUserTimingCaptureV6` and `inspectProtoNativeUserTimingPhaseV6`
+select the separate V6 policy. Earlier profiles and default factories retain their
+original outputs and loss refusals. The native-real-chat worker explicitly selects
+the V6 factory and inspector; it has no caller-selected policy switch.
+
+V6 adds `sequenceStart` with primitive `raw`, `explained`, `unexplained` and
+`contradictions` counts. The raw count includes nonreset drop indications and
+equals explained plus unexplained. An indication is explained only when the
+decoded producer first-packet flag is true, the raw drop value is exactly 1 and
+no packet for that exact machine/sequence has appeared earlier in the supplied
+file. Absent machine and present machine 0 remain distinct. A true first flag
+after any same-key history refuses the study, including after reset or a chunk
+boundary. The existing `invalid-whole-annotation-input` refusal and V6
+`contradictions` count identify that failure without extending older failure-code
+membership. Reset still takes priority over a simultaneous drop; startup never
+initializes valid state, defaults or intern definitions. Existing raw loss counters
+keep their original meaning.
+
+The complete ordered input and final V6 ledger bind the transition manifest.
+The V6 owner refuses any unexplained indication anywhere in the file, including
+after the end marker, and retains every other whole-file and phase gate. Late
+semantic, read, hash, identity, EOF, close or capacity failure withdraws all earlier
+candidates and rows. Inspection is brand-isolated and cached without extra reads.
+This diagnostic grants no clock, target, duration, FPS, native or scoring authority.
