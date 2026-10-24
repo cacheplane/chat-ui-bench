@@ -98,8 +98,8 @@
     },
     {
       "path": "tests/support/hosted-copilot-scroll-cause-build.ts",
-      "bytes": 19494,
-      "sha256": "dc00f126946372134b2874f77db29eb3c592021fbeffe7ed16a19b5a49a16ad5"
+      "bytes": 20038,
+      "sha256": "ca79e8202f61fae7d99c53f0ce46d55e2e4aa66fde87ce4680d0de5361d06555"
     },
     {
       "path": "tests/support/hosted-copilot-scroll-cause-transform.ts",
@@ -178,8 +178,8 @@
     },
     {
       "path": "package-lock.json",
-      "bytes": 1184790,
-      "sha256": "0bf6da6788cc1e965f18732b18666f4a53093b1c1ab7d312f0983d96b44a02ad"
+      "bytes": 1183611,
+      "sha256": "dc333af770a02c7c132826d7c7134d80c99516103fa2c69971b4df85e88e1cda"
     }
   ],
   "kind": "copilot-history-functional-source-pins-v1"
