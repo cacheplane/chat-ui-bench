@@ -145,7 +145,7 @@ test('inventories actual optimized assets, released package integrities and isol
     expect(adapterBuildSchema.safeParse(evidence).success).toBe(true);
     expect(evidence.framework.version).toBe('21.2.25');
     expect(evidence.packages.find((p: any) => p.name === 'typescript').version).toBe('5.9.3');
-    expect(evidence.packages.find((p: any) => p.name === '@threadplane/chat').version).toBe('0.3.2');
+    expect(evidence.packages.find((p: any) => p.name === '@threadplane/chat').version).toBe('0.3.3');
     expect(evidence.packages.filter((p:any)=>p.name==='p-queue').map((p:any)=>p.version).sort()).toEqual(['6.6.2','9.3.3']);
     expect(evidence.packages.every((p:any)=>typeof p.resolutionPath==='string')).toBe(true);
     expect(Object.keys(evidence.assetHashes)).toContain('index.html');

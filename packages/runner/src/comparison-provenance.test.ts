@@ -1302,7 +1302,7 @@ const repairGateNames = new Set([
   'native Git actual FD zero progress rejects before Git spawn',
 ]);
 const hookGateNames = new Set([
-  'genuine smaller original inventory resolves every reviewed profile declaration',
+  'genuine stock 0.3.3 smaller inventory resolves every reviewed profile declaration',
   ...['app.ts', 'main.ts', 'host.ts', 'index.html', 'styles.css', '../angular.json'].map(name => `new genuine records cannot authorize unknown complete configuration ${name}`),
   'actual source change after fresh assembly prevents genuine profile pre-serving recheck',
   ...['chat', 'Angular core'].map(name => `genuine physical profile rejects ${name}`),
@@ -1446,7 +1446,7 @@ beforeEach(async ({task}) => {
     await step(() => publishFixtureRecords(fixtureRoot, mark, active));
   }
   if (current.name.startsWith('genuine physical profile rejects ')) {
-    const name = current.name.endsWith('chat') ? '@threadplane/chat' : '@angular/core', version = name === '@threadplane/chat' ? '0.3.3' : '21.2.24';
+    const name = current.name.endsWith('chat') ? '@threadplane/chat' : '@angular/core', version = name === '@threadplane/chat' ? '0.3.2' : '21.2.24';
     const build = JSON.parse(await step(() => fs.readFile(join(fixtureRoot, 'apps/threadplane/.build-evidence.json'), 'utf8'))), resolutionPath = build.packages.find((row: {name: string}) => row.name === name).resolutionPath;
     for (const key of [`${resolutionPath}/package.json`, 'apps/threadplane/package.json', 'package-lock.json']) {
       const path = join(fixtureRoot, key), value = JSON.parse(await step(() => fs.readFile(path, 'utf8')));
@@ -2233,11 +2233,11 @@ test.each([
     Object.assign(current.repairFacts!,{actualSetupExpired:expired,firstDisposal:gate.observation().disposal,actualOwnershipSettled:true,callbackSettled:gate.observation().callbackSettled,actualFailures:gate.owner.failures});
   } else await acquired(async session => {if (mode === 'zero') await expect(collect(session)).rejects.toThrow('Short native Git header');else expect((await collect(session)).facts.git.revision).toMatch(/^[a-f0-9]{40}$/);await proof();});
 });
-test('genuine smaller original inventory resolves every reviewed profile declaration', async () => {
+test('genuine stock 0.3.3 smaller inventory resolves every reviewed profile declaration', async () => {
   await acquired(async session => {
     const profile = await resolveComparisonThreadplaneProfile(session);
     expect(profile).toMatchObject({id: 'threadplane', profile: 'threadplane-langgraph-custom-transport', capabilities: {rendering: 'all-mounted', scrollPolicy: 'bottom-follow', returnToResponse: 'native-control'}, configuration: {markdown: 'default', pinThresholdCssPx: 150, telemetry: 'disabled'}});
-    expect(profile.build.packages.find(row => row.name === '@threadplane/chat')?.version).toBe('0.3.2');
+    expect(profile.build.packages.find(row => row.name === '@threadplane/chat')?.version).toBe('0.3.3');
   });
 });
 test.each(['app.ts', 'main.ts', 'host.ts', 'index.html', 'styles.css', '../angular.json'])('new genuine records cannot authorize unknown complete configuration %s', async () => {

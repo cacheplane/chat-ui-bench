@@ -9,5 +9,5 @@
     "./hash": { "types": "./dist/hash.d.ts", "import": "./dist/hash.js" }
   },
   "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.types.json" },
-  "dependencies": { "zod": "4.6.5" }
+  "dependencies": { "zod": "4.6.6" }
 }
