@@ -346,7 +346,15 @@ jobs:
           node --version | tee ci-logs/node-version.log
           npm --version | tee ci-logs/npm-version.log
 
-      - name: Install locked dependencies
+      - name: Select isolated historical 0.3.2 dependencies for the modified profile
+        run: |
+          baseline=df05817b02c6408d205a618b4babc05bc7693c70
+          git fetch --no-tags --depth=1 origin "$baseline"
+          git show "$baseline:apps/threadplane/package.json" > apps/threadplane/package.json
+          git show "$baseline:package-lock.json" > package-lock.json
+          echo "Modified idle-host CSS v1 uses exact package.json and package-lock.json bytes from $baseline (Threadplane 0.3.2); current source and tests remain checked out." | tee ci-logs/historical-dependency-selection.log
+
+      - name: Install locked historical dependencies
         run: npm ci 2>&1 | tee ci-logs/install.log
 
       - name: Audit locked development and production dependencies

@@ -26,12 +26,12 @@ export async function resolveComparisonThreadplaneProfile(session: ComparisonPro
     if (current.sha256 !== expected || build.sourceHashes[key] !== expected) throw new Error('Unknown Threadplane configuration');
   }
   const chat = build.packages.find(row => row.name === '@threadplane/chat');
-  if (!chat || chat.version !== '0.3.2' || !chat.resolutionPath) throw new Error('Unsupported genuine Threadplane chat package');
+  if (!chat || chat.version !== '0.3.3' || !chat.resolutionPath) throw new Error('Unsupported genuine Threadplane chat package');
   const metadata = object(JSON.parse((await authority.read(`${chat.resolutionPath}/package.json`)).bytes.toString('utf8')));
   const app = object(JSON.parse((await authority.read('apps/threadplane/package.json')).bytes.toString('utf8')));
   const lock = object(JSON.parse((await authority.read('package-lock.json')).bytes.toString('utf8')));
   const row = object(object(lock.packages)[chat.resolutionPath]);
-  if (metadata.name !== '@threadplane/chat' || metadata.version !== '0.3.2' || object(app.dependencies)['@threadplane/chat'] !== '0.3.2' || row.version !== '0.3.2' || row.integrity !== chat.integrity) throw new Error('Threadplane physical pin/lock differs');
+  if (metadata.name !== '@threadplane/chat' || metadata.version !== '0.3.3' || object(app.dependencies)['@threadplane/chat'] !== '0.3.3' || row.version !== '0.3.3' || row.integrity !== chat.integrity) throw new Error('Threadplane physical pin/lock differs');
   authority.lifecycle.assertActive();
   return comparisonAdapterSchema.parse({id: 'threadplane', profile: 'threadplane-langgraph-custom-transport', capabilities: {rendering: 'all-mounted', scrollPolicy: 'bottom-follow', returnToResponse: 'native-control'}, build: structuredClone(build), configuration: {markdown: 'default', pinThresholdCssPx: 150, telemetry: 'disabled'}});
 }

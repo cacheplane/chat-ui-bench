@@ -466,7 +466,7 @@ this check after workspace typechecking. Vendor declaration bodies retain
 `npm test -- tests/fixtures/copilotkit-httpagent.test.ts`.
 
 The Threadplane Angular custom-transport profile is implemented with pinned
-`@threadplane/*` 0.3.2 and Angular 21.2.25. It uses the published packages and a
+`@threadplane/*` 0.3.3 and Angular 21.2.25. It uses the published packages and a
 local deterministic SSE replay transport. This profile is distinct from a
 default deployment connected to a model backend.
 

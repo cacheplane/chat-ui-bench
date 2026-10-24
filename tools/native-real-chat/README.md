@@ -22,11 +22,43 @@ Controls use authored sessions, trace packets, processes, streams, and protocol
 responses. They test the genuine existing capture owner's original finish
 promise and cached inspector without collecting a browser trace.
 
-The worker explicitly selects the V5 UserTiming diagnostic. V5 validates bounded
-counter-default UUID metadata and records only each list's presence and length;
-it does not interpret counter events, values or identities. V1–V4 retain their
-existing behavior. This diagnostic establishes no physical qualification,
+The worker explicitly selects the V6 UserTiming diagnostic. V6 retains bounded
+counter-default metadata diagnostics and validates the fixed packet-default
+shape. It explains sequence initialization only for an explicit first-packet flag
+with no prior state for the same sequence key; later losses or contradictions
+still refuse. This diagnostic establishes no physical qualification,
 clock/target admission or FPS authority.
+
+## Fixed stock 0.3.3 native family
+
+`prepareActualStock033` authenticates the canonical, unwrapped production build
+record with the existing closed build schema. It requires the five used published
+Threadplane packages (`chat`, `a2ui`, `langgraph`, `render`, `telemetry`) at exactly
+0.3.3 with fixed published integrity values, joined to the original package
+metadata and lock entries. Modified envelopes, the idle-host CSS production hash,
+and the modified Angular style selection are rejected. The fixed source roster
+has 1,016 rows and exactly 12 served assets; a natural stock build has no separate
+statistics output. The archive ceiling remains 1,024 rows.
+
+The source-owned preparation owner retains the original `{template, reference}`
+return, actual exit and pipe EOF. Stock uses the distinct
+`source-owned-preparation-reference-stock-033-v1` policy and product identity
+`threadplane-stock-0.3.3`. `verifyStock033Preparation` independently joins the
+owned template and manifest, source-hash roster, original product/config/package
+files, fixture compiler inputs, platform/runtime identities and asset membership.
+`runStock033Original` requires that admission and retains the existing full
+original/archive/platform byte checks before worker creation and after closure.
+It requires the separate one-use release
+`source-reviewed-native-chat-stock-033-v1`. Its explicit CLI selector is
+`--prepared-stock-033-v1 <directory> --reference <reference-file>`.
+
+The worker receives the existing fixed request recipe after parent admission.
+The outer receipt uses `native-stock-033-result-v1` and the stock 0.3.3 label.
+The original worker ownership, promises, deadlines, request/output/runtime bounds
+and V6 selection remain unchanged. This does not authorize acquisition. New stock
+authentication adds source and metadata checks; resource validation must count
+all actual operations before a fresh cohort. Previous stock
+0.3.2 and modified 0.3.2 accounting and results cannot authenticate this family.
 
 ## Modified idle-host functional checks
 

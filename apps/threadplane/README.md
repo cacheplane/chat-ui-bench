@@ -1,6 +1,6 @@
 # Threadplane production profile
 
-This workspace runs released `@threadplane/chat` and `@threadplane/langgraph` 0.3.2 with the default public `ChatComponent`, a supported custom `AgentTransport`, and a zoneless production Angular application. It keeps the product's message rendering, markdown, composer, and native scrolling behavior.
+This workspace runs released `@threadplane/chat` and `@threadplane/langgraph` 0.3.3 with the default public `ChatComponent`, a supported custom `AgentTransport`, and a zoneless production Angular application. It keeps the product's message rendering, markdown, composer, and native scrolling behavior.
 
 From the repository root:
 
@@ -32,3 +32,5 @@ The released native bottom-pin threshold is strictly less than 150 CSS px. The h
 After a native return click, historical journey validity additionally requires actual active-response text intersecting the clipped scroll viewport at both checkpoints, further public runtime updates, and bottom gaps below 150 CSS px at both checkpoints. Text Range rectangles are intersected with the window, native scroll client viewport, and each ancestor's overflow clipping axes. Message-host padding/actions alone cannot satisfy content visibility. These geometry inspections are conformance instrumentation outside scored phases and input dispatch; their cost is not part of a performance claim.
 
 The focused browser suite uses optimized production assets and covers Unicode, incomplete streams, omission, reset/disposal, full history correctness, native composer input, default follow behavior, bounded visible DOM observation, and both large-history/large-response corners. It does not publish FPS or competitor rankings; generic capture and offline correctness gating are separate benchmark tasks.
+
+The current stock profile pins the five used `@threadplane/*` packages to 0.3.3. Earlier stock captures retain their original package/build identities. The separately named `threadplane-0.3.2-idle-host-css-v1` modified profile retains its exact 0.3.2 descriptor, package integrity, and stylesheet bytes. Its CI job fetches immutable baseline `df05817b02c6408d205a618b4babc05bc7693c70` and restores only `apps/threadplane/package.json` and `package-lock.json` from that commit before `npm ci`. This explicit isolated legacy dependency selection is logged; source and tests use the current checkout. Historical results are never relabeled as 0.3.3.
