@@ -61,6 +61,9 @@ jobs:
       - name: Test Node-only modified idle-host authentication and visibility controls
         run: node --test apps/threadplane/functional-build.node.mjs 2>&1 | tee ci-logs/threadplane-idle-host-source-controls.log
 
+      - name: Test historical dependency selection controls
+        run: node --test tools/threadplane-modified-dependencies/select.node.mjs 2>&1 | tee ci-logs/modified-dependency-controls.log
+
       - name: Test portable controlled H100 observer
         run: |
           set -o pipefail
@@ -346,15 +349,13 @@ jobs:
           node --version | tee ci-logs/node-version.log
           npm --version | tee ci-logs/npm-version.log
 
-      - name: Select isolated historical 0.3.2 dependencies for the modified profile
+      - name: Select reviewed 0.3.2 renderer on the current security dependency graph
         run: |
-          baseline=df05817b02c6408d205a618b4babc05bc7693c70
-          git fetch --no-tags --depth=1 origin "$baseline"
-          git show "$baseline:apps/threadplane/package.json" > apps/threadplane/package.json
-          git show "$baseline:package-lock.json" > package-lock.json
-          echo "Modified idle-host CSS v1 uses exact package.json and package-lock.json bytes from $baseline (Threadplane 0.3.2); current source and tests remain checked out." | tee ci-logs/historical-dependency-selection.log
+          set -o pipefail
+          node --test tools/threadplane-modified-dependencies/select.node.mjs 2>&1 | tee ci-logs/modified-dependency-controls.log
+          node tools/threadplane-modified-dependencies/select.mjs 2>&1 | tee ci-logs/historical-dependency-selection.log
 
-      - name: Install locked historical dependencies
+      - name: Install selected locked dependencies
         run: npm ci 2>&1 | tee ci-logs/install.log
 
       - name: Audit locked development and production dependencies
