@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {spawn} from 'node:child_process';
 import * as probe from './probe-provenance.mjs';
 const api=await import('./build.mjs').catch(()=>({})) as any;
-async function fixture({readOnlyStyleCopy=false}={}){
+async function fixture({readOnlyStyleCopy=false,historicalIdleHost=false}={}){
  const root=await fs.realpath(await fs.mkdtemp(join(tmpdir(),'build-lineage-')));
  for(const key of probe.probeSourceKeys){await fs.mkdir(join(root,key,'..'),{recursive:true});if(key==='apps/threadplane/build.mjs')await fs.writeFile(join(root,key),'build fixture');else await fs.copyFile(resolve(key),join(root,key));}
  await fs.cp(resolve('apps/threadplane/src'),join(root,'apps/threadplane/src'),{recursive:true});
@@ -17,8 +17,11 @@ async function fixture({readOnlyStyleCopy=false}={}){
  const exe=`node_modules/${native}/lib/tsc${process.platform==='win32'?'.exe':''}`;await fs.mkdir(join(root,exe,'..'),{recursive:true});await fs.writeFile(join(root,exe),'native fixture');
  const app=join(root,'apps/threadplane'),manifest=JSON.parse(await fs.readFile(join(app,'package.json'),'utf8')),lock=JSON.parse(await fs.readFile(join(root,'package-lock.json'),'utf8'));
  const names=['@angular/core','@threadplane/chat','@threadplane/langgraph','@threadplane/render','@threadplane/telemetry'];manifest.dependencies=Object.fromEntries(names.map(name=>[name,manifest.dependencies[name]]));manifest.devDependencies={typescript:'5.9.3','@angular/cli':'21.2.26'};
- for(const name of [...names,'typescript','@angular/cli']){const version=manifest.devDependencies[name]??manifest.dependencies[name],directory=`apps/threadplane/node_modules/${name}`;await fs.mkdir(join(root,directory),{recursive:true});await fs.writeFile(join(root,directory,'package.json'),JSON.stringify({name,version,main:'index.js'}));await fs.writeFile(join(root,directory,'index.js'),'');lock.packages[directory]={version,integrity:name==='@threadplane/chat'?'sha512-htsWljhDogT6fOsmZrOvC+wFDRPhiQR/rvfwTJ2dYd/H6MiwPm3twxSr+KdNbaNRnARb62kUvPaigm0VA3cuGw==':'sha512-YQ=='};}
+ // Modified fixtures retain their historical identity independently of active stock pins.
+ if(historicalIdleHost)for(const name of names.filter(name=>name.startsWith('@threadplane/')))manifest.dependencies[name]='0.3.2';
+ for(const name of [...names,'typescript','@angular/cli']){const version=manifest.devDependencies[name]??manifest.dependencies[name],directory=`apps/threadplane/node_modules/${name}`,integrity=name==='@threadplane/chat'?(historicalIdleHost?'sha512-htsWljhDogT6fOsmZrOvC+wFDRPhiQR/rvfwTJ2dYd/H6MiwPm3twxSr+KdNbaNRnARb62kUvPaigm0VA3cuGw==':lock.packages[directory].integrity):'sha512-YQ==';await fs.mkdir(join(root,directory),{recursive:true});await fs.writeFile(join(root,directory,'package.json'),JSON.stringify({name,version,main:'index.js'}));await fs.writeFile(join(root,directory,'index.js'),'');lock.packages[directory]={version,integrity};}
  await fs.mkdir(join(app,'node_modules/@angular/cli/bin'));await fs.writeFile(join(app,'node_modules/@angular/cli/bin/ng.js'),'authored CLI source fixture; never executed by mocked builds');
+ lock.packages['apps/threadplane']={...lock.packages['apps/threadplane'],dependencies:manifest.dependencies,devDependencies:manifest.devDependencies};
  await fs.writeFile(join(root,'package-lock.json'),JSON.stringify(lock));await fs.writeFile(join(app,'package.json'),JSON.stringify(manifest));
  // Schema imports use genuine compiled contract modules, separately from command injection.
  await fs.cp(resolve('packages/contract/dist'),join(root,'packages/contract/dist'),{recursive:true});
@@ -40,7 +43,7 @@ test('native idle host stock inactive style mutation stays outside exact stock h
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 test('native idle host fixture permits byte mutation after a read-only stylesheet copy',async()=>{
- const key='apps/threadplane/src/native-idle-host-css-v1.css',source=resolve(key),before=await fs.readFile(source),sourceMode=(await fs.stat(source)).mode,root=await fixture({readOnlyStyleCopy:true});
+ const key='apps/threadplane/src/native-idle-host-css-v1.css',source=resolve(key),before=await fs.readFile(source),sourceMode=(await fs.stat(source)).mode,root=await fixture({readOnlyStyleCopy:true,historicalIdleHost:true});
  try{
   const copied=join(root,key);expect((await fs.stat(copied)).mode&0o200).toBe(0o200);expect(await fs.readFile(copied)).toEqual(before);
   await fs.appendFile(copied,' ');expect(await fs.readFile(copied)).toEqual(Buffer.concat([before,Buffer.from(' ')]));expect(await fs.readFile(source)).toEqual(before);expect((await fs.stat(source)).mode).toBe(sourceMode);
@@ -58,12 +61,12 @@ test('native idle host default runner uses the app-resolved CLI despite ambient 
  }finally{process.env.PATH=prior;await fs.rm(root,{recursive:true,force:true});}
 });
 test('native idle host missing app CLI resolution invalidates evidence before any command',async()=>{
- const root=await fixture();try{await fs.rm(join(root,'apps/threadplane/node_modules/@angular/cli/bin/ng.js'));for(const key of recordPaths)await fs.writeFile(join(root,key),'old');let calls=0;
+ const root=await fixture({historicalIdleHost:true});try{await fs.rm(join(root,'apps/threadplane/node_modules/@angular/cli/bin/ng.js'));for(const key of recordPaths)await fs.writeFile(join(root,key),'old');let calls=0;
   await expect(api.buildNativeIdleHostVariant({root,runCommand:async(command:any)=>{calls++;if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng')await assets(root);}})).rejects.toThrow();expect(calls).toBe(0);for(const key of recordPaths)await expect(fs.access(join(root,key))).rejects.toThrow();
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 test('native idle host selection is explicit and publishes a distinct closed product envelope',async()=>{
- expect(typeof api.buildNativeIdleHostVariant).toBe('function');const root=await fixture();try{
+ expect(typeof api.buildNativeIdleHostVariant).toBe('function');const root=await fixture({historicalIdleHost:true});try{
   const calls:any[]=[];const result=await api.buildNativeIdleHostVariant({root,runCommand:async(command:any)=>{calls.push(command);if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng')await assets(root);}});
   expect(calls.at(-1)).toEqual({command:'ng',args:['build','threadplane','--configuration','production','--styles','src/styles.css','src/native-idle-host-css-v1.css'],cwd:join(root,'apps/threadplane')});
   expect(calls.slice(0,-1).map(c=>c.args.at(-1))).toEqual(['@chat-ui-bench/contract','@chat-ui-bench/producer','@chat-ui-bench/analyzer','@chat-ui-bench/runner']);
@@ -79,7 +82,7 @@ test('native idle host selection is explicit and publishes a distinct closed pro
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 test.each(['pre-Angular','probe-publication','product-publication'])('native idle host inventory rejects actual style mutation at %s bookend',async stage=>{
- const root=await fixture();try{
+ const root=await fixture({historicalIdleHost:true});try{
   const p=await import('./provenance.mjs') as any,style=join(root,p.nativeIdleHostVariant.styleKey),before=await fs.readFile(style);let mutated=false,angular=false;
   const mutate=async()=>{await fs.appendFile(style,' ');expect(await fs.readFile(style)).toEqual(Buffer.concat([before,Buffer.from(' ')]));mutated=true;};
   const ops={...fs,rename:async(from:any,to:any)=>{await fs.rename(from,to);if(to===join(root,stage==='probe-publication'?recordPaths[1]!:recordPaths[0]!)&&stage!=='pre-Angular')await mutate();}};
@@ -88,7 +91,7 @@ test.each(['pre-Angular','probe-publication','product-publication'])('native idl
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 test.each([1,2])('native idle host reader rejects actual style mutation in current inventory %s',async inventory=>{
- const root=await fixture();try{
+ const root=await fixture({historicalIdleHost:true});try{
   await api.buildNativeIdleHostVariant({root,runCommand:async(command:any)=>{if(command.args.at(-1)==='@chat-ui-bench/runner')await emitted(root);if(command.command==='ng')await assets(root);}});
   const p=await import('./provenance.mjs') as any,style=join(root,p.nativeIdleHostVariant.styleKey),before=await fs.readFile(style);let reads=0,mutated=false;
   const ops={...fs,readdir:async(path:any,...args:any[])=>{const value=await (fs.readdir as any)(path,...args);if(path===join(root,'apps/threadplane/dist')&&++reads===inventory){await fs.appendFile(style,' ');expect(await fs.readFile(style)).toEqual(Buffer.concat([before,Buffer.from(' ')]));mutated=true;}return value;}};
@@ -96,7 +99,7 @@ test.each([1,2])('native idle host reader rejects actual style mutation in curre
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 test.each(['before','during','command'])('native idle host %s failure leaves no successful evidence',async stage=>{
- expect(typeof api.buildNativeIdleHostVariant).toBe('function');const root=await fixture();try{
+ expect(typeof api.buildNativeIdleHostVariant).toBe('function');const root=await fixture({historicalIdleHost:true});try{
   for(const key of recordPaths)await fs.writeFile(join(root,key),'old');
   const style=join(root,'apps/threadplane/src/native-idle-host-css-v1.css'),original=await fs.readFile(style);let mutated=false;
   const mutate=async()=>{await fs.appendFile(style,' ');expect(await fs.readFile(style)).toEqual(Buffer.concat([original,Buffer.from(' ')]));mutated=true;};
@@ -119,6 +122,7 @@ test('orders prerequisite commands, checkpoints emits before Angular, and publis
   expect(calls).toEqual(['run build --workspace @chat-ui-bench/contract','run build --workspace @chat-ui-bench/producer','run build --workspace @chat-ui-bench/analyzer','run build --workspace @chat-ui-bench/runner','build threadplane --configuration production']);
   const instrumentation=await probe.comparisonInstrumentationBuildEvidence(root);expect(instrumentation).toMatchObject({compiler:{version:'7.0.2'}});
   const product=await (await import('./provenance.mjs')).threadplaneBuildEvidence(root);
+ expect(product.packages.find((p:any)=>p.name==='@threadplane/chat').version).toBe('0.3.3');
   expect(product.packages.find((p:any)=>p.name==='typescript').version).toBe('5.9.3');
   for(const key of probe.contractCompiledKeys)expect(product.sourceHashes[key]).toBe(instrumentation.compiledHashes[key]);
   expect(Object.keys(product.sourceHashes).some(key=>key.startsWith('packages/runner/dist/'))).toBe(false);

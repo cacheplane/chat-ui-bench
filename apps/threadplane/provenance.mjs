@@ -87,3 +87,14 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  if(process.argv[2]==='--write-build-record')throw new Error('Build records are published only by the successful build.mjs sequence');
  else console.log(JSON.stringify(await threadplaneBuildEvidence(),null,2));
 }
+
+// Fixed STOCK 0.3.3 native family; legacy/modified parsers remain independent.
+export const stock033Identity=Object.freeze({schemaVersion:1,id:'threadplane-stock-0.3.3',basePackage:'@threadplane/chat@0.3.3'});
+export const stock033Label='Threadplane 0.3.3 (stock published packages)';
+export const stock033PackageIntegrities=Object.freeze({"@threadplane/chat": "sha512-S6SqtNmORfklweqnGTI4L+8ZBSaQ825b1OtbsCvXjZxw7ywikda3ARfX1BMHwSDHCwtq/+H1N5Id4CCodWJdSw==", "@threadplane/a2ui": "sha512-9mjcroEaxwEgIWWwbpWsvCUr6+MheIdMyJCOKHrX+KaqpPqrY/juvlPjgU40OTJWkAVnB+dY95Ow070HHH+P8w==", "@threadplane/langgraph": "sha512-QHphnlzqWuYM2D1UfTyRpCqW5UnAIyEYE1bVGDWXyeUHBmozVydVQjL/rtYf9SMMMHLcT15YcaXM5P+bRGcBOg==", "@threadplane/render": "sha512-gUbUPOC5aqWc8cutMgceoa98iTJRGGOj39CiSD34AH82pvwtnqUlxKxppu5/h05C6VvnzcKdLfx0mHorabJLYw==", "@threadplane/telemetry": "sha512-D3t8G8OgWMfP7SvlJLf1h9aFJ7m4SaPLTWIgZ7SAOGJi3qH7AtPgDLHyzeawTWC9bqN9z9X5e/ZhZp4911yLiQ=="});
+export function parseStock033ProductRecord(bytes,contract){
+ const build=parseProductRecord(bytes,contract),selected=build.packages.filter(p=>p.name.startsWith('@threadplane/'));
+ if(selected.length!==5||Object.entries(stock033PackageIntegrities).some(([name,integrity])=>{const rows=selected.filter(p=>p.name===name);return rows.length!==1||rows[0].version!=='0.3.3'||rows[0].integrity!==integrity||rows[0].resolutionPath!==`apps/threadplane/node_modules/${name}`;}))throw new Error('Stock 0.3.3 published package identity differs');
+ if(build.framework.name!=='Angular'||build.settings.optimization!==true||build.settings.sourceMaps!==false||!Object.hasOwn(build.sourceHashes,'apps/threadplane/build.mjs')||!Object.hasOwn(build.sourceHashes,'apps/threadplane/angular.json')||Object.hasOwn(build.sourceHashes,nativeIdleHostVariant.styleKey)||Object.keys(build.copiedSourceHashes).length!==0||Object.keys(build.assetHashes).length!==12)throw new Error('Stock 0.3.3 production profile differs');
+ return build;
+}

@@ -56,7 +56,7 @@
   },
   "overrides": {
     "@ai-sdk/provider-utils@3.0.41": {
-      "undici": "6.29.0"
+      "undici": "6.29.1"
     },
     "@langchain/core@1.2.9": {
       "langsmith": "0.10.11"
@@ -68,10 +68,20 @@
       "ip-address": "10.7.3"
     },
     "@angular/cli@21.2.26": {
-      "@modelcontextprotocol/sdk": "1.32.1"
+      "@modelcontextprotocol/sdk": "1.32.1",
+      "zod": "4.6.6"
     },
     "@angular/build@21.2.25": {
-      "vite": "7.3.7"
-    }
+      "vite": "7.3.7",
+      "undici": "7.30.1"
+    },
+    "@ag-ui/client@1.0.2": {
+      "zod": "4.6.6"
+    },
+    "@ag-ui/proto@1.0.2": {
+      "zod": "4.6.6"
+    },
+    "undici@6": "6.29.1",
+    "body-parser": "2.4.0"
   }
 }

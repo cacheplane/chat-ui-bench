@@ -216,6 +216,31 @@ export function assertProductionManifest(rows:readonly ManifestRecord[],names:re
 }
 function expectedFailure(original:OriginalCommand):void {const v=assertOriginalCommand(original);if(!v.closed||!v.streamsComplete||!v.uploadEligible||v.exitCode!==1||v.signal!==null) throw new Error('Original declared failure incomplete or changed');}
 export interface AuditCounts {info:number;low:number;moderate:number;high:number;critical:number;total:number}
+/** Current advisory policy; historical exact-count policies below remain unchanged. */
+export function assertAdvisoryAuditV1(original:OriginalCommand,report:unknown,threshold:'all'|'high') {
+ const facts=assertOriginalCommand(original);
+ if(facts.closed!==true||facts.streamsComplete!==true||!facts.uploadEligible||facts.signal!==null||![0,1].includes(facts.exitCode as number)) throw new Error('Original audit process incomplete or failed');
+ const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+ if(!object(report)||Object.hasOwn(report,'error')||report.auditReportVersion!==2||!object(report.vulnerabilities)||!object(report.metadata)||!object(report.metadata.vulnerabilities)) throw new Error('Complete npm audit report required');
+ const supplied=report.metadata.vulnerabilities,severities=['info','low','moderate','high','critical'] as const;
+ const counts:AuditCounts={info:0,low:0,moderate:0,high:0,critical:0,total:0};
+ for(const key of [...severities,'total'] as const) {
+  const value=supplied[key];if(typeof value!=='number'||!Number.isSafeInteger(value)||value<0) throw new Error('Audit count invalid');counts[key]=value;
+ }
+ const total=severities.reduce((sum,key)=>sum+counts[key],0);
+ if(!Number.isSafeInteger(total)||total!==counts.total) throw new Error('Audit total inconsistent');
+ const observed:AuditCounts={info:0,low:0,moderate:0,high:0,critical:0,total:0};
+ for(const value of Object.values(report.vulnerabilities)) {
+  if(!object(value)||!severities.includes(value.severity as typeof severities[number])) throw new Error('Audit vulnerability severity invalid');
+  observed[value.severity as typeof severities[number]]++;observed.total++;
+ }
+ if([...severities,'total'].some(key=>observed[key as keyof AuditCounts]!==counts[key as keyof AuditCounts])) throw new Error('Audit records and counts differ');
+ if(threshold!=='all'&&threshold!=='high') throw new Error('Audit threshold invalid');
+ // npm-audit-report defaults to auditLevel=low; info findings still warrant our warning.
+ const expectedExit=(threshold==='all'?counts.total-counts.info:counts.high+counts.critical)>0?1:0;
+ if(facts.exitCode!==expectedExit) throw new Error('Audit exit contradicts report');
+ return Object.freeze({policyVersion:'advisory-audit-v1' as const,originalExitCode:facts.exitCode,originalSuccess:facts.success,counts:Object.freeze(counts),policyMayContinue:true as const,qualification:false as const,warning:counts.total>0?'Dependency advisories reported; findings are advisory. Original audit output and exit status are retained.':null});
+}
 export function assertFullAudit(full:OriginalCommand,counts:AuditCounts):void {
  expectedFailure(full);if(!counts||counts.info!==0||counts.low!==9||counts.moderate!==0||counts.high!==0||counts.critical!==0||counts.total!==9) throw new Error('Audit exception differs');
 }

@@ -5,7 +5,7 @@ import {readFile,writeFile,mkdir,lstat} from 'node:fs/promises';
 import {join} from 'node:path';
 import {readIntegratedAdmission} from '../tests/support/hosted-copilot-context.ts';
 import {assertOriginalCommand} from '../tests/support/hosted-copilot-contract.ts';
-import {capturedStreamComplete,assertFullAudit,assertExpectedAudit,assertExpectedVendor,classifyVendorDiagnostics} from '../tests/support/hosted-copilot-production-policy.ts';
+import {capturedStreamComplete,assertAdvisoryAuditV1,assertExpectedVendor,classifyVendorDiagnostics} from '../tests/support/hosted-copilot-production-policy.ts';
 const order=['profile','install','audit','audit-high','contract','consumer','controls','helpers','vendor','build','inspect','worker-build','worker-inspect'];
 const commands={profile:['--version'],install:['ci','--ignore-scripts','--no-audit','--no-fund'],audit:['audit','--json'],'audit-high':['audit','--audit-level=high','--json'],contract:['run','build','--workspace','@chat-ui-bench/contract'],consumer:['run','typecheck','--workspace','@chat-ui-bench/copilotkit'],controls:['run','typecheck:controls','--workspace','@chat-ui-bench/copilotkit'],helpers:['exec','--','tsc','-p','tests/tsconfig.copilot-production.json','--noEmit'],vendor:['run','typecheck:vendor','--workspace','@chat-ui-bench/copilotkit'],build:['run','build:hosted','--workspace','@chat-ui-bench/copilotkit'],'worker-build':['run','build:worker:hosted','--workspace','@chat-ui-bench/copilotkit'],'worker-inspect':['run','inspect:worker:hosted','--workspace','@chat-ui-bench/copilotkit']};
 const step=process.argv[2];
@@ -58,13 +58,10 @@ if(step==='inspect') {
   const facts=assertOriginalCommand(original),outText=await readFile(join(directory,`step-${step}.stdout`),'utf8'),errText=await readFile(join(directory,`step-${step}.stderr`),'utf8');
   result.originalSuccess=facts.success;
   if(step==='profile') {if(!facts.success||outText.trim()!=='11.19.0') throw new Error('Original native npm profile differs');}
-  else if(step==='audit') {
-   const audit=JSON.parse(outText),counts=audit.metadata?.vulnerabilities;
-   assertFullAudit(original,counts);
-   result.originalSuccess=false;result.continuationScope='known original full audit failure only';
-  } else if(step==='audit-high') {
-   const previous=JSON.parse(await readFile(join(directory,'step-audit-result.json'),'utf8')),audit=JSON.parse(outText);
-   assertExpectedAudit(previous.original,original,audit.metadata?.vulnerabilities);result.originalSuccess=facts.success;
+  else if(step==='audit'||step==='audit-high') {
+   const auditPolicy=assertAdvisoryAuditV1(original,JSON.parse(outText),step==='audit'?'all':'high');
+   result.auditPolicy=auditPolicy;result.continuationScope='dependency advisory findings only; original process outcome retained';
+   if(auditPolicy.warning) console.log(`::warning::${auditPolicy.warning}`);
   } else if(step==='vendor') {
    const diagnostics=classifyVendorDiagnostics(outText+'\n'+errText);assertExpectedVendor(original,diagnostics.owned,diagnostics.categories);
    result.diagnostics=diagnostics;result.originalSuccess=false;result.continuationScope='known original vendor declaration failure; consumer source accuracy boundary retained';

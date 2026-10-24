@@ -7,7 +7,7 @@ export const sha=value=>createHash('sha256').update(value).digest('hex');
 const identity=s=>[s.dev,s.ino,s.mode,s.nlink,s.size,s.mtimeNs,s.ctimeNs].map(String).join(':');
 export function boundedRead(path,cap){const before=fs.lstatSync(path,{bigint:true});if(!before.isFile()||before.nlink!==1n||before.size>BigInt(cap))throw Error('source-contract');const fd=fs.openSync(path,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);try{if(identity(fs.fstatSync(fd,{bigint:true}))!==identity(before))throw Error('source-contract');const parts=[];let total=0;for(;;){const b=Buffer.alloc(Math.min(65536,cap+1-total)),n=fs.readSync(fd,b,0,b.length,null);if(!n)break;total+=n;if(total>cap)throw Error('source-contract');parts.push(b.subarray(0,n));}if(BigInt(total)!==before.size||identity(fs.fstatSync(fd,{bigint:true}))!==identity(before)||identity(fs.lstatSync(path,{bigint:true}))!==identity(before))throw Error('source-contract');return Buffer.concat(parts);}finally{fs.closeSync(fd);}}
 const registryRaw=boundedRead(resolve(here,'source-pins.json'),16384);
-if(sha(registryRaw)!=='76a3d64bc9557c2682f67f61a6067c63211afc076eff7e49fad0e27d157c731b')throw Error('source-registry');
+if(sha(registryRaw)!=='657e427406f89950626537626439b3b27464616e87e78c63148b964f92b3c1c8')throw Error('source-registry');
 export const registry=JSON.parse(registryRaw).files;
 export function preflight(root=sourceRoot){let bytes=0;return registry.map(p=>{const raw=boundedRead(resolve(root,p.path),8388608);bytes+=raw.length;if(raw.length!==p.bytes||sha(raw)!==p.sha256||bytes>16777216)throw Error('source-contract');return {...p};});}
 const selected={core:0,copilot:3,wrapper:4,react:24};
