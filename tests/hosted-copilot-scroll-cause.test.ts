@@ -2,8 +2,32 @@ import {test,expect} from 'vitest';
 import {existsSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {mkdtemp,readFile,writeFile,link,realpath} from 'node:fs/promises';
+import {mkdtemp,mkdir,readFile,writeFile,link,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
+
+test('current diagnostic package profile authenticates patched Zod and rejects stale or forged physical lock identities',async()=>{
+ const api=await import('./support/hosted-copilot-scroll-cause-build.ts');
+ const {MOUNTED_PACKAGE_PINS}=await import('./support/hosted-copilot-mounted-policy.ts');
+ const patched={version:'4.6.6',integrity:'sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA=='};
+ expect(api.SCROLL_CAUSE_PACKAGE_PROFILE.id).toBe('scroll-cause-security-pins-v2');
+ expect(Object.isFrozen(api.SCROLL_CAUSE_PACKAGE_PROFILE)&&Object.isFrozen(api.SCROLL_CAUSE_PACKAGE_PROFILE.packages)&&Object.isFrozen(api.SCROLL_CAUSE_PACKAGE_PROFILE.packages['node_modules/zod'])).toBe(true);
+ expect(Object.entries(api.SCROLL_CAUSE_PACKAGE_PROFILE.packages).filter(([path,pin])=>JSON.stringify(pin)!==JSON.stringify(MOUNTED_PACKAGE_PINS[path as keyof typeof MOUNTED_PACKAGE_PINS])).map(([path])=>path)).toEqual(['node_modules/zod']);
+ const pins={...MOUNTED_PACKAGE_PINS,'node_modules/zod':patched};
+ const root=await realpath(await mkdtemp(resolve(tmpdir(),'scroll-cause-current-packages-')));
+ for(const [path,pin]of Object.entries(pins)){await mkdir(resolve(root,path),{recursive:true});await writeFile(resolve(root,path,'package.json'),JSON.stringify({name:path.split('node_modules/').at(-1),version:pin.version}));}
+ const publishLocks=async(accepted:unknown,installed:unknown)=>{await writeFile(resolve(root,'package-lock.json'),JSON.stringify({packages:accepted}));await writeFile(resolve(root,'node_modules/.package-lock.json'),JSON.stringify({packages:installed}));};
+ await publishLocks(pins,pins);
+ const packages=await api.validateDiagnosticInstalledPackages(root);
+ expect(packages).toHaveLength(19);expect(packages.find(row=>row.path==='node_modules/zod/package.json')).toMatchObject(patched);
+ expect(MOUNTED_PACKAGE_PINS['node_modules/zod'].version).toBe('4.6.5');
+ for(const [accepted,installed,physicalVersion]of [
+  [MOUNTED_PACKAGE_PINS,MOUNTED_PACKAGE_PINS,'4.6.5'],
+  [{...pins,'node_modules/zod':{...patched,integrity:'forged'}},pins,'4.6.6'],
+  [pins,{...pins,'node_modules/zod':{...patched,integrity:'forged'}},'4.6.6'],
+  [pins,pins,'4.6.5'],
+  [{...pins,'node_modules/react':{...pins['node_modules/react'],version:'19.2.0'}},pins,'4.6.6'],
+ ]as const){await publishLocks(accepted,installed);await writeFile(resolve(root,'node_modules/zod/package.json'),JSON.stringify({name:'zod',version:physicalVersion}));await expect(api.validateDiagnosticInstalledPackages(root)).rejects.toThrow('diagnostic-installed-package');}
+});
 
 test('distinct diagnostic publisher reserves its fixed roles plus the actual launch-worker copy',async()=>{
  const helper=resolve('tests/support/hosted-copilot-scroll-cause-artifact.ts');

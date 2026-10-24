@@ -10,6 +10,11 @@ import {diagnosticHash} from './hosted-copilot-scroll-cause-artifact.ts';
 import {workerStaticResolveOptions,workerStaticOutputOptions,collectWorkerModuleImports,observeWorkerRegisteredModule} from './hosted-copilot-worker-static-policy.ts';
 import {MOUNTED_MODULE_BUILTINS,MOUNTED_MODULE_PACKAGE_SPECIFIERS,MOUNTED_PACKAGE_PINS,WORKER_ZOD_PUBLIC_BINDING,lookupWorkerPublicPackage} from './hosted-copilot-mounted-policy.ts';
 import {transformScrollCause,reverseScrollCause,PINNED_MODULE,type ScrollCauseTransform} from './hosted-copilot-scroll-cause-transform.ts';
+// Current diagnostic identity only. Historical mounted profiles keep their
+// original package pins and cannot admit this security-updated Zod identity.
+export const SCROLL_CAUSE_PACKAGE_PROFILE=Object.freeze({id:'scroll-cause-security-pins-v2',packages:Object.freeze({...MOUNTED_PACKAGE_PINS,
+ 'node_modules/zod':Object.freeze({version:'4.6.6',integrity:'sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA=='}),
+})});
 export function redirectScrollCauseHtml(html:string):string{
  const original="from '/src/main.tsx'";
  if(html.split(original).length!==2||html.includes('/src/scroll-cause-main.ts'))throw Error('diagnostic-html-entry');
@@ -152,7 +157,7 @@ export async function buildScrollCauseWorker(root:string,runId:string){
  for(const row of imports)if(!MOUNTED_MODULE_BUILTINS.some(x=>x===row.specifier)&&row.specifier!==DIAGNOSTIC_ZOD_RAW_SPECIFIER&&(!lookupWorkerPublicPackage(row.specifier)||row.specifier===WORKER_ZOD_PUBLIC_BINDING.rawSpecifier))throw Error('diagnostic-worker-import');
  if(!imports.some(row=>row.kind==='static'&&row.specifier===DIAGNOSTIC_ZOD_RAW_SPECIFIER)||!modules.some(p=>p.path===WORKER_ZOD_PUBLIC_BINDING.sourceParent))throw Error('diagnostic-worker-public-zod-binding');
  const accepted=JSON.parse(await readFile(join(root,'package-lock.json'),'utf8')),installed=JSON.parse(await readFile(join(root,'node_modules/.package-lock.json'),'utf8')),packages=[];
- for(const [path,pin] of Object.entries(MOUNTED_PACKAGE_PINS)){
+ for(const [path,pin] of Object.entries(SCROLL_CAUSE_PACKAGE_PROFILE.packages)){
   const fact=diagnosticSourcePin(root,path+'/package.json'),manifest=JSON.parse(await readFile(join(root,path,'package.json'),'utf8'));
   if(manifest.version!==pin.version||accepted.packages?.[path]?.version!==pin.version||accepted.packages?.[path]?.integrity!==pin.integrity||installed.packages?.[path]?.version!==pin.version||installed.packages?.[path]?.integrity!==pin.integrity)throw Error('diagnostic-installed-package');packages.push({...fact,version:pin.version,integrity:pin.integrity});
  }
@@ -164,11 +169,11 @@ export async function buildScrollCauseWorker(root:string,runId:string){
  const handle=await open(worker,'wx',0o600);try{await handle.writeFile(output.code);await handle.sync();}finally{await handle.close();}
  const launchPath=relative(root,worker),physical=diagnosticSourcePin(root,launchPath);if(physical.bytes!==hookBytes||physical.sha256!==hookHash)throw Error('diagnostic-worker-write-changed');
  for(const pin of modules){const actual=diagnosticSourcePin(root,pin.path);if(actual.bytes!==pin.bytes||actual.sha256!==pin.sha256)throw Error('diagnostic-worker-source-changed');}
- return {context:'LOCAL_TEST_OR_HOSTED_CALLER_BOUND_BUILD_BYTES_ONLY',launchPath,launchFileUrl:pathToFileURL(worker).href,artifactPath:'diagnostic-worker.mjs',bytes:physical.bytes,sha256:physical.sha256,modules,imports,packages,compilerDependencies,bundledDependencyModules,importGuard:{scope:'diagnostic-binding-adapter-and-unchanged-loader-syntax-guard',normalAdmission:false},compiler:{provider:'rolldown',version:VERSION},qualification:false,fullDependencyGraph:'unqualified'};
+ return {context:'LOCAL_TEST_OR_HOSTED_CALLER_BOUND_BUILD_BYTES_ONLY',packageProfile:SCROLL_CAUSE_PACKAGE_PROFILE.id,launchPath,launchFileUrl:pathToFileURL(worker).href,artifactPath:'diagnostic-worker.mjs',bytes:physical.bytes,sha256:physical.sha256,modules,imports,packages,compilerDependencies,bundledDependencyModules,importGuard:{scope:'diagnostic-binding-adapter-and-unchanged-loader-syntax-guard',normalAdmission:false},compiler:{provider:'rolldown',version:VERSION},qualification:false,fullDependencyGraph:'unqualified'};
 }
 export async function validateDiagnosticInstalledPackages(root:string){
  const accepted=JSON.parse(await readFile(join(root,'package-lock.json'),'utf8')),installed=JSON.parse(await readFile(join(root,'node_modules/.package-lock.json'),'utf8')),packages=[];
- for(const [path,pin] of Object.entries(MOUNTED_PACKAGE_PINS)){
+ for(const [path,pin] of Object.entries(SCROLL_CAUSE_PACKAGE_PROFILE.packages)){
   const fact=diagnosticSourcePin(root,path+'/package.json'),manifest=JSON.parse(await readFile(join(root,path,'package.json'),'utf8'));
   if(manifest.version!==pin.version||accepted.packages?.[path]?.version!==pin.version||accepted.packages?.[path]?.integrity!==pin.integrity||installed.packages?.[path]?.version!==pin.version||installed.packages?.[path]?.integrity!==pin.integrity)throw Error('diagnostic-installed-package');packages.push({...fact,version:pin.version,integrity:pin.integrity});
  }return packages;

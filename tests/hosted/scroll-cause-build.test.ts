@@ -55,6 +55,8 @@ test('LOCAL_TEST actual nested worker build and import resolves configured publi
  expect((build as any).buildScrollCauseWorker).toBeTypeOf('function');
  const root=await realpath(resolve('.')),runId=String(BigInt(Date.now())*1000000n+BigInt(randomInt(1000000)));
  const result=await (build as any).buildScrollCauseWorker(root,runId);
+ expect(result.packageProfile).toBe('scroll-cause-security-pins-v2');
+ expect(result.packages.find((row:{path:string})=>row.path==='node_modules/zod/package.json')).toMatchObject({version:'4.6.6',integrity:'sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA=='});
  expect(result.launchPath).toBe(`apps/copilotkit/artifacts/scroll-cause/${runId}-1/worker.mjs`);
  const original=await readFile(join(root,result.launchPath));expect(original.length).toBe(result.bytes);expect(createHash('sha256').update(original).digest('hex')).toBe(result.sha256);
  const captures=await realpath(await mkdtemp(join(tmpdir(),'scroll-cause-local-worker-copy-'))),before=await readDiagnosticPhysical(join(root,result.launchPath),16777216),copy=await writeDiagnosticRole(captures,'diagnostic-worker.mjs',before.raw);expect(copy.sha256).toBe(before.sha256);expect(copy.bytes).toBe(before.bytes);
