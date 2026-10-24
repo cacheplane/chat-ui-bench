@@ -6,6 +6,31 @@ const run:ProviderRun={id:'10',headSha:sha,title:id,event:'workflow_dispatch',wo
 const page=<T>(records:readonly T[],totalCount:number|null)=>({page:1,totalCount,hasNext:false,records,status:200,bodyComplete:true});
 function snapshot():ProviderSnapshot{return {repository:'cacheplane/chat-ui-bench',workflowId:'20',candidateSha:sha,releaseId:id,currentRunId:'10',currentRun:{...run},runPages:[page([{...run}],1)],releasePages:[page([],null)],releaseLookupStatus:404,acquisitionClosed:true,draftVisibility:'unverified'};}
 const original=(exitCode:number)=>({exitCode,signal:null,stdoutBytes:10,stderrBytes:0,stdoutRetainedBytes:10,stderrRetainedBytes:0,closed:true,streamsComplete:true});
+describe('advisory audit policy v1 preserves complete original outcomes',()=>{
+ const report=(severities:string[]=[])=>({auditReportVersion:2,vulnerabilities:Object.fromEntries(severities.map((severity,i)=>['package-'+i,{name:'package-'+i,severity}])),metadata:{vulnerabilities:{info:severities.filter(x=>x==='info').length,low:severities.filter(x=>x==='low').length,moderate:severities.filter(x=>x==='moderate').length,high:severities.filter(x=>x==='high').length,critical:severities.filter(x=>x==='critical').length,total:severities.length}}});
+ it.each(['all','high'] as const)('accepts a clean complete %s report without warning',threshold=>{
+  expect(policy.assertAdvisoryAuditV1(original(0),report(),threshold)).toMatchObject({policyVersion:'advisory-audit-v1',originalExitCode:0,originalSuccess:true,policyMayContinue:true,warning:null,counts:{total:0}});
+ });
+ it.each(['all','high'] as const)('warns for informational-only %s findings while preserving npm exit0',threshold=>{
+  expect(policy.assertAdvisoryAuditV1(original(0),report(['info']),threshold)).toMatchObject({originalExitCode:0,originalSuccess:true,policyMayContinue:true,counts:{info:1,total:1},warning:expect.any(String)});
+  expect(()=>policy.assertAdvisoryAuditV1(original(1),report(['info']),threshold)).toThrow('Audit exit contradicts report');
+ });
+ it.each([['all',1],['high',0]] as const)('retains low findings and actual %s exit %i', (threshold,exitCode)=>{
+  const result=policy.assertAdvisoryAuditV1(original(exitCode),report(['low','moderate']),threshold);
+  expect(result).toMatchObject({originalExitCode:exitCode,originalSuccess:exitCode===0,policyMayContinue:true,counts:{low:1,moderate:1,total:2}});
+  expect(result.warning).toBe('Dependency advisories reported; findings are advisory. Original audit output and exit status are retained.');
+ });
+ it.each(['all','high'] as const)('warns and continues for high and critical %s findings',threshold=>{
+  expect(policy.assertAdvisoryAuditV1(original(1),report(['high','critical']),threshold)).toMatchObject({originalExitCode:1,originalSuccess:false,policyMayContinue:true,counts:{high:1,critical:1,total:2},warning:expect.any(String)});
+ });
+ it.each([undefined,null,{}, {error:{code:'ENOTFOUND'}}, {auditReportVersion:2,metadata:{vulnerabilities:{total:0}}}, {...report(),error:{code:'EAUDITNOLOCK'}}, {...report(),auditReportVersion:1}, {...report(['high']),vulnerabilities:{}}])('rejects missing, error or malformed reports %j',value=>expect(()=>policy.assertAdvisoryAuditV1(original(1),value,'all')).toThrow());
+ it.each([-1,1.5,NaN,Infinity,'1',Number.MAX_SAFE_INTEGER])('rejects invalid or inconsistent counts %s',value=>{
+  const valueReport=report(['low']);Reflect.set(valueReport.metadata.vulnerabilities,'low',value);
+  expect(()=>policy.assertAdvisoryAuditV1(original(1),valueReport,'all')).toThrow();
+ });
+ it.each([{closed:false},{streamsComplete:false},{signal:'SIGTERM',exitCode:null},{exitCode:2},{stdoutRetainedBytes:9}])('rejects incomplete or failed process evidence %j',change=>expect(()=>policy.assertAdvisoryAuditV1({...original(1),...change},report(['high']),'all')).toThrow());
+ it.each([['all',0,['high']],['all',1,[]],['high',1,['low']],['high',0,['critical']]] as const)('rejects contradictory %s exit %i', (threshold,exitCode,severities)=>expect(()=>policy.assertAdvisoryAuditV1(original(exitCode),report([...severities]),threshold)).toThrow());
+});
 describe('runtime URL shared accounting v9',()=>{
  const counts={metadataOccurrences:1,manifestOwnerOccurrences:1,manifestEdgeOccurrences:1,parsedEdgeOccurrences:1,unqualifiedRuntimeUrlOccurrences:4092};
  it('charges mixed4096 while retaining only two resolved static edges',()=>expect(policy.projectStaticReferenceCounts(counts)).toEqual({...counts,referenceBudgetCharges:4096,staticGraphReferenceOccurrences:2}));

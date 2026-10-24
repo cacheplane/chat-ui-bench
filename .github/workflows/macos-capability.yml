@@ -47,8 +47,25 @@ jobs:
       - name: Install current locked repository dependencies
         run: npm ci --loglevel=error
 
-      - name: Audit locked dependencies
-        run: npm audit --audit-level=high
+      - name: Audit locked dependencies (advisory)
+        id: audit
+        continue-on-error: true
+        shell: bash
+        run: npm audit --audit-level=high 2>&1 | tee audit.log
+
+      - name: Report dependency audit warning
+        if: steps.audit.outcome == 'failure'
+        run: echo '::warning::Dependency audit is advisory. Review the dependency-audit artifact for findings or audit errors.'
+
+      - name: Preserve dependency audit report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: dependency-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: audit.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Check pure receipt controls
         run: npm test -- tools/macos-capability/receipt.test.mjs

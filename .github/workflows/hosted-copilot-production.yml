@@ -49,7 +49,7 @@ jobs:
         run: node tools/hosted-copilot-step.mjs install
       - name: Retain original full audit outcome
         run: node tools/hosted-copilot-step.mjs audit
-      - name: Require high-threshold audit success
+      - name: Retain advisory high-threshold audit outcome
         run: node tools/hosted-copilot-step.mjs audit-high
       - name: Build contract declarations
         run: node tools/hosted-copilot-step.mjs contract

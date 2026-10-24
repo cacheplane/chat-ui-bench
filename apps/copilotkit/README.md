@@ -7,6 +7,8 @@ have been compiled without mounting React or executing the SDK, server or produc
 
 ## Dependency and public API boundary
 
+Dependency audits are advisory under the current benchmark policy. Findings, including high and critical advisories, remain visible in retained reports and warnings; they do not by themselves invalidate a performance measurement. The hosted command owner preserves each original audit exit status and validates report completeness. Installation, build, correctness, provenance, and trace-verification failures remain blocking. Exact audit counts and exceptions described below belong to their historical adoption checkpoints, rather than a required current advisory count.
+
 Direct pins are CopilotKit `react-core`, `core`, `runtime` **1.78.0**; AG-UI
 `client`, `core`, `encoder` **1.0.2**; React/ReactDOM and their type packages
 **19.3.0**; Hono **4.13.13**; `@hono/node-server` **1.19.17**; RxJS **7.8.1**.

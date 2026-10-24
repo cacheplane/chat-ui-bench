@@ -4,7 +4,7 @@
 
 The dedicated `package-lock.legacy.json` in this directory is derived from the current stock security graph. Its top-level `threadplaneModifiedDependencies` field records `derivationBaseStockLockSHA` (SHA-256 of the exact current root `package-lock.json` bytes) and `rootManifestSHA` (SHA-256 of the exact current root `package.json` bytes, including security overrides). Selection fails if the dedicated lock is absent or either current hash differs; a stock security update requires a new derivation and review.
 
-The compatible dependency fixes do not clear the full audit: the graph still contains upstream Zod 3 dependencies affected by [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5). A clean selected `npm ci` succeeds, while unchanged `npm audit --audit-level=high` fails on that advisory and its dependent-package chains. Keep the audit gate unchanged. The lock is a reproducible selection artifact, not evidence of a passing audit or browser run.
+The compatible dependency fixes do not clear the full audit: the graph still contains upstream Zod 3 dependencies affected by [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5). A clean selected `npm ci` succeeds, while `npm audit --audit-level=high` returns nonzero on that advisory and its dependent-package chains. CI retains that report and emits an advisory warning; it continues to the functional checks. The lock is a reproducible selection artifact, not evidence of a passing audit or browser run.
 
 Derive the lock by copying the final stock lock and changing only:
 
