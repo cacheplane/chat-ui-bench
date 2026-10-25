@@ -122,10 +122,10 @@ Resolve the actual retained path from parent-provided evidence; do not download 
 
 **Files:** modify `tools/perfetto-import/README.md`; verify complete diff.
 
-- [ ] Document new CLI/API names and example using the same config shape, fixed eight-name scope plus phases, seven tables, rawRowsExported meaning, NULL and integer representation, imported ID scope, first-display mapping limits and complete-output failure behavior. Explain new-policy-only quote-doubled SQL text projections plus pinned renderer wrapping, standard CSV record parsing for comma/quotes/newlines, and the embedded-NUL/malformed-UTF-8/rounded-REAL limitations. Describe supported text as processor-visible text, never producer-wire byte attestation. State false authority and no fallback/download/evaluator. Do not rewrite historical findings into new lineage or imply old full/inventory CSV was repaired.
-- [ ] Run `git diff --check` and review `git diff --stat`/full diff. Confirm no existing SQL, fixture bytes, process machinery, pins/caps, decoder, capture or application code changed. Check whether this standalone repository has a relevant docs generator; run none unless actually required by local scripts for this README change.
-- [ ] Request independent code/spec review with only the exact spec/plan/diff and safety contract. Resolve actionable findings, verify them personally, and rerun only relevant controls after changes. Do not repeat a reviewer's conclusions without inspection.
-- [ ] After review, use the maintained new CLI on the retained native trace with exact facts:
+- [x] Document new CLI/API names and example using the same config shape, fixed eight-name scope plus phases, seven tables, rawRowsExported meaning, NULL and integer representation, imported ID scope, first-display mapping limits and complete-output failure behavior. Explain new-policy-only quote-doubled SQL text projections plus pinned renderer wrapping, standard CSV record parsing for comma/quotes/newlines, and the embedded-NUL/malformed-UTF-8/rounded-REAL limitations. Describe supported text as processor-visible text, never producer-wire byte attestation. State false authority and no fallback/download/evaluator. Do not rewrite historical findings into new lineage or imply old full/inventory CSV was repaired.
+- [x] Run `git diff --check` and review `git diff --stat`/full diff. Confirm no existing SQL, fixture bytes, process machinery, pins/caps, decoder, capture or application code changed. Check whether this standalone repository has a relevant docs generator; run none unless actually required by local scripts for this README change.
+- [x] Request independent code/spec review with only the exact spec/plan/diff and safety contract. Resolve actionable findings, verify them personally, and rerun only relevant controls after changes. Do not repeat a reviewer's conclusions without inspection.
+- [x] After review, use the maintained new CLI on the retained native trace with exact facts:
 
 ```json
 {
@@ -137,8 +137,8 @@ Resolve the actual retained path from parent-provided evidence; do not download 
 ```
 
 Write this only as an untracked external config after replacing the retained executable path and choosing a genuinely fresh output. Run `node tools/perfetto-import/run.mjs --target-inventory-config /absolute/local-config.json`. Verify trace identity against the prototype manifest before using it. Retain the exact results externally; never commit native raw rows/configs.
-- [ ] Inspect all seven complete tables and hashes if successful; confirm ten shared-argset host slices, indexed browser metadata, phase navigationId and original process completion. Preserve actual measured row/byte counts. If output exceeds 256 KiB, report the whole-run failure with retained bookends; do not raise caps, crop SQL, remove evidence or claim a successful native inventory. No result grants graph/clock/FPS authority.
-- [ ] Run fresh `node --test tools/perfetto-import/run.node.mjs`, official Mac full smoke and `git diff --check`; retain command/output evidence. Keep conclusions limited to what ran.
+- [x] Inspect all seven complete tables and hashes if successful; confirm ten shared-argset host slices, indexed browser metadata, phase navigationId and original process completion. Preserve actual measured row/byte counts. If output exceeds 256 KiB, report the whole-run failure with retained bookends; do not raise caps, crop SQL, remove evidence or claim a successful native inventory. No result grants graph/clock/FPS authority.
+- [x] Run fresh `node --test tools/perfetto-import/run.node.mjs`, official Mac full smoke and `git diff --check`; retain command/output evidence. Keep conclusions limited to what ran.
 
 ## Task 6: Follow-up PR and green integration (parent-owned)
 

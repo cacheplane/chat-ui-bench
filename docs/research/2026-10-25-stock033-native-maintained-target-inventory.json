@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "kind": "maintained-target-inventory-native-diagnostic",
+  "captureSource": "b69dadc4e3bd12eeb8f15db26343363ce58e52a2",
+  "analysisSource": "85d06a671f01602214f17aa2fcc103ee9ad7681c",
+  "newCapture": false,
+  "trace": {
+    "bytes": 208730,
+    "sha256": "a7b8dd7230bd33a6c0e78c497c506fd9e58bf20f0c457eb90cc5e9d0264de4d8"
+  },
+  "queryPolicy": "target-inventory-v1",
+  "sqlSourceSha256": "f1fe2faaadcc68c57933ef51fd087ea795bc704416f9375c7b115d888acf3db9",
+  "output": {
+    "bytes": 155238,
+    "sha256": "e75f22e10a77548af8ee7cf19737fa7e13e7b17a6cd10edcdf8a2169e49c22a3",
+    "tables": 7,
+    "rowCounts": [
+      8,
+      183,
+      772,
+      50,
+      21,
+      1,
+      5
+    ],
+    "strictCSVVerified": true
+  },
+  "selectedScope": {
+    "slices": 183,
+    "arguments": 772,
+    "groups": 50,
+    "sharedArgSetLayerEvents": 10,
+    "metadataSlices": 13,
+    "metadataArgumentRows": 36,
+    "graphicsReporterSlices": 150,
+    "graphicsReporterArgumentRows": 696,
+    "selectedReporterSinkMatches": 3
+  },
+  "localValidation": {
+    "nodeControls": 40,
+    "officialMacSmokeImports": 4,
+    "targetFixtureBytes": 1238,
+    "targetFixtureSha256": "ed2b0047fdc87b33174d23cce2d34c21e9cdf900df66db403315d848bd311de0",
+    "LinuxTargetMode": "required_changed_head_CI_gate"
+  },
+  "separateRawDropCensus": {
+    "packets": 4396,
+    "nonzeroDeclarations": 14,
+    "strictFirstStarts": 14,
+    "resetCooccurrences": 13,
+    "unexplained": 0,
+    "contradictions": 0,
+    "oldV7LedgerIsStateLossBranchOnly": true,
+    "newVersionRequiredForGlobalRawDropGate": true
+  },
+  "evidence": {
+    "archiveBytes": 50949,
+    "archiveSha256": "a6108cc0fa7e8a49458bee9c9490dda7fbfccabf3b9843b3635aefdfb484c542",
+    "members": 43,
+    "uncompressedBytes": 303647,
+    "independentDownloadVerified": true
+  },
+  "authority": {
+    "qualification": false,
+    "nativeSupported": false,
+    "FPS": null,
+    "duration": null,
+    "scoring": false,
+    "ranking": false,
+    "clockAdmission": "not_evaluated",
+    "targetLifetime": "unestablished",
+    "presentationPopulation": "not_evaluated"
+  }
+}
