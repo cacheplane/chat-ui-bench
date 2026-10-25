@@ -32,6 +32,8 @@ Files: create `tools/native-real-chat/roster-stock033-v2.mjs`; update v2 tests.
 
 ## Task 3: Add isolated v2 preparation and verification
 
+Authored physical tests use the separate branded control facade described in the design so Linux source checks need no Darwin binary. Production entry points must reject authored modes/references/ledgers and retain the actual host gate. An explicit authored SDK forwarder proves that compiler resolution starts from the authenticated source root; it supplies no genuine build or native provenance.
+
 Files: create `tools/native-real-chat/prepare-stock033-v2.mjs`; minimally modify `tools/native-real-chat/prepare.mjs` only if sharing internal custody primitives; update v2 tests and keep `stock033.node.mjs` unchanged.
 
 - [ ] Write red tests for new mode/reference isolation, root product/probe facts, package/lock/config/style/asset joins, compiler-input drift and unchanged cap boundaries. Explicitly assert v1 still rejects short rosters and v2 references.

@@ -42,9 +42,9 @@ function array(value,max){
  for(let i=0;i<value.length;i++)if(!Object.hasOwn(Object.getOwnPropertyDescriptor(value,String(i))??{},'value'))fail('array hole/accessor');
 }
 // Bound traversal before copying, sorting or serializing caller-owned structures.
-function preflight(value){
+function preflight(value,maxBytes=1048576){
  let nodes=0,bytes=0;const active=new Set(),stack=[];
- const pay=n=>{bytes+=n;if(bytes>1048576)fail('encoded byte bound');};
+ const pay=n=>{bytes+=n;if(bytes>maxBytes)fail('encoded byte bound');};
  // Exact JSON string width, without allocating an escaped copy. Lone surrogates
  // become six-byte escapes; paired surrogates become four UTF8 bytes.
  function string(text){
@@ -87,6 +87,8 @@ function keyName(key){
  if(typeof key!=='string'||Buffer.byteLength(key)>192||! /^[A-Za-z0-9_@.-]+(?:\/[A-Za-z0-9_@.-]+)*$/.test(key)||key.split('/').some(part=>part==='.'||part==='..'||part==='records')||/(?:\.node\.mjs|\.test\.[^/]+|\.spec\.[^/]+)$/.test(key))fail('key');
  return key;
 }
+// Reused by the versioned physical adapter and owner for bounded inert DTO admission.
+export function admitStock033DataV2(value,maxBytes=1048576){if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>1048576)fail('encoded byte bound');preflight(value,maxBytes);return value;}
 function rows(values,max=1024){
  array(values,max);const result=new Map();
  for(const row of values){closed(row,['key','bytes','sha256']);keyName(row.key);if(!integer(row.bytes,2097152)||!sha(row.sha256)||result.has(row.key))fail('row fact/duplicate');result.set(row.key,{key:row.key,bytes:row.bytes,sha256:row.sha256});}
@@ -154,7 +156,8 @@ export function assembleStock033RosterV2(input){
  const resultRows=sorted(union.keys()).map(key=>{const row=union.get(key);return Object.freeze({...row,roles:Object.freeze(row.roles)});});
  // Preserve public role declaration order; lexical tuple order is the hash contract.
  const counts=Object.fromEntries(stock033Roles.map(role=>[role,roleCounts[role]]));
- return Object.freeze({contract:'native-stock033-roster-v2',digest:createHash('sha256').update('native-stock033-roster-v2\0'+JSON.stringify(tuples)).digest('hex'),rows:Object.freeze(resultRows),roleCounts:Object.freeze(counts),membershipCount,unionCount:union.size,overlapCount:membershipCount-union.size,archiveBytes});
+ const digestInput='native-stock033-roster-v2\0'+JSON.stringify(tuples),digestBytes=Buffer.byteLength(digestInput);
+ return Object.freeze({contract:'native-stock033-roster-v2',digest:createHash('sha256').update(digestInput).digest('hex'),digestBytes,rows:Object.freeze(resultRows),roleCounts:Object.freeze(counts),membershipCount,unionCount:union.size,overlapCount:membershipCount-union.size,archiveBytes});
 }
 
 /** Compiler-private loading is trusted platform work. This joins only explicit metafile inputs. */
