@@ -43,6 +43,12 @@ fixture compilation or output creation. Earlier stock and modified archives stay
 separate. The archive ceiling remains 1,024 rows, and all file and byte limits
 remain unchanged.
 
+The fixture compiler checks its returned module's intrinsic byte length and the
+metafile's encoded JSON size, including its final newline, before copying or
+serializing them. The existing 2 MiB module and 1 MiB metafile limits still
+apply. Successful output bytes and original input identity checks are preserved;
+compiler internals remain trusted platform operations.
+
 The source-owned preparation owner retains the original `{template, reference}`
 return, actual exit and pipe EOF. Stock uses the distinct
 `source-owned-preparation-reference-stock-033-v1` policy and product identity

@@ -82,13 +82,57 @@ export async function verifyIdleHostPreparation(root,template,reference){
  return owned;
 }
 
+// esbuild returns JSON.parse-derived inert metadata and a Uint8Array. The
+// compiler's internal construction is trusted; these bound our own constructors.
+function compilerJSONWidth(root){
+ let bytes=1;const active=new Set(),stack=[]; // Final LF is part of the cap.
+ const pay=n=>{bytes+=n;if(bytes>1048576)throw unavailable();};
+ function string(value){
+  pay(2);for(let i=0;i<value.length;i++){const c=value.charCodeAt(i);
+   if(c===34||c===92||c===8||c===9||c===10||c===12||c===13)pay(2);
+   else if(c<32)pay(6);
+   else if(c>=0xd800&&c<=0xdbff){const next=value.charCodeAt(i+1);if(next>=0xdc00&&next<=0xdfff){pay(4);i++;}else pay(6);}
+   else if(c>=0xdc00&&c<=0xdfff)pay(6);
+   else pay(c<128?1:c<2048?2:3);
+  }
+ }
+ function* children(value,array){
+  if(array){const length=data(value,'length');if(!Number.isSafeInteger(length)||length<0)throw unavailable();pay(Math.max(0,length-1));for(let i=0;i<length;i++)yield data(value,i);}
+  else{let first=true;for(const key in value){if(!Object.hasOwn(value,key))continue;const d=Object.getOwnPropertyDescriptor(value,key);if(!d||!d.enumerable)continue;if(!Object.hasOwn(d,'value'))throw unavailable();if(!first)pay(1);first=false;string(key);pay(1);yield d.value;}}
+ }
+ function enter(value){
+  if(typeof value==='string'){string(value);return null;}
+  if(value===null){pay(4);return null;}
+  if(typeof value==='boolean'){pay(value?4:5);return null;}
+  if(typeof value==='number'&&Number.isFinite(value)){pay(String(value).length);return null;}
+  if(!value||typeof value!=='object'||types.isProxy(value))throw unavailable();
+  const array=Array.isArray(value);if(Object.getPrototypeOf(value)!==(array?Array.prototype:Object.prototype)||active.has(value))throw unavailable();
+  // JSON.stringify looks up inherited toJSON too. Inspect descriptors, never
+  // read a hook. The admitted prototype chains have at most three objects.
+  for(let p=value;p!==null;p=Object.getPrototypeOf(p)){const d=Object.getOwnPropertyDescriptor(p,'toJSON');if(d&&(!Object.hasOwn(d,'value')||typeof d.value==='function'))throw unavailable();if(d)break;}
+  pay(2);active.add(value);return{value,iterator:children(value,array)};
+ }
+ let value=root;for(;;){const frame=enter(value);if(frame)stack.push(frame);let next;
+  while(stack.length){const top=stack[stack.length-1];next=top.iterator.next();if(!next.done)break;active.delete(top.value);stack.pop();}
+  if(!stack.length)return bytes;value=next.value;
+ }
+}
+export function compilerOutputBytes(built){
+ plain(built);const files=data(built,'outputFiles');if(!Array.isArray(files)||types.isProxy(files)||Object.getPrototypeOf(files)!==Array.prototype||data(files,'length')!==1)throw unavailable();
+ const file=data(files,0);plain(file);const contents=data(file,'contents');if(types.isProxy(contents)||!types.isUint8Array(contents))throw unavailable();
+ const typed=Object.getPrototypeOf(Uint8Array.prototype),get=k=>Reflect.apply(Object.getOwnPropertyDescriptor(typed,k).get,contents,[]),length=get('byteLength'),offset=get('byteOffset'),buffer=get('buffer');
+ if(length>2097152||types.isSharedArrayBuffer(buffer)||Reflect.apply(Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'resizable').get,buffer,[]))throw unavailable();
+ const metafile=data(built,'metafile'),width=compilerJSONWidth(metafile),view=new Uint8Array(buffer,offset,length);
+ // No await or user hook separates preflight and these bounded constructors.
+ const moduleBytes=Buffer.from(view),text=JSON.stringify(metafile)+'\n';if(Buffer.byteLength(text)!==width)throw unavailable();return{moduleBytes,metafileBytes:Buffer.from(text)};
+}
 export async function compileActualFixture(sourceRoot,outputDirectory,expected){
  if(!Array.isArray(expected)||expected.length<1||expected.length>256)throw unavailable();
  const before=[];for(const row of expected){if(typeof row.key!=='string'||row.key.length>192||row.key.includes('..'))throw unavailable();const input=await readOwned(sourceRoot+'/'+row.key,2097152),b=input.bytes;if(b.length!==row.bytes||sha(b)!==row.sha256)throw unavailable();before.push({key:row.key,bytes:b.length,sha256:sha(b),identity:input.identity});}
  const esbuild=require('esbuild');let built;try{built=await esbuild.build({absWorkingDir:sourceRoot,entryPoints:['tools/native-real-chat/fixture-entry.mjs'],bundle:true,platform:'node',format:'esm',target:'node24',write:false,metafile:true,logLevel:'silent',banner:{js:"import{createRequire as __fixtureRequire}from'node:module';const require=__fixtureRequire(import.meta.url);"}});}finally{esbuild.stop();}
- const keys=Object.keys(built.metafile.inputs).sort(),wanted=before.map(x=>x.key).sort();if(keys.length!==wanted.length||keys.some((k,i)=>k!==wanted[i])||built.outputFiles.length!==1)throw unavailable();
+ const bounded=compilerOutputBytes(built),keys=Object.keys(built.metafile.inputs).sort(),wanted=before.map(x=>x.key).sort();if(keys.length!==wanted.length||keys.some((k,i)=>k!==wanted[i])||built.outputFiles.length!==1)throw unavailable();
  for(const row of before){const b=(await readOwned(sourceRoot+'/'+row.key,2097152,row.identity)).bytes;if(b.length!==row.bytes||sha(b)!==row.sha256)throw unavailable();}
- const modulePath=outputDirectory+'/fixture-compiled.mjs',moduleFact=await writeClosed(modulePath,Buffer.from(built.outputFiles[0].contents),2097152);await writeClosed(outputDirectory+'/fixture-metafile.json',Buffer.from(JSON.stringify(built.metafile)+'\n'),1048576);
+ const modulePath=outputDirectory+'/fixture-compiled.mjs',moduleFact=await writeClosed(modulePath,bounded.moduleBytes,2097152);await writeClosed(outputDirectory+'/fixture-metafile.json',bounded.metafileBytes,1048576);
  await verifyOwnedFile(modulePath,moduleFact,2097152);const module=await import(pathToFileURL(modulePath).href);const fixture=module.compileSourceFixture();await verifyOwnedFile(modulePath,moduleFact,2097152);if(fixture.status!=='source-fixture-verified'||fixture.authority!==false||fixture.history.length!==100)throw unavailable();await writeClosed(outputDirectory+'/fixture-output.json',Buffer.from(JSON.stringify(fixture)+'\n'),131072);return{fixture,modulePath,moduleFact,inputs:before};
 }
 export async function prepareActual(options){
