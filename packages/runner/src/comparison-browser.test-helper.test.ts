@@ -335,8 +335,9 @@ async function fixture() {
   const hashed = new Set([...Object.keys(build.sourceHashes), ...Object.keys(probe.sourceHashes), ...Object.keys(probe.compiledHashes), ...assets,
     probe.compiler.resolutionPath + '/package.json', probe.nativeCompiler.resolutionPath + '/package.json']);
   const paddingKeys = source59.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
-  // Only synthetic file/lock extrema may compact additional unlocked, named JavaScript copies.
-  const syntheticExtremumPaddingKeys = [...new Set([...paddingKeys, ...output138.filter(key => key.endsWith('.js') && !hashed.has(key))])].sort();
+  // Only synthetic file/lock extrema may compact unlocked, named JavaScript/declaration copies.
+  // Both use the same AST, raw literal/comment and exact newline parity checks below.
+  const syntheticExtremumPaddingKeys = [...new Set([...paddingKeys, ...output138.filter(key => (key.endsWith('.js') || key.endsWith('.d.ts')) && !hashed.has(key))])].sort();
   return {root, workspace, evidenceRoot, context, union, paddingKeys, syntheticExtremumPaddingKeys, syntheticExtremumProtectedKeys: [...hashed]};
 }
 const writer = () => helper.writeComparisonCiSnapshot;
@@ -609,6 +610,7 @@ test('synthetic lock compaction preserves every build-bound and non-padding memb
   const preserved=await Promise.all(f.union.filter(key=>!f.syntheticExtremumPaddingKeys.includes(key)||protectedKeys.has(key)).map(async key=>({key,bytes:await readFile(join(f.workspace,key))})));
   const compacted=await compactSyntheticExtremumFixture(f);
   expect(compacted.some(row=>row.key.endsWith('.js')&&row.compactedBytes<row.originalBytes)).toBe(true);
+  expect(compacted.some(row=>row.key.endsWith('.d.ts')&&row.compactedBytes<row.originalBytes)).toBe(true);
   for(const row of compacted)expect(protectedKeys.has(row.key)).toBe(false);
   for(const row of preserved)expect((await readFile(join(f.workspace,row.key))).equals(row.bytes)).toBe(true);
 });
