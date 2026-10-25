@@ -54,7 +54,7 @@ These computed first-use SHA256 pins identify observed bytes; they are not
 independent publisher attestations or proof of the binary's source. Trust still
 depends on the official HTTPS distribution and publisher/vendor build. Linux
 bytes were hashed on macOS, which is not Linux execution evidence. Actual Linux
-exact-version and semantic smoke execution must pass in the workflow below.
+exact-version and all three semantic smoke imports passed in [run40230295671](https://github.com/cacheplane/chat-ui-bench/actions/runs/40230295671) on reviewed source `19af098698c31ad69097185f81fbd4cc2e15bb84`; downloaded process/stream manifests and hashes were verified.
 Local Mac verification passed all authored controls and the unchanged clock full,
 graphics full and graphics inventory semantic smoke imports with these pins.
 
@@ -178,8 +178,7 @@ artifact contract replaces the former `15000000`-byte compressed ZIP cap and its
 archive/member checks. Runner input/output caps remain unchanged. It runs the
 authored tests and production exact-version/semantic smoke. Only small authored
 evidence and test logs are uploaded for 14 days; the executable is excluded. Linux
-execution is to be verified by that workflow; local macOS verification does not
-establish Linux compatibility.
+execution is verified by the linked run; each future changed head still requires its own green workflow. Local macOS verification alone does not establish Linux compatibility.
 
 The smoke also authors a separate corrected 308-byte graphics fixture and imports
 it into `graphics-diagnostic/`. The clock fixture and its hash remain unchanged.
