@@ -31,13 +31,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir "$RUNNER_TEMP/perfetto-import-tool"
-          curl --fail --location --proto '=https' --tlsv1.2 --max-time 60 --max-filesize 15000000 \
-            https://github.com/google/perfetto/releases/download/v58.2/linux-amd64.zip \
-            --output "$RUNNER_TEMP/perfetto-import-tool/linux-amd64.zip"
-          test "$(stat -c '%s' "$RUNNER_TEMP/perfetto-import-tool/linux-amd64.zip")" -le 15000000
-          printf '%s  %s\n' 32c739f71b2d39721afd294c0b038f2499a44a71b5b6bcdd85b83faca0b240b9 "$RUNNER_TEMP/perfetto-import-tool/linux-amd64.zip" | sha256sum --check --strict
-          unzip -p "$RUNNER_TEMP/perfetto-import-tool/linux-amd64.zip" linux-amd64/trace_processor_shell > "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell"
-          printf '%s  %s\n' 58042408e6cc861fb1a731c26bb082dc222285561eaa4e12a48a8b2b90dca7b9 "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell" | sha256sum --check --strict
+          curl --fail --location --proto '=https' --tlsv1.2 --max-time 60 --max-filesize 15885448 \
+            https://commondatastorage.googleapis.com/perfetto-luci-artifacts/v59.1/linux-amd64/trace_processor_shell \
+            --output "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell"
+          test "$(stat -c '%s' "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell")" -eq 15885448
+          printf '%s  %s\n' 2434129a3af4dc9e2034a476f7b76447b490975213e301769310d3bd0d5d6458 "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell" | sha256sum --check --strict
           chmod 700 "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell"
       - name: Import maintained authored clock fixture with pinned production CLI
         shell: bash

@@ -12,7 +12,7 @@ const hash = b => createHash('sha256').update(b).digest('hex');
 const module = await import('./run.mjs').catch(() => ({}));
 const fixtureModule = { runDiagnostic: module.runAuthoredFixtureDiagnostic };
 const smoke = await import('./smoke.mjs').catch(() => ({}));
-const version = 'Perfetto v58.2-add693d8b (add693d8b338ba9599dbcbc3e300b1ab8c000897)\nTrace Processor RPC API version: 14\n';
+const version = 'Perfetto v59.1-1e9c61e98 (1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d)\nTrace Processor RPC API version: 14\n';
 async function fixture(body = `process.stdout.write('rows\\n');`) {
   const root = await mkdtemp(join(tmpdir(), 'perfetto-import-test-'));
   const trace = Buffer.from('authored trace');
@@ -22,6 +22,40 @@ async function fixture(body = `process.stdout.write('rows\\n');`) {
   return { root, options: { trace: { path: join(root, 'trace'), bytes: trace.length, sha256: hash(trace) }, processor: { path: join(root, 'processor.mjs'), sha256: hash(source) }, phases: ["begin'quoted", 'end'], out: join(root, 'out') } };
 }
 test('library exists and imports without running a diagnostic', () => assert.equal(typeof module.runDiagnostic, 'function'));
+test('production full and inventory reject the former official platform pin before launch', async () => {
+  const formerPins = {
+    'darwin-arm64': 'd29864d1ba3b36855527bb1b0ca3aa7f703cdce338b9680bb922c5c151b358fa',
+    'linux-x64': '58042408e6cc861fb1a731c26bb082dc222285561eaa4e12a48a8b2b90dca7b9',
+  };
+  const formerPin = formerPins[`${process.platform}-${process.arch}`];
+  assert.ok(formerPin, 'this control requires a supported runtime platform');
+  for (const run of [module.runDiagnostic, module.runInventoryDiagnostic]) {
+    const { options } = await fixture();
+    options.processor.sha256 = formerPin;
+    const result = await run(options);
+    assert.equal(result.status, 'failure'); assert.match(result.error, /platform pin/);
+    assert.deepEqual(result.processes, {});
+  }
+});
+test('authored full and inventory reject complete former version after normal version exit before query', async () => {
+  const formerVersion = 'Perfetto v58.2-add693d8b (add693d8b338ba9599dbcbc3e300b1ab8c000897)\nTrace Processor RPC API version: 14\n';
+  for (const run of [module.runAuthoredFixtureDiagnostic, module.runAuthoredFixtureInventoryDiagnostic]) {
+    const { options } = await fixture();
+    const source = `#!${process.execPath}\nif(process.argv.includes('--version')) { process.stdout.write(${JSON.stringify(formerVersion)}); } else { throw new Error('query must not launch'); }\n`;
+    await writeFile(options.processor.path, source); options.processor.sha256 = hash(source);
+    const result = await run(options);
+    assert.equal(result.status, 'failure'); assert.match(result.error, /version mismatch/);
+    assert.equal(result.processes.query, undefined);
+    assert.equal(result.processes.version.code, 0); assert.equal(result.processes.version.signal, null);
+    assert.equal(result.processes.version.closed, true); assert.equal(result.processes.version.error, null);
+    for (const stream of Object.values(result.processes.version.streams)) {
+      assert.equal(stream.eof, true); assert.equal(stream.closed, true);
+      assert.equal(stream.forcedDestroy, false); assert.equal(stream.error, null);
+    }
+    assert.equal(await readFile(join(options.out, 'version.stdout'), 'utf8'), formerVersion);
+    assert.equal(await readFile(join(options.out, 'version.stderr'), 'utf8'), '');
+  }
+});
 test('inventory has separate official and authored-only library entrypoints', () => {
   assert.equal(typeof module.runInventoryDiagnostic, 'function');
   assert.equal(typeof module.runAuthoredFixtureInventoryDiagnostic, 'function');
