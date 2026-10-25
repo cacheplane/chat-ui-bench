@@ -98,7 +98,7 @@ function compilerJSONWidth(root){
  }
  function* children(value,array){
   if(array){const length=data(value,'length');if(!Number.isSafeInteger(length)||length<0)throw unavailable();pay(Math.max(0,length-1));for(let i=0;i<length;i++)yield data(value,i);}
-  else{let first=true;for(const key in value){if(!Object.hasOwn(value,key))continue;const d=Object.getOwnPropertyDescriptor(value,key);if(!d||!d.enumerable)continue;if(!Object.hasOwn(d,'value'))throw unavailable();if(!first)pay(1);first=false;string(key);pay(1);yield d.value;}}
+  else{let first=true;for(const key in value){if(!Object.hasOwn(value,key))throw unavailable();const d=Object.getOwnPropertyDescriptor(value,key);if(!d||!d.enumerable)throw unavailable();if(!Object.hasOwn(d,'value'))throw unavailable();if(!first)pay(1);first=false;string(key);pay(1);yield d.value;}}
  }
  function enter(value){
   if(typeof value==='string'){string(value);return null;}
