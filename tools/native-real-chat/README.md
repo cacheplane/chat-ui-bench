@@ -37,8 +37,17 @@ Threadplane packages (`chat`, `a2ui`, `langgraph`, `render`, `telemetry`) at exa
 0.3.3 with fixed published integrity values, joined to the original package
 metadata and lock entries. Modified envelopes, the idle-host CSS production hash,
 and the modified Angular style selection are rejected. The fixed source roster
-has 1,016 rows and exactly 12 served assets; a natural stock build has no separate
-statistics output. The archive ceiling remains 1,024 rows.
+has 1,004 current rows and exactly 12 served assets; a natural stock build has no
+separate statistics output. Historical `records/` inputs are rejected before
+fixture compilation or output creation. Earlier stock and modified archives stay
+separate. The archive ceiling remains 1,024 rows, and all file and byte limits
+remain unchanged.
+
+The fixture compiler checks its returned module's intrinsic byte length and the
+metafile's encoded JSON size, including its final newline, before copying or
+serializing them. The existing 2 MiB module and 1 MiB metafile limits still
+apply. Successful output bytes and original input identity checks are preserved;
+compiler internals remain trusted platform operations.
 
 The source-owned preparation owner retains the original `{template, reference}`
 return, actual exit and pipe EOF. Stock uses the distinct
