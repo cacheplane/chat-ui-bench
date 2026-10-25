@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "cohort": "stock-threadplane-0.3.3-native-v2-history100-up",
+  "backend": "headless SwiftShader",
+  "captureSource": "b69dadc4e3bd12eeb8f15db26343363ce58e52a2",
+  "analysisSources": {
+    "greenMainTarget": "22dfd27de41d4c1404b6d6ca732a7ba395f6753b",
+    "compactScope": "97c3002d81c7e531fbd4408dba07abf16e37920f",
+    "recordedInterval": "7bfe68b3d32dc2e6793ce810ac970a3f9b4a1c1f"
+  },
+  "input": {
+    "bytes": 208730,
+    "sha256": "a7b8dd7230bd33a6c0e78c497c506fd9e58bf20f0c457eb90cc5e9d0264de4d8"
+  },
+  "processor": {
+    "version": "59.1",
+    "source": "1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d",
+    "macArm64SHA256": "8488edbefadfc4be152cda1d42d9bfcede8b47638295eb85eb3bad8cd148fdf4"
+  },
+  "scope": {
+    "queryPolicy": "scope-inventory-compact-v1",
+    "tableRows": [
+      5,
+      424,
+      1184,
+      53,
+      21,
+      1
+    ],
+    "queryBytes": 153002,
+    "querySHA256": "7acdb8a3e4d6a9bbc1fb03fe59eb80e99ec77ae5a25be212025385e4927f9e3f",
+    "contextNodes": 424,
+    "selectedNodes": 211,
+    "argumentRows": 1184,
+    "dictionaryGroups": 53,
+    "commonTargetRecords": 147,
+    "commonTargetArgumentRows": 628,
+    "allOldCompletePrefixArgumentRowsPreserved": 1134,
+    "fullOldNativeOutputEquivalenceClaimed": false
+  },
+  "observedOperations": {
+    "mainFrameDraws": 20,
+    "submittedWithExplicitHostAssociation": 4,
+    "matchedReceives": 4,
+    "receiveSink": {
+      "client": "4",
+      "sink": "10"
+    },
+    "explicitNonproduction": 16,
+    "skipReasons": {
+      "SKIPPED_REASON_NO_DAMAGE": 2,
+      "SKIPPED_REASON_WAITING_ON_MAIN": 14
+    },
+    "phaseMembership": "not_admitted"
+  },
+  "chains": [
+    {
+      "draw": 585,
+      "generate": 586,
+      "submit": 607,
+      "drawFrame": 611,
+      "ackSequence": "105",
+      "host": "2",
+      "surfaceTraceIdImportedSignedInt": "-3557534934731847342",
+      "receive": 619
+    },
+    {
+      "draw": 781,
+      "generate": 782,
+      "submit": 809,
+      "drawFrame": 812,
+      "ackSequence": "106",
+      "host": "2",
+      "surfaceTraceIdImportedSignedInt": "-3557534934731847349",
+      "receive": 831
+    },
+    {
+      "draw": 995,
+      "generate": 996,
+      "submit": 1016,
+      "drawFrame": 1027,
+      "ackSequence": "107",
+      "host": "2",
+      "surfaceTraceIdImportedSignedInt": "-3557534934731847345",
+      "receive": 1020
+    },
+    {
+      "draw": 2103,
+      "generate": 2104,
+      "submit": 2127,
+      "drawFrame": 2130,
+      "ackSequence": "122",
+      "host": "2",
+      "surfaceTraceIdImportedSignedInt": "-3557534934731847525",
+      "receive": 2151
+    }
+  ],
+  "schedulerSource": {
+    "records": 40,
+    "emittedType": "int",
+    "emittedValue": "1",
+    "typedReporterSource": "4294967297",
+    "fullGenerationRecoverableFromSchedulerValue": false,
+    "mechanism": "BeginFrameArgs uses SetInteger(int) for uint64 source/sequence",
+    "tracedValueSourceSHA256": "8c08f65ba103cb8974d1683373f5f073517adedd2004c752acde97bcd0b7adde"
+  },
+  "recordedInterval": {
+    "traceIntervalNs": "319926000",
+    "durationNs": null,
+    "interpretation": "exact recorded same-clock mark difference; no latency or FPS authority"
+  },
+  "rawDropDeclarations": {
+    "total": 14,
+    "explained": 14,
+    "unexplained": 0,
+    "contradictions": 0
+  },
+  "historicalStateLossLedger": {
+    "raw": 1,
+    "explained": 1,
+    "unexplained": 0,
+    "contradictions": 0
+  },
+  "terminalCoverage": {
+    "firstThreeDisplayChainsHaveObservedSwapSteps": true,
+    "fourthMissingSteps": [
+      "STEP_BUFFER_SWAP_POST_SUBMIT",
+      "STEP_FINISH_BUFFER_SWAP",
+      "STEP_SWAP_BUFFERS_ACK"
+    ],
+    "extraMappedSurface": "-3557534934731847207",
+    "presentationPopulation": "unavailable"
+  },
+  "failedPrototype": {
+    "source": "6e888e3455b2af48184a0a825c4fb02214350065",
+    "status": "failure",
+    "reason": "stdout limit exceeded",
+    "savedPrefixBytes": 262144,
+    "normalEOF": false,
+    "completeOutput": false,
+    "archiveBytes": 36275,
+    "archiveSHA256": "524a48808718a506c92277d56be2caf17675a3eaf4cd7a361639c5587f37c01c"
+  },
+  "authority": {
+    "rootTemporalOwnership": "not_admitted",
+    "participatingClockAdmission": "not_admitted",
+    "captureCoverage": "not_admitted",
+    "presentationPopulation": "unavailable",
+    "nativeSupported": false,
+    "evaluationEligibility": false,
+    "scoring": false,
+    "ranking": false,
+    "fps": null,
+    "duration": null,
+    "physicalDisplayFPS": null
+  },
+  "release": "https://github.com/cacheplane/chat-ui-bench/releases/tag/stock033-native-v2-verification-20261025-a",
+  "compactEvidenceArchive": "chat-ui-bench-stock033-native-scope-compact-head97c3002-20261025-a.zip"
+}

@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROCESSOR_PINS, runDiagnostic, runInventoryDiagnostic, runTargetInventoryDiagnostic } from './run.mjs';
+import { PROCESSOR_PINS, runDiagnostic, runInventoryDiagnostic, runTargetInventoryDiagnostic, runScopeInventoryDiagnostic } from './run.mjs';
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const concat = (...parts) => Buffer.concat(parts);
@@ -67,6 +67,46 @@ export function authoredTargetFixture() {
       string('quoted,"key"', 'quoted-key-value'),
       integer('largeSigned', 9007199254740993n), integer('largeUnsigned', 9007199254740995n, 3)),
     event('BeginFrame', 1030n), event('target-end', 1031n));
+}
+
+// Independent authored scope/clock input; no existing fixture bytes are extended.
+export function authoredScopeFixture() {
+  const packet = (...fields) => body(1, concat(uint(10, 1n), ...fields));
+  const clock = (id, ts, unit) => body(1, concat(uint(1,id),uint(2,ts),uint(3,0n),uint(4,unit)));
+  const annotation = (name, value) => concat(text(10,name),value);
+  const string = (name,value) => annotation(name,text(6,value));
+  const integer = (name,value,field=4) => annotation(name,uint(field,value));
+  const event = (type,name,ts,track=10n,clockId=64n,annotations=[],extra=Buffer.alloc(0)) => packet(
+    uint(8,ts),uint(58,clockId),body(11,concat(uint(9,type),uint(11,track),text(22,'scope,"category"'),
+      ...(name === null ? [] : [text(23,name)]),...annotations.map(a=>body(4,a)),extra)));
+  const scheduler = source => [integer('source_id',source,3),integer('sequence_number',7n,3),integer('frame_time',1009000n),string('shared','same')];
+  return concat(
+    packet(uint(13,1n),body(6,concat(clock(6n,1000000n,1n),clock(3n,2000000n,1n),clock(64n,1000n,1000n),uint(2,6n)))),
+    packet(body(60,concat(uint(1,8n),body(4,concat(uint(1,900n),uint(2,901n),text(5,'thread,"main"')))))),
+    packet(body(60,concat(uint(1,10n),uint(5,8n),text(2,'track,"main"')))),
+    packet(body(60,concat(uint(1,18n),body(4,concat(uint(1,900n),uint(2,902n),text(5,'thread-other')))))),
+    packet(body(60,concat(uint(1,20n),uint(5,18n),text(2,'other-track')))),
+    event(2n,null,1000n), // unmatched end: importer-generated behavior, not a parent ID.
+    event(1n,'outer',1001n,10n,64n,[string('ancestorOnly','not exported')]),
+    event(1n,'inner',1002000n,10n,6n,[string('ancestorOnly2','not exported')]),
+    event(1n,'MainFrame.Draw',2003000n,10n,3n,[integer('largeSigned',9007199254740993n),integer('largeUnsigned',9007199254740995n,3),string('repeated','first'),string('repeated','second')]),
+    event(1n,'Graphics.Pipeline',1004n,10n,64n,[string('endpoint','begin')],body(1052,concat(uint(1,2n),uint(10,43n)))),
+    event(1n,'DrawFrame',1005n,20n,64n,[integer('layer_tree_host_id',999n),...scheduler(333n)]),
+    event(2n,null,1006000n,20n,6n),
+    event(2n,null,2006000n,10n,3n,[string('endOnly','merged endpoint')]),
+    event(3n,'Graphics.Pipeline',1007n,10n,64n,[],body(1052,concat(uint(1,10n),uint(3,58n),uint(8,43n)))),
+    event(3n,'DrawFrame',1008000n,10n,6n,[integer('layer_tree_host_id',17n)]),
+    event(3n,'Scheduler::BeginFrame',2009000n,10n,3n,scheduler(111n)),
+    event(3n,'Scheduler::BeginFrame',1010n,10n,64n,scheduler(111n)),
+    event(3n,'Scheduler::BeginFrame',1011000n,10n,6n,scheduler(222n)),
+    event(3n,'Scheduler::BeginImplFrame',2012000n,10n,3n,scheduler(111n)),
+    event(3n,'scope-"phase',1013n,10n,64n,[string('quoted,"key"','left",right'),string('unicode','é🧪'),string('multiline','line1\n\nline3\r\nline4'),string('empty',''),string('literalNull','[NULL]')]),
+    event(3n,'unrelated sibling',1014n),
+    event(2n,null,1035000n,10n,6n),
+    event(2n,null,2039000n,10n,3n),
+    event(2n,null,1040n),
+    event(3n,'unrelated root',1041n),
+    event(1n,'DrawFrame',1042n,10n,64n,[integer('layer_tree_host_id',19n)]));
 }
 
 function requireSuccessfulDiagnostic(result) {
@@ -183,6 +223,185 @@ function requireTargetInventory(csv) {
     assert.ok(groups.some(row => row.name === name && row.arg_occurrence_count === '0' && row.slice_count === '1'));
   }
   return tables.map(table => table.length);
+}
+
+// Authored verification only: exact IDs remain CSV strings or SQLite BigInts.
+export function reconstructScopeArguments(compact, dictionary) {
+  const index = new Map();
+  for (const row of dictionary) {
+    assert.ok(!index.has(row.arg_key_id), 'duplicate dictionary ID');
+    index.set(row.arg_key_id, row);
+  }
+  return compact.map(row => {
+    const group = index.get(row.arg_key_id);
+    assert.ok(group, 'missing dictionary reference');
+    return {
+      slice_id: row.slice_id, name: group.name, arg_set_id: row.arg_set_id,
+      arg_present: row.arg_present, flat_key: group.flat_key, key: group.key,
+      value_type: group.value_type, int_value: row.int_value,
+      string_value: row.string_value, real_value: row.real_value,
+      flat_key_is_null: group.flat_key_is_null, key_is_null: group.key_is_null,
+      value_type_is_null: group.value_type_is_null,
+      int_value_is_null: row.int_value_is_null,
+      string_value_is_null: row.string_value_is_null,
+      real_value_is_null: row.real_value_is_null,
+    };
+  });
+}
+
+const scopeHeaders = [
+  'name,event_count,arg_set_count',
+  'id,ts,dur,depth,parent_id,is_selected,name,category,track_id,track_name,arg_set_id,utid,tid,upid,pid,process_name,thread_name,parent_status,duration_status,parent_id_is_null,name_is_null,category_is_null,track_name_is_null,process_name_is_null,thread_name_is_null',
+  'slice_id,arg_key_id,arg_set_id,arg_present,int_value,string_value,real_value,int_value_is_null,string_value_is_null,real_value_is_null',
+  'arg_key_id,name,flat_key,key,value_type,arg_occurrence_count,slice_count,flat_key_is_null,key_is_null,value_type_is_null',
+  'name,idx,severity,source,value,name_is_null,severity_is_null,source_is_null', 'start_ts,end_ts',
+].map(header => header.split(','));
+
+// Frozen complete authored rows: reviewed 6e888e3, official macOS v59.1, unchanged 1927-byte fixture.
+// Fixture SHA256 8e5fa01db67d7c2ea70f955d86ba8d36f333a850bee964b275d621e173d84726; processor SHA256 8488edbefadfc4be152cda1d42d9bfcede8b47638295eb85eb3bad8cd148fdf4.
+// Original successful stdout SHA256 8d57934965e234b85be1d06ec87c8b8fb3fa02c9bdb35a2d264b73eca7a80931.
+const expectedExpandedScopeRows = [
+  ["2", "MainFrame.Draw", "44", "1", "debug.largeSigned", "debug.largeSigned", "int", "9007199254740993", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["2", "MainFrame.Draw", "44", "1", "debug.largeUnsigned", "debug.largeUnsigned", "uint", "9007199254740995", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["2", "MainFrame.Draw", "44", "1", "debug.repeated", "debug.repeated", "string", "[NULL]", "second", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["3", "Graphics.Pipeline", "23", "1", "chrome_graphics_pipeline.step", "chrome_graphics_pipeline.step", "string", "[NULL]", "STEP_GENERATE_COMPOSITOR_FRAME", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["3", "Graphics.Pipeline", "23", "1", "chrome_graphics_pipeline.surface_frame_trace_id", "chrome_graphics_pipeline.surface_frame_trace_id", "int", "43", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["3", "Graphics.Pipeline", "23", "1", "debug.endOnly", "debug.endOnly", "string", "[NULL]", "merged endpoint", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["3", "Graphics.Pipeline", "23", "1", "debug.endpoint", "debug.endpoint", "string", "[NULL]", "begin", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["4", "DrawFrame", "18", "1", "debug.frame_time", "debug.frame_time", "int", "1009000", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["4", "DrawFrame", "18", "1", "debug.layer_tree_host_id", "debug.layer_tree_host_id", "int", "999", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["4", "DrawFrame", "18", "1", "debug.sequence_number", "debug.sequence_number", "uint", "7", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["4", "DrawFrame", "18", "1", "debug.shared", "debug.shared", "string", "[NULL]", "same", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["4", "DrawFrame", "18", "1", "debug.source_id", "debug.source_id", "uint", "333", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["5", "Graphics.Pipeline", "27", "1", "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids", "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]", "int", "43", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["5", "Graphics.Pipeline", "27", "1", "chrome_graphics_pipeline.display_trace_id", "chrome_graphics_pipeline.display_trace_id", "int", "58", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["5", "Graphics.Pipeline", "27", "1", "chrome_graphics_pipeline.step", "chrome_graphics_pipeline.step", "string", "[NULL]", "STEP_SURFACE_AGGREGATION", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["6", "DrawFrame", "30", "1", "debug.layer_tree_host_id", "debug.layer_tree_host_id", "int", "17", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["7", "Scheduler::BeginFrame", "31", "1", "debug.frame_time", "debug.frame_time", "int", "1009000", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["7", "Scheduler::BeginFrame", "31", "1", "debug.sequence_number", "debug.sequence_number", "uint", "7", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["7", "Scheduler::BeginFrame", "31", "1", "debug.shared", "debug.shared", "string", "[NULL]", "same", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["7", "Scheduler::BeginFrame", "31", "1", "debug.source_id", "debug.source_id", "uint", "111", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["8", "Scheduler::BeginFrame", "31", "1", "debug.frame_time", "debug.frame_time", "int", "1009000", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["8", "Scheduler::BeginFrame", "31", "1", "debug.sequence_number", "debug.sequence_number", "uint", "7", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["8", "Scheduler::BeginFrame", "31", "1", "debug.shared", "debug.shared", "string", "[NULL]", "same", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["8", "Scheduler::BeginFrame", "31", "1", "debug.source_id", "debug.source_id", "uint", "111", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["9", "Scheduler::BeginFrame", "35", "1", "debug.frame_time", "debug.frame_time", "int", "1009000", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["9", "Scheduler::BeginFrame", "35", "1", "debug.sequence_number", "debug.sequence_number", "uint", "7", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["9", "Scheduler::BeginFrame", "35", "1", "debug.shared", "debug.shared", "string", "[NULL]", "same", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["9", "Scheduler::BeginFrame", "35", "1", "debug.source_id", "debug.source_id", "uint", "222", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["10", "Scheduler::BeginImplFrame", "31", "1", "debug.frame_time", "debug.frame_time", "int", "1009000", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["10", "Scheduler::BeginImplFrame", "31", "1", "debug.sequence_number", "debug.sequence_number", "uint", "7", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["10", "Scheduler::BeginImplFrame", "31", "1", "debug.shared", "debug.shared", "string", "[NULL]", "same", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["10", "Scheduler::BeginImplFrame", "31", "1", "debug.source_id", "debug.source_id", "uint", "111", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"],
+  ["11", "scope-\"phase", "39", "1", "debug.empty", "debug.empty", "string", "[NULL]", "", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["11", "scope-\"phase", "39", "1", "debug.literalNull", "debug.literalNull", "string", "[NULL]", "[NULL]", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["11", "scope-\"phase", "39", "1", "debug.multiline", "debug.multiline", "string", "[NULL]", "line1\n\nline3\r\nline4", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["11", "scope-\"phase", "39", "1", "debug.quoted,\"key\"", "debug.quoted,\"key\"", "string", "[NULL]", "left\",right", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["11", "scope-\"phase", "39", "1", "debug.unicode", "debug.unicode", "string", "[NULL]", "é🧪", "[NULL]", "0", "0", "0", "1", "0", "1"],
+  ["14", "DrawFrame", "49", "1", "debug.layer_tree_host_id", "debug.layer_tree_host_id", "int", "19", "[NULL]", "[NULL]", "0", "0", "0", "0", "1", "1"]
+];
+const expectedScopeGroups = [
+  ["DrawFrame", "debug.frame_time", "debug.frame_time", "int", "1", "1", "0", "0", "0"],
+  ["DrawFrame", "debug.layer_tree_host_id", "debug.layer_tree_host_id", "int", "3", "3", "0", "0", "0"],
+  ["DrawFrame", "debug.sequence_number", "debug.sequence_number", "uint", "1", "1", "0", "0", "0"],
+  ["DrawFrame", "debug.shared", "debug.shared", "string", "1", "1", "0", "0", "0"],
+  ["DrawFrame", "debug.source_id", "debug.source_id", "uint", "1", "1", "0", "0", "0"],
+  ["Graphics.Pipeline", "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids", "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]", "int", "1", "1", "0", "0", "0"],
+  ["Graphics.Pipeline", "chrome_graphics_pipeline.display_trace_id", "chrome_graphics_pipeline.display_trace_id", "int", "1", "1", "0", "0", "0"],
+  ["Graphics.Pipeline", "chrome_graphics_pipeline.step", "chrome_graphics_pipeline.step", "string", "2", "2", "0", "0", "0"],
+  ["Graphics.Pipeline", "chrome_graphics_pipeline.surface_frame_trace_id", "chrome_graphics_pipeline.surface_frame_trace_id", "int", "1", "1", "0", "0", "0"],
+  ["Graphics.Pipeline", "debug.endOnly", "debug.endOnly", "string", "1", "1", "0", "0", "0"],
+  ["Graphics.Pipeline", "debug.endpoint", "debug.endpoint", "string", "1", "1", "0", "0", "0"],
+  ["MainFrame.Draw", "debug.largeSigned", "debug.largeSigned", "int", "1", "1", "0", "0", "0"],
+  ["MainFrame.Draw", "debug.largeUnsigned", "debug.largeUnsigned", "uint", "1", "1", "0", "0", "0"],
+  ["MainFrame.Draw", "debug.repeated", "debug.repeated", "string", "1", "1", "0", "0", "0"],
+  ["Scheduler::BeginFrame", "debug.frame_time", "debug.frame_time", "int", "3", "3", "0", "0", "0"],
+  ["Scheduler::BeginFrame", "debug.sequence_number", "debug.sequence_number", "uint", "3", "3", "0", "0", "0"],
+  ["Scheduler::BeginFrame", "debug.shared", "debug.shared", "string", "3", "3", "0", "0", "0"],
+  ["Scheduler::BeginFrame", "debug.source_id", "debug.source_id", "uint", "3", "3", "0", "0", "0"],
+  ["Scheduler::BeginImplFrame", "debug.frame_time", "debug.frame_time", "int", "1", "1", "0", "0", "0"],
+  ["Scheduler::BeginImplFrame", "debug.sequence_number", "debug.sequence_number", "uint", "1", "1", "0", "0", "0"],
+  ["Scheduler::BeginImplFrame", "debug.shared", "debug.shared", "string", "1", "1", "0", "0", "0"],
+  ["Scheduler::BeginImplFrame", "debug.source_id", "debug.source_id", "uint", "1", "1", "0", "0", "0"],
+  ["scope-\"phase", "debug.empty", "debug.empty", "string", "1", "1", "0", "0", "0"],
+  ["scope-\"phase", "debug.literalNull", "debug.literalNull", "string", "1", "1", "0", "0", "0"],
+  ["scope-\"phase", "debug.multiline", "debug.multiline", "string", "1", "1", "0", "0", "0"],
+  ["scope-\"phase", "debug.quoted,\"key\"", "debug.quoted,\"key\"", "string", "1", "1", "0", "0", "0"],
+  ["scope-\"phase", "debug.unicode", "debug.unicode", "string", "1", "1", "0", "0", "0"]
+];
+
+function requireScopeInventory(csv) {
+  const rows=csvRows(csv), tables=[]; let cursor=0;
+  for (let i=0;i<scopeHeaders.length;i++) {
+    assert.deepEqual(rows[cursor++],scopeHeaders[i],`scope table ${i+1} schema`);
+    const end=i+1===scopeHeaders.length?rows.length:rows.findIndex((row,index)=>index>=cursor && JSON.stringify(row)===JSON.stringify(scopeHeaders[i+1]));
+    assert.ok(end>=cursor,`scope table ${i+1} complete`);
+    const data=rows.slice(cursor,end); data.forEach(row=>assert.equal(row.length,scopeHeaders[i].length));
+    tables.push(data.map(row=>Object.fromEntries(scopeHeaders[i].map((key,j)=>[key,row[j]])))); cursor=end;
+  }
+  const [families,nodes,compact,dictionary,stats,bounds]=tables;
+  const args=reconstructScopeArguments(compact,dictionary);
+  const groups=dictionary.map(({arg_key_id,...row})=>row);
+  assert.deepEqual(args.map(Object.values),expectedExpandedScopeRows);
+  assert.deepEqual(groups.map(Object.values),expectedScopeGroups);
+  assert.equal(new Set(compact.map(row=>row.arg_key_id)).size,dictionary.length);
+  assert.deepEqual(tables.map(table=>table.length),[5,13,38,27,3,1]);
+  assert.deepEqual(families.map(r=>[r.name,r.event_count,r.arg_set_count]),[['DrawFrame','3','3'],['Graphics.Pipeline','2','2'],['MainFrame.Draw','1','1'],['Scheduler::BeginFrame','3','2'],['Scheduler::BeginImplFrame','1','1']]);
+  assert.deepEqual(nodes.map(r=>[r.name,r.ts,r.dur,r.depth]),[
+    ['outer','1001000','39000','0'],['inner','1002000','37000','1'],['MainFrame.Draw','1003000','32000','2'],
+    ['Graphics.Pipeline','1004000','2000','3'],['DrawFrame','1005000','1000','0'],['Graphics.Pipeline','1007000','0','3'],
+    ['DrawFrame','1008000','0','3'],['Scheduler::BeginFrame','1009000','0','3'],['Scheduler::BeginFrame','1010000','0','3'],
+    ['Scheduler::BeginFrame','1011000','0','3'],['Scheduler::BeginImplFrame','1012000','0','3'],['scope-"phase','1013000','0','3'],['DrawFrame','1042000','-1','0'],
+  ]);
+  assert.equal(new Set(nodes.map(r=>r.id)).size,nodes.length);
+  const outer=nodes[0],inner=nodes[1],main=nodes[2];
+  assert.deepEqual(nodes.filter(r=>r.is_selected==='0').map(r=>r.name),['outer','inner']);
+  assert.equal(inner.parent_id,outer.id); assert.equal(main.parent_id,inner.id);
+  for (const r of nodes) {
+    const root=r.name==='outer' || r.ts==='1005000' || r.ts==='1042000';
+    assert.equal(r.parent_status,root?'no_parent':'parent_present');
+    assert.equal(r.parent_id_is_null,root?'1':'0');
+    assert.equal(r.duration_status,r.ts==='1042000'?'unclosed':'nonnegative');
+    if (r.depth==='3') assert.equal(r.parent_id,main.id);
+    assert.equal(r.category,'scope,"category"'); assert.equal(r.category_is_null,'0');
+    assert.equal(r.tid,r.ts==='1005000'?'902':'901');
+  }
+  assert.notEqual(nodes[4].track_id,main.track_id);
+  assert.ok(args.every(r=>nodes.some(n=>n.id===r.slice_id && n.is_selected==='1')));
+  assert.ok(args.every(r=>!r.key.includes('ancestorOnly')));
+  assert.ok(groups.every(r=>!r.key.includes('ancestorOnly')));
+  const find=(name,key)=>args.filter(r=>r.name===name && r.key===key);
+  assert.deepEqual(find('Scheduler::BeginFrame','debug.source_id').map(r=>[r.value_type,r.int_value]),[['uint','111'],['uint','111'],['uint','222']]);
+  assert.deepEqual(find('Scheduler::BeginFrame','debug.sequence_number').map(r=>r.int_value),['7','7','7']);
+  assert.deepEqual(find('Scheduler::BeginFrame','debug.frame_time').map(r=>r.int_value),['1009000','1009000','1009000']);
+  const scheduler=nodes.filter(r=>r.name==='Scheduler::BeginFrame');
+  assert.equal(scheduler[0].arg_set_id,scheduler[1].arg_set_id); assert.notEqual(scheduler[0].id,scheduler[1].id);
+  assert.ok(groups.some(r=>r.name==='Scheduler::BeginFrame' && r.key==='debug.source_id' && r.arg_occurrence_count==='3' && r.slice_count==='3'));
+  for (const [key,type,value] of [['largeSigned','int','9007199254740993'],['largeUnsigned','uint','9007199254740995']]) {
+    const [r]=find('MainFrame.Draw',`debug.${key}`); assert.equal(r.value_type,type); assert.equal(r.int_value,value);
+  }
+  assert.equal(find('Graphics.Pipeline','debug.endOnly')[0].string_value,'merged endpoint');
+  // Repeated producer annotation keys collapse to the final imported value.
+  assert.deepEqual(find('MainFrame.Draw','debug.repeated').map(r=>r.string_value),['second']);
+  for (const [key,value] of [['quoted,"key"','left",right'],['unicode','é🧪'],['multiline','line1\n\nline3\r\nline4'],['empty',''],['literalNull','[NULL]']]) {
+    const [r]=find('scope-"phase',`debug.${key}`); assert.equal(r.string_value,value); assert.equal(r.string_value_is_null,'0');
+  }
+  assert.deepEqual(find('DrawFrame','debug.layer_tree_host_id').map(r=>r.int_value),['999','17','19']);
+  for (const r of args) for (const key of ['flat_key','key','value_type','int_value','string_value','real_value']) {
+    assert.ok(['0','1'].includes(r[`${key}_is_null`]));
+    if (r[`${key}_is_null`]==='1') assert.equal(r[key],'[NULL]');
+  }
+  assert.ok(stats.every(r=>r.value!=='0'));
+  assert.deepEqual(stats.map(r=>[r.name,r.idx,r.severity,r.source]),[
+    ['clock_sync_cache_miss','[NULL]','info','analysis'],
+    ['guess_trace_type_duration_ns','[NULL]','info','analysis'],
+    ['parse_trace_duration_ns','[NULL]','info','analysis'],
+  ]);
+  assert.equal(stats[0].value,'2');
+  for (const r of stats) for (const key of ['name','severity','source']) assert.equal(r[`${key}_is_null`],r[key]==='[NULL]'?'1':'0');
+  // The unmatched end produces no slice or bounds entry in this pinned importer.
+  assert.deepEqual(bounds,[{start_ts:'1001000',end_ts:'1042000'}]);
+  return tables.map(table=>table.length);
 }
 
 export async function runSmoke({ processor, out }) {
@@ -307,6 +526,17 @@ export async function runSmoke({ processor, out }) {
     const tableRows = requireTargetInventory(await readFile(join(out, 'target-inventory', 'query.stdout'), 'utf8'));
     summary.targetInventory = { authoredOnly: true, queryPolicy: targetResult.queryPolicy, rawRowsExported: true, fixtureBytes: target.length, fixtureSha256: digest(target), tableRows,
       officialProcessor: targetResult.officialProcessor, nativeSupported: false, qualification: false, captureQualified: false, fpsEligibility: false, evaluationEligibility: false, scoringEligibility: false, rankingEligibility: false, clockAdmission: 'not_evaluated', fps: null, duration: null, scoring: false };
+    const scope=authoredScopeFixture(),scopePath=join(out,'authored-scope-fixture.pftrace');
+    assert.equal(scope.length,1927);
+    assert.equal(digest(scope),'8e5fa01db67d7c2ea70f955d86ba8d36f333a850bee964b275d621e173d84726');
+    await writeFile(scopePath,scope,{flag:'wx',mode:0o600});
+    const scopeResult=await runScopeInventoryDiagnostic({trace:{path:scopePath,bytes:scope.length,sha256:digest(scope)},processor:{path:processor,sha256:PROCESSOR_PINS[`${process.platform}-${process.arch}`]},phases:['scope-"phase','MainFrame.Draw'],out:join(out,'scope-inventory')});
+    requireSuccessfulDiagnostic(scopeResult);
+    assert.equal(scopeResult.queryPolicy,'scope-inventory-compact-v1'); assert.equal(scopeResult.rawRowsExported,true);
+    for (const key of ['qualification','captureQualified','fpsEligibility','evaluationEligibility','scoringEligibility','rankingEligibility']) assert.equal(scopeResult[key],false);
+    assert.equal(scopeResult.clockAdmission,'not_evaluated');
+    const scopeTableRows=requireScopeInventory(await readFile(join(out,'scope-inventory','query.stdout'),'utf8'));
+    summary.scopeInventory={authoredOnly:true,queryPolicy:scopeResult.queryPolicy,rawRowsExported:true,fixtureBytes:scope.length,fixtureSha256:digest(scope),tableRows:scopeTableRows,officialProcessor:scopeResult.officialProcessor,nativeSupported:false,qualification:false,captureQualified:false,fpsEligibility:false,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false,clockAdmission:'not_evaluated',fps:null,duration:null,scoring:false};
     summary.status = 'success'; summary.fixtureBytes = bytes.length; summary.fixtureSha256 = digest(bytes);
     summary.graphicsFixtureBytes = graphics.length; summary.graphicsFixtureSha256 = digest(graphics);
     summary.graphicsInventory = { queryPolicy: inventoryResult.queryPolicy, rawRowsExported: inventoryResult.rawRowsExported, fixtureBytes: graphics.length, fixtureSha256: digest(graphics) };

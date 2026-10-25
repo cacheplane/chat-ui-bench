@@ -12,6 +12,7 @@ Run explicitly with a fresh absolute output directory:
 node tools/perfetto-import/run.mjs --config /absolute/config.json
 node tools/perfetto-import/run.mjs --inventory-config /absolute/inventory-config.json
 node tools/perfetto-import/run.mjs --target-inventory-config /absolute/target-inventory-config.json
+node tools/perfetto-import/run.mjs --scope-inventory-config /absolute/scope-inventory-config.json
 node --test tools/perfetto-import/run.node.mjs
 ```
 
@@ -217,6 +218,87 @@ clock, population or performance evaluator, and retains `fps: null`,
 bookends, deadlines and byte caps apply. A complete export exceeding the cap fails
 as a whole; there is no row limit, successful prefix, fallback or download.
 
+## Bounded scope inventory
+
+`--scope-inventory-config` and `runScopeInventoryDiagnostic(config)` select the
+fixed `scope-inventory.sql` policy with the same config, pins and fresh-output
+requirements. The explicit untrusted executable-test API is
+`runAuthoredFixtureScopeInventoryDiagnostic(config)`; the CLI always enforces the
+official platform pin. Caller SQL, filters and policy extras cannot change selection.
+The manifest copies all target-inventory non-authority labels, including failures
+before validation, with `queryPolicy: 'scope-inventory-compact-v1'` and `rawRowsExported: true`.
+
+Selection includes exactly `MainFrame.Draw`, `Scheduler::BeginFrame`,
+`Scheduler::BeginImplFrame`, `DrawFrame`, `Graphics.Pipeline`, and configured literal
+phases. A family/phase collision selects once. An ID-only recursive UNION adds all
+distinct existing ancestors, including selected ancestors and ancestors on another
+track, without multiplying shared paths. It terminates cycles. There is no time,
+target, source, sequence or ownership association. Six complete tables appear in order:
+
+1. Five exact family counts, including zero counts and distinct arg-set counts.
+2. Selected nodes and complete distinct ancestor context, raw depth and immediate
+   parent edges, `is_selected`, track/thread/process context and text NULL flags.
+3. Every selected node's imported argument values and NULL flags with dictionary references;
+   unmatched nodes retain one placeholder. Shared sets fan out for each selected
+   node and repeated imported argument rows remain repeated.
+4. Complete selected-only name/key/type dictionary, matched occurrence and distinct-slice counts.
+5. All nonzero stats, without severity suppression, plus nullable text flags.
+6. Complete importer trace bounds.
+
+`parent_status` is `no_parent`, `missing_parent` or `parent_present` according to the
+actual parent reference and row presence. Missing parent IDs remain on the child;
+nonexistent ancestors are never invented. `duration_status` is `unclosed` only for
+dur=-1, `other_negative` for other negatives, otherwise `nonnegative`. Raw depth is
+never rebased. These statuses do not certify consistent edges, balanced producer
+emission or capture completeness. Context-only ancestors expose `arg_set_id` but
+their payloads are deliberately unexpanded in both argument tables.
+
+The pinned importer's normalized slices supply ts/dur, depth, IDs and merged
+begin/end arguments. They do not preserve original TrackEvent type, endpoint
+provenance, original clock IDs or packet anchors. In particular dur=0 cannot
+distinguish instant input from a zero-length begin/end pair. This exporter trusts
+the pinned importer for supported clock decoding and slice construction; it is not
+a second packet/clock decoder. `clockAdmission: 'not_evaluated'` remains literal.
+All qualification/eligibility/native/scoring flags stay false and fps/duration
+stay null. No ownership, FPS, interval or presentation admission occurs here.
+
+Table 3 has columns `slice_id,arg_key_id,arg_set_id,arg_present,int_value,string_value,real_value,int_value_is_null,string_value_is_null,real_value_is_null`.
+Table 4 has columns `arg_key_id,name,flat_key,key,value_type,arg_occurrence_count,slice_count,flat_key_is_null,key_is_null,value_type_is_null`.
+Dictionary IDs are artifact-local decimal references assigned after raw grouping,
+with binary text ordering and explicit NULL-first ordering. They are not frame,
+packet, source, clock or target identities. Keep IDs as exact CSV strings or BigInt.
+After complete successful parsing, index the dictionary by ID, reject duplicate
+dictionary IDs and missing references, and allow repeated table 3 references.
+For each table 3 row in order, restore name, flat_key, key, value_type and their
+three NULL flags from its dictionary row. All other original argument fields
+come directly from table 3. This restores the original 16 parsed cells and every
+duplicate/shared-set row. `arg_present` comes from the original matched arg set;
+matched NULL-key rows can share a group with unmatched placeholders. Counts do
+not imply presence. REAL values retain the processor's decimal-rendering limits.
+
+The unreleased expanded prototype is preserved at commit `6e888e3455b2af48184a0a825c4fb02214350065`;
+its failed native export and prefix diagnostic are archived under
+`/private/tmp/chat-ui-bench-native-scope-failure-package-20261025`. That prefix is
+incomplete. Repeated text in it motivated this representation amendment; it does
+not establish that a complete native compact export will fit the unchanged cap.
+The API and CLI select only the compact policy. There is no prototype-mode switch.
+
+Scope uses the same final TEXT quote compensation as target mode, preserving NULL
+flags, grouping and ordering on raw values. Parse canonical stdout with strict CSV
+and retain integer cells as decimal text or BigInt. The same 32MiB trace, 64MiB
+processor, 16KiB config, 60s child deadline, 256KiB total stdout and 64KiB stderr caps
+apply across all six tables. Overflow fails the whole export, with no LIMIT,
+successful prefix, split query, cap increase or fallback.
+
+Cross-mode ID comparison is conditional: first establish shared-ID determinism
+under the identical trace bytes/length/SHA256, processor bytes/exact version and
+import invocation options. Retain each complete successful manifest and its own
+policy/source/executed SQL hashes; different policies have different SQL hashes.
+This change's five smoke imports do not establish cross-mode scope/target ID
+determinism on identical input. IDs are import-local, not global IDs or packet
+offsets. Matching names, timestamps, paths or sequence numbers cannot substitute
+for that evidence, and the exporter performs no target join.
+
 ## Maintained authored smoke and CI
 
 ```sh
@@ -288,3 +370,24 @@ the added target case remains pending CI; prior Linux evidence for the original
 three imports does not establish this fourth case. The existing workflow already
 runs the updated smoke and retains its small authored evidence without uploading
 the processor executable.
+
+A fifth production import writes `scope-inventory/` from an independent 1,927-byte
+authored scope fixture, SHA256
+`8e5fa01db67d7c2ea70f955d86ba8d36f333a850bee964b275d621e173d84726`.
+Its six table row counts are 5/13/38/27/3/1. It checks two unselected ancestor levels,
+nested MainFrame.Draw/Graphics scopes, host-bearing DrawFrame, authored full-width
+scheduler-shaped source/sequence/frame-time values with two sources sharing sequence 7,
+another thread, equivalent shared argument sets, phase/family collision, quoted
+multiline Unicode and exact integers above 2^53. Explicit builtin clocks 3/6 and
+sequence-scoped clock 64 (1000ns units) normalize to expected ns timestamps/durations.
+The pinned importer merges end arguments, collapses repeated producer annotation
+keys to the final value, drops the unmatched end without a slice or bounds entry,
+and retains the EOF-open DrawFrame with dur=-1. Arbitrary missing/cyclic/self/cross-track
+parent graphs and repeated imported args are tested separately in authored SQLite.
+The five-case official macOS smoke passes; changed-head Linux CI remains pending.
+None of these authored inputs is a native capture or ownership/clock admission.
+
+The scope fixture tests export precision; it does not establish production emitter
+width. In the captured Chromium revision, [BeginFrameArgs serialization](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/common/frame_sinks/begin_frame_args.cc#185)
+passes source and sequence through [SetInteger(int)](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/trace_event/traced_value.h#41).
+The exporter preserves the emitted value and does not restore missing source-generation bits.

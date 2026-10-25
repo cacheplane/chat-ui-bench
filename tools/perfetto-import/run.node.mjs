@@ -13,6 +13,89 @@ const module = await import('./run.mjs').catch(() => ({}));
 const fixtureModule = { runDiagnostic: module.runAuthoredFixtureDiagnostic };
 const smoke = await import('./smoke.mjs').catch(() => ({}));
 const version = 'Perfetto v59.1-1e9c61e98 (1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d)\nTrace Processor RPC API version: 14\n';
+function assertScopeAuthority(result) {
+  assert.equal(result.queryPolicy, 'scope-inventory-compact-v1');
+  assertTargetAuthority({ ...result, queryPolicy: 'target-inventory-v1' });
+}
+test('scope inventory has inert explicit production and untrusted authored entrypoints', () => {
+  assert.equal(typeof module.runScopeInventoryDiagnostic, 'function');
+  assert.equal(typeof module.runAuthoredFixtureScopeInventoryDiagnostic, 'function');
+});
+test('scope selects only its fixed SQL and literal phases despite caller overrides', async () => {
+  const { options } = await fixture(`process.stdout.write(fs.readFileSync(process.argv[4]));`);
+  const result = await module.runAuthoredFixtureScopeInventoryDiagnostic({ ...options, queryPolicy: 'full', sql: 'SELECT override', filters: ['none'], qualification: true, fps: 60, authoredFixture: false });
+  assert.equal(result.status, 'success', result.error); assertScopeAuthority(result);
+  assert.equal(result.authoredFixture, true); assert.equal(result.officialProcessor, false);
+  const source = await readFile(new URL('./scope-inventory.sql', import.meta.url), 'utf8');
+  const sql = source.replace('__PHASE_LITERALS__', "'begin''quoted', 'end'");
+  assert.equal(await readFile(join(options.out, 'diagnostic.sql'), 'utf8'), sql);
+  assert.equal(await readFile(join(options.out, 'query.stdout'), 'utf8'), sql);
+  assert.equal(result.sql.sourceSha256, hash(source)); assert.equal(result.sql.sha256, hash(sql));
+  assert.deepEqual(result.before, result.after);
+});
+test('scope preserves all old SQL bytes and manifest shapes when supplied to old APIs', async () => {
+  for (const [run, file, policy] of [[module.runAuthoredFixtureDiagnostic, 'diagnostic.sql', undefined], [module.runAuthoredFixtureInventoryDiagnostic, 'inventory.sql', 'inventory-v1'], [module.runAuthoredFixtureTargetInventoryDiagnostic, 'target-inventory.sql', 'target-inventory-v1']]) {
+    const { options } = await fixture();
+    const result = await run({ ...options, queryPolicy: 'scope-inventory-v1' });
+    assert.equal(result.status, 'success', result.error); assert.equal(result.queryPolicy, policy);
+    if (policy === 'target-inventory-v1') assertTargetAuthority(result);
+    else assert.equal(Object.hasOwn(result, 'clockAdmission'), false);
+    const source = await readFile(new URL(`./${file}`, import.meta.url), 'utf8');
+    assert.equal(await readFile(join(options.out, 'diagnostic.sql'), 'utf8'), source.replace('__PHASE_LITERALS__', "'begin''quoted', 'end'"));
+  }
+});
+test('scope false authority survives early failures and cannot bypass production pins', async () => {
+  for (const mode of ['pin', 'phase', 'bytes', 'byteMismatch', 'hash', 'processorHash', 'version', 'symlink', 'hardlink']) {
+    const { root, options } = await fixture();
+    let run = module.runAuthoredFixtureScopeInventoryDiagnostic;
+    if (mode === 'pin') run = module.runScopeInventoryDiagnostic;
+    if (mode === 'phase') options.phases = ['only'];
+    if (mode === 'bytes') options.trace.bytes = undefined;
+    if (mode === 'byteMismatch') options.trace.bytes++;
+    if (mode === 'hash') options.trace.sha256 = '0'.repeat(64);
+    if (mode === 'processorHash') options.processor.sha256 = '0'.repeat(64);
+    if (mode === 'version') {
+      const source = `#!${process.execPath}\nprocess.stdout.write('Perfetto v58.2-add693d8b (add693d8b338ba9599dbcbc3e300b1ab8c000897)\\nTrace Processor RPC API version: 14\\n');\n`;
+      await writeFile(options.processor.path, source); options.processor.sha256 = hash(source);
+    }
+    if (mode === 'symlink') { const path = join(root, 'sym'); await symlink(options.trace.path, path); options.trace.path = path; }
+    if (mode === 'hardlink') await link(options.trace.path, join(root, 'linked'));
+    const result = await run({ ...options, authoredFixture: true });
+    assert.equal(result.status, 'failure', mode); assertScopeAuthority(result);
+    assert.equal(result.processes.query, undefined, mode);
+    if (mode === 'pin') { assert.equal(result.authoredFixture, false); assert.equal(result.officialProcessor, false); assert.match(result.error, /platform pin/); }
+    if (mode === 'version') assert.match(result.error, /version mismatch/);
+  }
+});
+test('scope CLI enforces production identity and normalized one-link regular config', async () => {
+  const { root, options } = await fixture(); const config = join(root, 'config.json');
+  await writeFile(config, JSON.stringify({ ...options, authoredFixture: true }));
+  await assert.rejects(execFile(process.execPath, [new URL('./run.mjs', import.meta.url).pathname, '--scope-inventory-config', config]), error => { assert.equal(error.code, 1); assert.match(error.stdout, /platform pin/); return true; });
+  const result = JSON.parse(await readFile(join(options.out, 'manifest.json'))); assertScopeAuthority(result); assert.equal(result.authoredFixture, false);
+  const fifo = join(root, 'fifo'), sym = join(root, 'sym'), hard = join(root, 'hard');
+  await execFile('/usr/bin/mkfifo', [fifo]); await symlink(config, sym); await link(config, hard);
+  for (const path of ['relative.json', `${root}/../${root.split('/').at(-1)}/config.json`, fifo, sym, hard]) {
+    await assert.rejects(execFile(process.execPath, [new URL('./run.mjs', import.meta.url).pathname, '--scope-inventory-config', path], { timeout: 1000 }), error => { assert.equal(error.code, 1); assert.equal(error.killed, false); assert.match(error.stderr, /absolute|regular/); return true; });
+  }
+});
+test('scope retains whole-run process failure, capped streams and custody bookends', async () => {
+  for (const [name, body, pattern, limit] of [
+    ['stdout', `process.stdout.write(Buffer.alloc(300000,120)); setInterval(()=>{},1000);`, /stdout limit/, 262144],
+    ['stderr', `process.stderr.write(Buffer.alloc(70000,120)); setInterval(()=>{},1000);`, /stderr limit/, 65536],
+    ['deadline', `setInterval(()=>{},1000);`, /deadline/],
+    ['exit', `process.stdout.write('original'); process.stderr.write('failure'); process.exitCode=7;`, /unsuccessfully/],
+    ['inherited', `const {spawn}=await import('node:child_process'); spawn(process.execPath,['-e','setTimeout(()=>{},1800)'],{stdio:['ignore',1,2]}).unref();`, /deadline/],
+    ['mutation', `fs.appendFileSync(process.argv.at(-1),'changed');`, /changed|mismatch/],
+  ]) {
+    const { options } = await fixture(body);
+    const result = await module.runAuthoredFixtureScopeInventoryDiagnostic({ ...options, deadlineMs: ['deadline','inherited'].includes(name) ? 700 : 60000 });
+    assert.equal(result.status, 'failure', name); assert.match(result.error, pattern); assertScopeAuthority(result);
+    assert.equal(result.processes.query.closed, true);
+    if (limit) assert.equal((await stat(join(options.out, `query.${name}`))).size, limit);
+    if (name !== 'mutation') assert.deepEqual(result.before, result.after);
+    const saved = JSON.parse(await readFile(join(options.out, 'manifest.json'))); assertScopeAuthority(saved); assert.equal(saved.status, 'failure');
+  }
+});
 async function fixture(body = `process.stdout.write('rows\\n');`) {
   const root = await mkdtemp(join(tmpdir(), 'perfetto-import-test-'));
   const trace = Buffer.from('authored trace');
@@ -641,4 +724,199 @@ test('target inventory final text projections compensate pinned CSV wrapping wit
     const stats = statements.find(statement => /FROM stats/.test(statement));
     assert.match(stats, /WHERE st\.value != 0 ORDER BY st\.name, st\.idx/);
   } finally { db.close(); }
+});
+
+// Independent oracle: original projections from reviewed 6e888e3455b2af48184a0a825c4fb02214350065.
+const originalScopeArguments = "SELECT s.id AS slice_id, REPLACE(s.name, '\"', '\"\"') AS name, s.arg_set_id,\n  a.arg_set_id IS NOT NULL AS arg_present,\n  REPLACE(a.flat_key, '\"', '\"\"') AS flat_key,\n  REPLACE(a.key, '\"', '\"\"') AS key,\n  REPLACE(a.value_type, '\"', '\"\"') AS value_type,\n  a.int_value, REPLACE(a.string_value, '\"', '\"\"') AS string_value, a.real_value,\n  a.flat_key IS NULL AS flat_key_is_null, a.key IS NULL AS key_is_null,\n  a.value_type IS NULL AS value_type_is_null,\n  a.int_value IS NULL AS int_value_is_null,\n  a.string_value IS NULL AS string_value_is_null,\n  a.real_value IS NULL AS real_value_is_null\nFROM _scope_inventory_selected s LEFT JOIN args a ON a.arg_set_id = s.arg_set_id\nORDER BY s.ts, s.id, a.flat_key, a.key, a.value_type,\n  a.int_value, a.string_value, a.real_value;";
+const originalScopeGroups = "SELECT REPLACE(s.name, '\"', '\"\"') AS name,\n  REPLACE(a.flat_key, '\"', '\"\"') AS flat_key,\n  REPLACE(a.key, '\"', '\"\"') AS key,\n  REPLACE(a.value_type, '\"', '\"\"') AS value_type,\n  COUNT(a.arg_set_id) AS arg_occurrence_count, COUNT(DISTINCT s.id) AS slice_count,\n  a.flat_key IS NULL AS flat_key_is_null, a.key IS NULL AS key_is_null,\n  a.value_type IS NULL AS value_type_is_null\nFROM _scope_inventory_selected s LEFT JOIN args a ON a.arg_set_id = s.arg_set_id\nGROUP BY s.name, a.flat_key, a.key, a.value_type\nORDER BY s.name, a.flat_key, a.key, a.value_type;";
+const scopeSchemas = [
+  'name,event_count,arg_set_count',
+  'id,ts,dur,depth,parent_id,is_selected,name,category,track_id,track_name,arg_set_id,utid,tid,upid,pid,process_name,thread_name,parent_status,duration_status,parent_id_is_null,name_is_null,category_is_null,track_name_is_null,process_name_is_null,thread_name_is_null',
+  'slice_id,arg_key_id,arg_set_id,arg_present,int_value,string_value,real_value,int_value_is_null,string_value_is_null,real_value_is_null',
+  'arg_key_id,name,flat_key,key,value_type,arg_occurrence_count,slice_count,flat_key_is_null,key_is_null,value_type_is_null',
+  'name,idx,severity,source,value,name_is_null,severity_is_null,source_is_null', 'start_ts,end_ts',
+];
+test('scope SQL exports complete distinct cycle-safe ancestry and selected-only multiplicity without inferred relationships', async () => {
+  const sql = await readFile(new URL('./scope-inventory.sql', import.meta.url), 'utf8');
+  assert.equal(sql.split('__PHASE_LITERALS__').length - 1, 1);
+  assert.match(sql, /WITH RECURSIVE context_ids\(id\)/);
+  assert.doesNotMatch(sql, /\bUNION ALL\b|\bLIMIT\b|\bLIKE\b|\b(?:fps|qualification|scoring)\b/i);
+  const { DatabaseSync } = await import('node:sqlite'); const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE slice(id,ts,dur,depth,parent_id,name,category,track_id,arg_set_id);
+      CREATE TABLE track(id,name);
+      CREATE TABLE thread_or_process_slice(id,utid,tid,upid,pid,process_name,thread_name);
+      CREATE TABLE args(arg_set_id,flat_key,key,value_type,int_value,string_value,real_value);
+      CREATE TABLE stats(name,idx,severity,source,value);
+      CREATE TABLE trace_bounds(start_ts,end_ts);
+      INSERT INTO slice VALUES
+        (1,1,100,0,NULL,NULL,NULL,1,500),
+        (2,2,90,3,1,'ancestor','',1,501),
+        (3,3,80,7,2,'MainFrame.Draw','cat',1,100),
+        (4,4,0,8,3,'Graphics.Pipeline','cat',1,101),
+        (5,5,0,8,3,'Graphics.Pipeline','cat',1,101),
+        (6,6,0,8,3,'unrelated sibling','cat',1,101),
+        (7,7,-1,12,888,'DrawFrame',NULL,2,NULL),
+        (8,8,-2,50,9,'Scheduler::BeginFrame',NULL,2,102),
+        (9,9,0,2,8,'cycle context',NULL,1,500),
+        (10,10,0,9,10,'Scheduler::BeginImplFrame',NULL,NULL,NULL),
+        (11,11,0,20,2,'phase',NULL,2,103),
+        (12,12,0,1,NULL,'unrelated root',NULL,2,500),
+        (13,9007199254740993,0,9,NULL,'Graphics.Pipeline','[NULL]',2,104);
+      INSERT INTO track VALUES(1,'track"name'),(2,'');
+      INSERT INTO thread_or_process_slice VALUES(3,1,2,3,4,'process",name','thread"name');
+      INSERT INTO args VALUES
+        (500,'ancestor-only','ancestor-only','string',NULL,'excluded',NULL),
+        (501,'ancestor-only2','ancestor-only2','int',7,NULL,NULL),
+        (100,NULL,NULL,NULL,NULL,NULL,NULL),
+        (101,'dup"key','dup"key','uint',9007199254740995,NULL,NULL),
+        (101,'dup"key','dup"key','uint',9007199254740995,NULL,NULL),
+        (102,'empty','empty','string',NULL,'',NULL),
+        (102,'literal','literal','string',NULL,'[NULL]',NULL),
+        (104,'real','real','real',NULL,NULL,1.25);
+      INSERT INTO stats VALUES(NULL,NULL,NULL,NULL,-1),('stat"z',1,'severity"quoted','source",quoted',7),('zero',0,'info','trace',0);
+      INSERT INTO trace_bounds VALUES(9,20),(1,8);
+    `);
+    const textCases = ['left",right', ',', '"quoted"', 'é🧪', 'line\nfeed', 'cr\r\nlf', 'blank\n\nline', '', '[NULL]'];
+    const insert = db.prepare('INSERT INTO args VALUES(103,?,?,?,?,?,NULL)');
+    textCases.forEach((s,i) => insert.run('value',`value[${i}]`,'string',null,s));
+    const tables = [], queries = [];
+    for (const statement of sql.replace(/--[^\n]*/g,'').replace('INCLUDE PERFETTO MODULE chrome.graphics_pipeline;','').replaceAll('CREATE PERFETTO VIEW','CREATE VIEW').replace('__PHASE_LITERALS__',"'phase', 'Graphics.Pipeline'").split(';').filter(s=>s.trim())) {
+      if (/^\s*CREATE VIEW/i.test(statement)) db.exec(statement);
+      else { const q=db.prepare(statement); q.setReadBigInts(true); tables.push(q.all().map(r=>({...r}))); queries.push(statement); }
+    }
+    assert.deepEqual([0,1,4,5].map(i=>hash(queries[i])),["96651c13594fbe1df51c724525f7f6e039602268f68825e134c83eadcb0bf271", "8c08c7de23ef5f4530d9f977ad78c905d64d55710d2e48f23c9a1e9e35544514", "c708bc16f26425e142b1e2b8e3a5d29d8355d7fcad3c74a3f6d22a95613c61ff", "8ddb578cf244e662b29df7046adb5352119e55caf25be4d8fa945cad852fcc39"],'unchanged scope table 1/2/5/6 statements from 6e888e3');
+    assert.equal(tables.length,6); tables.forEach((rows,i)=>assert.equal(Object.keys(rows[0]).join(','),scopeSchemas[i]));
+    const [counts,nodes,compact,dictionary,stats,bounds] = tables;
+    const args=smoke.reconstructScopeArguments(compact,dictionary);
+    const groups=dictionary.map(({arg_key_id,...r})=>r);
+    const read=query=>{const q=db.prepare(query); q.setReadBigInts(true); return q.all().map(r=>({...r}));};
+    assert.deepEqual(args,read(originalScopeArguments));
+    assert.deepEqual(groups,read(originalScopeGroups));
+    assert.equal(compact.length,args.length);
+    assert.equal(new Set(compact.map(r=>r.arg_key_id)).size,dictionary.length);
+    assert.ok(compact.length>dictionary.length,'duplicate and shared-set references remain repeated');
+    assert.throws(()=>smoke.reconstructScopeArguments(compact,[...dictionary,dictionary[0]]),/duplicate/);
+    assert.throws(()=>smoke.reconstructScopeArguments(compact,dictionary.slice(1)),/missing/);
+    const mapping=dictionary.map(r=>[r.arg_key_id,r.name,r.flat_key,r.key,r.value_type]);
+    db.exec('CREATE TEMP TABLE reversed AS SELECT * FROM args ORDER BY rowid DESC; DELETE FROM args; INSERT INTO args SELECT * FROM reversed');
+    assert.deepEqual(read(queries[3]).map(r=>[r.arg_key_id,r.name,r.flat_key,r.key,r.value_type]),mapping);
+    assert.deepEqual(counts.map(r=>[r.name,r.event_count,r.arg_set_count]),[['DrawFrame',1n,0n],['Graphics.Pipeline',3n,2n],['MainFrame.Draw',1n,1n],['Scheduler::BeginFrame',1n,1n],['Scheduler::BeginImplFrame',1n,0n]]);
+    assert.deepEqual(nodes.map(r=>r.id),[1n,2n,3n,4n,5n,7n,8n,9n,10n,11n,13n]);
+    assert.equal(new Set(nodes.map(r=>r.id)).size,nodes.length);
+    assert.deepEqual(nodes.filter(r=>r.is_selected===0n).map(r=>r.id),[1n,2n,9n]);
+    assert.deepEqual(nodes.map(r=>[r.parent_id,r.depth,r.parent_status]),[[null,0n,'no_parent'],[1n,3n,'parent_present'],[2n,7n,'parent_present'],[3n,8n,'parent_present'],[3n,8n,'parent_present'],[888n,12n,'missing_parent'],[9n,50n,'parent_present'],[8n,2n,'parent_present'],[10n,9n,'parent_present'],[2n,20n,'parent_present'],[null,9n,'no_parent']]);
+    assert.equal(nodes.find(r=>r.id===7n).duration_status,'unclosed'); assert.equal(nodes.find(r=>r.id===8n).duration_status,'other_negative');
+    assert.equal(nodes.at(-1).ts,9007199254740993n);
+    assert.equal(nodes[0].arg_set_id,500n); assert.equal(nodes[1].arg_set_id,501n);
+    for (const r of nodes) for (const key of ['parent_id','name','category','track_name','process_name','thread_name']) assert.equal(r[`${key}_is_null`],r[key]===null?1n:0n,key);
+    assert.deepEqual([nodes[2].track_name,nodes[2].process_name,nodes[2].thread_name],['track""name','process"",name','thread""name']);
+    assert.equal(args.some(r=>r.key?.startsWith('ancestor')),false); assert.equal(groups.some(r=>r.key?.startsWith('ancestor')),false);
+    assert.deepEqual(args.filter(r=>r.key==='dup""key').map(r=>[r.slice_id,r.int_value]),[[4n,9007199254740995n],[4n,9007199254740995n],[5n,9007199254740995n],[5n,9007199254740995n]]);
+    assert.deepEqual(groups.find(r=>r.key==='dup""key'),{name:'Graphics.Pipeline',flat_key:'dup""key',key:'dup""key',value_type:'uint',arg_occurrence_count:4n,slice_count:2n,flat_key_is_null:0n,key_is_null:0n,value_type_is_null:0n});
+    assert.equal(args.find(r=>r.slice_id===3n).arg_present,1n); assert.equal(args.find(r=>r.slice_id===7n).arg_present,0n);
+    assert.equal(groups.find(r=>r.name==='MainFrame.Draw').arg_occurrence_count,1n); assert.equal(groups.find(r=>r.name==='DrawFrame').arg_occurrence_count,0n);
+    assert.deepEqual(args.filter(r=>r.slice_id===11n).map(r=>r.string_value),textCases.map(s=>s.replaceAll('"','""')));
+    for (const r of args) for (const key of ['flat_key','key','value_type','int_value','string_value','real_value']) assert.equal(r[`${key}_is_null`],r[key]===null?1n:0n,key);
+    assert.deepEqual(stats,[{name:null,idx:null,severity:null,source:null,value:-1n,name_is_null:1n,severity_is_null:1n,source_is_null:1n},{name:'stat""z',idx:1n,severity:'severity""quoted',source:'source"",quoted',value:7n,name_is_null:0n,severity_is_null:0n,source_is_null:0n}]);
+    assert.deepEqual(bounds,[{start_ts:1n,end_ts:8n},{start_ts:9n,end_ts:20n}]);
+    db.exec(`INSERT INTO slice VALUES(14,14,0,0,NULL,'MainFrame.Draw',NULL,1,NULL),(15,15,0,0,NULL,'DrawFrame',NULL,1,100);
+      INSERT INTO args VALUES
+      (104,'','', 'int',-9007199254740993,NULL,NULL),
+      (104,'[NULL]','[NULL]','string',NULL,'[NULL]',NULL),
+      (104,'real','real','int',9007199254740997,NULL,NULL),
+      (104,NULL,'',NULL,NULL,NULL,NULL),
+      (104,'',NULL,'',NULL,NULL,NULL),
+      (104,'[NULL]','[NULL]','[NULL]',NULL,'',NULL),
+      (104,'é🧪','quote"key','string',NULL,'cr'||char(13)||char(10)||'lf',NULL);`);
+    const moreDictionary=read(queries[3]);
+    assert.deepEqual(smoke.reconstructScopeArguments(read(queries[2]),moreDictionary),read(originalScopeArguments));
+    assert.deepEqual(moreDictionary.map(({arg_key_id,...r})=>r),read(originalScopeGroups));
+    const merged=moreDictionary.find(r=>r.name==='MainFrame.Draw' && r.key===null);
+    assert.equal(merged.arg_occurrence_count,1n); assert.equal(merged.slice_count,2n);
+    const adversarialMapping=moreDictionary.map(r=>[r.arg_key_id,r.name,r.flat_key,r.key,r.value_type]);
+    db.exec('DELETE FROM reversed; INSERT INTO reversed SELECT * FROM args ORDER BY rowid DESC; DELETE FROM args; INSERT INTO args SELECT * FROM reversed');
+    assert.deepEqual(read(queries[3]).map(r=>[r.arg_key_id,r.name,r.flat_key,r.key,r.value_type]),adversarialMapping);
+    db.exec('DELETE FROM slice');
+    assert.deepEqual(read(queries[2]),[]); assert.deepEqual(read(queries[3]),[]);
+    assert.deepEqual(smoke.reconstructScopeArguments([],[]),[]);
+    db.exec("INSERT INTO slice VALUES(3,3,80,7,2,'MainFrame.Draw','cat',1,100),(4,4,0,8,3,'Graphics.Pipeline','cat',1,101)");
+    const q=db.prepare(queries[0]); q.setReadBigInts(true);
+    assert.deepEqual(q.all().map(r=>[r.name,r.event_count]).filter(r=>r[1]===0n),[['DrawFrame',0n],['Scheduler::BeginFrame',0n],['Scheduler::BeginImplFrame',0n]]);
+  } finally { db.close(); }
+});
+
+test('scope smoke fixture is independent, deterministic and import-inert', async () => {
+  assert.equal(typeof smoke.authoredScopeFixture, 'function');
+  const bytes=smoke.authoredScopeFixture();
+  assert.ok(Buffer.isBuffer(bytes)); assert.deepEqual(bytes,smoke.authoredScopeFixture());
+  assert.equal(bytes.length,1927);
+  assert.equal(hash(bytes),'8e5fa01db67d7c2ea70f955d86ba8d36f333a850bee964b275d621e173d84726');
+  assert.deepEqual([smoke.authoredClockFixture().length,smoke.authoredGraphicsFixture().length,smoke.authoredTargetFixture().length],[153,308,1238]);
+  assert.equal(hash(smoke.authoredTargetFixture()),'ed2b0047fdc87b33174d23cce2d34c21e9cdf900df66db403315d848bd311de0');
+});
+
+test('scope library and smoke imports perform no input reads, writes or process launches', async () => {
+  const source = `
+    import fs from 'node:fs/promises';
+    import child from 'node:child_process';
+    import { syncBuiltinESMExports } from 'node:module';
+    const forbidden = () => { throw new Error('import side effect'); };
+    for (const key of ['open','lstat','mkdir','readFile','writeFile']) fs[key] = forbidden;
+    child.spawn = forbidden;
+    syncBuiltinESMExports();
+    const run = await import(${JSON.stringify(new URL('./run.mjs',import.meta.url).href)});
+    const smoke = await import(${JSON.stringify(new URL('./smoke.mjs',import.meta.url).href)});
+    if (typeof run.runScopeInventoryDiagnostic !== 'function' || typeof smoke.authoredScopeFixture !== 'function') throw new Error('missing exports');
+    process.stdout.write('inert\\n');
+  `;
+  const result = await execFile(process.execPath,['--input-type=module','-e',source]);
+  assert.equal(result.stdout,'inert\n'); assert.equal(result.stderr,'');
+});
+
+test('scope final text projections retain all nullable text flags and raw quoted grouping keys', async () => {
+  const sql = await readFile(new URL('./scope-inventory.sql',import.meta.url),'utf8');
+  const { DatabaseSync } = await import('node:sqlite'); const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE slice(id,ts,dur,depth,parent_id,name,category,track_id,arg_set_id);
+      CREATE TABLE track(id,name);
+      CREATE TABLE thread_or_process_slice(id,utid,tid,upid,pid,process_name,thread_name);
+      CREATE TABLE args(arg_set_id,flat_key,key,value_type,int_value,string_value,real_value);
+      CREATE TABLE stats(name,idx,severity,source,value);
+      CREATE TABLE trace_bounds(start_ts,end_ts);
+      INSERT INTO slice VALUES(1,1,0,0,NULL,'phase"name','category"name',1,100);
+      INSERT INTO track VALUES(1,'track"name');
+      INSERT INTO thread_or_process_slice VALUES(1,1,2,3,4,'process"name','thread"name');
+      INSERT INTO args VALUES(100,'flat"key','key"name','type"name',NULL,'value"name',NULL);
+      INSERT INTO stats VALUES('stat"name',0,'severity"name','source"name',1);
+      INSERT INTO trace_bounds VALUES(1,1);
+    `);
+    const tables=[];
+    for (const statement of sql.replace(/--[^\n]*/g,'').replace('INCLUDE PERFETTO MODULE chrome.graphics_pipeline;','').replaceAll('CREATE PERFETTO VIEW','CREATE VIEW').replace('__PHASE_LITERALS__',"'phase\"name', 'absent'").split(';').filter(s=>s.trim())) {
+      if (/^\s*CREATE VIEW/i.test(statement)) db.exec(statement);
+      else tables.push(db.prepare(statement).all().map(r=>({...r})));
+    }
+    for (const [index,fields] of [[1,['name','category','track_name','process_name','thread_name']],[2,['string_value']],[3,['name','flat_key','key','value_type']],[4,['name','severity','source']]]) {
+      for (const key of fields) {
+        assert.ok(tables[index][0][key].includes('""'),key);
+        if (Object.hasOwn(tables[index][0],`${key}_is_null`)) assert.equal(tables[index][0][`${key}_is_null`],0,key);
+      }
+    }
+    assert.equal(tables[3][0].arg_occurrence_count,1); assert.equal(tables[3][0].slice_count,1);
+    assert.equal(db.prepare('SELECT name FROM slice').get().name,'phase"name');
+    assert.match(sql,/GROUP BY s\.name, a\.flat_key, a\.key, a\.value_type/);
+    assert.match(sql,/ORDER BY arg_key_id/);
+  } finally { db.close(); }
+});
+
+
+test('compact reconstruction preserves exact large string IDs and repeated references, rejecting malformed dictionaries', () => {
+  const row={arg_key_id:'9007199254740993',slice_id:'1',arg_set_id:'2',arg_present:'1'};
+  const other={arg_key_id:'9007199254740992',name:'other'};
+  const dictionary=[{arg_key_id:row.arg_key_id,name:'exact'},other];
+  assert.deepEqual(smoke.reconstructScopeArguments([row,row],dictionary).map(r=>r.name),['exact','exact']);
+  assert.throws(()=>smoke.reconstructScopeArguments([row],[other]),/missing/);
+  assert.throws(()=>smoke.reconstructScopeArguments([],dictionary.concat(dictionary[0])),/duplicate/);
 });
