@@ -31,6 +31,74 @@ clock/target admission or FPS authority.
 
 ## Fixed stock 0.3.3 native family
 
+### Versioned preparation with exact named membership
+
+`generateStock033PreparationInputsV2` and `runStock033PreparationOwnerV2` in
+`prepare-owner-stock033-v2.mjs` form the maintained preparation-only pipeline.
+Use both in one process for a fresh cohort:
+
+```js
+const generated = await generateStock033PreparationInputsV2({
+  inputDirectory, preparedDirectory, compilationDirectory, evidenceDirectory
+});
+const prepared = await runStock033PreparationOwnerV2({
+  config: generated.config, generation: generated
+});
+```
+
+All four directories must be distinct fresh absolute paths outside this checkout,
+with existing real parents. The generator binds its source root to this module's
+checkout, requires a clean reviewed HEAD on Darwin ARM64, and performs the ordinary
+stock build through fixed Node/npm/Angular command paths. Each original command
+must exit zero and close both original pipes normally. The opaque ordinary build
+is a prerequisite outside the preparation admission clock and source I/O ledger.
+The generator then joins the successful original `{product, probe}` return to
+closed canonical record bytes, retains the actual fixture metafile, and derives
+the eight exact named roles. Counts are measured output, never padding targets.
+
+The library continuation is internally branded and retains cumulative counters
+through generation, parent and original child preparation. Its receipt says
+`accountingBoundary: 'generator-through-owner'`. The separate CLI
+`node tools/native-real-chat/prepare-owner-stock033-v2.mjs --config <absolute-path>`
+accepts a trusted prepared-input handoff and counts its own original reads and
+preparation ownership; its boundary is `owner-inputs-only`. It does not reconstruct
+earlier generator counters or authenticate arbitrary caller hashes as build origin.
+
+Both boundaries use four full platform passes: generator (or CLI input admission),
+two child preparation bookends, and one parent bookend. The distinct five-file
+platform set includes Node, the native compiler, esbuild, pinned headless-shell,
+and Playwright's core bundle. Their repeated reads count each time; referenced
+bytes count the same exact set once. Parent finalization capacity is reserved
+before child dispatch, and child counters are reconciled only after its original
+nonce-bound IPC result, successful exit, normal pipe EOF/close and IPC disconnect.
+The parent reruns the v2 verifier over the original and archived members, asset
+joins, template/manifest facts and platform set, then persists the exact returned
+reference. No preparation step imports or launches capture.
+
+The owner starts its 60s forward/65s final refusal clock before its first config
+read. Original operations that outlive a mapped deadline remain pending; timeout,
+forced pipe destruction or absent original closure cannot yield success. A failure
+receipt is attempted only while bounded original I/O remains available. The
+persisted terminal receipt marks its own write pending and records counters before
+that write; the returned fulfilled receipt additionally reports its actual completed
+write/readback counters. The caller must retain the original owner return/exit/EOF.
+
+V2 preserves the archive/byte limits and all v1 behavior. Its exact modes and
+reference policy contain `stock-033-v2`; v1 runners reject that family. Authored
+cross-platform controls carry explicit authored markers and provide no production
+reference. Every preparation receipt keeps native support/scoring false and FPS
+null. Fresh native acquisition remains a separate explicit action.
+
+After genuine preparation and its original closure/accounting have been reviewed,
+`runStock033OriginalV2` in `run.mjs` accepts that original template/reference under
+the separate single-use release `source-reviewed-native-chat-stock-033-v2`. Its
+CLI selects `--prepared-stock-033-v2 <prepared-root> --reference <reference-path>`.
+The reference file must be joined to the trusted original owner return and exit;
+parsing it alone establishes no origin. This entry preserves the existing lean
+V6 worker request, 17s capture/19s finalization bounds, and false/null authority.
+Its persisted receipt family is `native-stock-033-result-v2`. Preparation never
+sets this release or dispatches the entry automatically.
+
 `prepareActualStock033` authenticates the canonical, unwrapped production build
 record with the existing closed build schema. It requires the five used published
 Threadplane packages (`chat`, `a2ui`, `langgraph`, `render`, `telemetry`) at exactly

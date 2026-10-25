@@ -107,7 +107,7 @@ export function assertStock033ArchiveBudgetV2(value){
 }
 
 /** Root-trusted handoff, NOT authentication of arbitrary caller DTOs.
- * The outer owner must authenticate product/probe records against their original build-created facts,
+ * The outer owner must join the successful original build return to closed observed canonical record facts,
  * validate ordinary stock033 schemas/package/lock/config/style provenance, and retain the reviewed
  * productSourceKeys() inventory plus contractCompiledKeys and approved fixture metafile facts.
  * No expectedRoles override exists. This function verifies names/facts; it neither discovers names

@@ -12,7 +12,7 @@ Alternatives rejected: increasing the literal 1,004 to a new count merely repeat
 
 ## Root authorization and exact membership
 
-The trusted outer owner supplies a closed, retained release input from the reviewed checkout/build invocation: real source root, product and probe build-record created-file facts, reviewed source revision/dirty state, the approved role membership and fixture compiler-input key list, platform facts, and fresh output paths. A caller recomputing hashes of arbitrary build JSON does not establish this origin. The release record is provenance retained by the owner, not a signature or independently self-authenticating DTO. Changes require a new reviewed release, never automatic acceptance of newly discovered paths.
+The trusted outer owner supplies a closed, retained release input from the reviewed checkout/build invocation: real source root, successful original product/probe build return joined to closed observed canonical record facts, reviewed source revision/dirty state, the approved role membership and fixture compiler-input key list, platform facts, and fresh output paths. A caller recomputing hashes of arbitrary build JSON does not establish this origin. The release record is provenance retained by the owner, not a signature or independently self-authenticating DTO. Changes require a new reviewed release, never automatic acceptance of newly discovered paths.
 
 Named archive roles:
 
@@ -109,8 +109,8 @@ Metadata role has literal root/workspace keys `package.json`, `package-lock.json
 All schema objects are exact own-data objects: reject unknown keys, accessors, proxies, holes and duplicate role keys. Paths are normalized absolute paths with existing real parents; root/output paths ≤256 UTF-8 bytes, file paths ≤512, role keys ≤192, SHA256 lowercase64, identity is the existing `{dev,ino,size,mtimeMs,ctimeMs}`. Relative key names forbid `..`, empty segments and `records/`. No arbitrary executable or child entry selector is accepted.
 
 - Config, ≤1 MiB: `{schema:1, policy:'native-stock033-preparation-owner-v2', sourceRoot, preparedDirectory, compilationDirectory, evidenceDirectory, release:{path,fact}}`. `fact` is the existing created-file `{bytes,sha256,identity}` from the trusted outer caller. The three output directories must be distinct/fresh, outside sourceRoot, and have real existing parents. The CLI is `node tools/native-real-chat/prepare-owner-stock033-v2.mjs --config <absolute-config-path>`; library invocation additionally takes the trusted original config fact rather than calling arbitrary DTOs authenticated.
-- Release, ≤1 MiB: `{schema:1, policy:'source-reviewed-stock033-preparation-inputs-v2', source:{revision,dirty:false}, build:{product:{key,fact},probe:{key,fact}}, roles, fixtureInputs, runtime, platformRows}`. Revision is lowercase40-hex verified against the root's original reviewed checkout observation. `roles` has exactly product-source/probe-source/probe-compiled/fixture-input/native-owner/native-runtime/metadata/served-asset arrays of `{key,bytes,sha256}`; their exact authority rules are above. `fixtureInputs` is the same approved fixture role restricted to `{key,bytes,sha256}` and joined to every actual metafile input's `bytes`, not just names. Runtime and platform row shapes are the existing closed stock033 shapes. Root-authenticated build facts refer to canonical product/probe records retained from the successful original build. This is a trusted-source handoff, not a new cryptographic authority.
-- Parent-to-child IPC: exactly one `{type:'prepare',nonce,config:{path,fact},sourceObservation:{revision,dirty:false}}`, ≤1 KiB. Nonce is fresh32-hex. Fixed child is the same owner module in an internal child entry with no public child-path/config policy switch. Config/release original facts are rechecked by the child.
+- Release, ≤1 MiB: `{schema:1, policy:'source-reviewed-stock033-preparation-inputs-v2', source:{revision,dirty:false}, build:{product:{key,fact},probe:{key,fact}}, roles, fixtureInputs, runtime, platformRows}`. Revision is lowercase40-hex verified against the root's original reviewed checkout observation. `roles` has exactly product-source/probe-source/probe-compiled/fixture-input/native-owner/native-runtime/metadata/served-asset arrays of `{key,bytes,sha256}`; their exact authority rules are above. `fixtureInputs` is the same approved fixture role restricted to `{key,bytes,sha256}` and joined to every actual metafile input's `bytes`, not just names. Runtime and platform row shapes are the existing closed stock033 shapes. Root-authenticated build facts are the closed canonical record observations joined to the successful original product/probe build return; the build API does not return created-file facts. This is a trusted-source handoff, not a new cryptographic authority.
+- Parent-to-child IPC: exactly one `{type:'prepare',nonce,config:{path,fact},sourceObservation:{revision,dirty:false},budget:{totals,platformSetSha256,reservation}}`, ≤1 KiB. Nonce is fresh32-hex. Fixed child is the same owner module in an internal child entry with no public child-path/config policy switch. Config/release original facts are rechecked by the child.
 - Child-to-parent IPC: exactly one `{type:'prepared',nonce,template,reference,accounting}` ≤8 KiB TOTAL; the existing 4 KiB template/reference individual limits are coupled with IPC overhead. Failure sends no success IPC and emits one bounded fixed error code. Both sides retain original `send` callback result and IPC disconnect state. Child awaits original send callback before disconnecting and exiting. Wrong nonce, extra message, result before admission, send error, premature disconnect, exit failure or absent result refuses.
 - Parent external receipt ≤64 KiB: `{schema:1,policy:'native-stock033-preparation-owner-result-v2',status,terminalReceiptWrite,source,config,release,build,roster:{digest,roleCounts,unionCount,overlapCount},child:{pid,pgid,start,nonce,send,ipc,exit,close},stdout,stderr,stages,pending,io,prepared:{template,reference}|null,error,authority}`. Config/release/build are the exact retained original facts; source repeats the reviewed revision/dirty=false. Success keeps the original IPC value in `prepared`, not reparsed template content. `authority` is `{nativeSupported:false,clock:'not_evaluated',population:'not_evaluated',FPS:null,scoringEligibility:false}`. A persisted receipt uses `terminalReceiptWrite:'pending'`; actual returned owner value may set it fulfilled only after its original write/fsync/close/readback. The caller must join actual owner exit/stdout EOF for external receipt completion.
 - Parent reference file ≤4 KiB contains the exact original returned reference only, created exclusively after all success gates. No new caller reference is fabricated. A root-owner result binds its created fact in the receipt. Write failure refuses; partial files never become success.
@@ -129,7 +129,7 @@ All schema objects are exact own-data objects: reject unknown keys, accessors, p
 | Copied archive | Preserve `archiveTotal + manifestBytes +262144 ≤16777216`; no change to2MiB per member/module,1MiB manifest/metafile,64KiB history,4KiB template/reference, twelve assets≤2MiB aggregate. |
 | External preparation evidence | Separate ≤8MiB aggregate source writes and ≤8MiB serialized retention: config copy≤1MiB, release copy≤1MiB, compiler module≤2MiB, metafile≤1MiB, fixture-output≤128KiB, logs≤128KiB, reference≤4KiB, receipt≤64KiB, plus existing bounded template/result accounting. Charge their reads/write/fsync/close/readback in the global operation/read ledgers. These files do not enlarge or bypass archive membership. |
 
-Use fixed-size counters and checked integer additions. All counters are shared/logically reconciled between child accounting returned through bounded owner-stage summary and parent accounting; the IPC envelope must stay within8KiB. The original success result includes the closed `accounting` summary already named in the IPC schema: scalar counters `{operations,readBytes,hashBytes,writeBytes,peakHandles,peakOperations,stages,platformPasses}`, ≤512 bytes; the receipt records it. No large role lists are sent by IPC.
+Use fixed-size counters and checked integer additions. All counters are shared/logically reconciled between child accounting returned through bounded owner-stage summary and parent accounting; the IPC envelope must stay within8KiB. The original success result includes the closed `accounting` summary already named in the IPC schema: record `{totals,platformSetSha256,peakHandles,peakOperations,stages}` with the exact ten totals defined below, ≤512 bytes; the receipt records it. No large role lists are sent by IPC.
 
 Normal completion invokes and awaits existing `esbuild.stop()` before sending success. Parent creates a detached preparation-child process group, records its original PID/PGID/start identity through bounded `/bin/ps`, and checks that identity before timeout containment. On deadline it may kill only this owned original group (including the inherited compiler service); it must not guess process names or kill unrelated esbuild instances. Retain original child exit/close and pipe state. Destroy a still-open owned pipe only as failure cleanup; never label that normal EOF. A mapped wait timeout does not settle an original file write/close; record pending originals and return unavailable. No claim covers detached grandchildren or an arbitrary process universe; source acceptance requires no unresolved owned work. Authored controls cover an inherited compiler-like process, not a new general process theorem.
 
@@ -162,3 +162,83 @@ For this slice admit only the reviewed Darwin ARM64 platform; refuse other platf
 ## Original source observation handoff
 
 The parent owns bounded fixed Git observations of HEAD and clean tracked/untracked state before preparation dispatch, retaining original command exit and pipe completion. Its observed `{revision,dirty:false}` must equal the trusted release source declaration. The physical preparation API requires this separate `sourceObservation` input, and the original nonce-bound parent-to-child request carries it within the unchanged1KiB total request cap. The child compares it to the admitted release; it does not spawn Git or claim arbitrary DTO origin authentication. Parent repeats source observation after child closure and refuses drift. Command/process work and bytes enter the owner ledger; no inferred successful observation from a timeout or replacement wait. A final-head role fact rebuild is still required; this handoff cannot authenticate the earlier dirty diagnostic inventory.
+
+## Original owner and cumulative accounting implementation amendment
+
+The maintained generator is `generateStock033PreparationInputsV2` in the same
+owner module. It derives its source root from that module, executes the ordinary
+stock build with fixed source-resolved Node/npm/Angular command ports, and requires
+each original command's zero exit, close and both normal pipe EOFs. The opaque
+stock build is a prerequisite outside preparation source-I/O accounting and the
+owner admission clock. Its original `{product, probe}` return is joined to the
+immediately observed, closed canonical build-record bytes; the build API does not
+return build-created file facts. Do not describe the later observations as facts
+returned by that API. Git observations surrounding this prerequisite and generator
+source-owned observations/compilation/output remain counted. The generator retains
+actual fixture metafile names/bytes and derives the exact eight roles; no manual
+283-row input is required or accepted as a cardinality contract.
+
+For an actual fresh cohort use the same-process maintained generator then owner
+library calls. The immutable original generator result has a private branded
+continuation carrying counters and the platform-set digest. The result receipt
+adds the closed `accountingBoundary` enum: `generator-through-owner` for this
+cumulative pipeline, `owner-inputs-only` for a separate trusted-input CLI/library
+owner invocation. CLI `--config` does not reconstruct earlier generator counters
+or claim original build authority from rehashed arbitrary DTOs. No config or
+release schema expansion is introduced for cross-process attestation.
+
+The request additionally contains `budget:{totals,platformSetSha256,reservation}` within the
+unchanged1KiB request cap. `reservation` is exactly three nonnegative checked integers `[operations,readBytes,hashBytes]`. The exact ten checked totals are operations, readBytes,
+hashBytes, writeBytes, externalWriteBytes, serializedBytes, platformPasses,
+platformReadBytes, platformReferencedBytes and archiveWriteBytes. The child result's
+closed accounting record is `{totals,platformSetSha256,peakHandles,peakOperations,
+stages}` within512bytes; the whole original result remains≤8KiB. Both terminal
+request and success result account their bounded serialized-size fixed point before
+dispatch. No large role list travels through IPC.
+
+A narrow transferred-ledger factory admits only those exact counters and ceilings
+lowered from the existing fixed caps. Before forking, the parent derives its
+remaining allowance R from the admitted distinct source union, fixed five platform
+files, literal source/archive/output ancestor depths, chunk counts and its observed
+maintained source-inventory operation count. Let A be distinct source member bytes
+and B actual distinct platform bytes. R.readBytes=B+2A+8MiB and
+R.hashBytes=B+2A+10MiB reserve both original/archive bookends plus bounded
+manifest/config/history/module/receipt/pipe and roster-digest overhead. R.operations
+sums the actual named file depths and ceil(bytes/65536) chunks, observed inventory
+operations, explicit terminal read/write path bounds and64 fixed process/control
+operations. For a file with d absolute path segments, one read requires at most
+2d+ceil(bytes/65536)+7 source operations; one closed write/readback additionally
+requires d+6. Request carries just those three derived R values. Remaining seven
+R counters stay fixed:262144writeBytes/externalWriteBytes/serializedBytes each,
+one platform pass,536870912platformReadBytes, zero extra referenced/archive bytes.
+The actual whole request must fit1KiB before fork; otherwise refuse. No cap grows.
+The child starts with parent totals P and effective ceilings caps−R. While it runs,
+the parent retains only bounded pipe/IPC bytes and fixed timeout/process-control
+observations; source writes and hashes wait for original child completion. After
+original zero exit, close, both normal EOF/close and one successful IPC/send join,
+the parent validates monotone final totals, identical platform-set digest, and
+reconciles childDelta=childFinal−P into its actual own counters before finalization.
+No post-dispatch global-cap claim is substituted for this preflight.
+
+The exact platform set is Node, the fixed Darwin ARM64 native compiler, esbuild,
+pinned headless-shell and Playwright's core bundle. One generator/CLI admission
+pass, two child passes and one parent pass count four actual full passes; same-set
+referenced bytes are not re-added. Platform-set canonical serialization and digest
+are source-counted. The parent uses the maintained v2 verifier for full original/archive/asset/template/manifest bookends after child closure, including its fourth platform pass, and persists the exact original reference. It does not hand-copy or weaken those verifier checks.
+The persisted terminal receipt still marks its own write pending and snapshots
+counters before that write; the fulfilled returned receipt reports actual completed
+write/readback counters. Failure persistence is best effort within the original
+bounds, and absent original closure never becomes success.
+
+Authored process controls use only fixed same-module child behavior, with no public
+CLI selector. Their prepared values and references carry explicit authored markers
+and a distinct authored policy. Their real original process/pipe controls establish
+source conformance only, never native origin or a complete descendant universe.
+
+## Parallel acquisition source scheduling
+
+The narrow explicit v2 acquisition alias may be implemented and source-reviewed in
+parallel using already reviewed authored preparation controls in the same PR. This
+does not release actual acquisition: genuine same-process generator→owner original
+closure/accounting review and all main/PR checks must pass first. Preparation never
+auto-dispatches capture, and the existing V6 recipe/authority remain unchanged.

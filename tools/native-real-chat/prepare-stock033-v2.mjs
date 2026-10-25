@@ -16,36 +16,39 @@ const fail=label=>{throw Error('native-stock033-v2-preparation-unavailable: '+la
 const same=isDeepStrictEqual;
 const identity=s=>({dev:s.dev,ino:s.ino,size:s.size,mtimeMs:s.mtimeMs,ctimeMs:s.ctimeMs});
 const caps=Object.freeze({operations:131072,readBytes:3221225472,hashBytes:3221225472,writeBytes:Number.MAX_SAFE_INTEGER,externalWriteBytes:8388608,serializedBytes:8388608,platformPasses:4,platformReadBytes:2147483648,platformReferencedBytes:536870912,archiveWriteBytes:16777216});
-const ledgers=new WeakSet(),authoredLedgers=new WeakSet(),ledgerCounters=new WeakMap(),platformSets=new WeakMap();
+const ledgers=new WeakSet(),authoredLedgers=new WeakSet(),ledgerCounters=new WeakMap(),ledgerCeilings=new WeakMap(),platformSets=new WeakMap();
 const preparationMode=authored=>authored?'authored-real-chat-history100-stock-033-v2':'real-chat-history100-stock-033-v2';
 const referencePolicy=authored=>authored?'authored-preparation-reference-stock-033-v2':'source-owned-preparation-reference-stock-033-v2';
 const manifestMode=authored=>authored?'authored-real-chat-source-custody-stock-033-v2':'real-chat-source-custody-stock-033-v2';
 
 /** Injected clocks/anchors are authored-only; reconciled scalar counters may be production inputs. */
-export function createStock033PreparationLedgerV2(options={}){
+export function createStock033PreparationLedgerV2(options={}){return createLedger(options,caps);}
+function createLedger(options,ceilings){
  if(!options||typeof options!=='object'||types.isProxy(options)||Object.getPrototypeOf(options)!==Object.prototype)fail('ledger options');const supplied={};for(const key of Reflect.ownKeys(options)){const descriptor=Object.getOwnPropertyDescriptor(options,key);if(!['now','startedAt','initial'].includes(key)||!Object.hasOwn(descriptor,'value'))fail('ledger options');supplied[key]=descriptor.value;}
  const injected=Object.hasOwn(supplied,'now')||Object.hasOwn(supplied,'startedAt'),{now=()=>performance.now(),initial={}}=supplied;if(typeof now!=='function')fail('ledger clock');const startedAt=supplied.startedAt===undefined?now():supplied.startedAt;if(!Number.isFinite(startedAt))fail('ledger anchor');admitStock033DataV2(initial,4096);
  const counters=Object.fromEntries(Object.keys(caps).map(key=>[key,0])),pending=new Map(),ownedHandles=new Map(),stages=[];
  let active=0,handles=0,reservedCloses=0,peakHandles=0,peakOperations=0,sequence=0;
- function charge(key,amount){if(!Object.hasOwn(caps,key)||!Number.isSafeInteger(amount)||amount<0||counters[key]+amount+(key==='operations'?reservedCloses:0)>caps[key])fail('counter '+key);counters[key]+=amount;}
+ function charge(key,amount){if(!Object.hasOwn(caps,key)||!Number.isSafeInteger(amount)||amount<0||counters[key]+amount+(key==='operations'?reservedCloses:0)>ceilings[key])fail('counter '+key);counters[key]+=amount;}
  for(const [key,value]of Object.entries(initial))charge(key,value);
  const ledger={
   charge,
-  ensureCapacity(key,amount){if(!Object.hasOwn(caps,key)||!Number.isSafeInteger(amount)||amount<0||counters[key]+amount+(key==='operations'?reservedCloses:0)>caps[key])fail('counter '+key);},
+  ensureCapacity(key,amount){if(!Object.hasOwn(caps,key)||!Number.isSafeInteger(amount)||amount<0||counters[key]+amount+(key==='operations'?reservedCloses:0)>ceilings[key])fail('counter '+key);},
   assertActive(){if(now()-startedAt>=60000)fail('forward deadline');},
   assertFinal(){if(now()-startedAt>=65000)fail('final deadline');},
+  remainingForwardMs(){return Math.max(0,60000-(now()-startedAt));},
+  remainingFinalMs(){return Math.max(0,65000-(now()-startedAt));},
   async operation(name,operation,{cleanup=false,closing=false}={}){
    if(!cleanup)ledger.assertActive();if(active>=16)fail('operation slots');if(closing){if(!reservedCloses)fail('close reservation');reservedCloses--;}charge('operations',1);
    const id=++sequence;pending.set(id,String(name).slice(0,192));active++;peakOperations=Math.max(peakOperations,active);
    try{return await operation();}finally{pending.delete(id);active--;}
   },
-  handle(){ledger.assertActive();if(handles>=8||counters.operations+reservedCloses+2>caps.operations)fail('source handles/close reservation');handles++;reservedCloses++;peakHandles=Math.max(peakHandles,handles);const id=++sequence;ownedHandles.set(id,'source handle '+id);let released=false;return(consumed=false)=>{if(!released){released=true;handles--;if(!consumed)reservedCloses--;ownedHandles.delete(id);}};},
+  handle(){ledger.assertActive();if(handles>=8||counters.operations+reservedCloses+2>ceilings.operations)fail('source handles/close reservation');handles++;reservedCloses++;peakHandles=Math.max(peakHandles,handles);const id=++sequence;ownedHandles.set(id,'source handle '+id);let released=false;return(consumed=false)=>{if(!released){released=true;handles--;if(!consumed)reservedCloses--;ownedHandles.delete(id);}};},
   stage(name){ledger.assertActive();if(stages.length>=64||typeof name!=='string'||name.length>192)fail('stages');stages.push({name,elapsedMs:now()-startedAt});},
   snapshot(){return{operations:counters.operations,readBytes:counters.readBytes,hashBytes:counters.hashBytes,writeBytes:counters.writeBytes,peakHandles,peakOperations,stages:stages.length,platformPasses:counters.platformPasses};},
   totals(){return{...counters};},pending(){return [...pending.values(),...ownedHandles.values()];},stageRows(){return stages.map(row=>({...row}));},
   hash(bytes){charge('hashBytes',bytes.length);return createHash('sha256').update(bytes).digest('hex');}
  };
- ledgers.add(ledger);if(injected)authoredLedgers.add(ledger);ledgerCounters.set(ledger,counters);return Object.freeze(ledger);
+ ledgers.add(ledger);if(injected)authoredLedgers.add(ledger);ledgerCounters.set(ledger,counters);ledgerCeilings.set(ledger,ceilings);return Object.freeze(ledger);
 }
 function ledgerOf(ledger){if(!ledgers.has(ledger))fail('owned ledger');return ledger;}
 function absolute(filename,max=512){if(typeof filename!=='string'||Buffer.byteLength(filename)>max||path.resolve(filename)!==filename)fail('absolute path');return filename;}
@@ -96,22 +99,51 @@ export async function writeStock033FileV2(filename,bytes,cap,ledger,kind='extern
  });}catch(error){if(!dispatched){const counters=ledgerCounters.get(ledger);counters.writeBytes-=bytes.length;counters[kind==='external'?'externalWriteBytes':'archiveWriteBytes']-=bytes.length;}throw error;}
  const fact={bytes:bytes.length,sha256:ledger.hash(bytes),identity:created};const readback=await readStock033FileV2(filename,cap,ledger,fact);if(!readback.bytes.equals(bytes))fail('readback');return fact;
 }
-export async function verifyStock033PlatformsV2(rows,ledger){
- ledgerOf(ledger);admitStock033DataV2(rows);if(!Array.isArray(rows)||rows.length<1||rows.length>1024)fail('platform rows');let total=0;const names=new Set(),paths=new Set();
- for(const row of rows){factShape(row,536870912);absolute(row.path);if(row.bytes<1||typeof row.key!=='string'||row.key.length>192||names.has(row.key)||paths.has(row.path)||(total+=row.bytes)>536870912)fail('platform membership');names.add(row.key);paths.add(row.path);}
- const canonical=JSON.stringify([...rows].sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0).map(row=>[row.key,row.path,row.bytes,row.sha256,['dev','ino','size','mtimeMs','ctimeMs'].map(key=>row.identity[key])])),previous=platformSets.get(ledger);if(previous!==undefined&&previous!==canonical)fail('platform set drift');platformSets.set(ledger,canonical);
- const old=ledger.totals();if(old.platformReferencedBytes&&old.platformReferencedBytes!==total)fail('platform set drift');if(!old.platformReferencedBytes)ledger.charge('platformReferencedBytes',total);ledger.charge('platformPasses',1);
+/** One bounded physical pass; observed facts are not a claim of trusted caller origin. */
+export async function observeStock033PlatformsV2(paths,ledger){return platformPass(paths,ledger,false);}
+export async function verifyStock033PlatformsV2(rows,ledger){const result=await platformPass(rows,ledger,true);return{files:result.length,bytes:result.reduce((n,row)=>n+row.bytes,0)};}
+async function platformPass(rows,ledger,verify){
+ ledgerOf(ledger);admitStock033DataV2(rows);if(!Array.isArray(rows)||rows.length<1||rows.length>1024)fail('platform rows');let total=0;const names=new Set(),paths=new Set(),observed=[];
  for(const row of rows){
-  const check=await pathCheck(row.path,ledger);if(!same(check.identity,row.identity)||check.identity.size!==row.bytes)fail('platform identity');const digest=createHash('sha256');
-  await opened(row.path,constants.O_RDONLY,ledger,async file=>{
-   const a=await ledger.operation('platform fstat',()=>file.stat());if(!a.isFile()||a.nlink!==1||!same(identity(a),row.identity))fail('platform opened identity');const buffer=Buffer.alloc(65536);
-   for(let offset=0;offset<row.bytes;){const n=Math.min(buffer.length,row.bytes-offset);const r=await readOperation(file,buffer,0,n,offset,ledger,true);if(r.bytesRead!==n)fail('platform short read');ledger.charge('hashBytes',n);digest.update(buffer.subarray(0,n));offset+=n;}
-   const eof=await readOperation(file,buffer,0,1,row.bytes,ledger,true);if(eof.bytesRead)fail('platform extra byte');
-   const z=await ledger.operation('platform fstat bookend',()=>file.stat());if(!z.isFile()||z.nlink!==1||!same(identity(z),row.identity))fail('platform opened drift');await pathBookend(row.path,check,ledger);
-  });if(digest.digest('hex')!==row.sha256)fail('platform hash');
+  closed(row,verify?['key','path','bytes','sha256','identity']:['key','path']);absolute(row.path);keyName(row.key);
+  if(names.has(row.key)||paths.has(row.path))fail('platform membership');names.add(row.key);paths.add(row.path);
+  if(verify){factShape(row,536870912);if(row.bytes<1||(total+=row.bytes)>536870912)fail('platform membership');}
  }
- ledger.assertActive();return{files:rows.length,bytes:total};
+ if(verify)bindPlatformSet(rows,ledger);
+ ledger.charge('platformPasses',1);total=0;
+ for(const row of rows){
+  const check=await pathCheck(row.path,ledger),size=check.identity.size;
+  if(size<1||(total+=size)>536870912||verify&&(!same(check.identity,row.identity)||size!==row.bytes))fail('platform identity');const digest=createHash('sha256');
+  await opened(row.path,constants.O_RDONLY,ledger,async file=>{
+   const a=await ledger.operation('platform fstat',()=>file.stat());if(!a.isFile()||a.nlink!==1||!same(identity(a),check.identity))fail('platform opened identity');const buffer=Buffer.alloc(65536);
+   for(let offset=0;offset<size;){const n=Math.min(buffer.length,size-offset);const r=await readOperation(file,buffer,0,n,offset,ledger,true);if(r.bytesRead!==n)fail('platform short read');ledger.charge('hashBytes',n);digest.update(buffer.subarray(0,n));offset+=n;}
+   const eof=await readOperation(file,buffer,0,1,size,ledger,true);if(eof.bytesRead)fail('platform extra byte');
+   const z=await ledger.operation('platform fstat bookend',()=>file.stat());if(!z.isFile()||z.nlink!==1||!same(identity(z),check.identity))fail('platform opened drift');await pathBookend(row.path,check,ledger);
+  });const sha256=digest.digest('hex');if(verify&&sha256!==row.sha256)fail('platform hash');observed.push({key:row.key,path:row.path,bytes:size,sha256,identity:check.identity});
+ }
+ if(!verify)bindPlatformSet(observed,ledger);ledger.assertActive();return observed;
 }
+function bindPlatformSet(rows,ledger){
+ const tuples=[...rows].sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0).map(row=>[row.key,row.path,row.bytes,row.sha256,['dev','ino','size','mtimeMs','ctimeMs'].map(key=>row.identity[key])]);
+ const bytes=serializeStock033DataV2(tuples,1048576,ledger),digest=ledger.hash(bytes),previous=platformSets.get(ledger),total=rows.reduce((n,row)=>n+row.bytes,0);
+ if(previous!==undefined&&previous!==digest)fail('platform set drift');const old=ledger.totals();if(old.platformReferencedBytes&&old.platformReferencedBytes!==total)fail('platform set drift');
+ if(!old.platformReferencedBytes)ledger.charge('platformReferencedBytes',total);platformSets.set(ledger,digest);
+}
+export function stock033PlatformSetSha256V2(ledger){ledgerOf(ledger);return platformSets.get(ledger)??null;}
+function accountingShape(value){closed(value,['totals','platformSetSha256']);closed(value.totals,Object.keys(caps));for(const[key,n]of Object.entries(value.totals))if(!Number.isSafeInteger(n)||n<0||n>caps[key])fail('transfer counter');if(value.platformSetSha256!==null&&!/^[a-f0-9]{64}$/.test(value.platformSetSha256)||Boolean(value.totals.platformReferencedBytes)!==Boolean(value.platformSetSha256))fail('transfer platform set');}
+/** Fixed preparation handoff, not a public configurable resource policy. */
+export function createTransferredStock033LedgerV2(input){
+ admitStock033DataV2(input,4096);closed(input,['totals','platformSetSha256','reservation']);const {reservation,...accounting}=input;accountingShape(accounting);closed(reservation,Object.keys(caps));
+ const ceilings={};for(const[key,n]of Object.entries(reservation)){if(!Number.isSafeInteger(n)||n<0||n>caps[key])fail('transfer reservation');ceilings[key]=caps[key]-n;if(input.totals[key]>ceilings[key])fail('transfer capacity');}
+ const ledger=createLedger({initial:input.totals},ceilings);if(input.platformSetSha256!==null)platformSets.set(ledger,input.platformSetSha256);return ledger;
+}
+export function reconcileStock033LedgerV2(ledger,baseline,final){
+ ledgerOf(ledger);admitStock033DataV2({baseline,final},8192);accountingShape(baseline);accountingShape(final);
+ if(baseline.platformSetSha256!==final.platformSetSha256||stock033PlatformSetSha256V2(ledger)!==baseline.platformSetSha256)fail('transfer platform drift');
+ const delta={};for(const key of Object.keys(caps)){delta[key]=final.totals[key]-baseline.totals[key];if(delta[key]<0)fail('transfer counter reversal');ledger.ensureCapacity(key,delta[key]);}
+ for(const[key,n]of Object.entries(delta))ledger.charge(key,n);
+}
+export function serializeStock033DataV2(value,cap,ledger){return serialize(value,cap,ledger);}
 
 function closed(value,keys){if(!value||typeof value!=='object'||types.isProxy(value)||Object.getPrototypeOf(value)!==Object.prototype||!same(Reflect.ownKeys(value).sort(),[...keys].sort()))fail('closed data');for(const key of keys)if(!Object.hasOwn(Object.getOwnPropertyDescriptor(value,key),'value'))fail('data property');}
 function keyName(key){if(typeof key!=='string'||Buffer.byteLength(key)>192||! /^[A-Za-z0-9_@.-]+(?:\/[A-Za-z0-9_@.-]+)*$/.test(key)||key.split('/').some(part=>part==='.'||part==='..'||part==='records'))fail('member key');return key;}

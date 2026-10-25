@@ -71,10 +71,31 @@ Files: update `tools/native-real-chat/README.md`; optional focused workflow inte
 
 ## Independent review amendments (mandatory acceptance checklist)
 
-- [ ] Implement the design's closed CLI/library config and trusted release handoff exactly. Retain build-created facts, reviewed revision/dirty state and original IPC reference in the owner receipt; do not hardcode self-referential implementation hashes.
+- [ ] Implement the design's closed CLI/library config and trusted release handoff exactly. Retain the successful original build return joined to closed observed canonical record facts, reviewed revision/dirty state and original IPC reference in the owner receipt; do not hardcode self-referential implementation hashes.
 - [ ] Cover all13 literal native-owner modules and13 native-runtime compiled keys with their13 fixed corresponding source keys. Assert probeCompiledKeys alone is insufficient for native capture; test unexpected runtime import/missing named descendant refusal. Include the13native-runtime TS counterparts and three new production modules as genuine additions; derive final counts from named union. Include exact eight Mac metadata keys from the design. No dependency crawler or padding.
 - [ ] Test byte cap/preflight at1MiB config/release,8KiB coupled success IPC including its scalar accounting summary,64KiB each pipe,4,096 combined chunks,64stages/16ownedoperations/8sourcehandles; exact60s/65s anchor using an injected clock, without real minute waits in tests.
 - [ ] Account source-dispatched filesystem operations/read/hash/write bytes and every platform pass. Test no-dispatch boundary refusal,4platformpass maximum,3GiB read/hash total and8MiB external evidence writes while preserving archiveTotal+manifest+262144≤16MiB. Small authored fixtures inject counters near limits; tests need no large allocation/binary.
 - [ ] Test child original IPC send callback then disconnect, successful message followed by failed exit, original file close pending beyond deadline, forced pipe destroy, and compiler-like inherited service ownership. Normal compiler completion awaits esbuild.stop; deadline kills only the recorded original child group and records unavailable pending work, without grandchild-universe claims.
 - [ ] Run the source-only real preparation only after the reviewed implementation and current main gates are green and other queued maintained browser/CLI jobs have completed. It must emit actual accounting and exact role union; compare against the fixed budgets without changing caps or claiming success from a timeout.
 - [ ] A later already-authorized acquisition task may be a minimal compatible v2 alias/verifier selecting the existing worker/V6 recipe, with distinct one-use v2 release and unchanged null/false native authority. It need not be a new framework or separate PR; preparation never auto-dispatches it.
+
+## Task 4 implementation accounting notes
+
+- [x] Add same-module maintained generator, fixed build command resolution and
+  original build-return/canonical-record join; retain a real fixture metafile and
+  derive named roles without manual cardinality padding.
+- [x] Implement bounded original child IPC/process/pipe joins, explicit authored
+  process controls, original reference persistence and bounded failure receipts.
+- [x] Add lower-only transferred ledgers, ten-counter/set-digest IPC handshake,
+  parent allowance derived from admitted rows/platform/path/chunk facts before dispatch, and exact coupled IPC-size controls.
+- [x] Document `generator-through-owner` versus `owner-inputs-only` accounting
+  boundaries and the opaque ordinary-build prerequisite explicitly.
+- [ ] Finish independent spec and quality review; run fresh owner and all prior
+  preparation/v1 source controls after final fixes.
+- [ ] Commit only after review. No actual preparation or acquisition occurred
+  during this implementation task.
+
+The narrow acquisition alias code/source controls may proceed in parallel using
+already reviewed authored v2 preparation data in this PR. Actual acquisition still
+requires genuine generator→owner closure/accounting review and all main/PR gates
+green; it remains a separate explicit action with unchanged V6 authority.
