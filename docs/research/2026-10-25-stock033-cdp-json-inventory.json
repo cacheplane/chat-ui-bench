@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "kind": "retained-stock033-cdp-json-inventory-research",
+  "date": "2026-10-25",
+  "capture": {
+    "repository": "cacheplane/chat-ui-bench",
+    "pullRequest": 143,
+    "runId": "40208864389",
+    "runAttempt": 1,
+    "artifactId": "12604379612",
+    "syntheticMergeRevision": "f69185f835ddb885e24a4251e9efa5db4372bea3",
+    "reportedPullRequestHead": "5f4bfbfaf710cc08cf65b1ee59664bca85f4626a",
+    "archiveDigestIndependentlyVerified": false,
+    "format": "cdp-json",
+    "profile": "threadplane-langgraph-custom-transport",
+    "threadplaneVersion": "0.3.3",
+    "mode": "headless",
+    "platform": "linux-x64",
+    "graphicsBackend": "SwiftShader",
+    "round": 1,
+    "seed": 1
+  },
+  "analysis": {
+    "executedRevision": "f88ee8a5d46619968477ce407daa67f0defd2d3f",
+    "equivalentRebasedRevision": "3f4dd4cc98cadd0394e95ae55e38e7140eb5bfb4",
+    "importerSubtreeGitTree": "fa826b283106aabd6928fad7b3c13b4a4e965306",
+    "policy": "inventory-v1",
+    "rawRowsExported": false,
+    "processor": {
+      "version": "v58.2",
+      "revision": "add693d8b338ba9599dbcbc3e300b1ab8c000897",
+      "rpcApiVersion": 14,
+      "platform": "darwin-arm64",
+      "executableSHA256": "d29864d1ba3b36855527bb1b0ca3aa7f703cdce338b9680bb922c5c151b358fa"
+    },
+    "sqlSourceSHA256": "b60151196f3f21d268665e502ccaee12cfcd1cb642cff193076cd24a312c8284",
+    "successfulOriginalProcessAndPipeCompletion": true,
+    "recordedInputHashAndIdentityBookendsMatch": true,
+    "retainedSQLAndStreamHashesIndependentlyChecked": true,
+    "rawTracesReReadByAudit": false,
+    "nativeSupported": false,
+    "fps": null,
+    "duration": null,
+    "scoring": false
+  },
+  "captureSource": {
+    "key": "packages/runner/src/long-thread-capture.ts",
+    "bytes": 57739,
+    "sha256": "084743cded2e826effca8fa0d6d7b15d86887cdebd5c24dd9d301f3014974910",
+    "matchesBeforeCopiedAfterSnapshotFacts": true,
+    "historyReadyLine": 213,
+    "traceStartLine": 231,
+    "streamingFollowLine": 237
+  },
+  "cases": [
+    {
+      "caseIndex": 8,
+      "scenarioId": "long-thread-prose-v1-h10000-r6400-follow-s1",
+      "validationStatus": "valid",
+      "historyCount": 10000,
+      "responseBytes": 6400,
+      "journey": "follow",
+      "trace": {
+        "bytes": 15771665,
+        "sha256": "4f91eb2f0bd278328ed80198b039b54a21375fc35c1172af8b072e40245b180b"
+      },
+      "queryStdout": {
+        "bytes": 6738,
+        "sha256": "d5e1a69dddc4a0271fd025b5fdda0298d1a21ebfc163b4fee6d71b1e656c1e9e"
+      },
+      "eventNameCounts": {
+        "BeginFrame": 670,
+        "Display::DrawAndSwap": 56,
+        "DrawFrame": 57,
+        "FramePresented": 0,
+        "Graphics.Pipeline": 3095,
+        "PipelineReporter": 717
+      },
+      "moduleRowCounts": {
+        "display_frame_steps": 0,
+        "surface_first_display_mapping": 0,
+        "surface_frame_steps": 0
+      },
+      "requestedPhaseMarks": 10,
+      "observedPhaseMarks": 7,
+      "missingPhaseMarks": [
+        "bench:comparison:history-ready:1:start",
+        "bench:comparison:setup:0:end",
+        "bench:comparison:setup:0:start"
+      ],
+      "nonzeroStatNames": [
+        "guess_trace_type_duration_ns",
+        "parse_trace_duration_ns"
+      ],
+      "nonzeroStatSeverityAndSource": {
+        "severity": "info",
+        "source": "analysis"
+      },
+      "observedGraphicsArgumentPrefix": "args.chrome_graphics_pipeline.",
+      "observedReporterArgumentPrefix": "args.frame_reporter.",
+      "reporterStateValuesExported": false,
+      "priorFullExport": {
+        "status": "failure",
+        "reason": "stdout limit exceeded",
+        "querySignal": "SIGKILL",
+        "stdoutForcedDestroy": true
+      }
+    },
+    {
+      "caseIndex": 10,
+      "scenarioId": "long-thread-prose-v1-h10000-r262144-follow-s1",
+      "validationStatus": "valid",
+      "historyCount": 10000,
+      "responseBytes": 262144,
+      "journey": "follow",
+      "trace": {
+        "bytes": 18680637,
+        "sha256": "f55e0e58fe3aa0727538fc9ecd838442dc195d09b546073a98ecb8939d46cbd3"
+      },
+      "queryStdout": {
+        "bytes": 6827,
+        "sha256": "2f9f6d505c8e0e4a9aa3106cd130e6ff51d8fa85404c7388908df8e1851c967f"
+      },
+      "eventNameCounts": {
+        "BeginFrame": 682,
+        "Display::DrawAndSwap": 46,
+        "DrawFrame": 46,
+        "FramePresented": 0,
+        "Graphics.Pipeline": 3363,
+        "PipelineReporter": 727
+      },
+      "moduleRowCounts": {
+        "display_frame_steps": 0,
+        "surface_first_display_mapping": 0,
+        "surface_frame_steps": 0
+      },
+      "requestedPhaseMarks": 10,
+      "observedPhaseMarks": 7,
+      "missingPhaseMarks": [
+        "bench:comparison:history-ready:1:start",
+        "bench:comparison:setup:0:end",
+        "bench:comparison:setup:0:start"
+      ],
+      "nonzeroStatNames": [
+        "guess_trace_type_duration_ns",
+        "parse_trace_duration_ns"
+      ],
+      "nonzeroStatSeverityAndSource": {
+        "severity": "info",
+        "source": "analysis"
+      },
+      "observedGraphicsArgumentPrefix": "args.chrome_graphics_pipeline.",
+      "observedReporterArgumentPrefix": "args.frame_reporter.",
+      "reporterStateValuesExported": false,
+      "priorFullExport": {
+        "status": "failure",
+        "reason": "stdout limit exceeded",
+        "querySignal": "SIGKILL",
+        "stdoutForcedDestroy": true
+      }
+    }
+  ]
+}
