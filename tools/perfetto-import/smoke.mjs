@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROCESSOR_PINS, runDiagnostic } from './run.mjs';
+import { PROCESSOR_PINS, runDiagnostic, runInventoryDiagnostic } from './run.mjs';
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const concat = (...parts) => Buffer.concat(parts);
@@ -107,8 +107,51 @@ export async function runSmoke({ processor, out }) {
     }
     assert.ok(graphicsLines.some(line => line.startsWith('4,"PipelineReporter",') && line.endsWith(',"frame_reporter.state","frame_reporter.state","string","[NULL]","STATE_PRESENTED_ALL","[NULL]"')), 'expected authored reporter state');
     assert.ok(graphicsLines.some(line => line.startsWith('3,"Graphics.Pipeline",') && line.endsWith(',"chrome_graphics_pipeline.aggregated_surface_frame_trace_ids","chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]","int",43,"[NULL]","[NULL]"')), 'expected authored aggregated surface argument');
+    // A separate policy imports the identical authored bytes and retains its own artifacts.
+    const inventoryResult = await runInventoryDiagnostic({ trace: { path: graphicsPath, bytes: graphics.length, sha256: digest(graphics) }, processor: { path: processor, sha256: PROCESSOR_PINS[`${process.platform}-${process.arch}`] }, phases: ['authored-start', 'authored-end'], out: join(out, 'graphics-inventory') });
+    requireSuccessfulDiagnostic(inventoryResult);
+    assert.equal(inventoryResult.queryPolicy, 'inventory-v1'); assert.equal(inventoryResult.rawRowsExported, false);
+    const inventoryLines = (await readFile(join(out, 'graphics-inventory', 'query.stdout'), 'utf8')).trim().split(/\r?\n/);
+    for (const row of [
+      '"Graphics.Pipeline",2', '"PipelineReporter",1',
+      '"surface_frame_steps",1', '"display_frame_steps",1', '"surface_first_display_mapping",1',
+      '"surface_without_first_display_mapping",0', '"surface_steps_without_surface_id",0',
+      '"surface_frame_steps","STEP_GENERATE_COMPOSITOR_FRAME",1',
+      '"display_frame_steps","STEP_SURFACE_AGGREGATION",1', '1001000,1024000',
+      '"Graphics.Pipeline",0,"[NULL]",1,1,1,1,"[NULL]","[NULL]",2',
+      '"PipelineReporter",0,"[NULL]",1,1,1,1,"[NULL]","[NULL]",1',
+    ]) assert.ok(inventoryLines.includes(row), `expected authored inventory row ${row}`);
+    const contextHeader = '"name","track_id","track_name","utid","tid","upid","pid","process_name","thread_name","slice_count"';
+    const argumentHeader = '"name","flat_key","key","value_type","arg_occurrence_count","slice_count"';
+    assert.equal(inventoryLines.includes(contextHeader), true);
+    assert.deepEqual(inventoryLines.slice(inventoryLines.indexOf(contextHeader) + 1, inventoryLines.indexOf(argumentHeader)).filter(Boolean), [
+      '"Graphics.Pipeline",0,"[NULL]",1,1,1,1,"[NULL]","[NULL]",2',
+      '"PipelineReporter",0,"[NULL]",1,1,1,1,"[NULL]","[NULL]",1',
+    ]);
+    const argumentRows = inventoryLines.slice(inventoryLines.indexOf(argumentHeader) + 1);
+    assert.equal(inventoryLines.includes(argumentHeader), true);
+    const expectedArguments = [
+      ['Graphics.Pipeline', 'chrome_graphics_pipeline.aggregated_surface_frame_trace_ids', 'chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]', 'int'],
+      ['Graphics.Pipeline', 'chrome_graphics_pipeline.display_trace_id', 'chrome_graphics_pipeline.display_trace_id', 'int'],
+      ['Graphics.Pipeline', 'chrome_graphics_pipeline.step', 'chrome_graphics_pipeline.step', 'string'],
+      ['Graphics.Pipeline', 'chrome_graphics_pipeline.surface_frame_trace_id', 'chrome_graphics_pipeline.surface_frame_trace_id', 'int'],
+      ['PipelineReporter', 'frame_reporter.display_trace_id', 'frame_reporter.display_trace_id', 'int'],
+      ['PipelineReporter', 'frame_reporter.frame_sequence', 'frame_reporter.frame_sequence', 'uint'],
+      ['PipelineReporter', 'frame_reporter.frame_source', 'frame_reporter.frame_source', 'uint'],
+      ['PipelineReporter', 'frame_reporter.layer_tree_host_id', 'frame_reporter.layer_tree_host_id', 'uint'],
+      ['PipelineReporter', 'frame_reporter.state', 'frame_reporter.state', 'string'],
+      ['PipelineReporter', 'frame_reporter.surface_frame_trace_id', 'frame_reporter.surface_frame_trace_id', 'int'],
+    ].map(([name, flatKey, key, type]) => `"${name}","${flatKey}","${key}","${type}",${key === 'chrome_graphics_pipeline.step' ? 2 : 1},${key === 'chrome_graphics_pipeline.step' ? 2 : 1}`);
+    assert.deepEqual(argumentRows, expectedArguments);
+    for (const header of [
+      '"id","ts","dur","step","surface_frame_trace_id","utid","task_start_time_ts"',
+      '"id","ts","dur","step","display_trace_id","utid","task_start_time_ts"',
+      '"surface_frame_trace_id","display_trace_id"',
+      '"slice_id","name","arg_set_id","flat_key","key","value_type","int_value","string_value","real_value"',
+    ]) assert.equal(inventoryLines.includes(header), false, `inventory must omit raw export ${header}`);
     summary.status = 'success'; summary.fixtureBytes = bytes.length; summary.fixtureSha256 = digest(bytes);
     summary.graphicsFixtureBytes = graphics.length; summary.graphicsFixtureSha256 = digest(graphics);
+    summary.graphicsInventory = { queryPolicy: inventoryResult.queryPolicy, rawRowsExported: inventoryResult.rawRowsExported, fixtureBytes: graphics.length, fixtureSha256: digest(graphics) };
   } catch (error) { summary.error = error.message; }
   await writeFile(join(out, 'smoke.json'), `${JSON.stringify(summary, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   return summary;

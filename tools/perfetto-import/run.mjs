@@ -102,20 +102,29 @@ async function capture(executable, args, deadlineMs) {
 }
 
 export async function runDiagnostic(options) {
-  return run(options, false);
+  return run(options, false, 'full');
+}
+
+export async function runInventoryDiagnostic(options) {
+  return run(options, false, 'inventory');
 }
 
 // Authored executable test fixtures are deliberately labeled untrusted diagnostics.
 // The CLI never calls this entrypoint; no fixture result attests an official tool.
 export async function runAuthoredFixtureDiagnostic(options) {
-  return run(options, true);
+  return run(options, true, 'full');
 }
 
-async function run(options, authoredFixture) {
+export async function runAuthoredFixtureInventoryDiagnostic(options) {
+  return run(options, true, 'inventory');
+}
+
+async function run(options, authoredFixture, policy) {
   const { trace, processor, phases, out, deadlineMs = 60000 } = options;
   if (!isAbsolute(out ?? '')) throw new Error('absolute fresh output directory required');
   await mkdir(out, { mode: 0o700 }); // Exclusive: never modify a previous diagnostic.
   const manifest = { schema: 1, status: 'failure', diagnosticOnly: true, authoredFixture, officialProcessor: false, platform: `${process.platform}-${process.arch}`, nativeSupported: false, fps: null, duration: null, scoring: false, expectedVersion: EXPECTED_VERSION, expected: { trace, processor }, phases, processes: {} };
+  if (policy === 'inventory') { manifest.queryPolicy = 'inventory-v1'; manifest.rawRowsExported = false; }
   const save = (name, bytes) => writeFile(join(out, name), bytes, { flag: 'wx', mode: 0o600 });
   const observe = async (stage, name, input, limit) => {
     manifest[stage] ??= {};
@@ -133,7 +142,7 @@ async function run(options, authoredFixture) {
     await observe('before', 'trace', trace, 33554432);
     await observe('before', 'processor', processor, 67108864);
     manifest.officialProcessor = !authoredFixture;
-    const source = await readFile(new URL('./diagnostic.sql', import.meta.url), 'utf8');
+    const source = await readFile(new URL(policy === 'inventory' ? './inventory.sql' : './diagnostic.sql', import.meta.url), 'utf8');
     const sql = source.replace('__PHASE_LITERALS__', phases.map(p => `'${p.replaceAll("'", "''")}'`).join(', '));
     await save('diagnostic.sql', sql);
     manifest.sql = { path: join(out, 'diagnostic.sql'), sha256: digest(sql), sourceSha256: digest(source) };
@@ -167,7 +176,7 @@ async function run(options, authoredFixture) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
-    if (args.length !== 2 || args[0] !== '--config') throw new Error('usage: node tools/perfetto-import/run.mjs --config /absolute/config.json');
+    if (args.length !== 2 || !['--config', '--inventory-config'].includes(args[0])) throw new Error('usage: node tools/perfetto-import/run.mjs (--config|--inventory-config) /absolute/config.json');
     if (!isAbsolute(args[1]) || resolve(args[1]) !== args[1]) throw new Error('normalized absolute config path required');
     const pathStat = await lstat(args[1], { bigint: true });
     if (!pathStat.isFile() || pathStat.nlink !== 1n || pathStat.size > 16384n) throw new Error('config must be one-link regular file <=16 KiB');
@@ -186,7 +195,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       if (BigInt(length) !== before.size || !same(tuple(before), tuple(await configHandle.stat({ bigint: true }))) || !same(tuple(before), tuple(await lstat(args[1], { bigint: true })))) throw new Error('config changed during read');
       config = buffer.subarray(0, length).toString('utf8');
     } finally { await configHandle.close(); }
-    const result = await runDiagnostic(JSON.parse(config));
+    const result = await (args[0] === '--inventory-config' ? runInventoryDiagnostic : runDiagnostic)(JSON.parse(config));
     process.stdout.write(`${JSON.stringify({ status: result.status, out: JSON.parse(config).out, error: result.error })}\n`);
     if (result.status !== 'success') process.exitCode = 1;
   } catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1; }
