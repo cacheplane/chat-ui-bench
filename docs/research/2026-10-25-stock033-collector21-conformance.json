@@ -1,0 +1,784 @@
+{
+  "kind": "stock033-collector21-conformance-metadata-custody-summary",
+  "auditAt": "2026-10-25T17:53:33.461922+00:00",
+  "scope": {
+    "audit": "Retained metadata/schema/content joins and exact file custody; curated from an independent audit, not a new capture or semantic trace analysis.",
+    "headless": true,
+    "rounds": 1,
+    "seed": 1,
+    "FPS": null,
+    "nativePrototypeQualification": false,
+    "traceImportPerformed": false,
+    "independentSemanticScoreVerdict": false
+  },
+  "source": {
+    "revision": "e3d306149bea680f6c2314e96c91a86fc10ae20d",
+    "dirty": false,
+    "collectorVersion": "2.1.0",
+    "analyzerVersion": "2.1.0",
+    "stockVersion": "0.3.3",
+    "adapterProfile": "threadplane-langgraph-custom-transport"
+  },
+  "release": {
+    "status": "published; remote archive independently downloaded and byte/hash verified",
+    "archiveBytes": 87422086,
+    "archiveSha256": "a221ca02193afc182883e06061d1c10a0e8c25b3b57bb2d091df025c999e9b42",
+    "archiveIdentityEvidence": "collection owner checked local ZIP CRCs and GitHub asset metadata, then independently downloaded the published archive and verified exact byte length and SHA256",
+    "memberCount": 2175,
+    "uncompressedBytes": 818983787,
+    "tag": "stock033-collector21-conformance-20261025-a",
+    "url": "https://github.com/cacheplane/chat-ui-bench/releases/tag/stock033-collector21-conformance-20261025-a",
+    "remoteDownloadVerified": true,
+    "zipMemberCRCsVerified": true
+  },
+  "custody": {
+    "sealMemberCount": 2174,
+    "verifiedMemberCount": 2174,
+    "verifiedBytes": 818376397,
+    "datasetFileCountIncludingSeal": 2175,
+    "datasetBytesIncludingSeal": 818983787
+  },
+  "seal": {
+    "byteLength": 607390,
+    "sha256": "fdf6ed9b2c797117994ea6e84bd02be5db07f2d568abc5283d7bf5df9c3125b6",
+    "unchangedDuringRead": true
+  },
+  "invocation": {
+    "invocationStatus": "failed",
+    "sealStatus": "sealed",
+    "ownershipSettled": true,
+    "finalizationSucceeded": true,
+    "validCaseIndices": [
+      0,
+      2,
+      3,
+      4,
+      5,
+      6,
+      8,
+      10
+    ],
+    "failedCaseIndices": [
+      1,
+      7,
+      9,
+      11
+    ]
+  },
+  "summary": {
+    "allCaseIdentitiesAgree": true,
+    "allFinalRuntimeAndMountedContentMatchFixture": true,
+    "allProducerReceiptAndTranslationCounts202": true,
+    "allEventContentChecksPass": true,
+    "allExceptionsEmpty": true,
+    "all36RetainedDeadlineOutcomesComplete": true,
+    "allTraceEofFactsAvailable": true,
+    "allTraceAuxiliaryCompletionLossFalse": true,
+    "allInstrumentationBuffersCompleteWithoutOverflow": true,
+    "allProvenanceAcquisitionsCompleteAndMeasurementsMatch": true,
+    "allEvidenceMemberHashesMatchSeal": true
+  },
+  "environment": {
+    "os": "darwin 25.5.0",
+    "architecture": "arm64",
+    "cpuModel": "Apple M1 Max",
+    "logicalCpuCount": 10,
+    "framework": {
+      "name": "Angular",
+      "version": "21.2.25"
+    },
+    "browser": "HeadlessChrome/156.0.8078.4",
+    "browserRevision": "@f842f52ef39fd97b449eb27cff414bf05a98ddce",
+    "playwrightVersion": "1.64.0",
+    "chromiumDownloadRevision": "1248",
+    "displayType": "ANGLE_SWIFTSHADER",
+    "gpuCompositing": "disabled_software",
+    "viewport": {
+      "width": 1280,
+      "height": 800,
+      "deviceScaleFactor": 1
+    }
+  },
+  "cases": [
+    {
+      "caseIndex": 0,
+      "historyCount": 100,
+      "responseBytes": 6400,
+      "journey": "follow",
+      "validationStatus": "valid",
+      "reasons": [],
+      "captureStatus": "complete",
+      "events": 202,
+      "finalMounted": 101,
+      "trace": {
+        "byteLength": 49717770,
+        "sha256": "93f1fea10202e67bb99c402f24f2ffae4bc0ec7e5d2837b214c32e948e0822e2"
+      },
+      "fixture": {
+        "byteLength": 83859,
+        "sha256": "7bdd63ebc2ef650a28d26bf9ca7342e4c83fe08469d17ddefdcf770ec0534128"
+      },
+      "fitsImporterInputCapBySize": false,
+      "periodicScrollSamples": {
+        "count": 194,
+        "firstToLastPageMs": [
+          203.0,
+          10390.9
+        ],
+        "maximumObservedGapMsRounded": 395.6,
+        "freshCheckpointCount": 0
+      },
+      "wholePageRendererGauges": [
+        {
+          "lifecycle": "baseline",
+          "heapUsedBytes": 8892436,
+          "dom": {
+            "nodes": 75,
+            "documents": 4,
+            "eventListeners": 33
+          }
+        },
+        {
+          "lifecycle": "history-ready",
+          "heapUsedBytes": 14209708,
+          "dom": {
+            "nodes": 3304,
+            "documents": 4,
+            "eventListeners": 451
+          }
+        },
+        {
+          "lifecycle": "replay-end",
+          "heapUsedBytes": 19613160,
+          "dom": {
+            "nodes": 3384,
+            "documents": 4,
+            "eventListeners": 488
+          }
+        }
+      ]
+    },
+    {
+      "caseIndex": 1,
+      "historyCount": 100,
+      "responseBytes": 6400,
+      "journey": "history-reading",
+      "validationStatus": "failed",
+      "reasons": [
+        "Scored scroll geometry unavailable",
+        "Declared return control did not dispatch"
+      ],
+      "captureStatus": "partial",
+      "events": 202,
+      "finalMounted": 101,
+      "trace": {
+        "byteLength": 52477773,
+        "sha256": "5f1b6538f1acea4500cf9c1c29f4da87fd3eaec1bf99424003ebcf3ab9808bfe"
+      },
+      "fixture": {
+        "byteLength": 83877,
+        "sha256": "e5d11838de49f82d50f7a4f17a5916d06c290bc68bd97bd118163ada1cbcc88d"
+      },
+      "fitsImporterInputCapBySize": false,
+      "periodicScrollSamples": {
+        "count": 197,
+        "firstToLastPageMs": [
+          153.3,
+          10299.4
+        ],
+        "maximumObservedGapMsRounded": 67.9,
+        "freshCheckpointCount": 5
+      }
+    },
+    {
+      "caseIndex": 2,
+      "historyCount": 100,
+      "responseBytes": 262144,
+      "journey": "follow",
+      "validationStatus": "valid",
+      "reasons": [],
+      "captureStatus": "complete",
+      "events": 202,
+      "finalMounted": 101,
+      "trace": {
+        "byteLength": 58230911,
+        "sha256": "5b90eb2249ea75845d5d35f142d67c8ec3be1450df9eee8ffc44994eb72fe7c3"
+      },
+      "fixture": {
+        "byteLength": 340007,
+        "sha256": "449278cec763e7e8e2a40684968cff99630de006904ba561c181fbb8c02a73a1"
+      },
+      "fitsImporterInputCapBySize": false,
+      "periodicScrollSamples": {
+        "count": 174,
+        "firstToLastPageMs": [
+          160.3,
+          10290.1
+        ],
+        "maximumObservedGapMsRounded": 79.4,
+        "freshCheckpointCount": 0
+      }
+    },
+    {
+      "caseIndex": 3,
+      "historyCount": 100,
+      "responseBytes": 262144,
+      "journey": "history-reading",
+      "validationStatus": "valid",
+      "reasons": [],
+      "captureStatus": "complete",
+      "events": 202,
+      "finalMounted": 101,
+      "trace": {
+        "byteLength": 54535870,
+        "sha256": "24cca8e0bea050479caac7d2369746f8b8d938f392d7c3e59470e432a44b5c75"
+      },
+      "fixture": {
+        "byteLength": 340025,
+        "sha256": "f20e9234943846530ce6292075ee52d40405a81389173fc473af3fea6a5625ff"
+      },
+      "fitsImporterInputCapBySize": false,
+      "periodicScrollSamples": {
+        "count": 179,
+        "firstToLastPageMs": [
+          155.4,
+          10281.4
+        ],
+        "maximumObservedGapMsRounded": 79.5,
+        "freshCheckpointCount": 5
+      }
+    },
+    {
+      "caseIndex": 4,
+      "historyCount": 1000,
+      "responseBytes": 6400,
+      "journey": "follow",
+      "validationStatus": "valid",
+      "reasons": [],
+      "captureStatus": "complete",
+      "events": 202,
+      "finalMounted": 1001,
+      "trace": {
+        "byteLength": 49647816,
+        "sha256": "d9970e582da690053ceebb6b9ba4932e2c0ee812b681e2e1c10c213b0b0d4a6e"
+      },
+      "fixture": {
+        "byteLength": 605614,
+        "sha256": "60a43e25a8de05df215d1d25baf1c20bcec5f40237db621ceeaee214d9b49aa7"
+      },
+      "fitsImporterInputCapBySize": false,
+      "periodicScrollSamples": {
+        "count": 191,
+        "firstToLastPageMs": [
+          384.2,
+          10653.9
+        ],
+        "maximumObservedGapMsRounded": 398.5,
+        "freshCheckpointCount": 0
+      },
+      "wholePageRendererGauges": [
+        {
+          "lifecycle": "baseline",
+          "heapUsedBytes": 8899180,
+          "dom": {
+            "nodes": 75,
+            "documents": 4,
+            "eventListeners": 33
+          }
+        },
+        {
+          "lifecycle": "history-ready",
+          "heapUsedBytes": 42380460,
+          "dom": {
+            "nodes": 31608,
+            "documents": 1,
+            "eventListeners": 4031
+          }
+        },
+        {
+          "lifecycle": "replay-end",
+          "heapUsedBytes": 74609736,
+          "dom": {
+            "nodes": 31688,
+            "documents": 1,
+            "eventListeners": 4068
+          }
+        }
+      ]
+    },
+    {
+      "caseIndex": 5,
+      "historyCount": 1000,
+      "responseBytes": 6400,
+      "journey": "history-reading",
+      "validationStatus": "valid",
+      "reasons": [],
+      "captureStatus": "complete",
+      "events": 202,
+      "finalMounted": 1001,
+      "trace": {
+        "byteLength": 52112702,
+        "sha256": "2b7921b9ec3ec12eecf3aba1f9000226cc4c2098e3b708fc0e093c7e7a3afcff"
+      },
+      "fixture": {
+        "byteLength": 605632,
+        "sha256": "1f92e53531e4d0daee45724000973c21788dd7ef625c30bced32698480418255"
+      },
+      "fitsImporterInputCapBySize": false,
+      "periodicScrollSamples": {
+        "count": 196,
+        "firstToLastPageMs": [
+          380.5,
+          10646.4
+        ],
+        "maximumObservedGapMsRounded": 1522.4,
+        "freshCheckpointCount": 5
+      }
+    },
+    {
+      "caseIndex": 6,
+      "historyCount": 1000,
+      "responseBytes": 262144,
+      "journey": "follow",
+      "validationStatus": "valid",
+      "reasons": [],
+      "captureStatus": "complete",
+      "events": 202,
+      "finalMounted": 1001,
+      "trace": {
+        "byteLength": 44047122,
+        "sha256": "71297133ffa93c28403f9bcf158a0240903b4cb65b7f01325a74ec76a1d1aa75"
+      },
+      "fixture": {
+        "byteLength": 861762,
+        "sha256": "5cdc65e43ed123c2fb1aa987e1a893196e1ea88b8404617f1c3cd79b8023a790"
+      },
+      "fitsImporterInputCapBySize": false,
+      "periodicScrollSamples": {
+        "count": 123,
+        "firstToLastPageMs": [
+          379.7,
+          10718.0
+        ],
+        "maximumObservedGapMsRounded": 450.0,
+        "freshCheckpointCount": 0
+      }
+    },
+    {
+      "caseIndex": 7,
+      "historyCount": 1000,
+      "responseBytes": 262144,
+      "journey": "history-reading",
+      "validationStatus": "failed",
+      "reasons": [
+        "Scored scroll geometry unavailable"
+      ],
+      "captureStatus": "partial",
+      "events": 202,
+      "finalMounted": 1001,
+      "trace": {
+        "byteLength": 45435621,
+        "sha256": "281a70df51dd22030b8e647fc32465a9df02296c7b44410b0a9fdc25ffdc45bf"
+      },
+      "fixture": {
+        "byteLength": 861780,
+        "sha256": "df50d14646a6555340d54037e7c5eb3b0fff9d75ff092ed624e8c2c19a5c79d3"
+      },
+      "fitsImporterInputCapBySize": false,
+      "periodicScrollSamples": {
+        "count": 135,
+        "firstToLastPageMs": [
+          378.7,
+          10693.0
+        ],
+        "maximumObservedGapMsRounded": 1563.3,
+        "freshCheckpointCount": 5
+      }
+    },
+    {
+      "caseIndex": 8,
+      "historyCount": 10000,
+      "responseBytes": 6400,
+      "journey": "follow",
+      "validationStatus": "valid",
+      "reasons": [],
+      "captureStatus": "complete",
+      "events": 202,
+      "finalMounted": 10001,
+      "trace": {
+        "byteLength": 19821826,
+        "sha256": "49aa4c576949c87d42a228d62cdc873a9ada18643da156803163e9a28a78db44"
+      },
+      "fixture": {
+        "byteLength": 5830319,
+        "sha256": "c70489589009b26bb146685ba7930bb29df2f136b1d28c23c57eb4d3c84f0bdd"
+      },
+      "fitsImporterInputCapBySize": true,
+      "periodicScrollSamples": {
+        "count": 54,
+        "firstToLastPageMs": [
+          2462.6,
+          14101.6
+        ],
+        "maximumObservedGapMsRounded": 2348.4,
+        "freshCheckpointCount": 0
+      },
+      "wholePageRendererGauges": [
+        {
+          "lifecycle": "baseline",
+          "heapUsedBytes": 8899068,
+          "dom": {
+            "nodes": 75,
+            "documents": 4,
+            "eventListeners": 33
+          }
+        },
+        {
+          "lifecycle": "history-ready",
+          "heapUsedBytes": 250021332,
+          "dom": {
+            "nodes": 315134,
+            "documents": 1,
+            "eventListeners": 40031
+          }
+        },
+        {
+          "lifecycle": "replay-end",
+          "heapUsedBytes": 372157388,
+          "dom": {
+            "nodes": 315214,
+            "documents": 1,
+            "eventListeners": 40068
+          }
+        }
+      ]
+    },
+    {
+      "caseIndex": 9,
+      "historyCount": 10000,
+      "responseBytes": 6400,
+      "journey": "history-reading",
+      "validationStatus": "failed",
+      "reasons": [
+        "Scored scroll geometry unavailable",
+        "Declared return control did not dispatch"
+      ],
+      "captureStatus": "partial",
+      "events": 202,
+      "finalMounted": 10001,
+      "trace": {
+        "byteLength": 19158539,
+        "sha256": "825a378b4537902cead6f4e8276efcf6cb6a450b4ff858601c2fdb3ec16acc51"
+      },
+      "fixture": {
+        "byteLength": 5830337,
+        "sha256": "1766a99592127470301b0f9333b473b2e3edc628da4dd8e4bf01c2ba9b427016"
+      },
+      "fitsImporterInputCapBySize": true,
+      "periodicScrollSamples": {
+        "count": 60,
+        "firstToLastPageMs": [
+          2392.0,
+          14052.6
+        ],
+        "maximumObservedGapMsRounded": 5689.8,
+        "freshCheckpointCount": 5
+      }
+    },
+    {
+      "caseIndex": 10,
+      "historyCount": 10000,
+      "responseBytes": 262144,
+      "journey": "follow",
+      "validationStatus": "valid",
+      "reasons": [],
+      "captureStatus": "complete",
+      "events": 202,
+      "finalMounted": 10001,
+      "trace": {
+        "byteLength": 21356343,
+        "sha256": "3a0a23e73906070fa6544152362a06fa68c7ee1f975d4c2d03843d76028a1f9c"
+      },
+      "fixture": {
+        "byteLength": 6086467,
+        "sha256": "ad0889a9e26b9f67215fd66ac4cc88272dcd7ac7d78b85829b9419b1273ae6fb"
+      },
+      "fitsImporterInputCapBySize": true,
+      "periodicScrollSamples": {
+        "count": 48,
+        "firstToLastPageMs": [
+          2442.2,
+          14156.5
+        ],
+        "maximumObservedGapMsRounded": 2534.4,
+        "freshCheckpointCount": 0
+      }
+    },
+    {
+      "caseIndex": 11,
+      "historyCount": 10000,
+      "responseBytes": 262144,
+      "journey": "history-reading",
+      "validationStatus": "failed",
+      "reasons": [
+        "Scored scroll geometry unavailable",
+        "Declared return control did not dispatch"
+      ],
+      "captureStatus": "partial",
+      "events": 202,
+      "finalMounted": 10001,
+      "trace": {
+        "byteLength": 21907468,
+        "sha256": "4bd7bc999021d66d8b79f491dc328cc2c502372ea7997a9485fff85cde20eb8d"
+      },
+      "fixture": {
+        "byteLength": 6086485,
+        "sha256": "5297f6439cfb9b189954380e42603ed1c380883651b27e372433e7b0a2b0c8c6"
+      },
+      "fitsImporterInputCapBySize": true,
+      "periodicScrollSamples": {
+        "count": 54,
+        "firstToLastPageMs": [
+          2417.6,
+          14155.0
+        ],
+        "maximumObservedGapMsRounded": 3555.5,
+        "freshCheckpointCount": 5
+      }
+    }
+  ],
+  "case1": {
+    "postToLaterPageMs": 802.4000000003725,
+    "postPageMs": 563.5999999996275,
+    "laterPageMs": 1366,
+    "postBottomGapCssPx": 100,
+    "laterBottomGapCssPx": 26,
+    "pinToleranceCssPx": 150,
+    "postToLaterScrollTopChangeCssPx": 228,
+    "postToLaterScrollHeightChangeCssPx": 154,
+    "observedWheelDeltaY": [
+      -100,
+      -100,
+      -100,
+      -100
+    ],
+    "returnControlDispatchCount": 0,
+    "stockChatBundle": {
+      "path": "apps/threadplane/node_modules/@threadplane/chat/fesm2022/threadplane-chat.mjs",
+      "byteLength": 938918,
+      "sha256": "f2162b354971143a70ed8fbe9db9d93391192202ebd98b1fac69653188187c4e"
+    },
+    "causality": "Stock auto-follow is a candidate; actual writes/private pin state/native anchoring were not observed. Anchor omitted from admitted candidates after leaving clip; final mounted validation still includes it."
+  },
+  "laterOfflineInventoryAnalysis": {
+    "kind": "later-offline-inventory-analysis",
+    "performed": true,
+    "originalMetadataCustodyAuditTraceImportPerformed": false,
+    "captureRevision": "e3d306149bea680f6c2314e96c91a86fc10ae20d",
+    "analysisRevision": "510e8b3010f04723869ebde2a7130611af3d2210",
+    "analysisTree": "1108439d0556bbbe8f6705ecaef6dc296d48495f",
+    "analysisCheckoutClean": true,
+    "queryPolicy": "inventory-v1",
+    "processorVersion": "Perfetto v58.2-add693d8b (add693d8b338ba9599dbcbc3e300b1ab8c000897)\nTrace Processor RPC API version: 14",
+    "processorSha256": "d29864d1ba3b36855527bb1b0ca3aa7f703cdce338b9680bb922c5c151b358fa",
+    "inventorySourceSha256": "b60151196f3f21d268665e502ccaee12cfcd1cb642cff193076cd24a312c8284",
+    "substitutedSqlSha256": "29c6864239e64d0122fefb1319aa8b20e4e9d203dc72c2288856f1b8e6767d8e",
+    "independentAudit": {
+      "jsonSha256": "3e1902736cb27e2e38fcc35cce4204c1160f65ac7562ea3ba4d5ece772138de1",
+      "markdownSha256": "dc7e6503ccdaf6f577159d0d14ecd8c8df4ac04064a72e4220abd604346b3e92"
+    },
+    "cases": [
+      {
+        "caseIndex": 8,
+        "captureValidationStatus": "valid",
+        "inputTrace": {
+          "bytes": 19821826,
+          "sha256": "49aa4c576949c87d42a228d62cdc873a9ada18643da156803163e9a28a78db44"
+        },
+        "manifestSha256": "7fcc01a10bc24fde239ac942ec9dd0aa3aefc38ab880c8cf39ee3b703fa8c85f",
+        "configSha256": "4535fe816209187d5e8c90eb2c23ac4d0c5f69aba2343dc86b5c4b964b5fcb9a",
+        "queryStdout": {
+          "bytes": 6502,
+          "sha256": "687b3ba1630ebb6d391b9db9f205a69d97cf994ec3843ec20281554dcec279bc"
+        },
+        "queryStderr": {
+          "bytes": 789,
+          "sha256": "daf6806235c1e3069e8debbf25279b4f1fda720bf68c5342534048a66e0a9188"
+        },
+        "retainedVersionAndQueryExitCodes": [
+          0,
+          0
+        ],
+        "originalProcessesAndStreamsClosedNormally": true,
+        "beforeAfterBookendsEqual": true,
+        "currentPhysicalFactsEqualBookends": true,
+        "sealedOriginalInputBinding": true,
+        "allTenCSVTablesParsed": true,
+        "tableRowCounts": {
+          "phaseMarkers": 7,
+          "nonzeroStats": 3,
+          "traceBounds": 1,
+          "rawEventCounts": 6,
+          "graphicsModuleInventories": 3,
+          "graphicsModuleStepCounts": 0,
+          "surfaceWithoutMapping": 1,
+          "surfaceWithoutId": 1,
+          "rawContextGroups": 6,
+          "argumentKeyGroups": 33
+        },
+        "rawCounts": {
+          "BeginFrame": 638,
+          "Display::DrawAndSwap": 89,
+          "DrawFrame": 90,
+          "FramePresented": 0,
+          "Graphics.Pipeline": 3169,
+          "PipelineReporter": 723
+        },
+        "normalizedModuleRows": {
+          "display_frame_steps": 0,
+          "surface_first_display_mapping": 0,
+          "surface_frame_steps": 0
+        },
+        "nonzeroStats": [
+          {
+            "name": "guess_trace_type_duration_ns",
+            "idx": null,
+            "severity": "info",
+            "source": "analysis",
+            "value": 8958
+          },
+          {
+            "name": "parse_trace_duration_ns",
+            "idx": null,
+            "severity": "info",
+            "source": "analysis",
+            "value": 50332334
+          },
+          {
+            "name": "slice_spill_overlapping_complete_event",
+            "idx": null,
+            "severity": "error",
+            "source": "analysis",
+            "value": 4
+          }
+        ],
+        "rawContextCountsReconcile": {
+          "Graphics.Pipeline": 3169,
+          "PipelineReporter": 723
+        },
+        "argumentGroups": 33,
+        "observedArgumentKeyPrefix": "args."
+      },
+      {
+        "caseIndex": 10,
+        "captureValidationStatus": "valid",
+        "inputTrace": {
+          "bytes": 21356343,
+          "sha256": "3a0a23e73906070fa6544152362a06fa68c7ee1f975d4c2d03843d76028a1f9c"
+        },
+        "manifestSha256": "24489bb7863627c731431aa2d40ecfb6e34eee4d0fb73238772ac17dfab68b64",
+        "configSha256": "e6b2d83009fb0c89179e63657a21a44fc2d43f2a77db2a80ab4d2b2938d35688",
+        "queryStdout": {
+          "bytes": 6583,
+          "sha256": "810678b0c57e6a045dcfd1c1c0e69742fee1bac3417156e32f4434799d7962ca"
+        },
+        "queryStderr": {
+          "bytes": 789,
+          "sha256": "70597b4dd61288898e35fb7da2c871c796228aa40b9800312c44ef7cdc486551"
+        },
+        "retainedVersionAndQueryExitCodes": [
+          0,
+          0
+        ],
+        "originalProcessesAndStreamsClosedNormally": true,
+        "beforeAfterBookendsEqual": true,
+        "currentPhysicalFactsEqualBookends": true,
+        "sealedOriginalInputBinding": true,
+        "allTenCSVTablesParsed": true,
+        "tableRowCounts": {
+          "phaseMarkers": 7,
+          "nonzeroStats": 3,
+          "traceBounds": 1,
+          "rawEventCounts": 6,
+          "graphicsModuleInventories": 3,
+          "graphicsModuleStepCounts": 0,
+          "surfaceWithoutMapping": 1,
+          "surfaceWithoutId": 1,
+          "rawContextGroups": 7,
+          "argumentKeyGroups": 33
+        },
+        "rawCounts": {
+          "BeginFrame": 645,
+          "Display::DrawAndSwap": 77,
+          "DrawFrame": 78,
+          "FramePresented": 0,
+          "Graphics.Pipeline": 3126,
+          "PipelineReporter": 722
+        },
+        "normalizedModuleRows": {
+          "display_frame_steps": 0,
+          "surface_first_display_mapping": 0,
+          "surface_frame_steps": 0
+        },
+        "nonzeroStats": [
+          {
+            "name": "guess_trace_type_duration_ns",
+            "idx": null,
+            "severity": "info",
+            "source": "analysis",
+            "value": 9375
+          },
+          {
+            "name": "parse_trace_duration_ns",
+            "idx": null,
+            "severity": "info",
+            "source": "analysis",
+            "value": 54891458
+          },
+          {
+            "name": "slice_spill_overlapping_complete_event",
+            "idx": null,
+            "severity": "error",
+            "source": "analysis",
+            "value": 5
+          }
+        ],
+        "rawContextCountsReconcile": {
+          "Graphics.Pipeline": 3126,
+          "PipelineReporter": 722
+        },
+        "argumentGroups": 33,
+        "observedArgumentKeyPrefix": "args."
+      }
+    ],
+    "interpretation": {
+      "stats": "Pinned official source describes overlapping complete events moved to overflow tracks with ambiguous nesting. The spill counter is not a dropped-frame count or independent evidence of trace-wide completeness.",
+      "module": "Raw imported argument keys include args.chrome_graphics_pipeline.*; the pinned module looks up chrome_graphics_pipeline.* and current_task.* without that prefix. This is a concrete compatibility gap consistent with empty normalized tables; inventory does not independently establish it as the only cause.",
+      "scope": "Successful diagnostic imports establish retained import completion and bounded inventories only. Empty module tables or FramePresented=0 do not prove zero frames, presentation qualification or FPS. No capture verdict is upgraded."
+    },
+    "officialReferences": {
+      "stats": "https://github.com/google/perfetto/blob/add693d8b338ba9599dbcbc3e300b1ab8c000897/src/trace_processor/storage/stats.h#L748",
+      "module": "https://github.com/google/perfetto/blob/add693d8b338ba9599dbcbc3e300b1ab8c000897/src/trace_processor/perfetto_sql/stdlib/chrome/graphics_pipeline.sql"
+    },
+    "scope": {
+      "FPS": null,
+      "scoringEligibility": false,
+      "nativeSupported": false,
+      "rawTraceCopiedOrCropped": false,
+      "newCapturePerformed": false,
+      "newQueriesExecutedByReviewer": false,
+      "captureFailedCaseIndicesUnchanged": [
+        1,
+        7,
+        9,
+        11
+      ]
+    },
+    "publishedArchive": {
+      "url": "https://github.com/cacheplane/chat-ui-bench/releases/download/stock033-collector21-conformance-20261025-a/chat-ui-bench-stock033-collector21-inventory-main510e8b-20261025.zip",
+      "bytes": 12775,
+      "sha256": "7d5cdac1cde316b9af06d0cdeec5523fc9ea592bf6dd0f4d3c2d46619bc3233d",
+      "remoteDownloadVerified": true
+    }
+  }
+}

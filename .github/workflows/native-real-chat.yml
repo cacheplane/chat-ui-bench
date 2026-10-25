@@ -18,7 +18,7 @@ jobs:
           node-version: '24.20.0'
           cache: npm
       - name: Install locked source dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Build native owner prerequisites
         shell: bash
         run: |
