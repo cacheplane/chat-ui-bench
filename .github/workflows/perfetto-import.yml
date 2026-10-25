@@ -1,0 +1,57 @@
+name: Pinned Perfetto authored import diagnostic
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  authored-import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.20.0'
+      - name: Run authored source controls with built-in Node modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/perfetto-import-evidence"
+          set +e
+          node --test tools/perfetto-import/run.node.mjs > "$RUNNER_TEMP/perfetto-import-evidence/unit.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/unit.stderr"
+          result=$?
+          printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/unit.exit-code"
+          exit "$result"
+      - name: Fetch and verify explicitly pinned official Linux processor
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/perfetto-import-tool"
+          curl --fail --location --proto '=https' --tlsv1.2 --max-time 60 --max-filesize 15000000 \
+            https://github.com/google/perfetto/releases/download/v58.2/linux-amd64.zip \
+            --output "$RUNNER_TEMP/perfetto-import-tool/linux-amd64.zip"
+          test "$(stat -c '%s' "$RUNNER_TEMP/perfetto-import-tool/linux-amd64.zip")" -le 15000000
+          printf '%s  %s\n' 32c739f71b2d39721afd294c0b038f2499a44a71b5b6bcdd85b83faca0b240b9 "$RUNNER_TEMP/perfetto-import-tool/linux-amd64.zip" | sha256sum --check --strict
+          unzip -p "$RUNNER_TEMP/perfetto-import-tool/linux-amd64.zip" linux-amd64/trace_processor_shell > "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell"
+          printf '%s  %s\n' 58042408e6cc861fb1a731c26bb082dc222285561eaa4e12a48a8b2b90dca7b9 "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell" | sha256sum --check --strict
+          chmod 700 "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell"
+      - name: Import maintained authored clock fixture with pinned production CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          node tools/perfetto-import/smoke.mjs --processor "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell" --out "$RUNNER_TEMP/perfetto-import-evidence/smoke" > "$RUNNER_TEMP/perfetto-import-evidence/smoke.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/smoke.stderr"
+          result=$?
+          printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/smoke.exit-code"
+          exit "$result"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: perfetto-authored-import-diagnostic
+          path: ${{ runner.temp }}/perfetto-import-evidence/
+          if-no-files-found: error
+          retention-days: 14

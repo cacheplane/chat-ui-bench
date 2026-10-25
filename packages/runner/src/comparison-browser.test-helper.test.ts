@@ -581,10 +581,20 @@ function assertLockFixtureParity(original:string,candidate:string):void{
   const raw=(parsed:ReturnType<typeof lockFixtureParse>,text:string)=>{const literals:string[]=[];lockFixtureNodes(parsed.program,n=>{if(n.type==='Literal'||n.type==='TemplateLiteral')literals.push(text.slice(n.start,n.end));});return {literals,comments:parsed.comments.map(c=>text.slice(c.start,c.end))};};
   expect(raw(b,candidate)).toEqual(raw(a,original));expect(candidate.match(/\r\n|\r|\n/g)).toEqual(original.match(/\r\n|\r|\n/g));
 }
+// Reuse only exact text whose complete parity checks already succeeded. Each
+// fixture still reads/caps its own original, writes its own copy and hashes it.
+const verifiedExtremumTexts=new Map<string,string>();
+let verifiedExtremumUnits=0;
 function compactSyntheticExtremumText(original:string):string{
+  const cached=verifiedExtremumTexts.get(original);if(cached!==undefined)return cached;
   const pass=(text:string,leading:boolean)=>{const parsed=lockFixtureParse(text),mask=new Uint8Array(text.length);lockFixtureNodes(parsed.program,n=>{if(n.type==='Literal'||n.type==='TemplateLiteral')mask.fill(1,n.start,n.end);});for(const c of parsed.comments)mask.fill(1,c.start,c.end);
       let candidate='';for(let i=0;i<text.length;){if(!mask[i]&&(text[i]===' '||text[i]==='\t')){let end=i+1;while(end<text.length&&!mask[end]&&(text[end]===' '||text[end]==='\t'))end++;const remove=leading?(i===0||text[i-1]==='\n'||text[i-1]==='\r'):/[(),;{}\[\]:=]/.test(candidate.at(-1)??'')||/[(),;{}\[\]:=]/.test(text[end]??'');if(!remove)candidate+=text.slice(i,end);i=end;}else candidate+=text[i++];}return candidate;};
-  const candidate=pass(pass(original,true),false);assertLockFixtureParity(original,candidate);return candidate;
+  const candidate=pass(pass(original,true),false);assertLockFixtureParity(original,candidate);
+  const units=original.length+candidate.length;
+  // Bounds count retained UTF-16 input/output units. A full cache recomputes
+  // without retaining; it never skips validation or changes fixture membership.
+  if(verifiedExtremumTexts.size<128&&units<=8*1024*1024-verifiedExtremumUnits){verifiedExtremumTexts.set(original,candidate);verifiedExtremumUnits+=units;}
+  return candidate;
 }
 async function compactSyntheticExtremumFixture(f:Awaited<ReturnType<typeof fixture>>){
   const rows:{key:string;originalBytes:number;compactedBytes:number;compactedSHA256:string}[]=[];
@@ -604,6 +614,17 @@ test('synthetic horizontal punctuation compaction keeps raw syntax and every new
   expect(candidate).toContain('/* keep { = } */');expect(candidate).toContain('// keep [ : ]');
   expect(candidate.match(/\r\n|\r|\n/g)).toEqual(original.match(/\r\n|\r|\n/g));
   for(const mutant of [candidate.replace('"a = [ b ]"','"a=[b]"'),candidate.replace('raw { = }','raw{}'),candidate.replace('/* keep { = } */','/* keep{} */'),candidate.replace('\r\n','\n')])expect(()=>assertLockFixtureParity(original,mutant)).toThrow();
+});
+test('verified synthetic compaction follows changed source bytes instead of stale text',()=>{
+  const original='  const label: string = "alpha"; /* keep */\r\n  const template = `raw ${ label }`;\n';
+  const first=compactSyntheticExtremumText(original);
+  expect(compactSyntheticExtremumText(original)).toBe(first);
+  for(const changed of [original.replace('alpha','beta'),original.replace('/* keep */','/* changed */'),original.replace('raw ${','changed ${'),original.replace('\r\n','\n')]){
+    const candidate=compactSyntheticExtremumText(changed);
+    assertLockFixtureParity(changed,candidate);expect(candidate).not.toBe(first);
+    expect(()=>assertLockFixtureParity(original,candidate)).toThrow();
+  }
+  for(let attempt=0;attempt<2;attempt++)expect(()=>compactSyntheticExtremumText(original+'const =;')).toThrow();
 });
 test('synthetic lock compaction preserves every build-bound and non-padding member',async()=>{
   const f=await fixture(),protectedKeys=new Set(f.syntheticExtremumProtectedKeys);
