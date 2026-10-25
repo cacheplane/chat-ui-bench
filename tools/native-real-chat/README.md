@@ -11,6 +11,13 @@ remain distinct from the SHA-256 of the serialized projected history file.
 
 ## Source controls
 
+For native preparation, install the locked dependencies with
+`npm ci --ignore-scripts`. Esbuild's postinstall normally hardlinks its CLI alias
+to the platform binary; the native custody policy requires a one-link platform
+file. Skipping install scripts retains the packaged CLI shim and the unchanged
+optional platform binary as separate files. The ordinary stock build still runs
+through the maintained generator; this setup does not modify Threadplane.
+
 Build the contract, producer, analyzer, and runner workspaces, in that order.
 Then run:
 
