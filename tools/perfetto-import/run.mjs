@@ -5,10 +5,10 @@ import { createHash } from 'node:crypto';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const EXPECTED_VERSION = 'Perfetto v58.2-add693d8b (add693d8b338ba9599dbcbc3e300b1ab8c000897)\nTrace Processor RPC API version: 14';
+export const EXPECTED_VERSION = 'Perfetto v59.1-1e9c61e98 (1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d)\nTrace Processor RPC API version: 14';
 export const PROCESSOR_PINS = Object.freeze({
-  'darwin-arm64': 'd29864d1ba3b36855527bb1b0ca3aa7f703cdce338b9680bb922c5c151b358fa',
-  'linux-x64': '58042408e6cc861fb1a731c26bb082dc222285561eaa4e12a48a8b2b90dca7b9',
+  'darwin-arm64': '8488edbefadfc4be152cda1d42d9bfcede8b47638295eb85eb3bad8cd148fdf4',
+  'linux-x64': '2434129a3af4dc9e2034a476f7b76447b490975213e301769310d3bd0d5d6458',
 });
 const SHA = /^[a-f0-9]{64}$/;
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');

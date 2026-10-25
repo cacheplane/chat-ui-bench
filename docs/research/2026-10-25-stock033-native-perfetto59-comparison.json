@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "kind": "same-native-input-perfetto59-comparison",
+  "captureSource": "b69dadc4e3bd12eeb8f15db26343363ce58e52a2",
+  "analysisSource": "19af098698c31ad69097185f81fbd4cc2e15bb84",
+  "newCapture": false,
+  "trace": {
+    "bytes": 208730,
+    "sha256": "a7b8dd7230bd33a6c0e78c497c506fd9e58bf20f0c457eb90cc5e9d0264de4d8"
+  },
+  "processor": {
+    "version": "v59.1",
+    "source": "1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d",
+    "RPC": 14,
+    "macSha256": "8488edbefadfc4be152cda1d42d9bfcede8b47638295eb85eb3bad8cd148fdf4",
+    "linuxSha256": "2434129a3af4dc9e2034a476f7b76447b490975213e301769310d3bd0d5d6458"
+  },
+  "linuxQualification": {
+    "run": 40230295671,
+    "imports": 3,
+    "allOriginalProcessStreamsVerified": true,
+    "authoredInputs": true,
+    "nativeApplicationMeasurement": false
+  },
+  "imports": {
+    "inventory": {
+      "tables": 10,
+      "stdoutBytes": 6809
+    },
+    "full": {
+      "tables": 13,
+      "stdoutBytes": 139450
+    }
+  },
+  "comparison": {
+    "unknownExtensionNonzeroRow": "absent",
+    "unknownExtensionExplicitZeroExported": false,
+    "errorSeverityRows": 0,
+    "clockSyncCacheMiss": 49,
+    "nonStatInventoryIdentical": true,
+    "fullIdenticalExceptArgSetId": true,
+    "rawSliceArgSetIdChanges": 110,
+    "argumentArgSetIdChanges": 475,
+    "sliceChangedArgSetIdDelta": 1,
+    "opaqueIdAllocationCause": "not_instrumented"
+  },
+  "separateTargetInventory": {
+    "markLoaderJoins": 2,
+    "frameProcessMetadata": 1,
+    "frameHostEvents": 10,
+    "reporterSurfaceSinkMatches": 3,
+    "qualification": false
+  },
+  "evidence": {
+    "release": "https://github.com/cacheplane/chat-ui-bench/releases/tag/stock033-native-v2-verification-20261025-a",
+    "archiveBytes": 201510,
+    "archiveSha256": "a88e755e24d25b2d49a9afbdc5ee3e62750f333e21a62c1c09ae40e3c3595eae",
+    "members": 57,
+    "uncompressedBytes": 2321334,
+    "independentDownloadVerified": true
+  },
+  "authority": {
+    "FPS": null,
+    "duration": null,
+    "nativeSupported": false,
+    "scoring": false,
+    "ranking": false,
+    "clockAdmission": "not_evaluated",
+    "targetLifetime": "unestablished",
+    "framePopulation": "not_evaluated"
+  }
+}

@@ -27,7 +27,7 @@ export function authoredClockFixture() {
     mark('authored-start', 1001n), mark('authored-end', 1021n));
 }
 
-// Correct v58.2 schema: Graphics.Pipeline surface_frame_trace_id is field 10.
+// Correct pinned schema: Graphics.Pipeline surface_frame_trace_id is field 10.
 // Field 2 is a FrameSinkId message and is deliberately not used here.
 export function authoredGraphicsFixture() {
   const event = (name, ts, extra) => body(1, concat(uint(10, 1n), uint(8, ts), uint(58, 64n), body(11, concat(uint(9, 3n), uint(11, 7n), text(22, 'cc'), text(23, name), extra))));

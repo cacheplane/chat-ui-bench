@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "kind": "stock033-native-v2-diagnostic-findings",
+  "sourceRevision": "b69dadc4e3bd12eeb8f15db26343363ce58e52a2",
+  "stock": "@threadplane/chat@0.3.3",
+  "scenario": "history100-up",
+  "separateFrom": [
+    "collector2.1-CDP-JSON-10k",
+    "stock0.3.2",
+    "modified-idle-host-CSS",
+    "older-native-attempts"
+  ],
+  "rawTrace": {
+    "bytes": 208730,
+    "sha256": "a7b8dd7230bd33a6c0e78c497c506fd9e58bf20f0c457eb90cc5e9d0264de4d8",
+    "packets": 4396,
+    "trackEvents": 4285,
+    "literalPhaseMarks": 2
+  },
+  "sequenceStart": {
+    "raw": 1,
+    "explained": 1,
+    "unexplained": 0,
+    "contradictions": 0
+  },
+  "v7Observations": {
+    "total": 98,
+    "clockSnapshots": 15,
+    "trackDescriptors": 83
+  },
+  "processor": {
+    "version": "v58.2",
+    "revision": "add693d8b338ba9599dbcbc3e300b1ab8c000897",
+    "sha256": "d29864d1ba3b36855527bb1b0ca3aa7f703cdce338b9680bb922c5c151b358fa"
+  },
+  "wholeTraceCounts": {
+    "Graphics.Pipeline": 145,
+    "PipelineReporter": 5,
+    "BeginFrame": 20,
+    "DrawFrame": 4,
+    "Display::DrawAndSwap": 4,
+    "FramePresented": 0,
+    "surfaceSteps": 124,
+    "displaySteps": 21,
+    "firstDisplayMappings": 5,
+    "distinctSurfaceStepIds": 20,
+    "distinctDisplayIds": 4,
+    "surfaceStepIdsWithoutFirstDisplayMapping": 16
+  },
+  "rawReporterStates": {
+    "STATE_NO_UPDATE_DESIRED": 4,
+    "STATE_PRESENTED_ALL": 1
+  },
+  "importStats": {
+    "unknown_extension_fields": {
+      "value": 1,
+      "severity": "error",
+      "source": "trace"
+    },
+    "clock_sync_cache_miss": {
+      "value": 49,
+      "severity": "info",
+      "source": "analysis"
+    }
+  },
+  "evidence": {
+    "release": "https://github.com/cacheplane/chat-ui-bench/releases/tag/stock033-native-v2-verification-20261025-a",
+    "archiveBytes": 1995699,
+    "archiveSha256": "946e26c65ee886358a9f99ba6664c711f417e1bc48a9cfed57261c8022fd7584",
+    "archiveMembers": 338,
+    "uncompressedBytes": 8908679,
+    "independentDownloadVerified": true
+  },
+  "authority": {
+    "FPS": null,
+    "duration": null,
+    "nativeSupported": false,
+    "scoring": false,
+    "ranking": false,
+    "clockAdmission": "not_evaluated",
+    "targetLifetime": "unestablished",
+    "framePopulation": "not_evaluated"
+  },
+  "separateSchemaInvestigation": {
+    "archiveBytes": 12886,
+    "sha256": "8e9fab731ef288ae2d35e3c41cf9586e92d8089d50b1e56217dc155909789035",
+    "independentDownloadVerified": true,
+    "newCapture": false
+  }
+}

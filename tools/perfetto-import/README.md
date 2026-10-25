@@ -19,7 +19,7 @@ Configuration shape (replace all paths and trace facts with your own retained in
 ```json
 {
   "trace": { "path": "/absolute/authored.pftrace", "bytes": 153, "sha256": "<64 lowercase hex characters>" },
-  "processor": { "path": "/absolute/trace_processor_shell", "sha256": "d29864d1ba3b36855527bb1b0ca3aa7f703cdce338b9680bb922c5c151b358fa" },
+  "processor": { "path": "/absolute/trace_processor_shell", "sha256": "8488edbefadfc4be152cda1d42d9bfcede8b47638295eb85eb3bad8cd148fdf4" },
   "phases": ["authored-start", "authored-end"],
   "out": "/absolute/fresh-diagnostic-directory"
 }
@@ -28,18 +28,44 @@ Configuration shape (replace all paths and trace facts with your own retained in
 There is no default processor, executable discovery, download, shell, inherited
 environment, or caller SQL. The production library `runDiagnostic(config)` and CLI
 enforce the runtime platform pin as well as the exact version and RPC API 14.
-Unsupported platforms fail closed. Only these official v58.2 assets are pinned:
+Unsupported platforms fail closed. Only these official v59.1 raw executables are pinned:
 
-| Platform | Official release archive | Archive SHA256 | Executable SHA256 |
+| Platform | Official raw executable | Exact bytes | Executable SHA256 |
 | --- | --- | --- | --- |
-| darwin-arm64 | [mac-arm64.zip](https://github.com/google/perfetto/releases/download/v58.2/mac-arm64.zip) | `9dbd484a32c9833c95cf58ca5ef86d2c9ad4767149054ad4eaa52bdf027d1507` | `d29864d1ba3b36855527bb1b0ca3aa7f703cdce338b9680bb922c5c151b358fa` |
-| linux-x64 | [linux-amd64.zip](https://github.com/google/perfetto/releases/download/v58.2/linux-amd64.zip) | `32c739f71b2d39721afd294c0b038f2499a44a71b5b6bcdd85b83faca0b240b9` | `58042408e6cc861fb1a731c26bb082dc222285561eaa4e12a48a8b2b90dca7b9` |
+| darwin-arm64 | [mac-arm64/trace_processor_shell](https://commondatastorage.googleapis.com/perfetto-luci-artifacts/v59.1/mac-arm64/trace_processor_shell) | `14376168` | `8488edbefadfc4be152cda1d42d9bfcede8b47638295eb85eb3bad8cd148fdf4` |
+| linux-x64 | [linux-amd64/trace_processor_shell](https://commondatastorage.googleapis.com/perfetto-luci-artifacts/v59.1/linux-amd64/trace_processor_shell) | `15885448` | `2434129a3af4dc9e2034a476f7b76447b490975213e301769310d3bd0d5d6458` |
 
-Version is `Perfetto v58.2-add693d8b`, full commit
-`add693d8b338ba9599dbcbc3e300b1ab8c000897`. Archive/member checksums were
-independently checked against the official release during development. Mac ARM64
-was smoke-tested with an authored 153-byte clock fixture; Linux was not executed
-on macOS. The runner verifies the executable bytes, not an archive at runtime.
+The admitted text is:
+
+```text
+Perfetto v59.1-1e9c61e98 (1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d)
+Trace Processor RPC API version: 14
+```
+
+The original Mac process reported this exact text with exit zero, empty stderr and normal stdout/stderr
+EOF and close. The official raw distribution is documented by
+[the pinned release script](https://github.com/google/perfetto/blob/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/tools/release/roll-prebuilts#L138);
+the tagged convenience launcher still selects 58.2 and is not the acquisition path.
+Qualification checked exact lengths, response generations and MD5 values against
+retained official metadata before calculating these SHA256 values. The observed
+Mac/Linux generations were `1792781823182096` / `1792780866926111`, with MD5
+`L4hRxW4rySPu7bbJat813Q==` / `ESZSklEk/Lt1Ry5jTiNHpg==` respectively.
+These computed first-use SHA256 pins identify observed bytes; they are not
+independent publisher attestations or proof of the binary's source. Trust still
+depends on the official HTTPS distribution and publisher/vendor build. Linux
+bytes were hashed on macOS, which is not Linux execution evidence. Actual Linux
+exact-version and all three semantic smoke imports passed in [run40230295671](https://github.com/cacheplane/chat-ui-bench/actions/runs/40230295671) on reviewed source `19af098698c31ad69097185f81fbd4cc2e15bb84`; downloaded process/stream manifests and hashes were verified.
+Local Mac verification passed all authored controls and the unchanged clock full,
+graphics full and graphics inventory semantic smoke imports with these pins.
+
+Historical 58.2 evidence remains reproducible from source revision
+`b69dadc4e3bd12eeb8f15db26343363ce58e52a2` and its retained official processor,
+whose Mac SHA256 is `d29864d1ba3b36855527bb1b0ca3aa7f703cdce338b9680bb922c5c151b358fa`.
+Use that revision's runner, README distribution checks, retained input and fresh
+outputs to reproduce 58.2; its published findings and original outputs remain
+immutable. See the separately labeled
+[native verification findings](../../docs/research/2026-10-25-stock033-native-v2-verification.md).
+Never combine 58.2 and 59.1 outputs under one lineage.
 
 `runAuthoredFixtureDiagnostic(config)` is an explicit low-level test entrypoint
 for locally authored executable fixtures. It checks the caller's executable hash
@@ -81,7 +107,7 @@ stats are not native performance metrics. Later qualification must independently
 establish clock/source/target ownership, completeness and frame population before
 any specifically named presentation-rate calculation.
 
-The fixed [v58.2 graphics module source](https://github.com/google/perfetto/blob/add693d8b338ba9599dbcbc3e300b1ab8c000897/src/trace_processor/perfetto_sql/stdlib/chrome/graphics_pipeline.sql)
+The fixed [v59.1 graphics module source](https://github.com/google/perfetto/blob/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/perfetto_sql/stdlib/chrome/graphics_pipeline.sql)
 also supplies exported surface/display step rows: full counts, counts grouped by
 step, and every row in deterministic order. First-display mappings and a count
 of distinct non-NULL surface IDs lacking a mapping are retained. A separate
@@ -145,12 +171,14 @@ The smoke output includes the authored fixture, diagnostic artifacts and a small
 `smoke.json` result. It never downloads a processor.
 
 The standalone `perfetto-import.yml` workflow uses Ubuntu 24.04 and Node 24.20.0,
-without npm installation. It explicitly downloads the fixed Linux release ZIP
-with a 15 MB/60-second transfer cap, checks the archive and selected executable
-hashes, and runs the authored tests and smoke. Only small authored evidence and
-test logs are uploaded for 14 days; the ZIP and executable are excluded. Linux
-execution is to be verified by that workflow; local macOS verification does not
-establish Linux compatibility.
+without npm installation. It explicitly downloads the fixed Linux raw executable
+with an exact `15885448`-byte maximum and 60-second transfer deadline, requires
+exact length equality and checks its SHA256 before chmod or execution. This raw
+artifact contract replaces the former `15000000`-byte compressed ZIP cap and its
+archive/member checks. Runner input/output caps remain unchanged. It runs the
+authored tests and production exact-version/semantic smoke. Only small authored
+evidence and test logs are uploaded for 14 days; the executable is excluded. Linux
+execution is verified by the linked run; each future changed head still requires its own green workflow. Local macOS verification alone does not establish Linux compatibility.
 
 The smoke also authors a separate corrected 308-byte graphics fixture and imports
 it into `graphics-diagnostic/`. The clock fixture and its hash remain unchanged.
