@@ -10,6 +10,7 @@ Run explicitly with a fresh absolute output directory:
 
 ```sh
 node tools/perfetto-import/run.mjs --config /absolute/config.json
+node tools/perfetto-import/run.mjs --inventory-config /absolute/inventory-config.json
 node --test tools/perfetto-import/run.node.mjs
 ```
 
@@ -97,6 +98,38 @@ is assumed. Phase rows also include thread/process context. Left joins preserve
 slices with NULL context or arguments. There is no row limit or successful prefix
 export: exceeding the existing stdout cap fails the whole diagnostic.
 
+The explicit `--inventory-config` CLI and `runInventoryDiagnostic(config)` library
+entrypoint select the separate fixed `inventory.sql` policy. Configuration has the
+same shape and must name a fresh output directory. Its manifest adds
+`queryPolicy: 'inventory-v1'` and `rawRowsExported: false`. The existing `--config`,
+`runDiagnostic(config)`, full SQL and full manifest shape remain unchanged. Policy
+selection is internal to the entrypoints; configuration cannot supply SQL or
+choose a policy. A failed full export never falls back to inventory mode.
+
+Inventory retains every matching literal phase row with track/process/thread
+context, all nonzero stats with severity/source, trace bounds, the six event-name
+counts, complete module and per-step counts, distinct unmapped non-NULL surface
+IDs and NULL surface-step counts. Raw reporter/graphics slices are represented by
+complete counts grouped by name and track/process/thread context. Argument counts
+group by slice name, `flat_key`, `key` and `value_type`, without exporting argument
+values. Left joins preserve NULL context and argument groups. `arg_occurrence_count`
+uses `COUNT(a.arg_set_id)`: the equality join guarantees this ID is non-NULL for
+matched arguments, including arguments whose keys are NULL. Unmatched slices
+contribute zero occurrences. A NULL-key group can therefore have a positive count
+from matched arguments, and a wholly NULL group may also include unmatched slices.
+`slice_count` separately counts all distinct slices represented by each argument
+group, including unmatched slices in mixed NULL groups.
+No raw step, mapping or reporter/graphics slice rows are exported by this policy.
+
+These aggregates do not establish a target or frame population. Inventory retains
+the same input and tool pins, identity bookends, process completion requirements,
+deadlines and byte caps. There is no row limit or successful prefix: an inventory
+with too many groups also fails as a whole. Every inventory result remains
+`nativeSupported: false`, `fps: null`, `duration: null`, `scoring: false`.
+`runAuthoredFixtureInventoryDiagnostic(config)` is the separate authored-executable
+test entrypoint, with the same untrusted identity labels as the full fixture API;
+the production CLI never uses either authored-executable entrypoint.
+
 ## Maintained authored smoke and CI
 
 ```sh
@@ -130,3 +163,16 @@ message. The fixed corrected bytes have SHA256
 Both cases require the official pin, normal process/stream completion and fixed
 false native/scoring eligibility. Authored state names and IDs establish schema
 coverage only, with no native presentation or performance authority.
+
+The same 308-byte graphics file is also imported separately into
+`graphics-inventory/` through the production inventory entrypoint. The smoke checks
+complete module/per-step counts, both raw context groups, all ten argument key/type
+groups and their occurrence/distinct-slice counts, policy labels and absence of
+raw export schemas. It adds no fixture bytes or processor binary. The Node controls
+also execute the inventory statements against authored in-memory SQLite tables to
+verify repeated arguments, matched NULL-key arguments with positive occurrence
+counts, unmatched NULL argument groups with zero occurrences, mixed NULL groups,
+and missing track/process/thread context. The official authored fixture has
+arguments on all three raw graphics/reporter slices, so it does not itself exercise
+the unmatched argument case. `smoke.json` labels the separate inventory result and
+records the shared fixture hash. Both existing full imports remain in the smoke.

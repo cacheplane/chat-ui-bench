@@ -22,6 +22,68 @@ async function fixture(body = `process.stdout.write('rows\\n');`) {
   return { root, options: { trace: { path: join(root, 'trace'), bytes: trace.length, sha256: hash(trace) }, processor: { path: join(root, 'processor.mjs'), sha256: hash(source) }, phases: ["begin'quoted", 'end'], out: join(root, 'out') } };
 }
 test('library exists and imports without running a diagnostic', () => assert.equal(typeof module.runDiagnostic, 'function'));
+test('inventory has separate official and authored-only library entrypoints', () => {
+  assert.equal(typeof module.runInventoryDiagnostic, 'function');
+  assert.equal(typeof module.runAuthoredFixtureInventoryDiagnostic, 'function');
+});
+test('inventory success selects fixed SQL and reports aggregate-only authority', async () => {
+  const { options } = await fixture(`process.stdout.write(fs.readFileSync(process.argv[4]));`);
+  const r = await module.runAuthoredFixtureInventoryDiagnostic({ ...options, sql: 'SELECT caller_override', queryPolicy: 'full' });
+  assert.equal(r.status, 'success', r.error);
+  assert.equal(r.queryPolicy, 'inventory-v1'); assert.equal(r.rawRowsExported, false);
+  assert.equal(r.nativeSupported, false); assert.equal(r.fps, null); assert.equal(r.duration, null); assert.equal(r.scoring, false);
+  assert.equal(r.authoredFixture, true); assert.equal(r.officialProcessor, false);
+  const source = await readFile(new URL('./inventory.sql', import.meta.url), 'utf8');
+  const executed = await readFile(join(options.out, 'diagnostic.sql'), 'utf8');
+  assert.equal(executed, source.replace('__PHASE_LITERALS__', "'begin''quoted', 'end'"));
+  assert.equal(await readFile(join(options.out, 'query.stdout'), 'utf8'), executed);
+  assert.equal(r.sql.sourceSha256, hash(source)); assert.equal(r.sql.sha256, hash(executed));
+  assert.deepEqual(r.before, r.after);
+  assert.equal(r.processes.query.code, 0); assert.equal(r.processes.query.signal, null);
+  for (const state of Object.values(r.processes.query.streams)) {
+    assert.equal(state.eof, true); assert.equal(state.closed, true); assert.equal(state.forcedDestroy, false);
+  }
+});
+test('official inventory refuses authored processor before launch', async () => {
+  const { options } = await fixture();
+  const r = await module.runInventoryDiagnostic(options);
+  assert.equal(r.status, 'failure'); assert.match(r.error, /platform pin/);
+  assert.deepEqual(r.processes, {}); assert.equal(r.queryPolicy, 'inventory-v1'); assert.equal(r.rawRowsExported, false);
+});
+test('inventory overflow retains a whole-run failure and input bookends', async () => {
+  const { options } = await fixture(`process.stdout.write(Buffer.alloc(300000, 120)); setInterval(()=>{},1000);`);
+  const r = await module.runAuthoredFixtureInventoryDiagnostic(options);
+  assert.equal(r.status, 'failure'); assert.match(r.error, /stdout limit/);
+  assert.equal(r.processes.query.closed, true); assert.equal(r.processes.query.streams.stdout.forcedDestroy, true);
+  assert.equal((await stat(join(options.out, 'query.stdout'))).size, 262144);
+  assert.deepEqual(r.before, r.after); assert.equal(r.rawRowsExported, false);
+  assert.equal(JSON.parse(await readFile(join(options.out, 'manifest.json'))).status, 'failure');
+});
+test('inventory checks trace hashes and mutation using the same bookends', async () => {
+  const bad = await fixture(); bad.options.trace.sha256 = '0'.repeat(64);
+  const rejected = await module.runAuthoredFixtureInventoryDiagnostic(bad.options);
+  assert.equal(rejected.status, 'failure'); assert.deepEqual(rejected.processes, {});
+  const { options } = await fixture(`fs.appendFileSync(process.argv.at(-1), 'changed');`);
+  const changed = await module.runAuthoredFixtureInventoryDiagnostic(options);
+  assert.equal(changed.status, 'failure'); assert.match(changed.error, /changed|mismatch/);
+});
+test('default API ignores requested policy and retains full SQL and manifest shape', async () => {
+  const { options } = await fixture();
+  const r = await module.runAuthoredFixtureDiagnostic({ ...options, queryPolicy: 'inventory-v1', sql: 'SELECT caller_override' });
+  assert.equal(r.status, 'success');
+  assert.equal(Object.hasOwn(r, 'queryPolicy'), false); assert.equal(Object.hasOwn(r, 'rawRowsExported'), false);
+  const source = await readFile(new URL('./diagnostic.sql', import.meta.url), 'utf8');
+  assert.equal(await readFile(join(options.out, 'diagnostic.sql'), 'utf8'), source.replace('__PHASE_LITERALS__', "'begin''quoted', 'end'"));
+});
+test('CLI explicitly selects official inventory mode without allowing authored identity', async () => {
+  const { root, options } = await fixture(); const config = join(root, 'config.json');
+  await writeFile(config, JSON.stringify(options));
+  await assert.rejects(execFile(process.execPath, [new URL('./run.mjs', import.meta.url).pathname, '--inventory-config', config]), error => {
+    assert.equal(error.code, 1); assert.match(error.stdout, /platform pin/); return true;
+  });
+  const r = JSON.parse(await readFile(join(options.out, 'manifest.json')));
+  assert.equal(r.queryPolicy, 'inventory-v1'); assert.equal(r.rawRowsExported, false); assert.deepEqual(r.processes, {});
+});
 test('production rejects self-declared processor identity before launch', async () => {
   const { options } = await fixture(); const r = await module.runDiagnostic(options);
   assert.equal(r.status, 'failure'); assert.match(r.error, /platform pin/); assert.deepEqual(r.processes, {}); assert.equal(r.officialProcessor, false);
@@ -119,4 +181,72 @@ test('fixed SQL retains full graphics inventories, raw context and unfiltered ar
   assert.match(sql, /surface_without_first_display_mapping[\s\S]*SELECT DISTINCT surface_frame_trace_id[\s\S]*WHERE surface_frame_trace_id IS NOT NULL/);
   assert.match(sql, /'surface_steps_without_surface_id'[\s\S]*WHERE surface_frame_trace_id IS NULL/);
   assert.doesNotMatch(sql, /\bLIMIT\s+\d+|LIKE\s+['"]/i);
+});
+test('inventory SQL aggregates complete groups and preserves NULL arguments without inventing occurrences', async () => {
+  const sql = await readFile(new URL('./inventory.sql', import.meta.url), 'utf8');
+  assert.match(sql, /INCLUDE PERFETTO MODULE chrome\.graphics_pipeline/);
+  assert.match(sql, /WHERE value != 0 ORDER BY name, idx/);
+  assert.doesNotMatch(sql, /\bLIMIT\b|\bLIKE\b|a\.(?:int_value|string_value|real_value)|\b(?:fps|rate)\b/i);
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE slice(id, ts, dur, name, track_id, arg_set_id);
+      CREATE TABLE track(id, name);
+      CREATE TABLE thread_or_process_slice(id, utid, tid, upid, pid, process_name, thread_name);
+      CREATE TABLE args(arg_set_id, flat_key, key, value_type);
+      CREATE TABLE stats(name, idx, severity, source, value);
+      CREATE TABLE trace_bounds(start_ts, end_ts);
+      CREATE TABLE chrome_graphics_pipeline_surface_frame_steps(surface_frame_trace_id, step);
+      CREATE TABLE chrome_graphics_pipeline_display_frame_steps(step);
+      CREATE TABLE chrome_surface_frame_id_to_first_display_id(surface_frame_trace_id, display_trace_id);
+      INSERT INTO slice VALUES (1,1,0,'PipelineReporter',1,100),(2,2,0,'PipelineReporter',1,101),
+        (3,3,0,'PipelineReporter',2,102),(4,4,0,'Graphics.Pipeline',NULL,NULL),
+        (5,5,0,'Graphics.Pipeline',NULL,NULL),(6,6,0,'start',NULL,NULL),(7,7,0,'end',NULL,NULL);
+      INSERT INTO track VALUES(1,'main'),(2,'worker');
+      INSERT INTO thread_or_process_slice VALUES(1,10,11,12,13,'proc','thread'),(2,10,11,12,13,'proc','thread');
+      INSERT INTO args VALUES(100,'key','key[0]','int'),(100,'key','key[1]','int'),(101,'key','key[0]','int');
+      INSERT INTO stats VALUES('nonzero',0,'data_loss','trace',7),('zero',0,'info','analysis',0);
+      INSERT INTO trace_bounds VALUES(1,7);
+      INSERT INTO chrome_graphics_pipeline_surface_frame_steps VALUES(43,'surface'),(43,'surface'),(44,'surface'),(NULL,'surface');
+      INSERT INTO chrome_graphics_pipeline_display_frame_steps VALUES('display');
+      INSERT INTO chrome_surface_frame_id_to_first_display_id VALUES(43,58);
+    `);
+    const queries = sql.replace(/--[^\n]*/g, '').replace(/INCLUDE PERFETTO MODULE chrome\.graphics_pipeline;/, '').replace('__PHASE_LITERALS__', "'start', 'end'").split(';').filter(s => s.trim());
+    const results = queries.map(query => db.prepare(query).all().map(row => ({ ...row })));
+    assert.equal(results.length, 10, 'inventory exports only phases, stats, bounds, counts, grouped slices and argument keys');
+    assert.deepEqual(results[0].map(row => [row.name, row.track_name, row.utid]), [['start', null, null], ['end', null, null]]);
+    assert.deepEqual(results[1], [{ name: 'nonzero', idx: 0, severity: 'data_loss', source: 'trace', value: 7 }]);
+    assert.deepEqual(results[6], [{ inventory: 'surface_without_first_display_mapping', row_count: 1 }]);
+    assert.deepEqual(results[7], [{ inventory: 'surface_steps_without_surface_id', row_count: 1 }]);
+    assert.deepEqual(results[8].map(row => [row.name, row.track_name, row.process_name, row.slice_count]), [
+      ['Graphics.Pipeline', null, null, 2], ['PipelineReporter', 'main', 'proc', 2], ['PipelineReporter', 'worker', null, 1],
+    ]);
+    assert.deepEqual(results[9], [
+      { name: 'Graphics.Pipeline', flat_key: null, key: null, value_type: null, arg_occurrence_count: 0, slice_count: 2 },
+      { name: 'PipelineReporter', flat_key: null, key: null, value_type: null, arg_occurrence_count: 0, slice_count: 1 },
+      { name: 'PipelineReporter', flat_key: 'key', key: 'key[0]', value_type: 'int', arg_occurrence_count: 2, slice_count: 2 },
+      { name: 'PipelineReporter', flat_key: 'key', key: 'key[1]', value_type: 'int', arg_occurrence_count: 1, slice_count: 1 },
+    ]);
+  } finally { db.close(); }
+});
+test('inventory counts matched NULL-key arguments while excluding unmatched slices', async () => {
+  const sql = await readFile(new URL('./inventory.sql', import.meta.url), 'utf8');
+  const argumentQuery = sql.replace(/--[^\n]*/g, '').split(';').filter(s => s.trim()).at(-1);
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE slice(id, name, arg_set_id);
+      CREATE TABLE args(arg_set_id, flat_key, key, value_type);
+      INSERT INTO slice VALUES(1,'PipelineReporter',100),(2,'PipelineReporter',101),
+        (3,'Graphics.Pipeline',NULL),(4,'PipelineReporter',102);
+      INSERT INTO args VALUES(100,NULL,NULL,NULL),(102,'nullable',NULL,'int');
+    `);
+    assert.deepEqual(db.prepare(argumentQuery).all().map(row => ({ ...row })), [
+      { name: 'Graphics.Pipeline', flat_key: null, key: null, value_type: null, arg_occurrence_count: 0, slice_count: 1 },
+      { name: 'PipelineReporter', flat_key: null, key: null, value_type: null, arg_occurrence_count: 1, slice_count: 2 },
+      { name: 'PipelineReporter', flat_key: 'nullable', key: null, value_type: 'int', arg_occurrence_count: 1, slice_count: 1 },
+    ]);
+  } finally { db.close(); }
 });
