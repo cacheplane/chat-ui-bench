@@ -12,6 +12,11 @@
       "types": "./dist/browser-frame-whole-trace-reader.d.ts",
       "import": "./dist/browser-frame-whole-trace-reader.js",
       "require": "./dist/browser-frame-whole-trace-reader.js"
+    },
+    "./internal/same-trace-interval": {
+      "types": "./dist/browser-frame-same-trace-interval.d.ts",
+      "import": "./dist/browser-frame-same-trace-interval.js",
+      "require": "./dist/browser-frame-same-trace-interval.js"
     }
   },
   "scripts": {
