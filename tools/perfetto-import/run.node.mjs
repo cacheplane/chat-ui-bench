@@ -103,3 +103,20 @@ test('inert smoke module authors exactly the pinned synthetic clock bytes', () =
   const bytes = smoke.authoredClockFixture(); assert.equal(bytes.length, 153);
   assert.equal(hash(bytes), '177a183ab43040d16379243c2185cf324a2e49edd8ab1c9d17034b9276f3199d');
 });
+test('inert smoke module authors the corrected populated graphics fixture', () => {
+  assert.equal(typeof smoke.authoredGraphicsFixture, 'function');
+  const bytes = smoke.authoredGraphicsFixture(); assert.equal(bytes.length, 308);
+  assert.equal(hash(bytes), '2060e02191ec0f00325e024007de9080ab4224467d325e80c2261a28e1b8c542');
+  assert.deepEqual(bytes.subarray(0, 153), smoke.authoredClockFixture());
+});
+test('fixed SQL retains full graphics inventories, raw context and unfiltered arguments', async () => {
+  const sql = await readFile(new URL('./diagnostic.sql', import.meta.url), 'utf8');
+  for (const name of ['chrome_graphics_pipeline_surface_frame_steps', 'chrome_graphics_pipeline_display_frame_steps', 'chrome_surface_frame_id_to_first_display_id', 'surface_without_first_display_mapping']) assert.ok(sql.includes(name), name);
+  assert.match(sql, /LEFT JOIN thread_or_process_slice/);
+  assert.match(sql, /LEFT JOIN args a ON a\.arg_set_id = s\.arg_set_id/);
+  for (const name of ['flat_key', 'key', 'value_type', 'int_value', 'string_value', 'real_value', 'task_start_time_ts', 'process_name', 'thread_name']) assert.ok(sql.includes(name), name);
+  assert.match(sql, /GROUP BY step/);
+  assert.match(sql, /surface_without_first_display_mapping[\s\S]*SELECT DISTINCT surface_frame_trace_id[\s\S]*WHERE surface_frame_trace_id IS NOT NULL/);
+  assert.match(sql, /'surface_steps_without_surface_id'[\s\S]*WHERE surface_frame_trace_id IS NULL/);
+  assert.doesNotMatch(sql, /\bLIMIT\s+\d+|LIKE\s+['"]/i);
+});

@@ -27,6 +27,26 @@ export function authoredClockFixture() {
     mark('authored-start', 1001n), mark('authored-end', 1021n));
 }
 
+// Correct v58.2 schema: Graphics.Pipeline surface_frame_trace_id is field 10.
+// Field 2 is a FrameSinkId message and is deliberately not used here.
+export function authoredGraphicsFixture() {
+  const event = (name, ts, extra) => body(1, concat(uint(10, 1n), uint(8, ts), uint(58, 64n), body(11, concat(uint(9, 3n), uint(11, 7n), text(22, 'cc'), text(23, name), extra))));
+  return concat(authoredClockFixture(),
+    event('Graphics.Pipeline', 1022n, body(1052, concat(uint(1, 2n), uint(10, 43n)))),
+    event('Graphics.Pipeline', 1023n, body(1052, concat(uint(1, 10n), uint(3, 58n), uint(8, 43n)))),
+    event('PipelineReporter', 1024n, body(1075, concat(uint(1, 1n), uint(3, 1n), uint(4, 2n), uint(11, 17n), uint(17, 43n), uint(18, 58n)))));
+}
+
+function requireSuccessfulDiagnostic(result) {
+  assert.equal(result.status, 'success', result.error);
+  assert.equal(result.officialProcessor, true); assert.equal(result.authoredFixture, false);
+  assert.equal(result.nativeSupported, false); assert.equal(result.fps, null); assert.equal(result.duration, null); assert.equal(result.scoring, false);
+  for (const name of ['version', 'query']) {
+    const proc = result.processes[name]; assert.equal(proc.code, 0); assert.equal(proc.signal, null); assert.equal(proc.closed, true); assert.equal(proc.error, null);
+    for (const state of Object.values(proc.streams)) { assert.equal(state.eof, true); assert.equal(state.closed, true); assert.equal(state.forcedDestroy, false); assert.equal(state.error, null); }
+  }
+}
+
 export async function runSmoke({ processor, out }) {
   if (![processor, out].every(p => typeof p === 'string' && isAbsolute(p) && resolve(p) === p)) throw new Error('normalized absolute processor and fresh output paths required');
   await mkdir(out, { mode: 0o700 });
@@ -38,13 +58,7 @@ export async function runSmoke({ processor, out }) {
     const path = join(out, 'authored-clock-fixture.pftrace');
     await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
     const result = await runDiagnostic({ trace: { path, bytes: bytes.length, sha256: digest(bytes) }, processor: { path: processor, sha256: PROCESSOR_PINS[`${process.platform}-${process.arch}`] }, phases: ['authored-start', 'authored-end'], out: join(out, 'diagnostic') });
-    assert.equal(result.status, 'success', result.error);
-    assert.equal(result.officialProcessor, true); assert.equal(result.authoredFixture, false);
-    assert.equal(result.nativeSupported, false); assert.equal(result.fps, null); assert.equal(result.duration, null); assert.equal(result.scoring, false);
-    for (const name of ['version', 'query']) {
-      const proc = result.processes[name]; assert.equal(proc.code, 0); assert.equal(proc.signal, null); assert.equal(proc.closed, true); assert.equal(proc.error, null);
-      for (const state of Object.values(proc.streams)) { assert.equal(state.eof, true); assert.equal(state.closed, true); assert.equal(state.forcedDestroy, false); assert.equal(state.error, null); }
-    }
+    requireSuccessfulDiagnostic(result);
     const csv = await readFile(join(out, 'diagnostic', 'query.stdout'), 'utf8');
     const lines = csv.trim().split(/\r?\n/);
     assert.equal(lines.filter(line => line.includes('"authored-start"') || line.includes('"authored-end"')).length, 2);
@@ -52,7 +66,49 @@ export async function runSmoke({ processor, out }) {
     assert.ok(lines.some(line => /^\d+,1021000,0,"authored-end",\d+,/.test(line)), 'expected authored end timestamp');
     assert.ok(lines.includes('1001000,1021000'), 'expected authored trace bounds');
     assert.ok(lines.includes('"Graphics.Pipeline",0'), 'expected zero authored graphics pipeline events');
+    for (const inventory of ['surface_frame_steps', 'display_frame_steps', 'surface_first_display_mapping', 'surface_without_first_display_mapping', 'surface_steps_without_surface_id']) {
+      assert.ok(lines.includes(`"${inventory}",0`), `expected zero authored ${inventory}`);
+    }
+    for (const header of [
+      '"id","ts","dur","name","track_id","track_name","utid","tid","upid","pid","process_name","thread_name"',
+      '"id","ts","dur","step","surface_frame_trace_id","utid","task_start_time_ts"',
+      '"id","ts","dur","step","display_trace_id","utid","task_start_time_ts"',
+      '"surface_frame_trace_id","display_trace_id"',
+      '"id","ts","dur","name","track_id","arg_set_id","utid","tid","upid","pid","process_name","thread_name"',
+      '"slice_id","name","arg_set_id","flat_key","key","value_type","int_value","string_value","real_value"',
+    ]) assert.ok(lines.includes(header), `expected full export schema ${header}`);
+    const graphics = authoredGraphicsFixture();
+    assert.equal(graphics.length, 308);
+    assert.equal(digest(graphics), '2060e02191ec0f00325e024007de9080ab4224467d325e80c2261a28e1b8c542');
+    const graphicsPath = join(out, 'authored-graphics-fixture-v2.pftrace');
+    await writeFile(graphicsPath, graphics, { flag: 'wx', mode: 0o600 });
+    const graphicsResult = await runDiagnostic({ trace: { path: graphicsPath, bytes: graphics.length, sha256: digest(graphics) }, processor: { path: processor, sha256: PROCESSOR_PINS[`${process.platform}-${process.arch}`] }, phases: ['authored-start', 'authored-end'], out: join(out, 'graphics-diagnostic') });
+    requireSuccessfulDiagnostic(graphicsResult);
+    const graphicsLines = (await readFile(join(out, 'graphics-diagnostic', 'query.stdout'), 'utf8')).trim().split(/\r?\n/);
+    for (const row of [
+      '"Graphics.Pipeline",2', '"PipelineReporter",1',
+      '"surface_frame_steps",1', '"display_frame_steps",1', '"surface_first_display_mapping",1',
+      '"surface_without_first_display_mapping",0', '"surface_steps_without_surface_id",0',
+      '"surface_frame_steps","STEP_GENERATE_COMPOSITOR_FRAME",1',
+      '"display_frame_steps","STEP_SURFACE_AGGREGATION",1',
+      '2,1022000,0,"STEP_GENERATE_COMPOSITOR_FRAME",43,1,"[NULL]"',
+      '3,1023000,0,"STEP_SURFACE_AGGREGATION",58,1,"[NULL]"',
+      '43,58', '1001000,1024000',
+    ]) assert.ok(graphicsLines.includes(row), `expected authored graphics row ${row}`);
+    for (const [id, ts, name] of [[2, 1022000, 'Graphics.Pipeline'], [3, 1023000, 'Graphics.Pipeline'], [4, 1024000, 'PipelineReporter']]) {
+      assert.ok(graphicsLines.some(line => line.startsWith(`${id},${ts},0,"${name}",0,`) && /,\d+,1,1,1,1,"\[NULL\]","\[NULL\]"$/.test(line)), `expected raw authored slice with thread/process context ${id}`);
+    }
+    for (const [key, type, value] of [
+      ['display_trace_id', 'int', 58], ['surface_frame_trace_id', 'int', 43],
+      ['frame_sequence', 'uint', 2], ['frame_source', 'uint', 1], ['layer_tree_host_id', 'uint', 17],
+    ]) {
+      const suffix = `,"frame_reporter.${key}","frame_reporter.${key}","${type}",${value},"[NULL]","[NULL]"`;
+      assert.ok(graphicsLines.some(line => line.startsWith('4,"PipelineReporter",') && line.endsWith(suffix)), `expected authored reporter argument ${key}`);
+    }
+    assert.ok(graphicsLines.some(line => line.startsWith('4,"PipelineReporter",') && line.endsWith(',"frame_reporter.state","frame_reporter.state","string","[NULL]","STATE_PRESENTED_ALL","[NULL]"')), 'expected authored reporter state');
+    assert.ok(graphicsLines.some(line => line.startsWith('3,"Graphics.Pipeline",') && line.endsWith(',"chrome_graphics_pipeline.aggregated_surface_frame_trace_ids","chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]","int",43,"[NULL]","[NULL]"')), 'expected authored aggregated surface argument');
     summary.status = 'success'; summary.fixtureBytes = bytes.length; summary.fixtureSha256 = digest(bytes);
+    summary.graphicsFixtureBytes = graphics.length; summary.graphicsFixtureSha256 = digest(graphics);
   } catch (error) { summary.error = error.message; }
   await writeFile(join(out, 'smoke.json'), `${JSON.stringify(summary, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   return summary;

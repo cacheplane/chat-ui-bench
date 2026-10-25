@@ -80,6 +80,23 @@ stats are not native performance metrics. Later qualification must independently
 establish clock/source/target ownership, completeness and frame population before
 any specifically named presentation-rate calculation.
 
+The fixed [v58.2 graphics module source](https://github.com/google/perfetto/blob/add693d8b338ba9599dbcbc3e300b1ab8c000897/src/trace_processor/perfetto_sql/stdlib/chrome/graphics_pipeline.sql)
+also supplies exported surface/display step rows: full counts, counts grouped by
+step, and every row in deterministic order. First-display mappings and a count
+of distinct non-NULL surface IDs lacking a mapping are retained. A separate
+`surface_steps_without_surface_id` count retains the number of surface-step rows
+with NULL IDs. The pinned module converts invalid `-1` surface IDs to NULL;
+full exports preserve these rows without treating NULL as a valid ID. Display step
+rows select the latest row per `(display_trace_id, step, utid)`; the mapping
+records only the first display for a surface. These module rows do not bind a
+target, and neither raw nor deduplicated rows establish a frame population.
+
+Raw `PipelineReporter` and `Graphics.Pipeline` slices are exported independently,
+with thread/process context and every argument key/value/type. No argument prefix
+is assumed. Phase rows also include thread/process context. Left joins preserve
+slices with NULL context or arguments. There is no row limit or successful prefix
+export: exceeding the existing stdout cap fails the whole diagnostic.
+
 ## Maintained authored smoke and CI
 
 ```sh
@@ -90,6 +107,7 @@ The import-inert smoke module authors the fixed 153-byte clock trace, verifies i
 SHA256, runs the production pinned diagnostic, requires original process success
 and normal EOF/close, and checks CSV markers at 1,001,000 and 1,021,000 ns, bounds,
 and zero `Graphics.Pipeline` events. Its synthetic fixture has no native authority.
+It also verifies zero module/mapping inventories and the full export schemas.
 The smoke output includes the authored fixture, diagnostic artifacts and a small
 `smoke.json` result. It never downloads a processor.
 
@@ -100,3 +118,15 @@ hashes, and runs the authored tests and smoke. Only small authored evidence and
 test logs are uploaded for 14 days; the ZIP and executable are excluded. Linux
 execution is to be verified by that workflow; local macOS verification does not
 establish Linux compatibility.
+
+The smoke also authors a separate corrected 308-byte graphics fixture and imports
+it into `graphics-diagnostic/`. The clock fixture and its hash remain unchanged.
+This second case verifies populated surface/display rows, first-display mapping
+`43 → 58`, three raw slices with thread/process context, and the exact flattened
+`frame_reporter` state, host, source, sequence and trace-ID argument values. Its
+`Graphics.Pipeline` surface ID uses protobuf field 10; field 2 is a FrameSinkId
+message. The fixed corrected bytes have SHA256
+`2060e02191ec0f00325e024007de9080ab4224467d325e80c2261a28e1b8c542`.
+Both cases require the official pin, normal process/stream completion and fixed
+false native/scoring eligibility. Authored state names and IDs establish schema
+coverage only, with no native presentation or performance authority.
