@@ -133,3 +133,43 @@ after the end marker, and retains every other whole-file and phase gate. Late
 semantic, read, hash, identity, EOF, close or capacity failure withdraws all earlier
 candidates and rows. Inspection is brand-isolated and cached without extra reads.
 This diagnostic grants no clock, target, duration, FPS, native or scoring authority.
+
+## Explicit V7 clock and descriptor evidence inventory
+
+`createWholeUserTimingStudyV7` and `readWholeUserTimingTraceV7` select
+`pinned-whole-trace-user-timing-evidence-diagnostic-v7`. This analyzer-only opt-in
+uses the V6 initialization, first-packet, counter-default and provenance rules.
+Earlier policy result shapes and packet/transition manifests remain unchanged;
+the native capture and worker still select V6. The reader uses the original owned
+file descriptor once and requires its existing EOF, hash, identity and close gates.
+
+V7 adds deeply frozen `evidenceInventory` with status
+`complete-supported-observations` or `unavailable` and ordered `observations`.
+Rows discriminate `clock_snapshot` and `track_descriptor` at the existing
+validated decoder seam. Each retains packet index, packet body SHA256, payload
+`location` offsets relative to that packet body, explicit machine and sequence
+context (including sequence index and current interval), and raw packet timing,
+sequence/reset/drop/first flags in `packetFields`. Absent machine differs from
+present machine 0; metadata without a sequence has explicit absent context.
+Sequence intervals reflect the existing reset/loss transition before the row.
+
+Snapshot rows retain the optional primary trace clock and raw clock id,
+timestamp, incremental flag and unit multiplier. Descriptor rows retain only
+UUID, parent UUID, process pid/start timestamp and thread pid/tid. Optional scalar
+absence is preserved, including explicit false and zero. Names and occurrence
+arrays are omitted. No missing units are inferred, clock values normalized,
+sequence clocks promoted, or target/lifetime association established.
+
+Inventory admission checks a combined maximum of 128 observations and 512 clock
+entries across snapshots before retaining each row. The existing persistent
+string, repeated-work and global output budgets also apply; the maxima are
+coupled, so a rich 128-row inventory may hit global output capacity first. No cap
+is increased. Capacity or semantic refusal clears both inventory and candidates,
+while existing physical reading/framing continues. Malformed tails and late
+reader failures also withdraw both; no successful partial prefix is published.
+The existing `invalid-whole-annotation-input` identifies inventory row/clock
+capacity refusal without extending the legacy closed failure-code vocabulary.
+
+Complete supported observations are diagnostic raw evidence, not proof of capture
+completeness. Clock normalization, target binding, presented-frame enumeration,
+duration and FPS remain unavailable, and native/scoring authority remains false.
