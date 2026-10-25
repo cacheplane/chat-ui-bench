@@ -11,6 +11,7 @@ Run explicitly with a fresh absolute output directory:
 ```sh
 node tools/perfetto-import/run.mjs --config /absolute/config.json
 node tools/perfetto-import/run.mjs --inventory-config /absolute/inventory-config.json
+node tools/perfetto-import/run.mjs --target-inventory-config /absolute/target-inventory-config.json
 node --test tools/perfetto-import/run.node.mjs
 ```
 
@@ -156,6 +157,66 @@ with too many groups also fails as a whole. Every inventory result remains
 test entrypoint, with the same untrusted identity labels as the full fixture API;
 the production CLI never uses either authored-executable entrypoint.
 
+The explicit `--target-inventory-config` CLI and
+`runTargetInventoryDiagnostic(config)` API select `target-inventory.sql` with the
+same configuration shape and a fresh output directory. Its manifest adds
+`queryPolicy: 'target-inventory-v1'`, `rawRowsExported: true`,
+`qualification: false`, `captureQualified: false`, `fpsEligibility: false`,
+`evaluationEligibility: false`, `scoringEligibility: false`,
+`rankingEligibility: false` and `clockAdmission: 'not_evaluated'`.
+`runAuthoredFixtureTargetInventoryDiagnostic(config)` is the explicit test API for
+authored executables, with `authoredFixture: true`, `officialProcessor: false`;
+the production CLI uses the official platform pin. Caller SQL or policy fields
+cannot select or alter this mode.
+
+This policy selects exactly `SetLayerTreeId`, `TracingStartedInBrowser`,
+`FrameCommittedInBrowser`, `FrameDeletedInBrowser`, `ProcessReadyInBrowser`,
+`BeginFrame`, `PipelineReporter`, `Graphics.Pipeline`, and the literal phase names.
+One shared scope selects a family/phase collision once, without phase-time or
+target filtering. It emits seven complete tables in order:
+
+1. All eight fixed family counts, including zero counts and distinct arg-set counts.
+2. Every selected slice with track/process/thread context and explicit NULL flags.
+3. Every selected argument value/type and unmatched placeholder with NULL flags.
+4. Complete name/flat-key/indexed-key/type groups with occurrence and slice counts.
+5. All nonzero stats with severity and source.
+6. Complete trace bounds.
+7. The module's complete normalized first-display mapping.
+
+`rawRowsExported` describes imported rows, not raw packet anchors. Shared arg sets
+fan out for each referring slice; repeated host slices remain distinct. Indexed
+keys such as `debug.data.frames[0].frame` and `[1].frame` retain separate records
+even when they share a flat key or renderer argument PID. Emitter PID comes from
+slice context and cannot substitute for an argument PID. `arg_present` distinguishes
+an unmatched argument from a matched NULL-key argument. NULL flags distinguish
+missing values from empty strings and literal `[NULL]` strings. Group occurrence
+counts count matched arguments; distinct-slice counts also retain unmatched slices.
+
+The exact stdout bytes are the canonical export. Keep int64/uint64 values as CSV
+text or BigInt; JavaScript Number or numeric JSON reserialization can lose bits.
+`value_type` retains signed/unsigned/bool distinctions. REAL values retain the
+processor's decimal rendering, which may round and supplies no producer-double
+identity or clock evidence. The pinned shell wraps string cells in quotes but
+emits interior quotes literally. This policy doubles embedded quotes in every
+final TEXT projection before the shell wraps it, producing standard CSV whose
+parsed cells recover processor-visible text, including commas, quotes, UTF-8 and
+quoted LF/CRLF. Scope, joins, grouping, ordering, NULL tests and numeric columns
+continue to use the original values. Parse records with a strict CSV parser;
+splitting physical lines loses multiline cells and embedded blank lines.
+This compensation applies only to the new policy and exact pinned renderer;
+the existing full and inventory policies remain unchanged. It cannot recover
+producer-wire text identity, embedded NUL or malformed UTF-8 that the importer or
+renderer cannot preserve. Keep NULL flags and the canonical stdout bytes.
+Imported slice/arg-set/track/process/thread IDs are scoped to this import and its
+input, processor and SQL hashes. They are not global identities or packet offsets.
+The normalized mapping supplies first display only, without target membership.
+
+This is an inventory for later evaluation. It contains no ownership, lifetime,
+clock, population or performance evaluator, and retains `fps: null`,
+`duration: null`, `nativeSupported: false` and `scoring: false`. The same pins,
+bookends, deadlines and byte caps apply. A complete export exceeding the cap fails
+as a whole; there is no row limit, successful prefix, fallback or download.
+
 ## Maintained authored smoke and CI
 
 ```sh
@@ -204,3 +265,26 @@ and missing track/process/thread context. The official authored fixture has
 arguments on all three raw graphics/reporter slices, so it does not itself exercise
 the unmatched argument case. `smoke.json` labels the separate inventory result and
 records the shared fixture hash. Both existing full imports remain in the smoke.
+
+A fourth production import uses a separate 1,238-byte authored target fixture in
+`target-inventory/`, SHA256
+`ed2b0047fdc87b33174d23cce2d34c21e9cdf900df66db403315d848bd311de0`.
+It composes the unchanged graphics bytes with modern nested debug annotations,
+two indexed frame records sharing renderer PID 4242, browser emitter PID 900,
+two identical host payloads sharing an imported arg set at distinct timestamps,
+a phase loader navigationId, an argument-less event, a wrong-type layerTreeId,
+empty/literal-NULL strings, adversarial `left",right` and `comma,"quoted"` values,
+UTF-8, LF/CRLF and embedded blank lines, quoted key/phase/process/thread/track
+names, and exact signed/unsigned integers above 2^53. The smoke parses all four
+cases with strict CSV rules and rejects malformed quoting. It checks all seven
+target schemas and row counts, mapping
+`43 → 58`, values, types, NULL flags, multiplicity and all non-authority labels.
+Matched SQL NULL keys/types/values remain covered by in-memory SQLite controls.
+`smoke.json` labels the target fixture `authoredOnly: true`; `officialProcessor:
+true` identifies the actual tool, not native qualification of the input.
+
+The four-case official macOS 59.1 smoke passed locally. Actual Linux execution of
+the added target case remains pending CI; prior Linux evidence for the original
+three imports does not establish this fourth case. The existing workflow already
+runs the updated smoke and retains its small authored evidence without uploading
+the processor executable.
