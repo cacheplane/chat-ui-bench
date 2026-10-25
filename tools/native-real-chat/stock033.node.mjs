@@ -31,7 +31,7 @@ async function authored(action){
  const assetHashes={};for(let i=0;i<12;i++){const name='asset'+i+'.js';put('apps/threadplane/dist/'+name,'// asset '+i);assetHashes[name]=api.sha(values.get('apps/threadplane/dist/'+name));}
  const sourceHashes=Object.fromEntries(['apps/threadplane/build.mjs','apps/threadplane/angular.json'].map(key=>[key,api.sha(values.get(key))]));
  const product={packages,framework:{name:'Angular',version:'21.2.26'},production:true,sourceHashes,copiedSourceHashes:{},assetHashes,settings:{optimization:true,sourceMaps:false}},productKey='apps/threadplane/.build-evidence.json';put(productKey,JSON.stringify(product,null,2)+'\n');
- while(values.size<1016)put('authored/file'+values.size+'.txt','authored');
+ while(values.size<1004)put('authored/file'+values.size+'.txt','authored');
  const roster=[];for(const[key,b]of values){await fs.mkdir(sourceRoot+'/'+key.slice(0,key.lastIndexOf('/')),{recursive:true});await fs.writeFile(sourceRoot+'/'+key,b);roster.push({key,bytes:b.length,sha256:api.sha(b)});}
  const platformRows=[];for(let i=0;i<4;i++){const p=root+'/platform'+i;platformRows.push({key:'platform/file'+i,path:p,...await api.writeClosed(p,Buffer.from('platform'),32)});}
  const runtime={executablePath:platformRows[0].path,expectedExecutableBytes:platformRows[0].bytes,expectedExecutableSha256:platformRows[0].sha256,playwrightVersion:'1.64.0',browserRevision:'1248',expectedProduct:'HeadlessChrome/156.0.8078.4',expectedRevision:'@f842f52ef39fd97b449eb27cff414bf05a98ddce',launchFlags:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--enable-automation'],headless:true};
@@ -45,8 +45,27 @@ async function authored(action){
 test('stock033 exact authentic production admission and original reference joins',()=>authored(async({options})=>{
  const prepared=await api.prepareActualStock033(options);assert.equal(prepared.template.mode,options.mode);assert.equal(prepared.reference.policy,'source-owned-preparation-reference-stock-033-v1');
  assert.deepEqual(await api.verifyStock033Preparation(options.outputDirectory,prepared.template,prepared.reference),prepared.template);
- assert.equal((await api.verifyOriginals(options.outputDirectory,prepared.reference.manifest)).files,1016);
+ assert.equal((await api.verifyOriginals(options.outputDirectory,prepared.reference.manifest)).files,1004);
  assert.equal(prepared.template.assets.length,12);assert.equal(prepared.template.product.id,'threadplane-stock-0.3.3');
+}));
+
+test('stock033 refuses short and legacy-sized input rosters before output',()=>authored(async({options})=>{
+ const extra=Array.from({length:12},(_,i)=>({key:'authored/extra'+i+'.txt',bytes:0,sha256:api.sha(Buffer.alloc(0))}));
+ for(const roster of [options.roster.slice(0,-1),[...options.roster,...extra]]){
+  await assert.rejects(api.prepareActualStock033({...options,roster}));
+  await assert.rejects(fs.stat(options.outputDirectory),{code:'ENOENT'});
+  await assert.rejects(fs.stat(options.compilationDirectory),{code:'ENOENT'});
+ }
+}));
+
+test('stock033 refuses historical records even at the correct input count before compilation',()=>authored(async({options})=>{
+ const roster=options.roster.map(row=>({...row})),row=roster.find(row=>row.key.startsWith('authored/'));
+ const bytes=await fs.readFile(options.sourceRoot+'/'+row.key);row.key='records/fixture-output.json';
+ await fs.mkdir(options.sourceRoot+'/records');await fs.writeFile(options.sourceRoot+'/'+row.key,bytes);
+ assert.equal(roster.length,1004);
+ await assert.rejects(api.prepareActualStock033({...options,roster}));
+ await assert.rejects(fs.stat(options.outputDirectory),{code:'ENOENT'});
+ await assert.rejects(fs.stat(options.compilationDirectory),{code:'ENOENT'});
 }));
 
 test('stock033 product identity refuses a different physical installed package location',()=>authored(async({product})=>{
