@@ -238,15 +238,17 @@ function createOrderedReducer(domain:string,bodies:BodyFact[],budget:Budget,v2:b
       budget.fieldsVisited(fragment.occurrences.length,packetIndex);
       budget.repeatedWork((fragment.event?.fields.categoryIids?.length??0)+(fragment.event?.fields.categories?.length??0)+(fragment.event?.graphics?.fields.surfaceTraceIds?.length??0),packetIndex);
       const fields = fragment.fields;
+      whole?.clock3?.begin(fields);
       if(whole)whole.note('packet',[fields.machineId??null,fields.sequenceId??null,fields.timestamp??null,fields.timestampClockId??null,fields.sequenceFlags??null,fields.incrementalStateCleared??null,fields.previousPacketDropped??null,fields.firstPacketOnSequence??null]);
       if (fields.sequenceId === undefined) {
         if(whole&&(fields.sequenceFlags!==undefined||fields.incrementalStateCleared!==undefined||fields.previousPacketDropped!==undefined||fields.firstPacketOnSequence!==undefined))throw new ProfileError('missing-sequence-id',packetIndex);
         if(whole&&!fragment.event&&!fragment.opaquePayloads.some(at=>at.fieldNumber===12||at.fieldNumber===59)&&fields.sequenceFlags===undefined&&fields.incrementalStateCleared===undefined&&fields.previousPacketDropped===undefined&&fields.firstPacketOnSequence===undefined){
-          if(fragment.opaquePayloads.some(at=>at.fieldNumber===6||at.fieldNumber===60)){observe(packetIndex,fragment);whole.transition.stateEffect='M';whole.counters.metadataPackets++;}else whole.counters.opaqueNoStatePackets++;return;
+          if(fragment.opaquePayloads.some(at=>at.fieldNumber===6||at.fieldNumber===60)){observe(packetIndex,fragment);whole.transition.stateEffect='M';whole.counters.metadataPackets++;}else whole.counters.opaqueNoStatePackets++;whole.clock3?.timestamp(packetIndex,fields,undefined,fields.timestampClockId===undefined?{status:'unavailable',reason:'no-clock'}:{status:'selected',source:'packet',clockId:fields.timestampClockId},fragment.opaquePayloads.some(at=>at.fieldNumber===6));return;
         }
         if(!v2||fragment.event||fragment.opaquePayloads.some(at=>at.fieldNumber===12||at.fieldNumber===59)||!fragment.opaquePayloads.some(at=>at.fieldNumber===6||at.fieldNumber===60))throw new ProfileError('missing-sequence-id',packetIndex);
         if(BigInt(fields.sequenceFlags??'0')>3n)throw new ProfileError('unsupported-sequence-flags',packetIndex);
         observe(packetIndex,fragment);
+        whole?.clock3?.timestamp(packetIndex,fields,undefined,fields.timestampClockId===undefined?{status:'unavailable',reason:'no-clock'}:{status:'selected',source:'packet',clockId:fields.timestampClockId},fragment.opaquePayloads.some(at=>at.fieldNumber===6));
         for(const at of fragment.skippedFields)opaque({packetIndex,...at});
         for(const at of fragment.opaquePayloads)opaque({packetIndex,...at});
         const row:MetadataPacket={...context(packetIndex,fields),fields:{...fields}};budget.output(row,packetIndex);if(whole)whole.counters.metadataPackets++;else metadataPackets.push(row);return;
@@ -272,6 +274,7 @@ function createOrderedReducer(domain:string,bodies:BodyFact[],budget:Budget,v2:b
       } else if (fields.previousPacketDropped !== undefined && fields.previousPacketDropped !== '0') {
         stateEffect='loss';sequence.intervalVersion++;sequence.valid=false;
       }
+      whole?.clock3?.sequence(sequence,stateEffect);
       if(whole?.sequenceStart){
         const ledger=whole.sequenceStart;
         budget.repeatedWork(1,packetIndex);
@@ -325,6 +328,7 @@ function createOrderedReducer(domain:string,bodies:BodyFact[],budget:Budget,v2:b
           }
         }
       }
+      whole?.clock3?.timestamp(packetIndex,fields,sequence,fact.clockSelection,fragment.opaquePayloads.some(at=>at.fieldNumber===6));
       const eventAt=fragment.occurrences.find(at=>at.scope==='packet'&&at.fieldNumber===11);
       if(fragment.event&&eventAt){
         fact.eventLocation={packetIndex,...eventAt};
@@ -457,6 +461,127 @@ export const WHOLE_USER_TIMING_V5_POLICY='pinned-whole-trace-user-timing-marks-d
 export const WHOLE_USER_TIMING_V6_POLICY='pinned-whole-trace-user-timing-marks-diagnostic-v6';
 export const WHOLE_USER_TIMING_V7_POLICY='pinned-whole-trace-user-timing-evidence-diagnostic-v7';
 export const WHOLE_USER_TIMING_V8_POLICY='pinned-whole-trace-user-timing-raw-drop-evidence-diagnostic-v8';
+export const NATIVE_CLOCK3_PHASE_POLICY='native-clock3-phase-alignment-diagnostic-v1';
+export function nativeClock3Names(value:unknown):readonly[string,string]|null {
+ if(value===null||typeof value!=='object'||types.isProxy(value)||!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype)return null;
+ const length=Object.getOwnPropertyDescriptor(value,'length');if(!length||!('value'in length)||length.value!==2)return null;
+ const keys=Reflect.ownKeys(value);if(keys.length!==3||!keys.every(k=>k==='0'||k==='1'||k==='length'))return null;
+ const a=Object.getOwnPropertyDescriptor(value,'0'),b=Object.getOwnPropertyDescriptor(value,'1');
+ if(!a||!b||!('value'in a)||!('value'in b))return null;
+ const valid=(s:unknown):s is string=>typeof s==='string'&&s.length>0&&s.length<=256&&Buffer.byteLength(s)<=256&&!/\p{Cc}/u.test(s)&&!/[\uD800-\uDFFF]/u.test(s.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g,''));
+ return valid(a.value)&&valid(b.value)&&a.value!==b.value?[a.value,b.value]:null;
+}
+type Clock3Config={names:readonly[string,string]};
+type Clock3Position='before'|'inside'|'after';
+interface Clock3PacketWitness {
+ packetIndex:number;bodySHA256:string;sequenceId:string|null;sequenceIndex:number|null;intervalVersion:number|null;
+ rawTimestamp:string;explicitClockId:string|null;clockId:string;clockSource:string;defaultsVersionIndex:number|null;
+ clock3Ns:string;offsetNs:string;snapshotPacketIndex:number|null;
+}
+interface Clock3EventWitness extends Clock3PacketWitness {eventType:'3';eventName:string;nameSource:'literal'|'intern';nameDefinitionIndex:number|null;trackUuid:string;trackSource:string;trackDefaultsVersionIndex:number|null}
+interface Clock3Instant extends Clock3EventWitness {name:'BeginFrame'|'DrawFrame';position:Clock3Position}
+interface Clock3PhaseWitness extends Clock3EventWitness {name:string}
+type Clock3Counts={BeginFrame:Record<Clock3Position,number>;DrawFrame:Record<Clock3Position,number>};
+export interface NativeClock3Projection {
+ status:'projected-clock3-instants';referenceClockId:'3';phase:{startNs:string;endNs:string;start:Clock3PhaseWitness;end:Clock3PhaseWitness};
+ rows:Clock3Instant[];counts:Clock3Counts;
+}
+/** Focused private arithmetic unit. Only source-created reducer hooks call this port. */
+function createClock3Projection(config:Clock3Config,budget:WholeStudyBudget,markCount:()=>number,admit:(value:unknown)=>void){
+ type Anchor={local:bigint;global:bigint;offset:bigint;packetIndex:number};
+ const states=new Map<number,{epoch:number;valid:boolean;a64?:Anchor;a65?:Anchor;local64?:bigint}>(),rows:Omit<Clock3Instant,'position'>[]=[],marks:Clock3PhaseWitness[]=[];
+ let failure:string|null=null,pending:{row:WholeClockEvidenceObservation;index:number}|null=null,current:Clock3PacketWitness|null=null;
+ const refuse=(reason:string)=>{failure??=reason;rows.length=0;marks.length=0;current=null;pending=null;states.clear();};
+ const intMax=9223372036854775807n;
+ const checked=(n:bigint)=>n>=0n&&n<=intMax;
+ function witness(index:number,fields:PacketFields,selection:Selection,sequence:Sequence|undefined,ns:bigint,offset=0n,snapshotPacketIndex:number|null=null){
+  if(!checked(ns)){refuse('clock3-arithmetic-range');return;}
+  current={packetIndex:index,bodySHA256:'',sequenceId:sequence?.sequenceId??null,sequenceIndex:sequence?.sequenceIndex??null,intervalVersion:sequence?.intervalVersion??null,
+   rawTimestamp:fields.timestamp!,explicitClockId:fields.timestampClockId??null,clockId:selection.status==='selected'?selection.clockId!:'',clockSource:selection.status==='selected'?selection.source:'unavailable',defaultsVersionIndex:selection.status==='selected'?selection.defaultsVersionIndex??null:null,clock3Ns:String(ns),offsetNs:String(offset),snapshotPacketIndex};
+ }
+ function applySnapshot(sequence:Sequence|undefined){
+  const item=pending;pending=null;if(!item||failure)return;
+  if(item.row.kind!=='clock_snapshot')return;
+  const row=item.row;
+  if(row.machineContext.status!=='absent'){refuse('clock3-machine');return;}
+  let global:bigint|undefined;const local=new Map<string,ClockFields>();
+  for(const c of row.clocks){
+   budget.repeatedWork(1,row.packetIndex);
+   if(c.clockId===undefined||c.timestamp===undefined||!['3','6','64','65'].includes(c.clockId)){refuse('clock3-snapshot-domain');return;}
+   if(c.clockId==='3'||c.clockId==='6'){
+    if(c.unitMultiplierNs!==undefined&&c.unitMultiplierNs!=='1'||c.isIncremental===true||!checked(BigInt(c.timestamp))){refuse('clock3-builtin-properties');return;}
+    if(c.clockId==='3')global=BigInt(c.timestamp);
+   }else{
+    if(c.unitMultiplierNs!=='1000'||c.clockId==='64'&&c.isIncremental!==true||c.clockId==='65'&&c.isIncremental===true){refuse('clock3-local-properties');return;}
+    local.set(c.clockId,c);
+   }
+  }
+  if(local.size===0)return;
+  if(global===undefined||!sequence?.valid){refuse('clock3-snapshot-anchor');return;}
+  let state=states.get(sequence.sequenceIndex);
+  if(!state||state.epoch!==sequence.intervalVersion){state={epoch:sequence.intervalVersion,valid:true};states.set(sequence.sequenceIndex,state);}
+  for(const [id,c]of local){const a=BigInt(c.timestamp!),offset=global-a*1000n;if(!checked(a*1000n)||offset< -intMax||offset>intMax){refuse('clock3-arithmetic-range');return;}
+   const anchor={local:a,global,offset,packetIndex:row.packetIndex};budget.persist(String(offset)+c.timestamp+String(global),row.packetIndex);
+   if(id==='64'){state.a64=anchor;state.local64=a;}else state.a65=anchor;
+  }
+ }
+ return {
+  begin(fields:PacketFields){current=null;pending=null;if(!failure&&fields.machineId!==undefined)refuse('clock3-machine');},
+  sequence(sequence:Sequence,effect:PacketFact['stateEffect']){if(failure)return;if(effect!=='none')states.delete(sequence.sequenceIndex);},
+  stage(row:WholeClockEvidenceObservation,index:number){if(!failure&&row.kind==='clock_snapshot')pending={row,index};},
+  timestamp(index:number,fields:PacketFields,sequence:Sequence|undefined,selection:Selection,hasSnapshot:boolean){
+   if(failure)return;applySnapshot(sequence);if(failure||hasSnapshot)return;
+   if((BigInt(fields.sequenceFlags??'0')&2n)!==0n&&!sequence?.valid)return;
+   if(fields.timestamp===undefined)return;
+   budget.repeatedWork(1,index);
+   if(selection.status!=='selected')return;
+   const id=selection.clockId!,raw=BigInt(fields.timestamp);if(raw>intMax){refuse('clock3-arithmetic-range');return;}
+   if(id==='3'){witness(index,fields,selection,sequence,raw);return;}
+   if(id!=='64'&&id!=='65')return;
+   const state=sequence===undefined?undefined:states.get(sequence.sequenceIndex),anchor=id==='64'?state?.a64:state?.a65;
+   if(!sequence?.valid||!state||state.epoch!==sequence.intervalVersion||!anchor){refuse('clock3-missing-anchor');return;}
+   const local=id==='64'?(state.local64??anchor.local)+raw:raw;
+   if(!checked(local*1000n)){refuse('clock3-arithmetic-range');return;}
+   if(id==='64')state.local64=local;
+   witness(index,fields,selection,sequence,anchor.global+(local-anchor.local)*1000n,anchor.offset,anchor.packetIndex);
+  },
+  event(index:number,hash:string,event:AnnotationEventFragment,sequence:Sequence,final:{outcome:string;definitions:readonly{value:string}[]},track:Selection,mark:{status:string;value?:string}){
+   if(failure)return;
+   budget.repeatedWork(1,index);
+   const e=event.fields,definition=e.nameIid===undefined?undefined:sequence.names.get(e.nameIid),name=e.nameIid===undefined?e.name:definition===undefined?undefined:final.definitions[definition]?.value;
+   if(e.nameIid!==undefined&&name===undefined){refuse('clock3-name-unavailable');return;}
+   const native=name==='BeginFrame'||name==='DrawFrame',phase=mark.status==='literal_string'&&config.names.includes(mark.value!);
+   if(!native&&!phase)return;
+   if(e.type!=='3'||final.outcome!=='resolved'||!current||track.status!=='selected'||!track.trackUuid||track.trackUuid==='0'){refuse('clock3-selected-unavailable');return;}
+   const w={...current,bodySHA256:hash,eventType:'3' as const,eventName:name!,nameSource:e.nameIid===undefined?'literal' as const:'intern' as const,nameDefinitionIndex:definition??null,trackUuid:track.trackUuid,trackSource:track.source,trackDefaultsVersionIndex:track.defaultsVersionIndex??null};
+   if(phase){const row={...w,name:mark.value!};budget.persist(JSON.stringify(row),index);admit({rows,marks:[...marks,row]});marks.push(row);if(marks.length>2)refuse('clock3-mark-cardinality');return;}
+   if(rows.length+markCount()>=128){refuse('clock3-candidate-capacity');return;}
+   const row={...w,name:name as 'BeginFrame'|'DrawFrame'};budget.persist(JSON.stringify(row),index);budget.usage.candidateRows++;budget.usage.candidateUTF8+=Buffer.byteLength(name!);
+   if(budget.usage.candidateUTF8>16384){refuse('clock3-candidate-capacity');return;}
+   admit({rows:[...rows,row],marks});rows.push(row);
+  },
+  admitMark(){if(!failure&&rows.length+markCount()>=128)refuse('clock3-candidate-capacity');},
+  discard(){refuse('clock3-owned-input-unavailable');},
+  finish(good:boolean,candidates:WholeAnnotationCandidate[],observations:WholeClockEvidenceObservation[]){
+   if(!good)refuse('clock3-core-unavailable');
+   if(!failure){
+    if(marks.length!==2||marks[0]!.name!==config.names[0]||marks[1]!.name!==config.names[1]||BigInt(marks[0]!.clock3Ns)>=BigInt(marks[1]!.clock3Ns)||marks[0]!.trackUuid!==marks[1]!.trackUuid)refuse('clock3-mark-cardinality');
+    if(config.names.some(name=>candidates.filter(c=>c.kind==='literal_string'&&c.value===name).length!==1))refuse('clock3-mark-cardinality');
+   }
+   if(!failure){
+    const track=marks[0]!.trackUuid,descriptors=observations.filter((o):o is WholeClockEvidenceObservation&{kind:'track_descriptor'}=>o.kind==='track_descriptor'&&o.fields.uuid===track),parents=new Set(descriptors.map(o=>o.fields.parentUuid)),threads=new Set(descriptors.filter(o=>o.fields.thread).map(o=>JSON.stringify([o.fields.thread!.pid,o.fields.thread!.tid])));
+    if(descriptors.length===0||parents.size!==1||parents.has(undefined)||parents.has('0')||parents.has(track)||threads.size!==1||descriptors.some(o=>!o.fields.thread||o.fields.thread.pid===undefined||o.fields.thread.tid===undefined||o.fields.process!==undefined))refuse('clock3-descriptor-identity');
+    else{const parent=[...parents][0]!,processes=observations.filter((o):o is WholeClockEvidenceObservation&{kind:'track_descriptor'}=>o.kind==='track_descriptor'&&o.fields.uuid===parent),identities=new Set(processes.map(o=>JSON.stringify([o.fields.parentUuid??null,o.fields.process?.pid,o.fields.process?.startTimestampNs])));
+     if(identities.size!==1||processes.length===0||processes.some(o=>o.fields.thread!==undefined||o.fields.process?.pid===undefined||o.fields.process.startTimestampNs===undefined)||descriptors.some(o=>o.fields.thread?.pid!==processes[0]!.fields.process!.pid))refuse('clock3-descriptor-identity');
+    }
+   }
+   if(failure)return{reason:failure,projection:null};
+   const start=marks[0]!,end=marks[1]!,counts:Clock3Counts={BeginFrame:{before:0,inside:0,after:0},DrawFrame:{before:0,inside:0,after:0}};
+   const projected=rows.map(row=>{const n=BigInt(row.clock3Ns),position:Clock3Position=n<BigInt(start.clock3Ns)?'before':n<BigInt(end.clock3Ns)?'inside':'after';counts[row.name][position]++;return{...row,position};});
+   return{reason:null,projection:{status:'projected-clock3-instants' as const,referenceClockId:'3' as const,phase:{startNs:start.clock3Ns,endNs:end.clock3Ns,start,end},rows:projected,counts}};
+  }
+ };
+}
 /** Supported known headers only; optional headers preserve explicit zero/false and absence. */
 export interface WholeRawDropFact {
  packetIndex:number;bodySHA256:string;machineContext:MachineContext;sequenceId:string;previousPacketDropped:string;
@@ -484,7 +609,7 @@ export type WholeUserTimingCandidate=Omit<WholeAnnotationCandidate,'kind'|'value
 export interface WholeAnnotationDiagnostic {code:string;packetIndex:number|null;component:string|null}
 export interface WholeAnnotationDiagnosticV3 extends WholeAnnotationDiagnostic {cause:ClosedStudyFailureCode|'unavailable-code'|null}
 type StudyPort<T>=Readonly<{feed(input:unknown):void;finish():T}>;
-export type WholeAnnotationStudy=Omit<ReturnType<ReturnType<typeof createWholeAnnotationEngine>['finish']>,'policy'|'diagnostics'|'sequenceStart'|'evidenceInventory'|'rawDropInventory'>&{policy:typeof WHOLE_ANNOTATION_POLICY;diagnostics:WholeAnnotationDiagnostic[]};
+export type WholeAnnotationStudy=Omit<ReturnType<ReturnType<typeof createWholeAnnotationEngine>['finish']>,'policy'|'diagnostics'|'sequenceStart'|'evidenceInventory'|'rawDropInventory'|'clock3Projection'>&{policy:typeof WHOLE_ANNOTATION_POLICY;diagnostics:WholeAnnotationDiagnostic[]};
 export type WholeUserTimingStudy=Omit<WholeAnnotationStudy,'policy'|'candidates'>&{policy:typeof WHOLE_USER_TIMING_POLICY;candidates:WholeUserTimingCandidate[]};
 export type WholeUserTimingStudyV3=Omit<WholeUserTimingStudy,'policy'|'diagnostics'>&{policy:typeof WHOLE_USER_TIMING_V3_POLICY;diagnostics:WholeAnnotationDiagnosticV3[]};
 type Policy<T,P>=Omit<T,'policy'>&{policy:P};
@@ -529,7 +654,7 @@ class WholeStudyBudget extends Budget {
 // Private same-arity selector: 2 is V5 metadata-only UserTiming; booleans preserve older profiles.
 type UserTimingMode=boolean|2|3;
 type SequenceStart={raw:number;explained:number;unexplained:number;contradictions:number};
-interface WholeMode {rawDrop?:(index:number,fields:PacketFields,priorSeen:boolean)=>void;evidence?:{admit(clocks:number,index:number):void;retain(row:WholeClockEvidenceObservation):void};sequenceStart?:SequenceStart;userTiming:UserTimingMode;semantic:ReturnType<typeof createHash>;note(label:string,fields:readonly(string|number|boolean|null)[]):void;transition:{sequenceIndex:number|null;intervalVersion:number|null;defaultsVersionIndex:number|null;stateEffect:string;eventOutcome:string;newDefinitions:number;repeatedDefinitions:number};bodySHA256:string;budget:WholeStudyBudget;counters:ReturnType<typeof wholeCounters>;event(i:number,s:Sequence,f:PacketFields,at:Location,e:AnnotationEventFragment,r:ReturnType<typeof resolveAnnotations>,track:Selection,clock:Selection,final?:{outcome:string;definitions:readonly {value:string}[]}):void}
+interface WholeMode {clock3?:ReturnType<typeof createClock3Projection>;rawDrop?:(index:number,fields:PacketFields,priorSeen:boolean)=>void;evidence?:{admit(clocks:number,index:number):void;retain(row:WholeClockEvidenceObservation):void};sequenceStart?:SequenceStart;userTiming:UserTimingMode;semantic:ReturnType<typeof createHash>;note(label:string,fields:readonly(string|number|boolean|null)[]):void;transition:{sequenceIndex:number|null;intervalVersion:number|null;defaultsVersionIndex:number|null;stateEffect:string;eventOutcome:string;newDefinitions:number;repeatedDefinitions:number};bodySHA256:string;budget:WholeStudyBudget;counters:ReturnType<typeof wholeCounters>;event(i:number,s:Sequence,f:PacketFields,at:Location,e:AnnotationEventFragment,r:ReturnType<typeof resolveAnnotations>,track:Selection,clock:Selection,final?:{outcome:string;definitions:readonly {value:string}[]}):void}
 const WHOLE_REFUSALS=new Set(["unsupported-packet-payload-field-50","unsupported-packet-payload-field-133","unsupported-packet-payload-field-107","unsupported-packet-payload-field-124","unsupported-packet-payload-field-125","annotation-wrong-wire-type","byte-capacity","candidate-capacity","candidate-string-capacity","chunk-capacity","clock-child-capacity","defaults-capacity","definition-capacity","disclosure-capacity","duplicate-annotation-name-oneof","duplicate-annotation-proto-oneof","duplicate-annotation-value-oneof","duplicate-clock-id","duplicate-data-oneof","duplicate-intern-iid","duplicate-name-oneof","duplicate-selected-field","field-capacity","fragment-unavailable","frame-capacity","framer-closed","framer-reentry","input-byte-capacity","input-length","int32-overflow","intern-conflict","intern-entry-capacity","intern-update-capacity","invalid-annotation-iid","invalid-byte-window",envelopeError,"invalid-event-iid","invalid-field-number","invalid-framer-profile","invalid-intern-iid","invalid-internal-slice-mode","invalid-output-mode","invalid-utf8","invalid-whole-annotation-input","live-intern-entry-capacity","live-intern-string-capacity","manifest-capacity","member-capacity","missing-intern-definition","missing-intern-iid","missing-intern-name","missing-sequence-id","non-profile-bool","opaque-location-capacity","out-of-bounds-length","output-already-finalized","output-byte-capacity","output-node-capacity","output-string-capacity","packet-body-capacity","packet-capacity","persistent-string-capacity","read-capacity","reference-capacity","repeated-work-capacity",capacityError,"result-shape","selected-field-wrong-wire-type","sequence-capacity","stream-closed","stream-reentry","string-capacity","string-total-capacity","transition-capacity","truncated-fixed-field","truncated-varint","uint32-overflow","uint64-varint-overflow","unavailable-byte-storage","unexpected-body-end","unknown-selected-enum","unsupported-byte-view","unsupported-counter-defaults","unsupported-legacy-event","unsupported-packet-payload","unsupported-payload-kind",policyError,"unsupported-sequence-flags","unsupported-state-body-kind","unsupported-trace-root-field","unsupported-wire-type","zero-sequence-id"]as const);
 export const WHOLE_ANNOTATION_AUTHORITY=Object.freeze({annotations:'diagnostic-only',orderedState:'diagnostic-only',clock:'not_evaluated',marks:'not_evaluated',targetLifetime:'unestablished',population:'not_evaluated',metric:'not_evaluated',captureCompleteness:'unestablished',runtimeQualification:'unestablished',evaluationEligibility:false,nativeGO:false,nativeSupported:false,performance:false,scoringEligibility:false,rankingEligibility:false,FPS:'unavailable'}as const);
 /** Fixed whole-profile serialization admission, including every escaped key/value. */
@@ -578,9 +703,14 @@ export function createWholeUserTimingStudyV8(expectedBytes:number,policy:unknown
  if(policy!==WHOLE_USER_TIMING_V8_POLICY)throw new WireError(policyError);
  return createWholeAnnotationEngine(expectedBytes,3,true,true,true,true) as unknown as StudyPort<WholeUserTimingStudyV8>;
 }
+export function createNativeClock3PhaseStudy(expectedBytes:number,names:unknown,policy:unknown){
+ if(policy!==NATIVE_CLOCK3_PHASE_POLICY)throw new WireError(policyError);
+ const tuple=nativeClock3Names(names);if(!tuple)throw new WireError('invalid-mark-names');
+ return createWholeAnnotationEngine(expectedBytes,3,true,true,true,true,{names:tuple});
+}
 export type ClosedStudyFailureCode=typeof WHOLE_REFUSALS extends Set<infer Code>?Code:never;
 export function isClosedStudyFailureCode(value:unknown):value is ClosedStudyFailureCode{return typeof value==='string'&&value.length<=64&&WHOLE_REFUSALS.has(value as ClosedStudyFailureCode);}
-function createWholeAnnotationEngine(expectedBytes:number,userTiming:UserTimingMode,diagnosticV3=false,provenance=false,evidenceV7=false,rawDropV8=false){
+function createWholeAnnotationEngine(expectedBytes:number,userTiming:UserTimingMode,diagnosticV3=false,provenance=false,evidenceV7=false,rawDropV8=false,clock3Config?:Clock3Config){
  const rawDropFacts:WholeRawDropFact[]=[];
  const observations:WholeClockEvidenceObservation[]=[];let clockEntries=0;
  const decodeWholePacket=provenance?createWholeProvenancePacketDecoder():diagnosticV3?decodeWholeUserTimingPacketV3:decodeWholeAnnotationPacket;
@@ -589,9 +719,10 @@ function createWholeAnnotationEngine(expectedBytes:number,userTiming:UserTimingM
  const rawHash=createHash('sha256'),packetHash=createHash('sha256').update('D0 packet-manifest-v1\n'),transitionHash=createHash('sha256').update('whole-annotation-transitions-v1\n');
  let rawBytes=0,active=false,closed=false,rootFailed=false,semanticFailed=false,failure:string|null=null,body:Uint8Array|null=null,bodyAt=0,bodyHash=createHash('sha256'),withheld=false;
  const diagnostics:{code:string;packetIndex:number|null;component:string|null;cause?:string|null}[]=[];
- function fail(code:string,index:number|null=null,component:string|null=null,cause?:unknown){if(rawDropV8)rawDropFacts.length=0;if(evidenceV7){observations.length=0;candidates.length=0;}failure??=code;if(diagnostics.length===0)diagnostics.push({code,packetIndex:index,component,...(diagnosticV3?{cause:cause===undefined?null:isClosedStudyFailureCode(cause)?cause:'unavailable-code'}:{})});}
+ const projection=clock3Config?createClock3Projection(clock3Config,budget,()=>candidates.length,value=>admitWholeOutput({value,observations,candidates,rawDropFacts})):undefined;
+ function fail(code:string,index:number|null=null,component:string|null=null,cause?:unknown){projection?.discard();if(rawDropV8)rawDropFacts.length=0;if(evidenceV7){observations.length=0;candidates.length=0;}failure??=code;if(diagnostics.length===0)diagnostics.push({code,packetIndex:index,component,...(diagnosticV3?{cause:cause===undefined?null:isClosedStudyFailureCode(cause)?cause:'unavailable-code'}:{})});}
  function errorCode(e:unknown){return(e instanceof ProfileError||e instanceof WireError)&&isClosedStudyFailureCode(e.code)?e.code:'invalid-whole-annotation-input';}
- const mode:WholeMode={...(rawDropV8?{rawDrop(index:number,fields:PacketFields,priorSeen:boolean){
+ const mode:WholeMode={...(projection?{clock3:projection}:{}),...(rawDropV8?{rawDrop(index:number,fields:PacketFields,priorSeen:boolean){
   if(fields.previousPacketDropped===undefined||fields.previousPacketDropped==='0')return;
   if(rawDropFacts.length>=64)throw new ProfileError('invalid-whole-annotation-input',index);
   const row:WholeRawDropFact={packetIndex:index,bodySHA256:mode.bodySHA256,machineContext:fields.machineId===undefined?{status:'absent'}:{status:'present',machineId:fields.machineId},sequenceId:fields.sequenceId!,previousPacketDropped:fields.previousPacketDropped,...(fields.firstPacketOnSequence===undefined?{}:{firstPacketOnSequence:fields.firstPacketOnSequence}),...(fields.sequenceFlags===undefined?{}:{sequenceFlags:fields.sequenceFlags}),...(fields.incrementalStateCleared===undefined?{}:{incrementalStateCleared:fields.incrementalStateCleared}),priorSeen,classification:fields.previousPacketDropped==='1'&&fields.firstPacketOnSequence===true&&!priorSeen?'explained':'unexplained'};
@@ -599,14 +730,14 @@ function createWholeAnnotationEngine(expectedBytes:number,userTiming:UserTimingM
   // Pre-admit the retained arrays together under the existing node/string/JSON ceilings.
   // The complete study and owned-file envelope are checked again at final admission.
   admitWholeOutput({rawDropFacts:[...rawDropFacts,row],observations,candidates});rawDropFacts.push(row);
- }}:{}),...(evidenceV7?{evidence:{admit(clocks:number,index:number){if(observations.length>=128||clocks>512-clockEntries)throw new ProfileError('invalid-whole-annotation-input',index);},retain(row:WholeClockEvidenceObservation){budget.repeatedWork(1,row.packetIndex);budget.persist(JSON.stringify(row),row.packetIndex);observations.push(row);if(row.kind==='clock_snapshot')clockEntries+=row.clocks.length;}}}:{}),...(userTiming===3?{sequenceStart:{raw:0,explained:0,unexplained:0,contradictions:0}}:{}),userTiming,semantic:createHash('sha256'),note(label,fields){mode.semantic.update(label+'\n','ascii');for(const value of fields){if(typeof value==='string')mode.semantic.update('s'+Buffer.byteLength(value)+':','ascii').update(value,'utf8');else mode.semantic.update(value===null?'n;':typeof value==='boolean'?value?'t;':'f;':'i'+value+';','ascii');}mode.semantic.update('\n','ascii');},transition:{sequenceIndex:null,intervalVersion:null,defaultsVersionIndex:null,stateEffect:'O',eventOutcome:'A',newDefinitions:0,repeatedDefinitions:0},bodySHA256:'',budget,counters,event(i,sequence,fields,at,event,resolved,track,clock,final){
+ }}:{}),...(evidenceV7?{evidence:{admit(clocks:number,index:number){if(observations.length>=128||clocks>512-clockEntries)throw new ProfileError('invalid-whole-annotation-input',index);},retain(row:WholeClockEvidenceObservation){projection?.stage(row,observations.length);budget.repeatedWork(1,row.packetIndex);budget.persist(JSON.stringify(row),row.packetIndex);observations.push(row);if(row.kind==='clock_snapshot')clockEntries+=row.clocks.length;}}}:{}),...(userTiming===3?{sequenceStart:{raw:0,explained:0,unexplained:0,contradictions:0}}:{}),userTiming,semantic:createHash('sha256'),note(label,fields){mode.semantic.update(label+'\n','ascii');for(const value of fields){if(typeof value==='string')mode.semantic.update('s'+Buffer.byteLength(value)+':','ascii').update(value,'utf8');else mode.semantic.update(value===null?'n;':typeof value==='boolean'?value?'t;':'f;':'i'+value+';','ascii');}mode.semantic.update('\n','ascii');},transition:{sequenceIndex:null,intervalVersion:null,defaultsVersionIndex:null,stateEffect:'O',eventOutcome:'A',newDefinitions:0,repeatedDefinitions:0},bodySHA256:'',budget,counters,event(i,sequence,fields,at,event,resolved,track,clock,final){
   counters.trackEvents++;counters.annotationEntries+=event.annotations.length;if(event.annotations.length)counters.eventsWithAnnotations++;
   if(resolved.nameInventoryStatus==='withheld'){counters.withheldRootInventories++;withheld=true;}else counters.resolvedRootInventories++;
   if(userTiming&&resolved.markName.status==='withheld')withheld=true;
   for(const annotation of resolved.annotations){budget.repeatedWork(1,i);const name=annotation.name as {kind:string;value?:string;definitionIndex?:number;reason?:string},value=annotation.value as {kind:string;value?:string;reason?:string};mode.note('root',[name.kind,name.value??null,name.definitionIndex??null,name.reason??null,value.kind,value.value??null,value.reason??null]);}
   const selectedMark=userTiming?userTimingMark(event,sequence,resolved,final!):undefined;
-  const mark=selectedMark?.mark??resolved.markName;mode.note('mark',[resolved.nameInventoryStatus,mark.status,mark.status==='literal_string'?mark.value:mark.status==='withheld'?mark.reason:null]);if(mark.status==='absent'){counters.markAbsent++;return;}if(mark.status==='withheld'){counters.markWithheld++;withheld=true;}else counters.markLiteral++;
-  if(candidates.length>=128)throw new ProfileError('candidate-capacity',i);
+  const mark=selectedMark?.mark??resolved.markName;projection?.event(i,mode.bodySHA256,event,sequence,final!,track,mark);mode.note('mark',[resolved.nameInventoryStatus,mark.status,mark.status==='literal_string'?mark.value:mark.status==='withheld'?mark.reason:null]);if(mark.status==='absent'){counters.markAbsent++;return;}if(mark.status==='withheld'){counters.markWithheld++;withheld=true;}else counters.markLiteral++;
+  projection?.admitMark();if(candidates.length>=128)throw new ProfileError('candidate-capacity',i);
   const value=mark.status==='literal_string'?mark.value:null,n=value===null?0:Buffer.byteLength(value);if(n>4096||n>16384-budget.usage.candidateUTF8)throw new ProfileError('candidate-string-capacity',i);
   const selected=mark.status==='literal_string'&&mark.annotationIndex!==null?resolved.annotations[mark.annotationIndex]?.name as {kind:string;definitionIndex?:number}|undefined:undefined;
   const row:WholeAnnotationCandidate={packetIndex:i,sequenceIndex:sequence.sequenceIndex,intervalVersion:sequence.intervalVersion,eventStart:at.start,eventValueStart:at.valueStart,eventEnd:at.end,bodySHA256:mode.bodySHA256,kind:mark.status,value,reason:mark.status==='withheld'?mark.reason:null,annotationIndex:mark.status==='literal_string'?mark.annotationIndex:null,nameSource:selectedMark?.source??(selected?.kind==='intern'?'intern':selected?.kind==='literal'?'literal':'unresolved'),definitionIndex:selectedMark?.definitionIndex??selected?.definitionIndex??null,clockId:clock.status==='selected'?clock.clockId??null:null,clockSource:clock.status==='selected'?clock.source:'unavailable',trackUuid:track.status==='selected'?track.trackUuid??null:null,trackSource:track.status==='selected'?track.source:'unavailable',machineStatus:fields.machineId===undefined?'absent':'present',machineId:fields.machineId??null,sequenceId:sequence.sequenceId,rawTimestamp:fields.timestamp??null,timestampStatus:fields.timestamp===undefined?'absent':'raw-unqualified'};
@@ -621,7 +752,7 @@ function createWholeAnnotationEngine(expectedBytes:number,userTiming:UserTimingM
    try{const packet=decodeWholePacket(current,n=>budget.repeatedWork(n,frame.frameIndex));counters.decodedPackets++;if(packet.status==='unavailable')throw new ProfileError('fragment-unavailable',frame.frameIndex,'packet',packet.diagnostics[0]?.code);mode.bodySHA256=sha;reducer.consume(frame.frameIndex,packet);counters.processedPackets++;const state=reducer.state();Object.assign(budget.usage,state);const t=mode.transition,transition=`${frame.frameIndex},${t.sequenceIndex??'-'},${t.intervalVersion??'-'},${t.stateEffect},${t.defaultsVersionIndex??'-'},${t.newDefinitions},${t.repeatedDefinitions},${t.eventOutcome},${counters.markLiteral},${counters.markWithheld},${mode.semantic.digest('hex')},${sha}\n`;if(transition.length>192)throw new ProfileError('transition-capacity');transitionHash.update(transition,'ascii');}catch(e){semanticFailed=true;fail(errorCode(e),frame.frameIndex,e instanceof ProfileError?e.component??null:null,e instanceof ProfileError?e.causeCode:undefined);}
   },
  });
- return Object.freeze({feed(input:unknown):void{if(active){rootFailed=true;fail('stream-reentry');throw new WireError('stream-reentry');}if(closed)throw new WireError('stream-closed');active=true;try{if(counters.feedCalls>=4096)throw new WireError('read-capacity');counters.feedCalls++;const owned=copyWholeAnnotationChunk(input);if(owned.byteLength>expectedBytes-rawBytes)throw new WireError('byte-capacity');rawHash.update(owned);rawBytes+=owned.byteLength;if(!rootFailed)framer.feed(owned);}catch(e){rootFailed=true;body=null;fail(errorCode(e));}finally{active=false;}},finish(){if(active||closed)throw new WireError('stream-closed');closed=true;let boundary=false;if(!rootFailed)try{framer.finish();boundary=true;}catch(e){rootFailed=true;fail(errorCode(e));}if(rawBytes!==expectedBytes){boundary=false;fail('input-length');}if(mode.sequenceStart)try{budget.repeatedWork(1,0);transitionHash.update('sequence-start-v6:'+JSON.stringify(mode.sequenceStart)+'\n','ascii');}catch(e){fail(errorCode(e));}const good=failure===null&&!semanticFailed&&!rootFailed;const result={...(rawDropV8?{rawDropInventory:good?{status:'complete-supported-header-declarations' as const,facts:rawDropFacts,nonzeroDeclarations:rawDropFacts.length,explainedDeclarations:rawDropFacts.filter(row=>row.classification==='explained').length,unexplainedDeclarations:rawDropFacts.filter(row=>row.classification==='unexplained').length,contradictoryDeclarations:0}:unavailableRawDropInventory()}:{}),...(evidenceV7?{evidenceInventory:{status:good?'complete-supported-observations' as const:'unavailable' as const,observations:good?observations:[]}}:{}),...(mode.sequenceStart?{sequenceStart:mode.sequenceStart}:{}),policy:rawDropV8?WHOLE_USER_TIMING_V8_POLICY:evidenceV7?WHOLE_USER_TIMING_V7_POLICY:userTiming===3?WHOLE_USER_TIMING_V6_POLICY:userTiming===2?WHOLE_USER_TIMING_V5_POLICY:provenance?WHOLE_USER_TIMING_V4_POLICY:diagnosticV3?WHOLE_USER_TIMING_V3_POLICY:userTiming?WHOLE_USER_TIMING_POLICY:WHOLE_ANNOTATION_POLICY,status:good?'whole-annotation-study' as const:'unavailable' as const,reason:failure,inputRef:{bytes:rawBytes,sha256:rawHash.digest('hex')},framingBoundaryComplete:boundary,physicalEOF:false as const,structuralContainerEOF:false as const,semanticProcessing:good?'complete-supported-schema':'unavailable',markInventoryAdmission:good?withheld?'withheld':'resolved-supported-roots':'not_evaluated',counters,budgets:budget.usage,packetManifestSHA256:packetHash.digest('hex'),transitionManifestSHA256:transitionHash.digest('hex'),anchors,candidates:good?candidates:[],diagnostics,authority:WHOLE_ANNOTATION_AUTHORITY};body=null;try{admitWholeOutput(result);}catch(e){fail(errorCode(e));result.status='unavailable';result.reason=failure;result.semanticProcessing='unavailable';result.markInventoryAdmission='not_evaluated';result.candidates=[];if(result.evidenceInventory)result.evidenceInventory={status:'unavailable',observations:[]};if(result.rawDropInventory)result.rawDropInventory=unavailableRawDropInventory();admitWholeOutput(result);}return freezeOwned(result);}});
+ return Object.freeze({feed(input:unknown):void{if(active){rootFailed=true;fail('stream-reentry');throw new WireError('stream-reentry');}if(closed)throw new WireError('stream-closed');active=true;try{if(counters.feedCalls>=4096)throw new WireError('read-capacity');counters.feedCalls++;const owned=copyWholeAnnotationChunk(input);if(owned.byteLength>expectedBytes-rawBytes)throw new WireError('byte-capacity');rawHash.update(owned);rawBytes+=owned.byteLength;if(!rootFailed)framer.feed(owned);}catch(e){rootFailed=true;body=null;fail(errorCode(e));}finally{active=false;}},finish(){if(active||closed)throw new WireError('stream-closed');closed=true;let boundary=false;if(!rootFailed)try{framer.finish();boundary=true;}catch(e){rootFailed=true;fail(errorCode(e));}if(rawBytes!==expectedBytes){boundary=false;fail('input-length');}if(mode.sequenceStart)try{budget.repeatedWork(1,0);transitionHash.update('sequence-start-v6:'+JSON.stringify(mode.sequenceStart)+'\n','ascii');}catch(e){fail(errorCode(e));}const good=failure===null&&!semanticFailed&&!rootFailed;const result={...(projection?{clock3Projection:projection.finish(good,candidates,observations)}:{}),...(rawDropV8?{rawDropInventory:good?{status:'complete-supported-header-declarations' as const,facts:rawDropFacts,nonzeroDeclarations:rawDropFacts.length,explainedDeclarations:rawDropFacts.filter(row=>row.classification==='explained').length,unexplainedDeclarations:rawDropFacts.filter(row=>row.classification==='unexplained').length,contradictoryDeclarations:0}:unavailableRawDropInventory()}:{}),...(evidenceV7?{evidenceInventory:{status:good?'complete-supported-observations' as const:'unavailable' as const,observations:good?observations:[]}}:{}),...(mode.sequenceStart?{sequenceStart:mode.sequenceStart}:{}),policy:clock3Config?NATIVE_CLOCK3_PHASE_POLICY:rawDropV8?WHOLE_USER_TIMING_V8_POLICY:evidenceV7?WHOLE_USER_TIMING_V7_POLICY:userTiming===3?WHOLE_USER_TIMING_V6_POLICY:userTiming===2?WHOLE_USER_TIMING_V5_POLICY:provenance?WHOLE_USER_TIMING_V4_POLICY:diagnosticV3?WHOLE_USER_TIMING_V3_POLICY:userTiming?WHOLE_USER_TIMING_POLICY:WHOLE_ANNOTATION_POLICY,status:good?'whole-annotation-study' as const:'unavailable' as const,reason:failure,inputRef:{bytes:rawBytes,sha256:rawHash.digest('hex')},framingBoundaryComplete:boundary,physicalEOF:false as const,structuralContainerEOF:false as const,semanticProcessing:good?'complete-supported-schema':'unavailable',markInventoryAdmission:good?withheld?'withheld':'resolved-supported-roots':'not_evaluated',counters,budgets:budget.usage,packetManifestSHA256:packetHash.digest('hex'),transitionManifestSHA256:transitionHash.digest('hex'),anchors,candidates:good?candidates:[],diagnostics,authority:WHOLE_ANNOTATION_AUTHORITY};body=null;try{admitWholeOutput(result);}catch(e){fail(errorCode(e));result.status='unavailable';result.reason=failure;result.semanticProcessing='unavailable';result.markInventoryAdmission='not_evaluated';result.candidates=[];if(result.clock3Projection)result.clock3Projection={reason:'clock3-core-unavailable',projection:null};if(result.evidenceInventory)result.evidenceInventory={status:'unavailable',observations:[]};if(result.rawDropInventory)result.rawDropInventory=unavailableRawDropInventory();admitWholeOutput(result);}return freezeOwned(result);}});
 }
 
 /** Bounded owned-JSON structure guard; not a closed-schema/source authenticator. */

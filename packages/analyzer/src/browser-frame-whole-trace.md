@@ -173,3 +173,46 @@ capacity refusal without extending the legacy closed failure-code vocabulary.
 Complete supported observations are diagnostic raw evidence, not proof of capture
 completeness. Clock normalization, target binding, presented-frame enumeration,
 duration and FPS remain unavailable, and native/scoring authority remains false.
+# Private Clock3 instant phase alignment
+
+`@chat-ui-bench/analyzer/internal/native-clock3-phase` exports
+`readNativeClock3PhaseAlignment(reference, [exactStart, exactEnd], policy)` and
+`NATIVE_CLOCK3_PHASE_POLICY` (`native-clock3-phase-alignment-diagnostic-v1`).
+This separate owned-file diagnostic projects exact `BeginFrame` and `DrawFrame`
+type3 instants and the two UserTiming marks into raw clock3. It returns exact
+packet, name/default/track/epoch/snapshot witnesses and observed counts before,
+inside or after the half-open mark interval. These are whole-file observations;
+root ownership, complete opportunity populations and FPS remain unavailable.
+
+The supported profile is one absent-machine namespace, nonincremental builtin3
+in ns and sequence-local64/65 declared with1000ns units. Local64 accumulates all
+eligible packet deltas, including unselected events, descriptors and packets
+without TrackEvents; local65 is absolute. Same-sequence snapshot anchors retain
+their full nanosecond residual. Explicit3/65 packets do not advance64. Snapshot
+packets are processed after reset/default/intern updates and return before both
+invalid-NEEDS bypass and generic timestamp conversion; their header timestamps
+do not advance64. A reset needs fresh anchors/defaults. A direct3 BeginFrame can
+be backdated before a local anchor without being reinterpreted as a delta.
+
+Packet clock0 falls back to a valid current sequence default with explicit-zero
+presence preserved. Missing/zero/invalid defaults and selected clock6 refuse;
+equal3/6 snapshot readings do not authorize general extrapolation. Snapshot
+clock0, explicit multiplier0, inconsistent units/incrementality, missing anchors,
+unexplained loss, ambiguous selected names/tracks, noninstant selected names,
+int64 arithmetic overflow and unsupported machine/clock semantics refuse.
+Legitimate unnamed slice ends/counters remain unselected while their applicable
+packet deltas are processed.
+
+The projection shares the existing128 candidate ceiling with the retained
+UserTiming inventory, including its two exact phase marks. A fully resolved
+unrelated UserTiming literal remains unselected for phase binding and consumes
+its inherited inventory capacity; its applicable packet delta is still processed.
+An unresolved potential phase name refuses. Original32MiB file,64 sequence,128 observation/512 clock entry,
+work/UTF8 and256KiB serialized-output limits remain unchanged. A late failure,
+including original file EOF/hash/identity/close or output admission failure,
+withdraws every normalized row and count. No prefix, retry or capacity extension
+is admitted. The full ordered pass, original reader and parser/interpretation
+source pins are reused; V6/V7/V8 outputs and native collector selection remain
+separate. Producer snapshot semantics and recorded vendor-source correspondence
+remain explicit assumptions; input origin is unauthenticated. No rate, physical
+duration, presentation success, evaluation, ranking or FPS authority is added.

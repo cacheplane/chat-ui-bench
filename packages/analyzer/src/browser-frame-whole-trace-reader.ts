@@ -3,6 +3,8 @@ import fs from'node:fs';import{types}from'node:util';import{createHash}from'node
 import{resolve}from'node:path';
 import{createWholeUserTimingStudyV8,WHOLE_USER_TIMING_V8_POLICY,createWholeUserTimingStudyV7,WHOLE_USER_TIMING_V7_POLICY,createWholeUserTimingStudyV6,WHOLE_USER_TIMING_V6_POLICY,createWholeUserTimingStudyV5,WHOLE_USER_TIMING_V5_POLICY,createWholeUserTimingStudyV4,WHOLE_USER_TIMING_V4_POLICY,createWholeUserTimingStudyV3,WHOLE_USER_TIMING_V3_POLICY}from'./browser-frame-ordered-state.js';
 import type{WholeAnnotationStudy,WholeUserTimingStudyV3,WholeUserTimingStudyV4,WholeUserTimingStudyV5,WholeUserTimingStudyV6,WholeUserTimingStudyV7,WholeUserTimingStudyV8}from'./browser-frame-ordered-state.js';
+import{createNativeClock3PhaseStudy,nativeClock3Names,NATIVE_CLOCK3_PHASE_POLICY}from'./browser-frame-ordered-state.js';
+import type{NativeClock3Projection}from'./browser-frame-ordered-state.js';
 export{isClosedStudyFailureCode}from'./browser-frame-ordered-state.js';
 export type{ClosedStudyFailureCode}from'./browser-frame-ordered-state.js';
 import{createD0StructuralStudy,D0_POLICY,D0_LIMITS,D0_AUTHORITY,encodeD0Result,type D0Result}from'./browser-frame-whole-trace.js';
@@ -99,6 +101,31 @@ export function readWholeUserTimingTraceV7(value:unknown,policy:unknown) {
 export type WholeUserTimingTraceV8=TracePolicy<WholeUserTimingTraceV7,typeof WHOLE_USER_TIMING_V8_POLICY,WholeUserTimingStudyV8>;
 export function readWholeUserTimingTraceV8(value:unknown,policy:unknown) {
  return readWholeAnnotationEngine(value,policy,3,true,true,true,true) as WholeUserTimingTraceV8;
+}
+/** Separate private diagnostic; never a replacement decoder/collector policy. */
+export function readNativeClock3PhaseTrace(value:unknown,names:unknown,policy:unknown) {
+ let reason:string|null=null,ref:Reference|null=null,study:ReturnType<ReturnType<typeof createNativeClock3PhaseStudy>['finish']>|null=null;
+ let out:ReturnType<typeof readOwnedFile>={reason:null,EOF:false,closed:false,identityMatch:false,hashMatch:false,reads:0,bytes:0,hash:null,before:null,after:null};
+ const tuple=nativeClock3Names(names);
+ if(policy!==NATIVE_CLOCK3_PHASE_POLICY)reason='unsupported-policy';else if(!tuple)reason='invalid-mark-names';
+ else try{ref=reference(value);}catch{reason='invalid-reference';}
+ if(ref&&tuple){const s=createNativeClock3PhaseStudy(ref.bytes,tuple,NATIVE_CLOCK3_PHASE_POLICY);out=readOwnedFile(ref,s);reason=out.reason;study=s.finish();}
+ const fullInputVerified=reason===null&&out.EOF&&out.closed&&out.identityMatch&&out.hashMatch;
+ const complete=fullInputVerified&&study?.status==='whole-annotation-study'&&study.framingBoundaryComplete;
+ if(!complete)reason??=study?.reason??'whole-annotation-unavailable';
+ if(complete&&study){
+  if(study.rawDropInventory?.status!=='complete-supported-header-declarations'||study.rawDropInventory.unexplainedDeclarations!==0||study.rawDropInventory.contradictoryDeclarations!==0)reason='clock3-raw-drop';
+  else if(study.sequenceStart?.unexplained!==0||study.sequenceStart.contradictions!==0)reason='clock3-sequence-state';
+  else if(study.markInventoryAdmission!=='resolved-supported-roots')reason='clock3-mark-inventory';
+  else reason=study.clock3Projection?.reason??null;
+ }
+ const projection:NativeClock3Projection|null=complete&&reason===null?study?.clock3Projection?.projection??null:null;
+ if(!projection)reason??='clock3-projection-unavailable';
+ const retainedStudy=study===null?null:((({clock3Projection:_,...rest})=>rest)(study));
+ if(!complete&&retainedStudy){retainedStudy.status='unavailable';retainedStudy.reason=reason;retainedStudy.semanticProcessing='unavailable';retainedStudy.markInventoryAdmission='not_evaluated';retainedStudy.candidates=[];if(retainedStudy.evidenceInventory)retainedStudy.evidenceInventory={status:'unavailable',observations:[]};if(retainedStudy.rawDropInventory)retainedStudy.rawDropInventory={status:'unavailable',facts:[],nonzeroDeclarations:null,explainedDeclarations:null,unexplainedDeclarations:null,contradictoryDeclarations:null};}
+ const result={policy:NATIVE_CLOCK3_PHASE_POLICY,status:projection?'native-clock3-phase-alignment-diagnostic':'unavailable',reason,fullInputVerified,structuralContainerEOF:fullInputVerified&&study?.framingBoundaryComplete===true,
+  reader:{kind:'source-owned-persisted-file',EOF:out.EOF,closed:out.closed,identityMatch:out.identityMatch,hashMatch:out.hashMatch,reads:out.reads,bytes:out.bytes,sha256:out.hash,before:out.before,after:out.after},study:retainedStudy,projection,inputOrigin:'not_authenticated',authority:WHOLE_ANNOTATION_AUTHORITY};
+ try{return finishWholeAnnotationOutput(result);}catch{return finishWholeAnnotationOutput({...result,status:'unavailable',reason:'result-capacity',projection:null,study:null});}
 }
 // Numeric2 selects V5 metadata validation without adding an engine argument.
 function readWholeAnnotationEngine(value:unknown,policy:unknown,userTiming:boolean|2|3,diagnosticV3=false,provenance=false,evidenceV7=false,rawDropV8=false){

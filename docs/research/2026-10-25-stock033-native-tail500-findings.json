@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "diagnosticOnly": true,
+  "product": {
+    "id": "threadplane-stock-0.3.3",
+    "basePackage": "@threadplane/chat@0.3.3",
+    "fixtureMessages": 100
+  },
+  "cohorts": {
+    "tail": {
+      "captureSourceRevision": "4ed79ad73456b84e461d0d5a24f36d16ab17e18f",
+      "collectionPolicy": "native-post-phase-tail-500ms-v1",
+      "trace": {
+        "bytes": 233200,
+        "sha256": "936e52d56cf71b75a64e9440364f0838611ec95572ff633de7aa7198856ede95"
+      },
+      "observedDisplayGroups": 4,
+      "sixStepCompleteDisplayGroups": 4,
+      "incompleteDisplayGroups": 0,
+      "evidence": {
+        "release": "https://github.com/cacheplane/chat-ui-bench/releases/tag/stock033-native-tail500-verification-20261025-a",
+        "archive": "chat-ui-bench-stock033-native-tail500-main4ed79ad-20261025-a.zip",
+        "bytes": 2140269,
+        "sha256": "e3398390255a23dabe50bb91a2e15a0710d99081ce751b1b9a3eb3713a2ffe47",
+        "members": 353,
+        "downloadCrcAndAllMemberHashesVerified": true
+      },
+      "actualTailReceipt": {
+        "requestedMs": 500,
+        "state": "fulfilled",
+        "binding": "Actual owner receipt through original worker stdout and closed outer receipt; nonce/request/manifest/source/trace verified"
+      },
+      "workerMode": "real-chat-history100-tail500-v1",
+      "preparationMode": "real-chat-history100-stock-033-v2-tail500-v1"
+    },
+    "baseline": {
+      "captureSourceRevision": "a62bd42b9f30c373a75a06a17d889344f1ec53c7",
+      "collectionPolicy": null,
+      "trace": {
+        "bytes": 209659,
+        "sha256": "4b65eff86ca03488d2d2a19f8daef285a5bd012efffa00576f9f9c6f812ac1ac"
+      },
+      "observedDisplayGroups": 4,
+      "sixStepCompleteDisplayGroups": 3,
+      "incompleteDisplayGroups": 1,
+      "evidence": {
+        "release": "https://github.com/cacheplane/chat-ui-bench/releases/tag/stock033-native-v2-baseline-20261025-b",
+        "archive": "chat-ui-bench-stock033-native-v2-baseline-a62bd42-20261025-a.zip",
+        "bytes": 2020698,
+        "sha256": "8d9ac385bd7ca76e615403a3b9b4de66583966b339f10f04141963d78d5ff5ad",
+        "members": 342,
+        "downloadCrcAndAllMemberHashesVerified": true
+      },
+      "workerMode": "real-chat-history100-v1",
+      "preparationMode": "real-chat-history100-stock-033-v2"
+    }
+  },
+  "pairedContent": {
+    "history": {
+      "bytes": 57841,
+      "sha256": "3d50a4ad0ccaf65b89e622ae451170a66c4c0e605c80771de3da8b8ba3f1202f",
+      "byteEqual": true
+    },
+    "compiledFixture": {
+      "bytes": 879089,
+      "sha256": "24a8026709e271e7dfb09296654cd3160a6532b1ca40459066e031321a5b6df0",
+      "byteEqual": true
+    },
+    "productAssets": {
+      "count": 12,
+      "allArchivedBytesEqual": true
+    }
+  },
+  "tailObservedGraph": {
+    "scope": "Within this exact trace; imported IDs are not cross-capture identities",
+    "mainFrameDrawInvocations": 21,
+    "submittedInvocations": 4,
+    "invocationBoundNonproduction": {
+      "count": 17,
+      "reasons": {
+        "SKIPPED_REASON_NO_DAMAGE": 3,
+        "SKIPPED_REASON_WAITING_ON_MAIN": 14
+      }
+    },
+    "allTargetNonproduction": {
+      "count": 19,
+      "reasons": {
+        "SKIPPED_REASON_WAITING_ON_MAIN": 14,
+        "SKIPPED_REASON_NO_DAMAGE": 5
+      }
+    },
+    "reporterRecords": {
+      "count": 22,
+      "states": {
+        "STATE_NO_UPDATE_DESIRED": 5,
+        "STATE_PRESENTED_ALL": 2,
+        "STATE_PRESENTED_PARTIAL": 2,
+        "STATE_DROPPED": 13
+      },
+      "interpretation": "Typed reporting states, not dropped-frame counts or an FPS population"
+    },
+    "surfaceMatchedReporterMultiplicitiesInSubmissionOrder": [
+      1,
+      2,
+      1,
+      0
+    ],
+    "duplicateSurfaceReporterDisplayIdsDistinct": true,
+    "displaySteps": [
+      "STEP_DRAW_AND_SWAP",
+      "STEP_SURFACE_AGGREGATION",
+      "STEP_SEND_BUFFER_SWAP",
+      "STEP_BUFFER_SWAP_POST_SUBMIT",
+      "STEP_FINISH_BUFFER_SWAP",
+      "STEP_SWAP_BUFFERS_ACK"
+    ],
+    "negativeImportedTargetOrScopeContextDurations": 0
+  },
+  "tailDiagnostics": {
+    "ownedInput": {
+      "EOF": true,
+      "hashMatch": true,
+      "identityMatch": true,
+      "closed": true
+    },
+    "v6": {
+      "status": "complete-whole-annotation-diagnostic",
+      "fullInputVerified": true,
+      "packets": 4982,
+      "literalPhaseMarks": 2
+    },
+    "v7v8": {
+      "status": "unavailable",
+      "reason": "invalid-whole-annotation-input",
+      "failurePacketIndex": 4723,
+      "unchangedObservationLimit": 128,
+      "independentRawMetadataObservationCount": 152,
+      "independentClockEntryCount": 67,
+      "firstOverLimit": {
+        "ordinal": 129,
+        "packetIndex": 4723,
+        "fieldNumber": 60,
+        "bodySha256": "0b1b3608f83d776411c9a7eafb7efaecd839caf36a2b84b89985d1bec65a3462"
+      },
+      "rawDropCounts": null,
+      "phaseIntervalNs": null,
+      "intervalReason": "study-unavailable"
+    },
+    "officialPerfetto": {
+      "version": "59.1",
+      "interpretationRevision": "1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d",
+      "processorSha256": "8488edbefadfc4be152cda1d42d9bfcede8b47638295eb85eb3bad8cd148fdf4",
+      "stdoutLimitBytes": 262144,
+      "exports": [
+        {
+          "policy": "target-inventory-v1",
+          "status": "success",
+          "stdoutBytes": 211002,
+          "stdoutSha256": "99f69ab1cab76e717d72635757d40bb74e2b874ef1f6002612ca233195f05dda",
+          "sqlSourceSha256": "f1fe2faaadcc68c57933ef51fd087ea795bc704416f9375c7b115d888acf3db9",
+          "tableRowCounts": [
+            8,
+            221,
+            1112,
+            51,
+            21,
+            1,
+            5
+          ]
+        },
+        {
+          "policy": "scope-inventory-compact-v1",
+          "status": "success",
+          "stdoutBytes": 168658,
+          "stdoutSha256": "78cd5efbc16733895ef84cd7cd8f34547e687611e970b98f293e8e881139039f",
+          "sqlSourceSha256": "eb465cc5ecd17e15fc661399c146a419b386f9b389becc08c1d2a5d504d10af9",
+          "tableRowCounts": [
+            5,
+            471,
+            1315,
+            53,
+            21,
+            1
+          ]
+        }
+      ]
+    },
+    "exactCommonImportedRecords": 166,
+    "exactCommonRawArgumentRows": 705
+  },
+  "authority": {
+    "fps": null,
+    "genericDurationNs": null,
+    "clockNormalizationAdmitted": false,
+    "temporalRootOwnershipAdmitted": false,
+    "presentationPopulationAdmitted": false,
+    "scoringEligible": false,
+    "rankingEligible": false
+  },
+  "limitations": [
+    "Single acquisition per fresh cohort; observed coverage comparison is not a causal estimate.",
+    "The fixed tail can collect later opportunities or move the right edge; six explicit display steps do not establish presentation completeness.",
+    "Headless SwiftShader does not establish physical scanout or physical display FPS.",
+    "Phase/carry-in/out membership, root lifetime, source generation, deduplication and complete emission coverage remain unresolved.",
+    "Historical b69, stock0.3.2 and modified-layout evidence remain separate."
+  ]
+}
