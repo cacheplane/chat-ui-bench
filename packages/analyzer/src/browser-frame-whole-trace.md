@@ -216,3 +216,69 @@ source pins are reused; V6/V7/V8 outputs and native collector selection remain
 separate. Producer snapshot semantics and recorded vendor-source correspondence
 remain explicit assumptions; input origin is unauthenticated. No rate, physical
 duration, presentation success, evaluation, ranking or FPS authority is added.
+
+## Explicit V9 compact evidence and private Clock3 v2
+
+`createWholeUserTimingStudyV9` and `readWholeUserTimingTraceV9` select
+`WHOLE_USER_TIMING_V9_POLICY`, whose exact value is
+`pinned-whole-trace-user-timing-compact-evidence-diagnostic-v9`. The factory and
+policy live in ordered-state; the reader uses the existing private
+`@chat-ui-bench/analyzer/internal/whole-annotation` entry. The existing private
+`internal/native-clock3-phase` entry also exports
+`readNativeClock3PhaseAlignmentV2(reference, [exactStart, exactEnd], policy)` and
+`NATIVE_CLOCK3_PHASE_V2_POLICY`
+(`native-clock3-phase-alignment-diagnostic-v2`). These require explicit selection;
+a failed V7, V8 or Clock3 v1 call is never retried with a newer policy. Native
+collection continues to select V6.
+
+V9 has a separate frozen `evidenceInventory` with `version: 1`, status
+`complete-supported-compact-observations` or `unavailable`, `facts` and ordered
+`occurrences`. Each fact retains a complete supported snapshot or descriptor
+payload, including kind, optional scalar presence, exact decimal values and
+original nested property order. Each occurrence has these fixed tuple columns:
+
+| Index | Value |
+|---|---|
+| 0 | Fact dictionary index |
+| 1 | Packet index |
+| 2 | Original packet body SHA256 |
+| 3 | Exact machine id string, or null for absent machine |
+| 4 | `[sequenceId, sequenceIndex, intervalVersion]`, or null for absent sequence |
+| 5 | Original optional timing/reset/drop/first headers in `packetFields` |
+| 6 | `[scope, fieldNumber, wireType, start, valueStart, end]` in the packet body |
+
+The location's packet index is column 1. Explicit machine 0 differs from absence;
+zero, false and missing packet headers remain distinct. Occurrence order,
+locations, context, body hashes and duplicate multiplicity are retained even
+when payload facts repeat. No UUID, clock id or hash substitutes for full fact
+equality. Source-created iteration reconstructs one original observation at a
+time; production does not expand the complete inventory into an observation or
+matching-descriptor array. Snapshot staging still sees every original live row.
+
+The new version admits at most 128 distinct facts and 256 occurrences, with 512
+clock entries counted across every occurrence, including repeated snapshots.
+These separate versioned limits do not reinterpret the old 128-observation cap:
+V7, V8 and Clock3 v1 retain their original outputs and refusals. V9 charges each
+full original observation's persistence bytes, plus bounded dictionary-key and
+tuple/reference overhead; iterator work is charged too. The original 32 MiB input,
+field/repeated-work/persistence budgets, sequence/default/disclosure/candidate
+limits and combined output guards remain unchanged: 256 KiB serialized JSON,
+65536 aggregate key/value UTF8 bytes, 32768 nodes, 4096 objects and depth 16.
+Compact evidence, raw drops, candidates and projection state are admitted
+together, followed by the complete study, owned-reader and facade envelopes.
+
+Whole-study semantic or resource failure atomically withdraws compact evidence,
+candidates, raw-drop facts and projection. Existing whole-file hashing/framing
+continues; original EOF/hash/identity/close failures also withdraw retained
+payloads. Reader/facade envelope refusal removes study and projection together.
+Projection-only refusal withdraws normalized rows/counts without promoting valid
+raw evidence into a successful projection. No successful clipped prefix is
+published. V8 raw-drop declarations and their classification remain unchanged.
+
+Clock3 v2 uses the same absent-machine builtin 3 and same-sequence local 64/65
+profile, units, epoch/default/anchor checks, arithmetic, descriptor identity and
+joint 128 candidate ceiling. It adds no selected clock 6 alias or extrapolation.
+The new `reviewedCompactEvidence` compatibility record supplements the unchanged
+historical implementation pins. Storage admission establishes no producer or
+target authenticity, presentation success, FPS, rate, metric, native-support,
+evaluation, scoring or ranking authority.

@@ -3,6 +3,7 @@ import fs from 'node:fs';import os from 'node:os';import path from 'node:path';i
 import * as reader from './browser-frame-whole-trace-reader.js';
 import {createNativeClock3PhaseStudy} from './browser-frame-ordered-state.js';
 import {readNativeClock3PhaseAlignment,NATIVE_CLOCK3_PHASE_POLICY} from './browser-frame-native-clock3.js';
+import * as native from './browser-frame-native-clock3.js';
 import {body,join,text,uint} from './browser-frame-packet-fragments.test-helper.js';
 
 const packet=(seq:bigint,...fields:Uint8Array[])=>join(uint(10,seq),...fields);
@@ -32,7 +33,7 @@ function owned(packets:Uint8Array[],run:(ref:{path:string;bytes:number;sha256:st
  try{run({path:file,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')},file);}finally{vi.restoreAllMocks();fs.rmSync(dir,{recursive:true,force:true});}
 }
 const read=(value:unknown,names:unknown=['start','end'],policy:unknown=NATIVE_CLOCK3_PHASE_POLICY)=>readNativeClock3PhaseAlignment(value,names,policy) as any;
-function refused(packets:Uint8Array[],reason?:string){owned(packets,ref=>{const r=read(ref);expect(r.status).toBe('unavailable');expect(r.projection).toBeNull();if(reason)expect(r.reason).toBe(reason);});}
+function refused(packets:Uint8Array[],reason?:string){owned(packets,ref=>{for(const r of [read(ref),native.readNativeClock3PhaseAlignmentV2(ref,['start','end'],native.NATIVE_CLOCK3_PHASE_V2_POLICY)]){expect(r.status).toBe('unavailable');expect(r.projection).toBeNull();if(reason)expect(r.reason).toBe(reason);}});}
 afterEach(()=>vi.restoreAllMocks());
 
 test('separate native clock3 reader selection exists without replacing V8',()=>{
@@ -103,3 +104,7 @@ test('private boundary rejects forged JSON, wrong policy and hostile names befor
  expect(traps).toBe(0);expect(open).not.toHaveBeenCalled();expect(read({status:'success'})).toMatchObject({status:'unavailable',reason:'invalid-reference',projection:null});expect(read(ref,['start','end'],'other')).toMatchObject({status:'unavailable',reason:'unsupported-policy',projection:null});expect(open).not.toHaveBeenCalled();
 }));
 test.each(['hash','bytes','symlink','hardlink','read','close','identity','EOF'])('owned %s failure withdraws phase and native rows',kind=>owned(fixture(),(ref,file)=>{if(kind==='hash')ref.sha256='0'.repeat(64);if(kind==='bytes')ref.bytes--;if(kind==='symlink'){fs.renameSync(file,file+'.real');fs.symlinkSync(file+'.real',file);}if(kind==='hardlink')fs.linkSync(file,file+'.other');if(kind==='read'){const original=fs.readSync;let n=0;vi.spyOn(fs,'readSync').mockImplementation((...args)=>{if(++n===2)throw Error();return original(...args);});}if(kind==='close'){const original=fs.closeSync;vi.spyOn(fs,'closeSync').mockImplementation(fd=>{original(fd);throw Error();});}if(kind==='identity'){const original=fs.fstatSync;let n=0;vi.spyOn(fs,'fstatSync').mockImplementation((...args)=>{const s=original(...args);if(++n===2&&typeof s.ctimeNs==='bigint')s.ctimeNs++;return s;});}if(kind==='EOF'){const original=fs.readSync;let n=0;vi.spyOn(fs,'readSync').mockImplementation((...args)=>++n===2?1:original(...args));}expect(read(ref)).toMatchObject({status:'unavailable',projection:null});}));
+
+test('explicit clock3-v2 retains the exact v1 authored projection with compact evidence',()=>owned(fixture(),ref=>{const old=read(ref),r=native.readNativeClock3PhaseAlignmentV2(ref,['start','end'],native.NATIVE_CLOCK3_PHASE_V2_POLICY);expect(r.status).toBe('native-clock3-phase-alignment-diagnostic');expect(r.projection).toEqual(old.projection);expect(r.compatibility.implementation).toBe('reviewedCompactEvidence');expect(r.study?.evidenceInventory).toMatchObject({status:'complete-supported-compact-observations',version:1});expect(r.authority.FPS).toBe('unavailable');}));
+test('clock3-v2 folds high duplicate phase descriptors without losing multiplicity',()=>{const p=fixture();p.push(...Array.from({length:200},()=>packet(7n,descriptor())));owned(p,ref=>{expect(read(ref).status).toBe('unavailable');const r=native.readNativeClock3PhaseAlignmentV2(ref,['start','end'],native.NATIVE_CLOCK3_PHASE_V2_POLICY);expect(r.status).toBe('native-clock3-phase-alignment-diagnostic');expect(r.study?.evidenceInventory.occurrences.length).toBeGreaterThan(200);expect(r.projection?.rows).toHaveLength(4);});});
+test.each(['unresolved','clock6','conflict','late-malformed'])('clock3-v2 retains %s semantic refusal',kind=>{const p=fixture();if(kind==='unresolved')p[5]=packet(7n,uint(8,10n),body(11,join(uint(9,3n),uint(3,999n))));else if(kind==='clock6')p[7]=packet(7n,uint(8,1015250n),uint(58,6n),event('DrawFrame'));else if(kind==='conflict')p.push(packet(7n,body(60,join(uint(1,100n),uint(5,200n),body(4,join(uint(1,20n),uint(2,99n)))))));else p.push(Uint8Array.of(0));owned(p,ref=>{const r=native.readNativeClock3PhaseAlignmentV2(ref,['start','end'],native.NATIVE_CLOCK3_PHASE_V2_POLICY);expect(r.status).toBe('unavailable');expect(r.projection).toBeNull();});});

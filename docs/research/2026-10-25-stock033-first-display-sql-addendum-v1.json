@@ -1,0 +1,207 @@
+{
+  "schema": 1,
+  "analysisPolicy": "stock033-first-display-source-clarification-v1",
+  "diagnosticOnly": true,
+  "priorArtifacts": [
+    {
+      "path": "/private/tmp/chat-ui-bench-presentation-associations-20261025/2026-10-25-stock033-presentation-origin-associations.json",
+      "sha256": "bfc406fb7f09c56d426a2b27523f62cb32b3ed3a8055a55a0aa9d4b9b29cc104"
+    },
+    {
+      "path": "/private/tmp/chat-ui-bench-presentation-associations-20261025/2026-10-25-stock033-presentation-origin-associations.md",
+      "sha256": "8823f854e642a62f5b6830933ca21b5ac7bda186d23d506dfd775ccf55daed0f"
+    },
+    {
+      "path": "/private/tmp/chat-ui-bench-presentation-associations-20261025/2026-10-25-stock033-presentation-origin-associations.py",
+      "sha256": "6255b8eabac1dfbee8841624d2a278eefecbffe779fe6a9f9fde746995d5b882"
+    }
+  ],
+  "sources": [
+    {
+      "path": "perfetto-v59.1__graphics_pipeline.sql",
+      "url": "https://raw.githubusercontent.com/google/perfetto/v59.1/src/trace_processor/perfetto_sql/stdlib/chrome/graphics_pipeline.sql",
+      "bytes": 6544,
+      "sha256": "ee1441cd6268d2d21433cfb9095b6c69a58e8b0ce46e3f87b0c9f6d11959c921"
+    },
+    {
+      "path": "chromium__trace_id_helper.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/trace_event/trace_id_helper.cc?format=TEXT",
+      "bytes": 550,
+      "sha256": "0a28a03fc161c66261c4085f10ecde35fffccd4bc7618e84055ae99eff941309"
+    },
+    {
+      "path": "chromium__trace_id_helper.h",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/trace_event/trace_id_helper.h?format=TEXT",
+      "bytes": 815,
+      "sha256": "a412c4d8424fd702b8358e69e083c5dbe3ead4391fd9db1f40793df04553c88e"
+    },
+    {
+      "path": "sqlite-lang_select.html",
+      "url": "https://www.sqlite.org/lang_select.html",
+      "bytes": 2033807,
+      "sha256": "f850d5a0e9441d348535494f9c647ea90548a03a1c7bd51cdac6c7943e6dc785",
+      "qualification": "Official SQLite documentation retrieved2026-10-25; not source-pinned to processor binary"
+    },
+    {
+      "path": "sqlite-windowfunctions.html",
+      "url": "https://www.sqlite.org/windowfunctions.html",
+      "bytes": 923326,
+      "sha256": "541a738f7fd26efca132111ef51e74c2a3233054faa3471ee88f9696ebe97e98",
+      "qualification": "Official SQLite documentation retrieved2026-10-25; not source-pinned to processor binary"
+    }
+  ],
+  "exactPinnedStdlibRule": {
+    "displayStepDeduplication": {
+      "lines": [
+        100,
+        129
+      ],
+      "partition": [
+        "display_trace_id",
+        "step",
+        "utid"
+      ],
+      "ordering": "ts DESC",
+      "keep": "row_number=1",
+      "tieBreaker": null
+    },
+    "aggregationOccurrences": {
+      "lines": [
+        143,
+        155
+      ],
+      "fields": [
+        "args.int_value AS surface_frame_trace_id",
+        "display_trace_id",
+        "slice.ts"
+      ],
+      "stepFilter": "STEP_SURFACE_AGGREGATION",
+      "flatKeyFilter": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids"
+    },
+    "projection": {
+      "lines": [
+        157,
+        162
+      ],
+      "select": "surface_frame_trace_id, first_value(display_trace_id) OVER (PARTITION BY surface_frame_trace_id ORDER BY ts) AS display_trace_id",
+      "groupBy": "surface_frame_trace_id",
+      "traceIdUsedAsTimeOrdering": false
+    },
+    "SQLSemanticInterpretation": "GROUP BY leaves one representative result row per surface. The window partition by the same surface cannot choose among original membership rows after grouping. Unaggregated display/ts representative is unspecified by ordinary SQLite semantics.",
+    "semanticEvidenceQualification": "Current official SQLite docs, not pinned to processor binary. Exact implementation-specific row choice unproven."
+  },
+  "rawMembershipOccurrences": [
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "645",
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]",
+      "originType": "int",
+      "origin": "-1273753029367220387",
+      "display": "-1273753029367220386"
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "645",
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[1]",
+      "originType": "int",
+      "origin": "-1273753029367220271",
+      "display": "-1273753029367220386"
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "903",
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]",
+      "originType": "int",
+      "origin": "-1273753029367220414",
+      "display": "-1273753029367220412"
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "903",
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[1]",
+      "originType": "int",
+      "origin": "-1273753029367220271",
+      "display": "-1273753029367220412"
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "1085",
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]",
+      "originType": "int",
+      "origin": "-1273753029367220410",
+      "display": "-1273753029367220408"
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "1085",
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[1]",
+      "originType": "int",
+      "origin": "-1273753029367220271",
+      "display": "-1273753029367220408"
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "2275",
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]",
+      "originType": "int",
+      "origin": "-1273753029367220590",
+      "display": "-1273753029367220588"
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "2275",
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[1]",
+      "originType": "int",
+      "origin": "-1273753029367220271",
+      "display": "-1273753029367220588"
+    }
+  ],
+  "observedDerivedProjection": [
+    {
+      "surface_frame_trace_id": "-1273753029367220590",
+      "display_trace_id": "-1273753029367220588"
+    },
+    {
+      "surface_frame_trace_id": "-1273753029367220414",
+      "display_trace_id": "-1273753029367220412"
+    },
+    {
+      "surface_frame_trace_id": "-1273753029367220410",
+      "display_trace_id": "-1273753029367220408"
+    },
+    {
+      "surface_frame_trace_id": "-1273753029367220387",
+      "display_trace_id": "-1273753029367220386"
+    },
+    {
+      "surface_frame_trace_id": "-1273753029367220271",
+      "display_trace_id": "-1273753029367220588"
+    }
+  ],
+  "getNextGlobalTraceId": {
+    "chromeRevision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+    "sourceLines": [
+      12,
+      15
+    ],
+    "construction": "process-static random uint64 XOR uint64-cast AtomicSequenceNumber.GetNext()",
+    "numericMonotonicityGuaranteed": false,
+    "chronologyInferencePermitted": false
+  },
+  "unresolved": [
+    "Exact planner/scan choice selecting final display for extra0271 is unproven.",
+    "No binary-pinned SQLite implementation/planner investigation performed."
+  ],
+  "forbiddenInterpretations": [
+    "Guaranteed chronological first or last display",
+    "MIN/MAX selection",
+    "Map overwrite",
+    "Numeric trace IDs as timestamps/order",
+    "Physical scanout or FPS/rate admission"
+  ],
+  "traceQueryIssued": false,
+  "SDKChanged": false,
+  "normalizerChanged": false,
+  "priorArtifactsModified": false,
+  "authorityExpanded": false
+}

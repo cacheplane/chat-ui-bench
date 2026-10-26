@@ -475,6 +475,11 @@ cover a separate 100-message diagnostic fixture. The observed capture has more
 complete terminal-event coverage; reporter ambiguity and strict diagnostic limits
 keep FPS unavailable.
 
+[Presentation-origin associations](docs/research/2026-10-25-stock033-presentation-origin-associations-summary-v1.md)
+keep reporter origins, feedback displays, and all aggregation memberships distinct.
+The [pinned first-display SQL clarification](docs/research/2026-10-25-stock033-first-display-sql-addendum-v1.md)
+explains why its derived projection cannot replace the occurrence ledger.
+
 After building, collect long-thread evidence in a fresh output directory:
 
 ```sh
