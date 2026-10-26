@@ -580,3 +580,97 @@ types/channels follow pinned v59.1
 [`Variadic`](https://github.com/google/perfetto/blob/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/types/variadic.h)
 and
 [`GlobalArgsTracker`](https://github.com/google/perfetto/blob/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/importers/common/global_args_tracker.h).
+
+## Raw metadata ledger v1
+
+`raw-metadata-ledger-v1.mjs` exports the fixed internal diagnostic function
+`await writeRawMetadataLedgerV1({trace: {path, bytes, sha256}, out})`. Paths must
+be canonical physical absolute paths; `out` must be a fresh directory outside
+the checkout and must not contain the input. The function creates directory
+mode 0700 and file mode 0600. It takes no caller limits, decoders or callbacks.
+
+This additive tool visits the complete Trace root and every packet's top-level
+wire fields, and applies the unchanged strict local decoders to every field 6
+ClockSnapshot and field 60 TrackDescriptor occurrence. It preserves repeated
+or conflicting metadata and raw headers in their original order. All other
+payloads and selected decoder-skipped fields remain opaque, with exact byte
+windows and hashes. Even descriptor name field 10 is opaque; this projection
+makes no selected-string UTF8 claim. False, zero, absence, signed/unsigned
+integer strings and clock order survive unchanged.
+
+Each ASCII record is `ordinal:payloadByteLength:payloadSHA256<TAB>JSON<LF>`.
+The compact JSON tuple kinds are HEADER 0, PACKET 1, METADATA 2 and FOOTER 3.
+The header binds the original input byte/hash pair and fixed source manifest;
+the footer binds counts and ordered packet/record commitments. No fact
+dictionary, UUID map, whole-trace inventory or write queue is retained.
+
+A private synchronous fd worker owns parsing, pending ledger writes, input
+physical EOF/hash/close, and one sequential ledger verification pass. Its
+asynchronous supervisor requires original child exit/close and both output
+streams' EOF/close before final file/source checks and admission. Fixed ceilings
+include 32 MiB input, 256 KiB packet, 131072 packets, 131072 metadata records,
+1048576 total field visits, 524288 member operations, 262144 total records,
+256 MiB ledger and 4 Gi byte/step work units. Exact JSON byte preflight also
+enforces `recordBytes <= 512 + 128 * recordOccurrences`; a valid local fragment
+may still exceed the enclosing resource reservation and be refused. The 60 s
+original deadline and 5 s owned-child cleanup grace are resource guards, never
+benchmark durations. Source facts assume trusted fresh reviewed execution;
+local hashes cannot attest loaded memory or historical execution.
+
+The 4 Gi counter covers `ledgerSourceClosureLogicalWork`, including conservative
+reservations for the unchanged decoder
+scans and original read/write requests. Each short-write retry pays its entire
+remaining requested byte window before the original call; acknowledged bytes
+alone advance the ledger offset. Zero/error writes refuse. Final closure
+prepays exactly 4194304 work units once within the unchanged 4 Gi ceiling, then
+snapshots the seal counters.
+Its local account guards JSON preflight steps, generated UTF8/allocation/copy
+bytes, requested seal write/read bytes, equality/hash bytes and each original
+asynchronous final operation before execution. Exhaustion refuses admission;
+unused credit is never refunded or used to renew a guard. This reservation is
+not measured CPU work. The result's `closureConsumedBeforeResultEncoding`
+reports the explicitly named snapshot cutoff, excluding any later caller
+encoding or return transport. The seal is never rewritten to predict itself.
+Seal writes use original checked `FileHandle.write` acknowledgments; each retry
+pays its remaining requested window, zero/error writes refuse, and the original
+close is prepaid for cleanup even after a capacity refusal. Final identity
+serialization/comparison scans and bounded stat formatting also pay the local
+account. The original output directory's dev/inode/mode and physical canonical
+path are rechecked throughout final creation, renames and return; changing
+directory entry ctime/mtime is expected, while ancestor symlinks refuse.
+
+Closed protocol transport has its own fixed bounds outside that logical-work
+counter; the counter is not total process CPU, allocation or all JSON work.
+There is one request serialization/parse (16384 bytes), one worker response
+serialization/parse (262144 bytes), and at most 65536 opaque stderr bytes. Owned
+JSON byte/shape preflight precedes encoding; fatal UTF8 decoding and a depth-8,
+4096-node structural scan precede parsing. Malformed, extra or oversized messages
+refuse; there are no alternate messages or protocol retries. Per process, at
+most eight times the message byte cap bounds simultaneous payload, UTF16 text
+and parsed-string representations, plus the fixed node bound and at most one
+stream fragment per admitted payload byte. Request/result protocol scans are
+explicitly excluded from the ledger/source/closure logical-work counter. They
+carry no trace inventory, and there is no numeric guard renewal or cap increase.
+
+`ledger.pending` and `seal.pending` are nonadmitted. Complete results reference
+both final `ledger.jsonl` and `seal.json`; consumers must require a valid seal
+and verify the whole final ledger hash. A final ledger alone is an orphan.
+The seal explicitly labels its original pending ledger identity. Rename may
+change ctime: the compact result's publication facts retain acknowledged rename
+and full pre/post identities; dev/inode/mode/link count/extent/mtime must remain
+equal through rename, and each new postrename identity including ctime is then
+checked again. Late failure withdraws the transaction's own final seal into
+`seal.failed`. Existing destinations are never reused or overwritten.
+
+Success means `complete-raw-metadata-ledger-diagnostic` and complete
+`selectedMetadataProjection`. Full packet schema, data-oneof, ordered state,
+annotations, marks, clock conversion, correspondence, association and original
+execution are not admitted. Native/qualification/evaluation/scoring/ranking/FPS
+eligibility is false; FPS/rate/latency/duration are null. This tool does not
+replace V11, change its limits or convert a V11 refusal into a result.
+
+After building the analyzer, run the authored unit controls with
+`node --test tools/perfetto-import/raw-metadata-ledger-v1.node.mjs`. Any real
+control replay needs a separately frozen independent complete row oracle and
+reviewed source/build execution. No performance feasibility or metrics claim
+follows from these unit controls.
