@@ -317,7 +317,7 @@ original settlement refuses; there is no adaptive extension or retry. This
 experimental interval is an observation opportunity, not a guarantee that
 asynchronous compositor work completes within500ms.
 
-Only this new worker mode emits bounded `nativeCollection`, inspected from the
+This Tail500 worker mode emits bounded `nativeCollection`, inspected from the
 registered actual owner and its original-owned intent/receipt files. The outer
 bridge admits one canonical newline-terminated success record only after the
 original process/pipe/write/close/group/source joins. Its new receipt records
@@ -326,3 +326,98 @@ stdout byte count/SHA256. Expected preparation policy alone cannot populate
 observed facts. A fulfilled tail or normal EOF grants no terminal completeness,
 presentation, clock, root lifetime, rate or FPS authority; native support stays
 false and FPS stays null. Existing modes retain their original result shapes.
+The separate wheel diagnostic below reuses this raw collection component.
+
+## Stock 0.3.3 with diagnostic wheel input
+
+The separate `native-wheel-carrier-v1` recipe uses stock published Threadplane
+0.3.3 packages and a modified diagnostic input. Keep its results separate from
+ordinary-input stock captures and earlier modified-layout captures. It adds a
+bounded numeric carrier to the CDP wheel command and retains the actual trusted
+DOM observation. This changes input instrumentation and grants no performance
+comparability, gesture-jank, latency, frame-population, ranking, or FPS authority.
+
+Create a fresh preparation through the named source-owned entrypoints:
+
+```js
+import {
+  generateStock033PreparationInputsV2WheelCarrierTail500,
+  runStock033PreparationOwnerV2WheelCarrierTail500
+} from './prepare-owner-stock033-v2.mjs';
+
+const generated = await generateStock033PreparationInputsV2WheelCarrierTail500({
+  inputDirectory, preparedDirectory, compilationDirectory, evidenceDirectory
+});
+const prepared = await runStock033PreparationOwnerV2WheelCarrierTail500({
+  config: generated.config, generation: generated
+});
+```
+
+The same fresh-directory, clean-source, ordinary-build, AIMock fixture,
+platform, ledger, original-child and closure requirements apply. New config,
+release, template, manifest, reference and owner records require the exact
+`inputRecipe: 'native-wheel-carrier-v1'`. Separate private generation and
+preparation admissions reject old-family, authored and serialized-clone
+handoffs. Sharing the unchanged raw Tail500 transport does not admit either
+complete input family into the other.
+
+The owner CLI selects `--config-tail500-wheel-v1 /absolute/config.json`.
+After reviewing genuine preparation and its original completion, acquisition
+uses `runStock033WheelCarrierTail500OriginalV2` with the original
+`prepared.prepared.template` and `prepared.prepared.reference`, under the
+single-use release `source-reviewed-native-stock033-tail500-wheel-v1` in
+`NATIVE_REAL_CHAT_ONCE_RELEASE`. Its CLI selects
+`--prepared-stock033-tail500-wheel-v1 <prepared-root> --reference <reference-path>`.
+Parsing a reference file does not authenticate its original preparation or
+completion. Keep the actual successful owner/acquisition returns and their
+trusted original execution observations alongside the persisted evidence.
+
+Acquisition derives `clickCount = 1 + parseInt(requestNonce.slice(0, 7), 16)`
+from a fresh 32-character lowercase hexadecimal request nonce. The range is
+1 through 268435456 inclusive. This integer is a noncryptographic carrier with
+possible collisions; the full nonce labels the listener and marker ledger and
+does not travel through the browser input. The source-selected scroller's first
+wheel callback must have the observed matching detail, trusted wheel type,
+connected/contained target, finite deltas and negative vertical movement. A
+wrong first event refuses rather than searching for another. Its default
+`performance.mark` call records the returned mark and uses the separate
+`native-wheel-witness-v1:` prefix outside the two collection phase marks.
+
+The new worker record retains closed `inputTrace` data: observed selected
+context/backend identity, before/after geometry, actual issued move/wheel
+parameters and original send states, and actual wheel/mark observations.
+Persistence has three distinct stages:
+
+1. Before worker fork, the owned request file durably contains the nonce,
+   recipe, derived carrier and marker name.
+2. Before each original send, complete geometry-derived parameters are frozen
+   in RAM and those same parameters supply the send. Full parameters are not
+   durably journaled before dispatch.
+3. After successful collection, the original worker stdout carries the actual
+   issued and observed record. The parent writes, syncs, closes and hashes that
+   stdout before exposing `observedInput` in the new
+   `native-stock033-tail500-wheel-result-v1` result.
+
+A failed or crashed run may lack the final input record and remains unavailable;
+missing observations are never filled from expected parameters. Persisted
+terminal receipts retain their pending-write snapshot; the original returned
+fulfilled state is separate evidence. The inputTrace has a 4096-byte sub-bound
+inside the unchanged 65536-byte stdout and outer envelopes. Request, Runtime,
+navigation, trace, preparation, 17-second capture, 19-second finalization and
+fixed 500 ms tail limits remain unchanged. Extra selectors consume existing
+capacity and can cause refusal.
+
+A returned PerformanceMark does not prove trace emission. Collection success
+means a persisted trusted DOM carrier witness; actual raw ancestry must still
+be independently verified before associating it with a Chrome wheel latency
+ID. That verifier must require the exact marker, supported synchronous raw
+semantics and same-thread parent chain through `LatencyInfo.Flow` with
+`STEP_HANDLE_INPUT_EVENT_MAIN` and an enclosing MouseWheel handler. Neither
+nearby timestamps nor an expected ID can supply missing evidence.
+
+Chrome can coalesce wheel inputs while retaining the latest detail. One
+isolated dispatch per fresh browser limits scope but does not prove general
+one-to-one behavior. Chrome may also synthesize a phase-ended raw wheel without
+a second DOM dispatch; preserve extra raw occurrences without assigning their
+role from counts or timing. Even verified wheel association leaves wheel-to-GSU
+and gesture-jank linkage unavailable and supports no FPS claim.
