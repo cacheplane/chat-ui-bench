@@ -12,6 +12,37 @@ import * as contract from '../../packages/contract/dist/index.js';
 const production=await import('./prepare-stock033-v2.mjs').catch(error=>{if(error.code==='ERR_MODULE_NOT_FOUND')return {};throw error;});
 const api={...production,...production.createStock033AuthoredControlV2?.()};
 const hash=b=>createHash('sha256').update(b).digest('hex');
+test('tail500 preparation is separately selected and verifier retains observed custody',context=>authored(async({options})=>{
+ const tail=production.createStock033AuthoredControlV2Tail500();
+ const policy='native-post-phase-tail-500ms-v1';
+ options.mode+='-tail500-v1';options.collectionPolicy=policy;options.release.policy+='-tail500-v1';options.release.collectionPolicy=policy;
+ const result=await tail.prepareActualStock033V2Tail500(options);
+ assert(Buffer.byteLength(JSON.stringify({type:'prepared',nonce:'a'.repeat(32),collectionPolicy:policy,template:result.template,reference:result.reference,accounting:{totals:tail.createStock033PreparationLedgerV2().totals(),platformSetSha256:'a'.repeat(64),peakHandles:8,peakOperations:16,stages:64},authoredControl:true})+'\n')<=8192);
+ assert.equal(result.template.collectionPolicy,policy);assert.equal(result.reference.policy,'authored-preparation-reference-stock-033-v2-tail500-v1');
+ const manifestBytes=await fs.readFile(options.outputDirectory+'/app-manifest.json'),manifest=JSON.parse(manifestBytes);
+ assert.equal(manifest.mode,'authored-real-chat-source-custody-stock-033-v2-tail500-v1');assert.equal(manifest.collectionPolicy,policy);
+ const owned=await tail.verifyStock033Tail500PreparationV2(options.outputDirectory,result.template,result.reference);
+ const admission=tail.inspectStock033Tail500PreparationV2(owned),t=owned,lean={mode:'real-chat-history100-tail500-v1',collectionPolicy:policy,manifestSha256:admission.manifestSha256,sourceRevision:admission.sourceRevision,root:t.root,nonce:'a'.repeat(32),runtime:t.runtime,assets:t.assets,fixture:t.fixture,history:t.history,manifest:t.manifest,originNs:Number(process.hrtime.bigint())};
+ const leanBytes=Buffer.byteLength(JSON.stringify(lean)+'\n');assert(leanBytes<=4096,'real authored tail500 lean request '+leanBytes+' bytes');context.diagnostic('actual authored tail500 lean request: '+leanBytes+' bytes including newline');
+ assert.deepEqual(tail.inspectStock033Tail500PreparationV2(owned),{manifestSha256:hash(manifestBytes),sourceRevision:'a'.repeat(40),collectionPolicy:policy});
+ assert.throws(()=>production.inspectStock033Tail500PreparationV2(owned));assert.throws(()=>tail.inspectStock033Tail500PreparationV2(structuredClone(owned)));
+ for(const field of ['collectionPolicy','mode']){const wrong=structuredClone(result.template);delete wrong[field];await assert.rejects(tail.verifyStock033Tail500PreparationV2(options.outputDirectory,wrong,result.reference));}
+ const foreign=structuredClone(result.reference);foreign.collectionPolicy='foreign';await assert.rejects(tail.verifyStock033Tail500PreparationV2(options.outputDirectory,result.template,foreign));
+ await assert.rejects(api.verifyStock033PreparationV2(options.outputDirectory,result.template,result.reference));
+ await assert.rejects(production.verifyStock033Tail500PreparationV2(options.outputDirectory,result.template,result.reference));
+}));
+test('tail500 rejects crossed or missing policy before source I/O',async()=>{
+ const tail=production.createStock033AuthoredControlV2Tail500(),ledger=tail.createStock033PreparationLedgerV2();
+ for(const options of [{mode:'authored-real-chat-history100-stock-033-v2'}, {mode:'authored-real-chat-history100-stock-033-v2-tail500-v1'}, {mode:'authored-real-chat-history100-stock-033-v2-tail500-v1',collectionPolicy:'foreign'}])await assert.rejects(tail.prepareActualStock033V2Tail500({...options,ledger}));
+ assert.equal(ledger.snapshot().operations,0);
+});
+test('tail500 release and legacy preparation cannot cross selection before I/O',()=>authored(async({options})=>{
+ const tail=production.createStock033AuthoredControlV2Tail500(),ledger=tail.createStock033PreparationLedgerV2(),selected={...options,mode:options.mode+'-tail500-v1',collectionPolicy:'native-post-phase-tail-500ms-v1',ledger};
+ await assert.rejects(tail.prepareActualStock033V2Tail500(selected));assert.equal(ledger.snapshot().operations,0);
+ selected.release={...options.release,policy:options.release.policy+'-tail500-v1',collectionPolicy:'native-post-phase-tail-500ms-v1'};
+ await assert.rejects(api.prepareActualStock033V2(selected));assert.equal(ledger.snapshot().operations,0);
+ selected.release.collectionPolicy='foreign';await assert.rejects(tail.prepareActualStock033V2Tail500(selected));assert.equal(ledger.snapshot().operations,0);
+}));
 test('reusable inert admission bounds data without invoking getters',()=>{
  assert.equal(typeof rosterApi.admitStock033DataV2,'function');let invoked=false;assert.throws(()=>rosterApi.admitStock033DataV2({get bad(){invoked=true;}}));assert.equal(invoked,false);assert.throws(()=>rosterApi.admitStock033DataV2({oversize:'x'.repeat(1048576)}));
 });

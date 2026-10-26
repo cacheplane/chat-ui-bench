@@ -17,9 +17,13 @@ const same=isDeepStrictEqual;
 const identity=s=>({dev:s.dev,ino:s.ino,size:s.size,mtimeMs:s.mtimeMs,ctimeMs:s.ctimeMs});
 const caps=Object.freeze({operations:131072,readBytes:3221225472,hashBytes:3221225472,writeBytes:Number.MAX_SAFE_INTEGER,externalWriteBytes:8388608,serializedBytes:8388608,platformPasses:4,platformReadBytes:2147483648,platformReferencedBytes:536870912,archiveWriteBytes:16777216});
 const ledgers=new WeakSet(),authoredLedgers=new WeakSet(),ledgerCounters=new WeakMap(),ledgerCeilings=new WeakMap(),platformSets=new WeakMap();
-const preparationMode=authored=>authored?'authored-real-chat-history100-stock-033-v2':'real-chat-history100-stock-033-v2';
-const referencePolicy=authored=>authored?'authored-preparation-reference-stock-033-v2':'source-owned-preparation-reference-stock-033-v2';
-const manifestMode=authored=>authored?'authored-real-chat-source-custody-stock-033-v2':'real-chat-source-custody-stock-033-v2';
+const tailPolicy='native-post-phase-tail-500ms-v1',tailAdmissions=new WeakMap(),authoredTailAdmissions=new WeakMap();
+const suffix=tail=>tail?'-tail500-v1':'';
+const preparationMode=(authored,tail=false)=>(authored?'authored-real-chat-history100-stock-033-v2':'real-chat-history100-stock-033-v2')+suffix(tail);
+const referencePolicy=(authored,tail=false)=>(authored?'authored-preparation-reference-stock-033-v2':'source-owned-preparation-reference-stock-033-v2')+suffix(tail);
+const manifestMode=(authored,tail=false)=>(authored?'authored-real-chat-source-custody-stock-033-v2':'real-chat-source-custody-stock-033-v2')+suffix(tail);
+function collectionKeys(tail){return tail?['collectionPolicy']:[];}
+function collectionCheck(value,tail){if(tail&&value.collectionPolicy!==tailPolicy)fail('collection policy');}
 
 /** Injected clocks/anchors are authored-only; reconciled scalar counters may be production inputs. */
 export function createStock033PreparationLedgerV2(options={}){return createLedger(options,caps);}
@@ -151,9 +155,9 @@ function runtimeCheck(runtime){
  closed(runtime,['executablePath','expectedExecutableBytes','expectedExecutableSha256','playwrightVersion','browserRevision','expectedProduct','expectedRevision','launchFlags','headless']);absolute(runtime.executablePath);
  if(!Number.isSafeInteger(runtime.expectedExecutableBytes)||runtime.expectedExecutableBytes<1||runtime.expectedExecutableBytes>536870912||! /^[a-f0-9]{64}$/.test(runtime.expectedExecutableSha256)||runtime.playwrightVersion!=='1.64.0'||runtime.browserRevision!=='1248'||runtime.expectedProduct!=='HeadlessChrome/156.0.8078.4'||runtime.expectedRevision!=='@f842f52ef39fd97b449eb27cff414bf05a98ddce'||runtime.headless!==true||!same(runtime.launchFlags,['--use-angle=swiftshader','--enable-unsafe-swiftshader','--enable-automation']))fail('runtime profile');
 }
-function releaseCheck(release,sourceObservation){
- admitStock033DataV2(release);admitStock033DataV2(sourceObservation);closed(release,['schema','policy','source','build','roles','fixtureInputs','runtime','platformRows']);closed(sourceObservation,['revision','dirty']);closed(release.source,['revision','dirty']);
- if(release.schema!==1||release.policy!=='source-reviewed-stock033-preparation-inputs-v2'||sourceObservation.dirty!==false||! /^[a-f0-9]{40}$/.test(sourceObservation.revision)||!same(release.source,sourceObservation))fail('reviewed source observation');
+function releaseCheck(release,sourceObservation,tail=false){
+ admitStock033DataV2(release);admitStock033DataV2(sourceObservation);closed(release,['schema','policy','source','build','roles','fixtureInputs','runtime','platformRows',...collectionKeys(tail)]);collectionCheck(release,tail);closed(sourceObservation,['revision','dirty']);closed(release.source,['revision','dirty']);
+ if(release.schema!==1||release.policy!=='source-reviewed-stock033-preparation-inputs-v2'+suffix(tail)||sourceObservation.dirty!==false||! /^[a-f0-9]{40}$/.test(sourceObservation.revision)||!same(release.source,sourceObservation))fail('reviewed source observation');
  closed(release.build,['product','probe']);for(const [name,key]of [['product','apps/threadplane/.build-evidence.json'],['probe','packages/runner/.comparison-build-evidence.json']]){closed(release.build[name],['key','fact']);if(release.build[name].key!==key)fail('build key');factShape(release.build[name].fact,262144);}
  closed(release.roles,stock033Roles);let references=0;
  for(const rows of Object.values(release.roles)){if(!Array.isArray(rows)||rows.length>1024||(references+=rows.length)>8192)fail('role bound');const seen=new Set();for(const row of rows){closed(row,['key','bytes','sha256']);keyName(row.key);if(seen.has(row.key)||!Number.isSafeInteger(row.bytes)||row.bytes<0||row.bytes>2097152||! /^[a-f0-9]{64}$/.test(row.sha256))fail('role facts');seen.add(row.key);}}
@@ -161,10 +165,10 @@ function releaseCheck(release,sourceObservation){
  const sortedFacts=rows=>[...rows].sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0);if(!Array.isArray(release.fixtureInputs)||!same(sortedFacts(release.fixtureInputs),sortedFacts(release.roles['fixture-input']))||release.fixtureInputs.length<1||release.fixtureInputs.length>256)fail('fixture role join');runtimeCheck(release.runtime);
  if(!Array.isArray(release.platformRows)||release.platformRows.length<5||release.platformRows.length>1024)fail('platform references');for(const row of release.platformRows){closed(row,['key','path','bytes','sha256','identity']);keyName(row.key);factShape(row,536870912);absolute(row.path);}
 }
-function selectedOptions(options,authored){
+function selectedOptions(options,authored,tail=false){
  if(!options||typeof options!=='object'||types.isProxy(options)||Object.getPrototypeOf(options)!==Object.prototype)fail('options');
- const copy={};for(const key of Reflect.ownKeys(options)){if(!['mode','sourceRoot','outputDirectory','compilationDirectory','release','sourceObservation','ledger'].includes(key))fail('option key');const d=Object.getOwnPropertyDescriptor(options,key);if(!Object.hasOwn(d,'value'))fail('option getter');copy[key]=d.value;}
- const {ledger,...data}=copy;admitStock033DataV2(data);closed(data,['mode','sourceRoot','outputDirectory','compilationDirectory','release','sourceObservation']);if(data.mode!==preparationMode(authored))fail('v2 mode');for(const key of ['sourceRoot','outputDirectory','compilationDirectory'])absolute(data[key],256);releaseCheck(data.release,data.sourceObservation);
+ const copy={};for(const key of Reflect.ownKeys(options)){if(!['mode','sourceRoot','outputDirectory','compilationDirectory','release','sourceObservation','ledger',...collectionKeys(tail)].includes(key))fail('option key');const d=Object.getOwnPropertyDescriptor(options,key);if(!Object.hasOwn(d,'value'))fail('option getter');copy[key]=d.value;}
+ const {ledger,...data}=copy;admitStock033DataV2(data);closed(data,['mode','sourceRoot','outputDirectory','compilationDirectory','release','sourceObservation',...collectionKeys(tail)]);collectionCheck(data,tail);if(data.mode!==preparationMode(authored,tail))fail('v2 mode');for(const key of ['sourceRoot','outputDirectory','compilationDirectory'])absolute(data[key],256);releaseCheck(data.release,data.sourceObservation,tail);
  const owned=ledger===undefined?createStock033PreparationLedgerV2():ledgerOf(ledger);if(authored&&ledger===undefined)authoredLedgers.add(owned);if(authoredLedgers.has(owned)!==authored)fail('authored ledger boundary');if(!authored&&(process.platform!=='darwin'||process.arch!=='arm64'))fail('reviewed host');
  return{...JSON.parse(JSON.stringify(data)),ledger:owned};
 }
@@ -186,8 +190,8 @@ async function observeMembers(sourceRoot,release,ledger,expected){
   const known=expected?.get(key)?.fact;const read=await readStock033FileV2(sourceRoot+'/'+key,2097152,ledger,known);if(read.fact.bytes!==row.bytes||read.fact.sha256!==row.sha256)fail('observed source drift');result.set(key,read);
  }return result;
 }
-async function authenticate(sourceRoot,release,sourceObservation,facts,ledger,authored){
- releaseCheck(release,sourceObservation);
+async function authenticate(sourceRoot,release,sourceObservation,facts,ledger,authored,tail=false){
+ releaseCheck(release,sourceObservation,tail);
  const contract=await import('../../packages/contract/dist/index.js');
  for(const item of Object.values(release.build)){const observed=facts.get(item.key);if(!observed||!same(observed.fact,item.fact))fail('original build fact');}
  const product=parseStock033ProductRecord(facts.get(release.build.product.key).bytes,contract),probe=parseProbeRecord(facts.get(release.build.probe.key).bytes,contract);
@@ -248,10 +252,11 @@ async function archiveParent(root,key,created,ledger){let current=root;for(const
 export async function prepareActualStock033V2(options){
  return prepareCore(options,false);
 }
-async function prepareCore(options,authored){
- const selected=selectedOptions(options,authored),{sourceRoot,outputDirectory,compilationDirectory,release,sourceObservation,ledger}=selected;
+export async function prepareActualStock033V2Tail500(options){return prepareCore(options,false,true);}
+async function prepareCore(options,authored,tail=false){
+ const selected=selectedOptions(options,authored,tail),{sourceRoot,outputDirectory,compilationDirectory,release,sourceObservation,ledger}=selected;
  ledger.stage('admit');await freshDirectories(sourceRoot,[outputDirectory,compilationDirectory],ledger);
- const facts=await observeMembers(sourceRoot,release,ledger),authenticated=await authenticate(sourceRoot,release,sourceObservation,facts,ledger,authored),{roster,product}=authenticated;
+ const facts=await observeMembers(sourceRoot,release,ledger),authenticated=await authenticate(sourceRoot,release,sourceObservation,facts,ledger,authored,tail),{roster,product}=authenticated;
  ledger.stage('authenticated');await verifyStock033PlatformsV2(release.platformRows,ledger);
  const esbuild=createRequire(sourceRoot+'/package.json')('esbuild');let bounded,fixture,moduleFact;
  try{
@@ -276,13 +281,13 @@ async function prepareCore(options,authored){
  const historyFact=await writeStock033FileV2(outputDirectory+'/history.json',history,65536,ledger,'archive'),compiledFact=await writeStock033FileV2(outputDirectory+'/fixture-compiled.mjs',bounded.moduleBytes,2097152,ledger,'archive');
  const assets=Object.entries(product.assetHashes).map(([name,sha256])=>({name,bytes:facts.get('apps/threadplane/dist/'+name).fact.bytes,sha256}));
  const fixtureEvidence={source:fixture.digests.sourceSha256,events:fixture.digests.eventsSha256,history:fixture.digests.historySha256,projection:historyFact.sha256};
- const manifest={mode:manifestMode(authored),records,owned:[{key:'history.json',...historyFact},{key:'fixture-compiled.mjs',...compiledFact}],platform:release.platformRows,assets,totalBytes:archiveTotal,fixture:fixtureEvidence,platformTrust:'Pinned compiler/Node/Playwright/browser internals; explicit source I/O only, no complete dynamic dependency closure.',product:stock033Identity,custody:{sourceRoot,sourceObservation,build:release.build,fixtureInputs:release.fixtureInputs},roster:{contract:roster.contract,digest:roster.digest,roleCounts:roster.roleCounts,membershipCount:roster.membershipCount,unionCount:roster.unionCount,overlapCount:roster.overlapCount}};if(authored)manifest.authoredControl=true;
+ const manifest={mode:manifestMode(authored,tail),...(tail?{collectionPolicy:tailPolicy}:{}),records,owned:[{key:'history.json',...historyFact},{key:'fixture-compiled.mjs',...compiledFact}],platform:release.platformRows,assets,totalBytes:archiveTotal,fixture:fixtureEvidence,platformTrust:'Pinned compiler/Node/Playwright/browser internals; explicit source I/O only, no complete dynamic dependency closure.',product:stock033Identity,custody:{sourceRoot,sourceObservation,build:release.build,fixtureInputs:release.fixtureInputs},roster:{contract:roster.contract,digest:roster.digest,roleCounts:roster.roleCounts,membershipCount:roster.membershipCount,unionCount:roster.unionCount,overlapCount:roster.overlapCount}};if(authored)manifest.authoredControl=true;
  const manifestBytes=serialize(manifest,1048576,ledger);assertStock033ArchiveBudgetV2({archiveBytes:archiveTotal,manifestBytes:manifestBytes.length});
  const manifestFact=await writeStock033FileV2(outputDirectory+'/app-manifest.json',manifestBytes,1048576,ledger,'archive');
  await verifyStock033PlatformsV2(release.platformRows,ledger);await observeMembers(sourceRoot,release,ledger,facts);if(!same(await sourceInventory(sourceRoot,ledger),authenticated.rootAuthority.productSourceKeys))fail('product inventory drift');
- const template={mode:preparationMode(authored),root:outputDirectory,nonce:randomBytes(16).toString('hex'),runtime:release.runtime,assets,fixture:fixtureEvidence,history:historyFact,manifest:manifestFact,product:stock033Identity};if(authored)template.authoredControl=true;
+ const template={mode:preparationMode(authored,tail),...(tail?{collectionPolicy:tailPolicy}:{}),root:outputDirectory,nonce:randomBytes(16).toString('hex'),runtime:release.runtime,assets,fixture:fixtureEvidence,history:historyFact,manifest:manifestFact,product:stock033Identity};if(authored)template.authoredControl=true;
  const templateFact=await writeStock033FileV2(outputDirectory+'/template.json',serialize(template,4096,ledger),4096,ledger,'archive');
- const reference={policy:referencePolicy(authored),product:stock033Identity,template:templateFact,manifest:manifestFact};if(authored)reference.authoredControl=true;serialize(reference,4096,ledger);ledger.stage('prepared');ledger.assertActive();if(ledger.pending().length)fail('pending originals');return authored?{template,reference,authoredControl:true}:{template,reference};
+ const reference={policy:referencePolicy(authored,tail),...(tail?{collectionPolicy:tailPolicy}:{}),product:stock033Identity,template:templateFact,manifest:manifestFact};if(authored)reference.authoredControl=true;serialize(reference,4096,ledger);ledger.stage('prepared');ledger.assertActive();if(ledger.pending().length)fail('pending originals');return authored?{template,reference,authoredControl:true}:{template,reference};
 }
 export async function verifyStock033PreparationV2(root,template,reference,{ledger=createStock033PreparationLedgerV2()}={}){
  return verifyCore(root,template,reference,ledger,false);
@@ -299,24 +304,24 @@ function servedAssetJoin(assets,product,roster){
  for(const asset of assets){closed(asset,['name','bytes','sha256']);if(typeof asset.name!=='string'||! /^[A-Za-z0-9_.-]{1,192}$/.test(asset.name)||names.has(asset.name)||!Number.isSafeInteger(asset.bytes)||asset.bytes<1||(total+=asset.bytes)>2097152)fail('served asset join');names.add(asset.name);const row=rows.get('apps/threadplane/dist/'+asset.name);if(!row||asset.sha256!==product.assetHashes[asset.name]||asset.bytes!==row.bytes||asset.sha256!==row.sha256)fail('served asset join');}
  if(!same([...names].sort(),emitted.sort()))fail('served asset join');
 }
-async function verifyCore(root,template,reference,ledger,authored){
- ledgerOf(ledger);if(authoredLedgers.has(ledger)!==authored)fail('authored ledger boundary');admitStock033DataV2(template,4095);admitStock033DataV2(reference,4095);closed(reference,['policy','product','template','manifest',...(authored?['authoredControl']:[])]);closed(template,['mode','root','nonce','runtime','assets','fixture','history','manifest','product',...(authored?['authoredControl']:[])]);
- if(template.mode!==preparationMode(authored)||reference.policy!==referencePolicy(authored)||template.root!==root||!same(template.product,stock033Identity)||!same(reference.product,stock033Identity)||authored&&(template.authoredControl!==true||reference.authoredControl!==true))fail('v2 reference');absolute(root,256);runtimeCheck(template.runtime);if(!authored&&(process.platform!=='darwin'||process.arch!=='arm64'))fail('reviewed host');template=JSON.parse(JSON.stringify(template));reference=JSON.parse(JSON.stringify(reference));
+async function verifyCore(root,template,reference,ledger,authored,tail=false){
+ ledgerOf(ledger);if(authoredLedgers.has(ledger)!==authored)fail('authored ledger boundary');admitStock033DataV2(template,4095);admitStock033DataV2(reference,4095);closed(reference,['policy','product','template','manifest',...collectionKeys(tail),...(authored?['authoredControl']:[])]);closed(template,['mode','root','nonce','runtime','assets','fixture','history','manifest','product',...collectionKeys(tail),...(authored?['authoredControl']:[])]);
+ collectionCheck(template,tail);collectionCheck(reference,tail);if(template.mode!==preparationMode(authored,tail)||reference.policy!==referencePolicy(authored,tail)||template.root!==root||!same(template.product,stock033Identity)||!same(reference.product,stock033Identity)||authored&&(template.authoredControl!==true||reference.authoredControl!==true))fail('v2 reference');absolute(root,256);runtimeCheck(template.runtime);if(!authored&&(process.platform!=='darwin'||process.arch!=='arm64'))fail('reviewed host');template=JSON.parse(JSON.stringify(template));reference=JSON.parse(JSON.stringify(reference));
  const owned=JSON.parse((await readStock033FileV2(root+'/template.json',4096,ledger,reference.template)).bytes);if(!same(owned,template)||!same(owned.manifest,reference.manifest))fail('original template join');
- const manifest=JSON.parse((await readStock033FileV2(root+'/app-manifest.json',1048576,ledger,reference.manifest)).bytes);closed(manifest,['mode','records','owned','platform','assets','totalBytes','fixture','platformTrust','product','custody','roster',...(authored?['authoredControl']:[])]);
- if(manifest.mode!==manifestMode(authored)||authored&&manifest.authoredControl!==true||!same(manifest.product,stock033Identity)||!Array.isArray(manifest.records)||manifest.records.length>1024||manifest.owned.length!==2||!same(manifest.assets,template.assets)||!same(manifest.fixture,template.fixture))fail('manifest joins');
+ const manifestRead=await readStock033FileV2(root+'/app-manifest.json',1048576,ledger,reference.manifest),manifest=JSON.parse(manifestRead.bytes);closed(manifest,['mode','records','owned','platform','assets','totalBytes','fixture','platformTrust','product','custody','roster',...collectionKeys(tail),...(authored?['authoredControl']:[])]);
+ collectionCheck(manifest,tail);if(manifest.mode!==manifestMode(authored,tail)||authored&&manifest.authoredControl!==true||!same(manifest.product,stock033Identity)||!Array.isArray(manifest.records)||manifest.records.length>1024||manifest.owned.length!==2||!same(manifest.assets,template.assets)||!same(manifest.fixture,template.fixture))fail('manifest joins');
  preflightArchive(manifest,reference.manifest.bytes);
  const roles=Object.fromEntries(stock033Roles.map(role=>[role,[]])),facts=new Map();let total=0;const names=new Set();
  for(const row of manifest.records){keyName(row.key);if(names.has(row.key)||row.source!==manifest.custody.sourceRoot+'/'+row.key||!Array.isArray(row.roles)||row.roles.length<1||new Set(row.roles).size!==row.roles.length)fail('manifest member');names.add(row.key);const fact={bytes:row.bytes,sha256:row.sha256,identity:row.identity};const original=await readStock033FileV2(row.source,2097152,ledger,fact);await readStock033FileV2(root+'/inputs/'+row.key,2097152,ledger,{...fact,identity:row.archivedIdentity});facts.set(row.key,original);total+=row.bytes;
   for(const role of row.roles){if(!Object.hasOwn(roles,role))fail('manifest role');roles[role].push({key:row.key,bytes:row.bytes,sha256:row.sha256});}
  }
  for(const role of stock033Roles)roles[role].sort((a,b)=>a.key.localeCompare(b.key));
- const release={schema:1,policy:'source-reviewed-stock033-preparation-inputs-v2',source:manifest.custody.sourceObservation,build:manifest.custody.build,roles,fixtureInputs:manifest.custody.fixtureInputs,runtime:owned.runtime,platformRows:manifest.platform};
- const authenticated=await authenticate(manifest.custody.sourceRoot,release,manifest.custody.sourceObservation,facts,ledger,authored),roster=authenticated.roster;
+ const release={schema:1,policy:'source-reviewed-stock033-preparation-inputs-v2'+suffix(tail),...(tail?{collectionPolicy:tailPolicy}:{}),source:manifest.custody.sourceObservation,build:manifest.custody.build,roles,fixtureInputs:manifest.custody.fixtureInputs,runtime:owned.runtime,platformRows:manifest.platform};
+ const authenticated=await authenticate(manifest.custody.sourceRoot,release,manifest.custody.sourceObservation,facts,ledger,authored,tail),roster=authenticated.roster;
  servedAssetJoin(manifest.assets,authenticated.product,roster);
  const rosterEvidence={contract:roster.contract,digest:roster.digest,roleCounts:roster.roleCounts,membershipCount:roster.membershipCount,unionCount:roster.unionCount,overlapCount:roster.overlapCount};if(!same(rosterEvidence,manifest.roster))fail('roster digest');
  const ownedNames=new Set();for(const item of manifest.owned){if(!['history.json','fixture-compiled.mjs'].includes(item.key)||ownedNames.has(item.key))fail('owned member');ownedNames.add(item.key);const {key,...fact}=item;const result=await readStock033FileV2(root+'/'+key,key==='history.json'?65536:2097152,ledger,fact);total+=result.bytes.length;if(key==='history.json'&&(!same(fact,owned.history)||fact.sha256!==owned.fixture.projection))fail('history original join');}
- if(total!==manifest.totalBytes)fail('archive total');assertStock033ArchiveBudgetV2({archiveBytes:total,manifestBytes:reference.manifest.bytes});await verifyStock033PlatformsV2(manifest.platform,ledger);ledger.assertActive();return owned;
+ if(total!==manifest.totalBytes)fail('archive total');assertStock033ArchiveBudgetV2({archiveBytes:total,manifestBytes:reference.manifest.bytes});await verifyStock033PlatformsV2(manifest.platform,ledger);ledger.assertActive();if(tail&&ledger.pending().length)fail('pending originals');if(tail)(authored?authoredTailAdmissions:tailAdmissions).set(owned,Object.freeze({manifestSha256:manifestRead.fact.sha256,sourceRevision:manifest.custody.sourceObservation.revision,collectionPolicy:tailPolicy}));return owned;
 }
 
 /** Explicit cross-platform authored controls only. No CLI selects this boundary.
@@ -326,3 +331,8 @@ export function createStock033AuthoredControlV2(){
  const createLedger=options=>{const ledger=createStock033PreparationLedgerV2(options);authoredLedgers.add(ledger);return ledger;};
  return Object.freeze({createStock033PreparationLedgerV2:createLedger,prepareActualStock033V2:options=>prepareCore(options,true),verifyStock033PreparationV2:(root,template,reference,{ledger=createLedger()}={})=>verifyCore(root,template,reference,ledger,true)});
 }
+
+export async function verifyStock033Tail500PreparationV2(root,template,reference,{ledger=createStock033PreparationLedgerV2()}={}){return verifyCore(root,template,reference,ledger,false,true);}
+function inspectTailAdmission(owned,authored){const result=(authored?authoredTailAdmissions:tailAdmissions).get(owned);if(!result)fail('tail admission');return result;}
+export function inspectStock033Tail500PreparationV2(owned){return inspectTailAdmission(owned,false);}
+export function createStock033AuthoredControlV2Tail500(){const createLedger=options=>{const ledger=createStock033PreparationLedgerV2(options);authoredLedgers.add(ledger);return ledger;};return Object.freeze({createStock033PreparationLedgerV2:createLedger,prepareActualStock033V2Tail500:options=>prepareCore(options,true,true),verifyStock033Tail500PreparationV2:(root,template,reference,{ledger=createLedger()}={})=>verifyCore(root,template,reference,ledger,true,true),inspectStock033Tail500PreparationV2:owned=>inspectTailAdmission(owned,true)});}

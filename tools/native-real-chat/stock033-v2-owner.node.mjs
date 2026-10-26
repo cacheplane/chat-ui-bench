@@ -4,6 +4,21 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import * as preparation from './prepare-stock033-v2.mjs';
+test('tail500 owner uses separate wrappers and exact bounded child selectors',async context=>{
+ const owner=await import('./prepare-owner-stock033-v2.mjs');
+ for(const key of ['generateStock033PreparationInputsV2Tail500','runStock033PreparationOwnerV2Tail500','createStock033OwnerAuthoredControlV2Tail500'])assert.equal(typeof owner[key],'function',key);
+ const control=owner.createStock033OwnerAuthoredControlV2Tail500();let lo=1,hi=512;
+ while(lo<hi){const n=Math.ceil((lo+hi)/2);try{control.requestEnvelope('/'+'x'.repeat(n-1));lo=n;}catch{hi=n-1;}}
+ const accepted=control.requestEnvelope('/'+'x'.repeat(lo-1));assert.equal(accepted.request.type,'prepare-tail500-v1');assert.equal(accepted.request.collectionPolicy,'native-post-phase-tail-500ms-v1');assert.equal(Buffer.byteLength(JSON.stringify(accepted.request)+'\n'),1024);assert.throws(()=>control.requestEnvelope('/'+'x'.repeat(lo)));
+ context.diagnostic('tail500 child request accepts '+lo+' path bytes at exact 1024-byte newline-inclusive cap');
+ const envelope=control.resultEnvelope('ok');assert.equal(envelope.collectionPolicy,'native-post-phase-tail-500ms-v1');assert(Buffer.byteLength(JSON.stringify(envelope)+'\n')<=8192);assert(Buffer.byteLength(JSON.stringify(envelope.accounting))<=512);
+ lo=0;hi=8192;while(lo<hi){const n=Math.ceil((lo+hi)/2);try{control.resultEnvelope('x'.repeat(n));lo=n;}catch{hi=n-1;}}
+ assert.equal(Buffer.byteLength(JSON.stringify(control.resultEnvelope('x'.repeat(lo)))+'\n'),8192);assert.throws(()=>control.resultEnvelope('x'.repeat(lo+1)));
+});
+test('tail500 authored owner child retains separate selector and original closure',async()=>{
+ const owner=await import('./prepare-owner-stock033-v2.mjs'),result=await owner.createStock033OwnerAuthoredControlV2Tail500().run('success');
+ assert.equal(result.request.type,'authored-tail500-v1');assert.equal(result.request.collectionPolicy,'native-post-phase-tail-500ms-v1');assert.equal(result.prepared.reference.policy,'authored-owner-reference-stock033-v2-tail500-v1');assert.equal(result.child.exit.code,0);assert.equal(result.child.close.code,0);assert.equal(result.stdout.end,true);assert.equal(result.stderr.end,true);
+});
 
 test('owner module imports inertly and fixed authored child joins one original success with exit and both EOF',async()=>{
  const owner=await import('./prepare-owner-stock033-v2.mjs');assert.equal(typeof owner.createStock033OwnerAuthoredControlV2,'function');

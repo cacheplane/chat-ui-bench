@@ -277,3 +277,52 @@ failures emit no geometry packet. Success result construction stays unchanged.
 DOM/style/layout primitives remain trusted platform operations; source limits
 do not bound native layout CPU, RSS, or GC. Matching layout observations can
 support a hypothesis but cannot establish timing, input settlement, or cause.
+
+The separately selected tail500 preparation uses
+`generateStock033PreparationInputsV2Tail500` and
+`runStock033PreparationOwnerV2Tail500` in the existing preparation owner module.
+Its CLI is `--config-tail500-v1 /absolute/config.json`; `--config` keeps the
+original v2 selection. The preparer is `prepareActualStock033V2Tail500`, with
+mode `real-chat-history100-stock-033-v2-tail500-v1` and the exact
+`collectionPolicy: 'native-post-phase-tail-500ms-v1'`. Config, release, child
+envelopes, template, manifest, reference and owner result each carry this
+separate selection. No duration is caller supplied. The corresponding authored
+controls remain explicitly prefixed and cannot enter production verification.
+
+`verifyStock033Tail500PreparationV2` checks original custody and privately retains
+the observed manifest hash and reviewed source revision for
+`inspectStock033Tail500PreparationV2`. A copied template does not retain that
+admission. The source/compiled member sets, compiler and platform metadata,
+original build joins and all existing byte, operation and deadline ceilings
+remain fixed; fresh preparation recomputes content hashes and roster counts.
+The extra selectors consume existing envelope capacity and can therefore cause
+an otherwise valid long-path request to refuse before child dispatch.
+
+The separately admitted `native-post-phase-tail-500ms-v1` collection uses
+`createProtoNativeUserTimingCaptureV6Tail500` through `createTail500ChatPorts`.
+The unchanged end mark must fulfill, then all three Runtime handles release,
+then owner finish starts its one fixed500ms wait, and only a fulfilled wait can
+reach the original `Tracing.end`. Wheel dispatch, two RAFs, geometry checks,
+phase boundaries and the V6 reader remain unchanged. Retained Runtime/navigation
+watchers and page/context/browser identity checks remain active through the
+wait and the original detach entry. Context loss or an additional default
+context cancels immediately. Original detach permits its intentional teardown
+only after that entry check; post-detach receipt verification uses the original
+worker deadline without querying the torn-down page.
+
+Tail entry requires at least500ms remaining under the original17-second worker
+clock. It does not renew either the17-second capture or19-second finalization
+clock. An early timer, unhealthy identity, cancellation, overflow or late
+original settlement refuses; there is no adaptive extension or retry. This
+experimental interval is an observation opportunity, not a guarantee that
+asynchronous compositor work completes within500ms.
+
+Only this new worker mode emits bounded `nativeCollection`, inspected from the
+registered actual owner and its original-owned intent/receipt files. The outer
+bridge admits one canonical newline-terminated success record only after the
+original process/pipe/write/close/group/source joins. Its new receipt records
+`observedCollection.nativeCollection` and the exact acknowledged original
+stdout byte count/SHA256. Expected preparation policy alone cannot populate
+observed facts. A fulfilled tail or normal EOF grants no terminal completeness,
+presentation, clock, root lifetime, rate or FPS authority; native support stays
+false and FPS stays null. Existing modes retain their original result shapes.

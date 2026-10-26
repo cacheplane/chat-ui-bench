@@ -137,8 +137,30 @@ export interface ProtoNativeCaptureInputs {
  phase:{mark(name:string):Promise<void>};
  runner:{close():Promise<void>;wait():Promise<{exitCode:number|null;signal:string|null}>};
 }
+const TAIL500_POLICY='native-post-phase-tail-500ms-v1';
+export interface ProtoNativeTail500Binding {readonly nonce:string;readonly requestSha256:string;readonly manifestSha256:string;readonly sourceRevision:string}
+export interface ProtoNativeTail500CaptureInputs extends ProtoNativeCaptureInputs {
+ readonly binding:ProtoNativeTail500Binding;
+ readonly tailGuard:{assertHealthy():void;onInvalidated(callback:()=>void):()=>void;assertForwardDeadline():void};
+ /** Source-worker assertion against its original anchored deadline, including equality. */
+ readonly assertTailHeadroom:()=>void;
+}
+type Tail500Metadata={requestedMs:500;state:OriginalState;timer:Operation['timer']};
+export interface ProtoNativeTail500Collection {
+ readonly schema:1;readonly collectionPolicy:typeof TAIL500_POLICY;readonly nonce:string;readonly requestSha256:string;readonly manifestSha256:string;readonly sourceRevision:string;
+ readonly intent:Readonly<{bytes:number;sha256:string}>;readonly receipt:Readonly<{bytes:number;sha256:string}>;readonly tail:Readonly<{requestedMs:500;state:'fulfilled'}>;readonly trace:Readonly<{bytes:number;sha256:string}>;
+}
+type Tail500Refusal=Readonly<{status:'unavailable';reason:'unregistered-owner'|'owner-not-ready'|'receipt-unavailable'}>;
+const tail500Owners=new WeakMap<object,()=>Promise<Readonly<ProtoNativeTail500Collection>|Tail500Refusal>>();
+const UNKNOWN_TAIL500=Promise.resolve(Object.freeze({status:'unavailable',reason:'unregistered-owner'}as const));
+/** Only a registered original owner can supply observed collection facts. Refusal is cached. */
+export function inspectProtoNativeTail500Receipt(owner:unknown):Promise<Readonly<ProtoNativeTail500Collection>|Tail500Refusal>{
+ if(owner===null||typeof owner!=='object'||types.isProxy(owner))return UNKNOWN_TAIL500;
+ return tail500Owners.get(owner)?.()??UNKNOWN_TAIL500;
+}
 interface TargetSnapshot {frameId:string;loaderId:string;url:string;targetId:string;browserContextId:string}
 export interface ProtoNativeCaptureReceipt {
+ collectionPolicy?:typeof TAIL500_POLICY;binding?:ProtoNativeTail500Binding;tail?:Tail500Metadata;
  schemaVersion:1;policy:typeof POLICY;status:'open'|'closed'|'unavailable'|'pending';
  failures:string[];failureCount:number;createdRoles:Role[];operations:Operation[];originalOperationsSettled:boolean;
  transport:ProtoTraceReceipt|null;persistedWholeInput:'verified'|'unavailable';persisted:{bytes:number;sha256:string}|null;
@@ -207,10 +229,17 @@ export function createProtoNativeUserTimingCaptureV5(inputs:ProtoNativeCaptureIn
  return createNativeCapture(inputs,true,5);
 }
 export function createProtoNativeUserTimingCaptureV6(inputs:ProtoNativeCaptureInputs){return createNativeCapture(inputs,true,6); }
-function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,diagnosticVersion=0){
+export function createProtoNativeUserTimingCaptureV6Tail500(inputs:ProtoNativeTail500CaptureInputs){
+ const supplied=own(inputs,'binding');const binding=Object.freeze({nonce:text(own(supplied,'nonce'),128),requestSha256:text(own(supplied,'requestSha256'),64),manifestSha256:text(own(supplied,'manifestSha256'),64),sourceRevision:text(own(supplied,'sourceRevision'),40)});
+ if(!/^[a-f0-9]{64}$/.test(binding.requestSha256)||!/^[a-f0-9]{64}$/.test(binding.manifestSha256)||!/^[a-f0-9]{40}$/.test(binding.sourceRevision))throw unavailable();
+ const guard=inputs.tailGuard,headroom=inputs.assertTailHeadroom;
+ return createNativeCapture(inputs,true,6,{binding,guard,headroom});
+}
+function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,diagnosticVersion=0,tailSelection?:{binding:ProtoNativeTail500Binding;guard:ProtoNativeTail500CaptureInputs['tailGuard'];headroom:()=>void}){
  const receipt:ProtoNativeCaptureReceipt={schemaVersion:1,policy:POLICY,status:'open',failures:[],failureCount:0,createdRoles:[],operations:[],originalOperationsSettled:true,transport:null,persistedWholeInput:'unavailable',persisted:null,
   target:{before:null,after:null,events:[],eventCount:0},runtime:{status:'unavailable',assumption:'trusted-pinned-vendor-build-correspondence',executable:null,playwrightVersion:null,browserRevision:null,product:null,revision:null,launchFlags:[],headless:null},marks:[],runner:{close:'not-dispatched',wait:null},
   analysis:'not_evaluated',qualification:false,captureQualified:false,fpsEligibility:false,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false,nativeSupported:false,targetLifetime:'unestablished',clockAdmission:'not_evaluated'};
+ if(tailSelection){receipt.collectionPolicy=TAIL500_POLICY;receipt.binding=tailSelection.binding;receipt.tail={requestedMs:500,state:'not-dispatched',timer:{registrationState:'not-attempted',disposalState:'not-attempted'}};}
  let collector:ProtoTraceCollector|undefined,raw:FileHandle|undefined,rawClose:Promise<void>|undefined;
  let starting:Promise<ProtoNativeCaptureReceipt>|undefined,finishing:Promise<ProtoNativeCaptureReceipt>|undefined,closing:Promise<ProtoNativeCaptureReceipt>|undefined;
  let finalQueries:Promise<void>|undefined,detach:Promise<void>|undefined,runnerClose:Promise<void>|undefined;
@@ -219,11 +248,48 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
  let rawIdentity:Identity|undefined,runtimePins:ProtoNativeRuntime|undefined;
  let outputDirectory='',runId='',phaseId='';
  let phaseAttempted=false,phaseCached:Readonly<PrivatePhaseDiagnostic>|undefined,finishState:'not-dispatched'|'fulfilled'|'rejected'='not-dispatched';
+ let closeRequested=false,tailCancelled=false,cancelTail:(()=>void)|undefined;
+ let terminal:Promise<ProtoNativeCaptureReceipt>|undefined,sealing:Promise<ProtoNativeCaptureReceipt>|undefined,collectorCleanup:Promise<unknown>|undefined;
+ const writtenMetadata=new Map<Role,{identity:Identity;bytes:number;sha256:string}>();
+ let tailInspection:Promise<Readonly<ProtoNativeTail500Collection>|Tail500Refusal>|undefined;
  const phasePolicy=diagnosticVersion===6?USER_TIMING_PHASE_V6_POLICY:diagnosticVersion===5?USER_TIMING_PHASE_V5_POLICY:diagnosticVersion===4?USER_TIMING_PHASE_V4_POLICY:diagnosticVersion===3?USER_TIMING_PHASE_V3_POLICY:userTiming?USER_TIMING_PHASE_POLICY:PHASE_POLICY;
  const refusePhase=diagnosticVersion===6?userTimingPhaseV6Refusal:diagnosticVersion===5?userTimingPhaseV5Refusal:diagnosticVersion===4?userTimingPhaseV4Refusal:diagnosticVersion===3?userTimingPhaseV3Refusal:userTiming?userTimingPhaseRefusal:phaseRefusal;
  const removers:(()=>void)[]=[];
  const snapshot=():ProtoNativeCaptureReceipt=>structuredClone({...receipt,transport:collector?.snapshot()??receipt.transport,originalOperationsSettled:receipt.operations.every(op=>op.state!=='pending')&&(collector?.snapshot().originalOperationsSettled??true)});
- const fail=(code:string)=>{receipt.failureCount=Math.min(65535,receipt.failureCount+1);if(receipt.failures.length<32)receipt.failures.push(code);if(ended)receipt.status='unavailable';};
+ const fail=(code:string)=>{receipt.failureCount=Math.min(65535,receipt.failureCount+1);if(receipt.failures.length<32)receipt.failures.push(code);if(ended)receipt.status='unavailable';if(tailSelection)cancelTail?.();};
+ function closeCollector(){if(!tailSelection)return collector?.close();return collectorCleanup??=Promise.resolve().then(()=>collector?.close());}
+ function sealOnce(){if(!tailSelection)return seal();return sealing??=Promise.resolve().then(seal);}
+ function waitTail():Promise<void>{
+  const selection=tailSelection!,tail=receipt.tail!;let resolveWait:()=>void,rejectWait:()=>void;
+  const wait=new Promise<void>((resolve,reject)=>{resolveWait=resolve;rejectWait=()=>reject(unavailable());});void wait.catch(()=>{});
+  let done=false,token:unknown,registered=false;
+  function clear(){if(!registered)return;registered=false;try{inputs.clock.clearTimer(token);tail.timer.disposalState='cleared';}catch{tail.timer.disposalState='unknown-after-throw';fail('tail-timer-clear');throw unavailable();}}
+  function cancel(){if(done)return;done=true;tailCancelled=true;tail.state='rejected';try{clear();}catch{}rejectWait();}
+  cancelTail=cancel;
+  try{
+   const remove=selection.guard.onInvalidated(()=>{fail('tail-guard-invalidated');});removers.push(remove);
+   selection.guard.assertHealthy();selection.headroom();
+   if(receipt.failureCount||closeRequested||timedOut||collector?.snapshot().stage!=='recording')throw unavailable();
+   const began=inputs.clock.nowMs();if(!Number.isFinite(began))throw unavailable();tail.state='pending';
+   try{token=inputs.clock.setTimer(()=>{
+    if(done)return;
+    try{const now=inputs.clock.nowMs(),elapsed=now-began;if(!Number.isFinite(now)||!Number.isFinite(elapsed)||elapsed<500)throw unavailable();clear();selection.guard.assertHealthy();if(receipt.failureCount||closeRequested||timedOut||collector?.snapshot().stage!=='recording')throw unavailable();done=true;tail.state='fulfilled';cancelTail=undefined;resolveWait();}
+    catch{fail('tail-unavailable');cancel();}
+   },500);registered=true;tail.timer.registrationState='registered';if(done){try{clear();}catch{}}}
+   catch{tail.timer.registrationState='unknown-after-throw';tail.timer.disposalState='unknown-after-throw';throw unavailable();}
+  }catch{fail('tail-unavailable');cancel();}
+  return wait;
+ }
+ function tailTerminal():Promise<ProtoNativeCaptureReceipt>{
+  return terminal??=Promise.resolve().then(async()=>{
+   try{
+    if(closeRequested||!collector||receipt.failureCount||receipt.marks.length!==2||receipt.marks.some(row=>row.state!=='fulfilled')||collector.snapshot().stage!=='recording')throw unavailable();
+    await waitTail();if(closeRequested||receipt.failureCount||timedOut||collector.snapshot().stage!=='recording')throw unavailable();
+    await collector.finish();
+   }catch{if(!receipt.failureCount)fail('tail-finish');return cleanup();}
+   if(closeRequested||receipt.failureCount)return cleanup();return sealOnce();
+  });
+ }
  // Every timeout races only a mapped wait. The original operation row remains
  // pending until the invoked original settles; no cancellation fiction.
  function bounded<T>(kind:string,call:()=>Promise<T>,budget=10000,cleanupOwned=false):Promise<T>{
@@ -247,8 +313,8 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
   if(ended)return;receipt.target.eventCount=Math.min(65535,receipt.target.eventCount+1);
   const row={event:label,ordinal:receipt.target.eventCount};const bytes=Buffer.byteLength(JSON.stringify(row))+1;
   // Reserve 16KiB for two full target snapshots/schema before retaining events.
-  if(receipt.target.eventCount>4096||eventBytes+bytes>49152){fail('lifecycle-capacity');void collector?.close();return;}
-  eventBytes+=bytes;receipt.target.events.push(row);if(refuse){fail('target-lifetime-drift');void collector?.close();}
+  if(receipt.target.eventCount>4096||eventBytes+bytes>49152){fail('lifecycle-capacity');void closeCollector();return;}
+  eventBytes+=bytes;receipt.target.events.push(row);if(refuse){fail('target-lifetime-drift');void closeCollector();}
  }
  function install(){
   const registrations:[Observe,string,()=>void][]=[
@@ -320,7 +386,9 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
  async function writeRole(role:Role,value:unknown):Promise<void>{
   const bytes=Buffer.from(JSON.stringify(value)+'\n');if(bytes.length>ROLE_CAPS[role])throw unavailable();
   const file=await fs.open(join(outputDirectory,role),constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);receipt.createdRoles.push(role);
-  try{const stat=await file.stat();if(!stat.isFile()||stat.nlink!==1)throw unavailable();const ack=await file.write(bytes,0,bytes.length,null);if(ack.bytesWritten!==bytes.length)throw unavailable();await file.sync();}finally{await file.close();}
+  try{const stat=await file.stat();if(!stat.isFile()||stat.nlink!==1)throw unavailable();const ack=await file.write(bytes,0,bytes.length,null);if(ack.bytesWritten!==bytes.length)throw unavailable();await file.sync();
+   if(tailSelection&&(role==='intent.json'||role==='receipt.json')){const after=await file.stat();if(after.dev!==stat.dev||after.ino!==stat.ino||!after.isFile()||after.nlink!==1||after.size!==bytes.length)throw unavailable();writtenMetadata.set(role,{identity:{dev:stat.dev,ino:stat.ino},bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});}
+  }finally{await file.close();}
  }
  async function seal():Promise<ProtoNativeCaptureReceipt>{
   await closeRunner();
@@ -338,10 +406,50 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
    try{await bounded('write-receipt',()=>writeRole('receipt.json',snapshot()));}catch{fail('receipt-write');receipt.status='unavailable';}
   }
   if(receipt.operations.some(op=>op.state==='pending')||collector?.snapshot().originalOperationsSettled===false)receipt.status='pending';
+  if(tailSelection&&receipt.status==='closed'&&(receipt.failureCount||closeRequested))receipt.status='unavailable';
   ended=true;return snapshot();
  }
  async function cleanup():Promise<ProtoNativeCaptureReceipt>{
-  try{if(collector)await collector.close();else{try{await bounded('raw-close',closeRaw,10000,true);}finally{await finalizeSession();}}}catch{fail('cleanup');}return seal();
+  try{if(collector)await closeCollector();else{try{await bounded('raw-close',closeRaw,10000,true);}finally{await finalizeSession();}}}catch{fail('cleanup');}return sealOnce();
+ }
+ function tailReady():boolean{
+  const transport=collector?.snapshot();
+  return !!tailSelection&&ended&&finishState==='fulfilled'&&receipt.status==='closed'&&!receipt.failureCount&&!tailCancelled&&!closeRequested&&receipt.tail?.state==='fulfilled'&&receipt.tail.timer.registrationState==='registered'&&receipt.tail.timer.disposalState==='cleared'&&receipt.operations.every(op=>op.state==='fulfilled')&&receipt.operations.filter(op=>op.kind==='write-receipt'&&op.state==='fulfilled').length===1&&transport?.outcome==='protocol-closed'&&transport.originalOperationsSettled&&transport.completeClosureObserved&&transport.pending.length===0&&receipt.persistedWholeInput==='verified'&&!!receipt.persisted;
+ }
+ async function readOwnedMetadata(role:'intent.json'|'receipt.json'){
+  const written=writtenMetadata.get(role);if(!written)throw unavailable();
+  const bytes=await bounded('inspect-read-'+role,async()=>{
+   tailSelection!.guard.assertForwardDeadline();
+   const file=await fs.open(join(outputDirectory,role),constants.O_RDONLY|constants.O_NOFOLLOW);
+   try{
+    tailSelection!.guard.assertForwardDeadline();const before=await file.stat();
+    if(!before.isFile()||before.nlink!==1||before.size<1||before.size>ROLE_CAPS[role]||before.size!==written.bytes||before.dev!==written.identity.dev||before.ino!==written.identity.ino)throw unavailable();
+    const buffer=Buffer.alloc(before.size);let position=0;
+    while(position<buffer.length){tailSelection!.guard.assertForwardDeadline();const requested=buffer.length-position,result=await file.read(buffer,position,requested,position);if(result.bytesRead!==requested)throw unavailable();position+=result.bytesRead;}
+    tailSelection!.guard.assertForwardDeadline();const eof=await file.read(Buffer.alloc(1),0,1,position),after=await file.stat();
+    if(eof.bytesRead!==0||!sameFile(before,after)||createHash('sha256').update(buffer).digest('hex')!==written.sha256)throw unavailable();return buffer;
+   }finally{await bounded('inspect-close-'+role,async()=>{let healthy=true;try{tailSelection!.guard.assertForwardDeadline();}catch{healthy=false;}await file.close();if(!healthy)throw unavailable();},10000,true);tailSelection!.guard.assertForwardDeadline();}
+  });
+  return {value:JSON.parse(bytes.toString('utf8'))as unknown,fact:Object.freeze({bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')})};
+ }
+ function inspectTailPrivate():Promise<Readonly<ProtoNativeTail500Collection>|Tail500Refusal>{
+  if(tailInspection)return tailInspection;
+  const ready=tailReady();
+  tailInspection=Promise.resolve().then(async()=>{
+   if(!ready)return Object.freeze({status:'unavailable',reason:'owner-not-ready'}as const);
+   try{
+    // Reserve both fixed-role read/close pairs before opening either descriptor.
+    if(receipt.operations.length>60)throw unavailable();
+    const intent=await readOwnedMetadata('intent.json'),saved=await readOwnedMetadata('receipt.json');
+    for(const value of [intent.value,saved.value]){
+     if(own(value,'collectionPolicy')!==TAIL500_POLICY||JSON.stringify(own(value,'binding'))!==JSON.stringify(tailSelection!.binding))throw unavailable();
+     const tail=own(value,'tail');if(own(tail,'requestedMs')!==500)throw unavailable();
+    }
+    const savedTail=own(saved.value,'tail');if(own(savedTail,'state')!=='fulfilled'||own(saved.value,'status')!=='closed'||own(saved.value,'failureCount')!==0||JSON.stringify(own(saved.value,'persisted'))!==JSON.stringify(receipt.persisted)||!tailReady())throw unavailable();
+    const projection=Object.freeze({schema:1 as const,collectionPolicy:TAIL500_POLICY,...tailSelection!.binding,intent:intent.fact,receipt:saved.fact,tail:Object.freeze({requestedMs:500 as const,state:'fulfilled' as const}),trace:Object.freeze({...receipt.persisted!})});
+    if(Buffer.byteLength(JSON.stringify(projection))>1536)throw unavailable();tailSelection!.guard.assertForwardDeadline();return projection;
+   }catch{return Object.freeze({status:'unavailable',reason:'receipt-unavailable'}as const);}
+  });return tailInspection;
  }
  // This frame returns only fixed primitives/two independent rows. The complete
  // reader result and all candidate aliases die before output serialization.
@@ -386,9 +494,9 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
      runId=text(inputs.runId,32);phaseId=text(inputs.phaseId,32);outputDirectory=text(inputs.outputDirectory,4096);if(resolve(outputDirectory)!==outputDirectory)throw unavailable();
      // Precharge every retained runtime field before serialization or I/O.
      runtimePins=captureRuntime(own(inputs,'runtime'));
-     ownerTimer=inputs.clock.setTimer(()=>{timedOut=true;fail('owner-timeout');void collector?.close();},60000);ownerTimerSet=true;
+     ownerTimer=inputs.clock.setTimer(()=>{timedOut=true;fail('owner-timeout');void closeCollector();},60000);ownerTimerSet=true;
      install();await bounded('reserve-directory',async()=>{await fs.mkdir(outputDirectory,{mode:0o700});directoryOwned=true;if(await fs.realpath(outputDirectory)!==outputDirectory)throw unavailable();});
-     await bounded('write-intent',()=>writeRole('intent.json',{schemaVersion:1,policy:POLICY,runId,phaseId,runtime:{executablePath:runtimePins!.executablePath,expectedExecutableBytes:runtimePins!.expectedExecutableBytes,expectedExecutableSha256:runtimePins!.expectedExecutableSha256},analysis:'not_evaluated'}));
+     await bounded('write-intent',()=>writeRole('intent.json',{schemaVersion:1,policy:POLICY,runId,phaseId,runtime:{executablePath:runtimePins!.executablePath,expectedExecutableBytes:runtimePins!.expectedExecutableBytes,expectedExecutableSha256:runtimePins!.expectedExecutableSha256},analysis:'not_evaluated',...(tailSelection?{collectionPolicy:TAIL500_POLICY,binding:tailSelection.binding,tail:{requestedMs:500,state:'not-dispatched',timer:{registrationState:'not-attempted',disposalState:'not-attempted'}}}:{})}));
      await bounded('raw-open',async()=>{raw=await fs.open(join(outputDirectory,'trace.pftrace'),constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);receipt.createdRoles.push('trace.pftrace');if(ended||timedOut){await closeRaw();throw unavailable();}});
      const stat=await bounded('raw-stat',()=>raw!.stat());if(!stat.isFile()||stat.nlink!==1||stat.size!==0)throw unavailable();rawIdentity={dev:stat.dev,ino:stat.ino};
      await runtime();await bounded('page-enable',()=>inputs.session.send('Page.enable'));await query('before');if(receipt.failureCount||!installed||timedOut)throw unavailable();
@@ -406,11 +514,16 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
    return snapshot();
   },
   finish():Promise<ProtoNativeCaptureReceipt>{
+   if(tailSelection){if(finishing)return finishing;finishing=tailTerminal();void finishing.then(()=>{finishState='fulfilled';},()=>{finishState='rejected';});return finishing;}
    if(finishing)return finishing;finishing=(async()=>{if(!collector||receipt.marks.length!==2||receipt.marks.some(row=>row.state!=='fulfilled')){fail('phase-sequence');return cleanup();}try{await collector.finish();}catch{fail('transport-finish');}return seal();})();
    void finishing.then(()=>{finishState='fulfilled';},()=>{finishState='rejected';});return finishing;
   },
-  close():Promise<ProtoNativeCaptureReceipt>{if(ended)return Promise.resolve(snapshot());if(closing)return closing;fail('explicit-close');closing=cleanup();return closing;},
+  close():Promise<ProtoNativeCaptureReceipt>{
+   if(tailSelection){if(closing)return closing;if(!ended){closeRequested=true;fail('explicit-close');if(receipt.tail?.state==='fulfilled')void closeCollector();}closing=tailTerminal();return closing;}
+   if(ended)return Promise.resolve(snapshot());if(closing)return closing;fail('explicit-close');closing=cleanup();return closing;
+  },
   snapshot,
  };
+ if(tailSelection)tail500Owners.set(owner,inspectTailPrivate);
  if(userTiming)userTimingPhaseOwners.set(owner,{policy:phasePolicy,inspect:inspectPrivate});else phaseOwners.set(owner,inspectPrivate as()=>Readonly<ProtoPhaseInventoryDiagnostic>);return owner;
 }
