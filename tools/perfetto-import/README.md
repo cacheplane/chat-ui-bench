@@ -1,5 +1,47 @@
 # Pinned Perfetto import diagnostic
 
+The separate `inspectNativeWheelRawCensusV1({path, bytes, sha256})` library in
+`native-wheel-raw-census.mjs` inspects a persisted trace with the fixed V11 reader
+and one additional bounded raw pass. Build the contract and analyzer first; run
+its authored controls with
+`node --test tools/perfetto-import/native-wheel-raw-census.node.mjs`.
+Importing the helper performs no file inspection, capture, SQL or subprocess work.
+
+This source-shaped diagnostic requires exactly one literal
+`native-wheel-witness-v1:` event, its supported modern instant/core fields,
+resolved `blink.user_timing` category and initialized default thread, exact V11
+packet/body/event anchors, and prior consistent thread/process descriptors. Every
+matching descriptor occurrence remains represented, including identical repeats.
+It scans literal names across all event types and all EventName definitions;
+unused prefixed definitions and filtered `performance.mark`/`performance.measure`
+sentinels refuse. The fixed packet roster excludes translation, VM, compressed,
+remote and unknown carriers, permits only metadata in ChromeEventBundle, and
+requires empty ChromeMetadata and ExtensionDescriptor payloads. No caller prefix,
+policy, module path, decoder callback, relaxed mode or fallback is accepted.
+
+The helper pins the ten transitive analyzer source and compiled module pairs;
+missing or different builds refuse rather than executing source or rebuilding.
+It checks before/after one-link, nofollow/nonblock source and trace descriptors,
+hashes and EOF/close. Source-role limits are 256 KiB per analyzer file, 64 KiB for
+the helper/small build metadata and 2 MiB for the lockfile, with at most 4 MiB per
+source bookend. Returned source facts identify local persisted bytes; they do not
+attest cached module memory or original collector execution. Use a fresh trusted
+Node process and reviewed build for audited use.
+
+The original 32 MiB trace, 256 KiB packet and 4,096-read ceilings remain fixed.
+The additional pass and retained report spend the remaining original V11 global
+field, repeated-work and persistence allowances; budgets never renew per packet.
+Later file/source/state/shape/cap failures withdraw all witness and descriptor
+anchors. The existing whole-result byte/node/string validator also applies.
+
+Success means a unique supported **raw structural witness**, with
+`association: 'not_evaluated'`, `originalExecution: 'not_evaluated'`,
+`importerAdmission: 'not_evaluated'`, false native/evaluation/scoring/FPS eligibility
+and `FPS: null`. Trusted original request/callback/owner closure, fresh official
+importer custody and error/loss statistics, preserved imported-row/descriptor
+mapping and typed immediate wheel ancestry remain separate requirements. The
+helper establishes no target identity, wheel ID, clock alignment, rate or FPS.
+
 Optional Node 24, built-in-only diagnostic. Importing `run.mjs` has no execution or
 filesystem side effects. This does not capture a browser, calculate a frame rate,
 qualify native traces, or change the manual V6/V7 analyzers. Every result has
