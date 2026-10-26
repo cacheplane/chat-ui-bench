@@ -48,6 +48,12 @@ export const SAME_TRACE_CLOCK3_INTERVAL_COMPATIBILITY=freeze({
    'browser-frame-ordered-state.ts':'8d89132ec9e9422f91a5bcd6e686b070538b4e8b428676eaaf9bf647eb9bdeac',
    'browser-frame-whole-trace-reader.ts':'7f055ed38dae36a2a4322377c67d9da39bbd48952bc5e2d82707b0bef21003e4',
    'browser-frame-native-clock3.ts':'6eb9ac399e61249fc45cf5fb273a8797ebc98cb05d25a5a8c104da505b363b52'
+  },
+  reviewedFramePresentedClockLayout:{
+   'browser-frame-packet-fragments.ts':'bff8611ca4a6933461d00c4c108ac13afc0ae02356fc5b1bb6d4dc27de896909',
+   'browser-frame-track-event-fragments.ts':'222da6353dd5f6d0b107227bf19ca63a764b131644823e85e6cff266e41e3c21',
+   'browser-frame-ordered-state.ts':'264a70018bb978a2aec2058349ddde17135112b554db5cb7b5aff539623166d2',
+   'browser-frame-whole-trace-reader.ts':'742989717efebf8e515f598a66c3c0fdf1f8d8885f2c05e5525836a6714f7c88'
   }
  }
 });
