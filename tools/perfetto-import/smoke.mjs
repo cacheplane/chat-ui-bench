@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROCESSOR_PINS, runDiagnostic, runInventoryDiagnostic, runTargetInventoryDiagnostic, runScopeInventoryDiagnostic } from './run.mjs';
+import { PROCESSOR_PINS, runDiagnostic, runInventoryDiagnostic, runTargetInventoryDiagnostic, runScopeInventoryDiagnostic, runMainframeLineageDiagnostic } from './run.mjs';
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const concat = (...parts) => Buffer.concat(parts);
@@ -107,6 +107,43 @@ export function authoredScopeFixture() {
     event(2n,null,1040n),
     event(3n,'unrelated root',1041n),
     event(1n,'DrawFrame',1042n,10n,64n,[integer('layer_tree_host_id',19n)]));
+}
+
+// Independent authored lineage input. MainFramePipeline uses ChromeTrackEvent
+// field 1067; its main_frame_id=1 and step=2 are pinned v59.1 protobuf fields.
+// These authored identities deliberately repeat across threads; they certify
+// exporter shape, never a production reporter association or frame population.
+export function authoredMainframeLineageFixture() {
+  const packet = (...fields) => body(1, concat(uint(10, 1n), ...fields));
+  const annotation = (name, value) => body(4, concat(text(10,name),uint(3,value)));
+  const event = (name,ts,track=10n,extra=Buffer.alloc(0),type=3n,category='cc,benchmark') => packet(uint(8,ts),uint(58,64n),body(11,concat(uint(9,type),uint(11,track),text(22,category),...(name===null?[]:[text(23,name)]),extra)));
+  const pipeline = (step,firstDraw=false) => body(1067,concat(uint(1,9007199254740995n),uint(2,step),...(firstDraw?[body(5,concat(uint(1,4294967297n),uint(2,123n)))]:[])));
+  const clock = (id,ts,unit) => body(1,concat(uint(1,id),uint(2,ts),uint(3,0n),uint(4,unit)));
+  return concat(
+    packet(uint(13,1n),body(6,concat(clock(6n,1000000n,1n),clock(64n,1000n,1000n),uint(2,6n)))),
+    packet(body(60,concat(uint(1,8n),body(4,concat(uint(1,900n),uint(2,901n),text(5,'impl')))))),
+    packet(body(60,concat(uint(1,10n),uint(5,8n),text(2,'impl-track')))),
+    packet(body(60,concat(uint(1,18n),body(4,concat(uint(1,900n),uint(2,902n),text(5,'main')))))),
+    packet(body(60,concat(uint(1,20n),uint(5,18n),text(2,'main-track')))),
+    packet(body(60,concat(uint(1,30n),uint(5,8n),text(2,'reporter-track')))),
+    event('lineage-start',1000n),
+    event('PipelineReporter',1001n,30n,annotation('ancestorOnly',77n),1n),
+    event('Commit',1002n,30n),
+    event('ProxyMain::BeginMainFrame',1003n,20n,pipeline(2n)),
+    event('ProxyMain::BeginMainFrame::commit',1004n,20n,pipeline(4n)),
+    event('ProxyImpl::ReadyToCommit',1005n,10n,pipeline(5n)),
+    event('ProxyImpl::Commit',1006n,10n,pipeline(6n)),
+    event('LayerTreeHostImpl::CommitComplete',1007n,10n,pipeline(7n)),
+    event('ProxyImpl::ReadyToActivate',1008n,10n,pipeline(8n)),
+    event('LayerTreeHostImpl::ActivateSyncTree',1009n,10n,pipeline(9n)),
+    event('ActivateLayerTree',1010n,10n,concat(annotation('frameId',17n),annotation('layerTreeId',17n))),
+    event('Commit',1011n,20n,concat(annotation('frameSeqId',107n),annotation('layerTreeId',17n)),3n,'disabled-by-default-devtools.timeline'),
+    event('MainFrame.Draw',1012n,10n,pipeline(10n,true)),
+    event('DrawFrame',1013n,10n,concat(annotation('frameSeqId',123n),annotation('layerTreeId',17n))),
+    event('ProxyImpl::Commit',1014n,20n,pipeline(6n)),
+    event('MainFrame.Draw',1015n,10n,pipeline(10n)),
+    event(null,1016n,30n,Buffer.alloc(0),2n),
+    event('lineage-end',1017n));
 }
 
 function requireSuccessfulDiagnostic(result) {
@@ -404,6 +441,41 @@ function requireScopeInventory(csv) {
   return tables.map(table=>table.length);
 }
 
+function requireMainframeLineage(csv) {
+  const rows=csvRows(csv),tables=[];let cursor=0;
+  for(let i=0;i<scopeHeaders.length;i++) {
+    assert.deepEqual(rows[cursor++],scopeHeaders[i],`lineage table ${i+1} schema`);
+    const end=i+1===scopeHeaders.length?rows.length:rows.findIndex((row,index)=>index>=cursor && JSON.stringify(row)===JSON.stringify(scopeHeaders[i+1]));
+    assert.ok(end>=cursor,`lineage table ${i+1} complete`);
+    const data=rows.slice(cursor,end);data.forEach(row=>assert.equal(row.length,scopeHeaders[i].length));
+    tables.push(data.map(row=>Object.fromEntries(scopeHeaders[i].map((key,j)=>[key,row[j]]))));cursor=end;
+  }
+  const [families,nodes,compact,dictionary,stats,bounds]=tables;
+  const expected=['ActivateLayerTree','Commit','DrawFrame','LayerTreeHostImpl::ActivateSyncTree','LayerTreeHostImpl::CommitComplete','MainFrame.Draw','ProxyImpl::Commit','ProxyImpl::ReadyToActivate','ProxyImpl::ReadyToCommit','ProxyMain::BeginMainFrame','ProxyMain::BeginMainFrame::commit'];
+  assert.deepEqual(families.map(r=>[r.name,r.event_count]),expected.map(name=>[name,['Commit','ProxyImpl::Commit','MainFrame.Draw'].includes(name)?'2':'1']));
+  assert.equal(nodes.length,17);assert.equal(compact.length,31);assert.equal(dictionary.length,27);
+  const args=reconstructScopeArguments(compact,dictionary);
+  const reporters=nodes.filter(r=>r.name==='PipelineReporter');assert.equal(reporters.length,1);assert.equal(reporters[0].is_selected,'0');
+  assert.equal(args.some(r=>r.key.includes('ancestorOnly')),false);
+  const commits=nodes.filter(r=>r.name==='Commit');assert.equal(commits.length,2);
+  assert.equal(commits[0].parent_id,reporters[0].id);assert.equal(commits[0].category,'cc,benchmark');
+  assert.equal(commits[1].parent_id_is_null,'1');assert.equal(commits[1].category,'disabled-by-default-devtools.timeline');assert.notEqual(commits[0].track_id,commits[1].track_id);
+  const ids=args.filter(r=>r.key==='main_frame_pipeline.main_frame_id');assert.equal(ids.length,10);
+  assert.ok(ids.every(r=>r.value_type==='uint' && r.int_value==='9007199254740995'));
+  const steps=args.filter(r=>r.key==='main_frame_pipeline.step');assert.equal(steps.length,10);
+  assert.deepEqual(steps.map(r=>r.string_value),['BEGIN_MAIN_FRAME','COMMIT_ON_MAIN','READY_TO_COMMIT_ON_IMPL','COMMIT_ON_IMPL','COMMIT_COMPLETE','READY_TO_ACTIVATE','ACTIVATE','DRAW','COMMIT_ON_IMPL','DRAW']);
+  const draws=nodes.filter(r=>r.name==='MainFrame.Draw');
+  for(const [key,value] of [['source_id','4294967297'],['sequence_number','123']]) {
+    const first=args.filter(r=>r.key===`main_frame_pipeline.last_begin_frame_id_during_first_draw.${key}`);
+    assert.equal(first.length,1);assert.equal(first[0].slice_id,draws[0].id);assert.equal(first[0].value_type,'uint');assert.equal(first[0].int_value,value);
+  }
+  const repeated=nodes.filter(r=>r.name==='ProxyImpl::Commit');assert.equal(repeated.length,2);assert.notEqual(repeated[0].track_id,repeated[1].track_id);assert.equal(repeated[0].arg_set_id,repeated[1].arg_set_id);
+  assert.equal(args.find(r=>r.slice_id===commits[0].id).arg_present,'0');
+  assert.deepEqual(args.filter(r=>r.key==='debug.frameSeqId').map(r=>r.int_value),['107','123']);
+  assert.ok(stats.every(r=>r.value!=='0'));assert.deepEqual(bounds,[{start_ts:'1000000',end_ts:'1017000'}]);
+  return tables.map(table=>table.length);
+}
+
 export async function runSmoke({ processor, out }) {
   if (![processor, out].every(p => typeof p === 'string' && isAbsolute(p) && resolve(p) === p)) throw new Error('normalized absolute processor and fresh output paths required');
   await mkdir(out, { mode: 0o700 });
@@ -537,6 +609,15 @@ export async function runSmoke({ processor, out }) {
     assert.equal(scopeResult.clockAdmission,'not_evaluated');
     const scopeTableRows=requireScopeInventory(await readFile(join(out,'scope-inventory','query.stdout'),'utf8'));
     summary.scopeInventory={authoredOnly:true,queryPolicy:scopeResult.queryPolicy,rawRowsExported:true,fixtureBytes:scope.length,fixtureSha256:digest(scope),tableRows:scopeTableRows,officialProcessor:scopeResult.officialProcessor,nativeSupported:false,qualification:false,captureQualified:false,fpsEligibility:false,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false,clockAdmission:'not_evaluated',fps:null,duration:null,scoring:false};
+    const lineage=authoredMainframeLineageFixture(),lineagePath=join(out,'authored-mainframe-lineage-fixture.pftrace');
+    assert.equal(lineage.length,1367);assert.equal(digest(lineage),'126b0d2ce9a85a519ab4f8b790b0a35c9154306c00b1313e332735488efa0cb7');
+    await writeFile(lineagePath,lineage,{flag:'wx',mode:0o600});
+    const lineageResult=await runMainframeLineageDiagnostic({trace:{path:lineagePath,bytes:lineage.length,sha256:digest(lineage)},processor:{path:processor,sha256:PROCESSOR_PINS[`${process.platform}-${process.arch}`]},phases:['lineage-start','lineage-end','Commit'],out:join(out,'mainframe-lineage')});
+    requireSuccessfulDiagnostic(lineageResult);assert.equal(lineageResult.queryPolicy,'mainframe-lineage-compact-v1');assert.equal(lineageResult.rawRowsExported,true);
+    for(const key of ['qualification','captureQualified','fpsEligibility','evaluationEligibility','scoringEligibility','rankingEligibility'])assert.equal(lineageResult[key],false);
+    assert.equal(lineageResult.clockAdmission,'not_evaluated');
+    const lineageTableRows=requireMainframeLineage(await readFile(join(out,'mainframe-lineage','query.stdout'),'utf8'));
+    summary.mainframeLineage={authoredOnly:true,queryPolicy:lineageResult.queryPolicy,rawRowsExported:true,fixtureBytes:lineage.length,fixtureSha256:digest(lineage),tableRows:lineageTableRows,officialProcessor:lineageResult.officialProcessor,nativeSupported:false,qualification:false,captureQualified:false,fpsEligibility:false,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false,clockAdmission:'not_evaluated',fps:null,duration:null,scoring:false};
     summary.status = 'success'; summary.fixtureBytes = bytes.length; summary.fixtureSha256 = digest(bytes);
     summary.graphicsFixtureBytes = graphics.length; summary.graphicsFixtureSha256 = digest(graphics);
     summary.graphicsInventory = { queryPolicy: inventoryResult.queryPolicy, rawRowsExported: inventoryResult.rawRowsExported, fixtureBytes: graphics.length, fixtureSha256: digest(graphics) };
