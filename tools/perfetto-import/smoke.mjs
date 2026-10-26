@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROCESSOR_PINS, runDiagnostic, runInventoryDiagnostic, runTargetInventoryDiagnostic, runScopeInventoryDiagnostic, runMainframeLineageDiagnostic } from './run.mjs';
+import { PROCESSOR_PINS, runDiagnostic, runInventoryDiagnostic, runTargetInventoryDiagnostic, runScopeInventoryDiagnostic, runMainframeLineageDiagnostic, runWheelCarrierDiagnostic } from './run.mjs';
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const concat = (...parts) => Buffer.concat(parts);
@@ -144,6 +144,33 @@ export function authoredMainframeLineageFixture() {
     event('MainFrame.Draw',1015n,10n,pipeline(10n)),
     event(null,1016n,30n,Buffer.alloc(0),2n),
     event('lineage-end',1017n));
+}
+
+// Authored importer semantics only. ChromeLatencyInfo: producer403906 field1
+// int64 trace_id, field2 Step (HANDLE_INPUT_EVENT_MAIN=4); TrackEvent field29.
+// https://github.com/google/perfetto/blob/403906f4adfbf287a02e5546f8430dcc9d56b649/protos/perfetto/trace/track_event/chrome_latency_info.proto
+export function authoredWheelCarrierFixture() {
+  const packet = (...fields) => body(1, concat(uint(10, 1n), ...fields));
+  const clock = (id, ts, unit) => body(1, concat(uint(1,id),uint(2,ts),uint(3,0n),uint(4,unit)));
+  const stringArg = (name, value) => body(4, concat(text(10,name),text(6,value)));
+  const latency = (id, step) => body(29, concat(uint(1,BigInt.asUintN(64,id)),uint(2,step)));
+  const event = (name, ts, type=3n, extra=Buffer.alloc(0), track=10n) => packet(uint(8,ts),uint(58,64n),body(11,concat(uint(9,type),uint(11,track),text(22,'input,benchmark'),...(name===null?[]:[text(23,name)]),extra)));
+  return concat(
+    packet(uint(13,1n),body(6,concat(clock(6n,1000000n,1n),clock(64n,1000n,1000n),uint(2,6n)))),
+    packet(body(60,concat(uint(1,8n),body(4,concat(uint(1,900n),uint(2,901n),text(5,'main')))))),
+    packet(body(60,concat(uint(1,10n),uint(5,8n),text(2,'main-track')))),
+    packet(body(60,concat(uint(1,18n),body(4,concat(uint(1,900n),uint(2,902n),text(5,'other')))))),
+    packet(body(60,concat(uint(1,20n),uint(5,18n),text(2,'other-track')))),
+    event('wheel-start',1000n),event('unselected outer',1001n,1n,stringArg('ancestorOnly','not expanded')),
+    event('WidgetBaseInputHandler::OnHandleInputEvent',1002n,1n,stringArg('event','MouseWheel')),
+    event('LatencyInfo.Flow',1003n,1n,latency(-8567296010789414660n,4n)),
+    event('EventDispatch',1004n,1n,stringArg('type','wheel')),
+    event('native-wheel-witness-v1:00000000000000000000000000000000:0:1',1005n),
+    event(null,1006n,2n),event(null,1007n,2n),event(null,1008n,2n),event(null,1009n,2n),
+    event('InputLatency::MouseWheel',1010n),event('EventLatency',1011n),
+    event('LatencyInfo.Flow',1012n,3n,latency(27n,3n),20n),
+    event('native-wheel-witness-v1:ffffffffffffffffffffffffffffffff:0:268435456',1013n,3n,Buffer.alloc(0),20n),
+    event('wheel-end',1014n));
 }
 
 function requireSuccessfulDiagnostic(result) {
@@ -476,6 +503,32 @@ function requireMainframeLineage(csv) {
   return tables.map(table=>table.length);
 }
 
+function requireWheelCarrier(csv) {
+  const rows=csvRows(csv),tables=[];let cursor=0;
+  for(let i=0;i<scopeHeaders.length;i++) {
+    assert.deepEqual(rows[cursor++],scopeHeaders[i],`wheel table ${i+1} schema`);
+    const end=i+1===scopeHeaders.length?rows.length:rows.findIndex((row,index)=>index>=cursor&&JSON.stringify(row)===JSON.stringify(scopeHeaders[i+1]));
+    assert.ok(end>=cursor);const data=rows.slice(cursor,end);data.forEach(row=>assert.equal(row.length,scopeHeaders[i].length));
+    tables.push(data.map(row=>Object.fromEntries(scopeHeaders[i].map((key,j)=>[key,row[j]]))));cursor=end;
+  }
+  const [counts,nodes,compact,dictionary,stats,bounds]=tables;
+  const marks=['native-wheel-witness-v1:00000000000000000000000000000000:0:1','native-wheel-witness-v1:ffffffffffffffffffffffffffffffff:0:268435456'];
+  const names=['LatencyInfo.Flow','WidgetBaseInputHandler::OnHandleInputEvent','EventDispatch','InputLatency::MouseWheel','EventLatency','wheel-start','wheel-end',...marks].sort();
+  assert.deepEqual(counts.map(x=>[x.name,x.event_count]),names.map(name=>[name,name==='LatencyInfo.Flow'?'2':'1']));
+  assert.equal(nodes.length,11);assert.equal(nodes.filter(x=>x.is_selected==='1').length,10);
+  assert.equal(nodes.find(x=>x.name==='unselected outer').is_selected,'0');
+  const witness=nodes.find(x=>x.name===marks[0]),dispatch=nodes.find(x=>x.name==='EventDispatch'),flow=nodes.find(x=>x.name==='LatencyInfo.Flow'&&x.track_id===witness.track_id),widget=nodes.find(x=>x.name==='WidgetBaseInputHandler::OnHandleInputEvent');
+  assert.equal(witness.parent_id,dispatch.id);assert.equal(dispatch.parent_id,flow.id);assert.equal(flow.parent_id,widget.id);
+  assert.equal(witness.tid,'901');assert.equal(witness.pid,'900');
+  assert.notEqual(nodes.find(x=>x.name===marks[1]).track_id,witness.track_id);
+  const args=reconstructScopeArguments(compact,dictionary);assert.equal(args.some(x=>x.key==='debug.ancestorOnly'),false);
+  assert.deepEqual(args.filter(x=>x.key==='chrome_latency_info.trace_id').map(x=>[x.value_type,x.int_value]),[['int','-8567296010789414660'],['int','27']]);
+  assert.deepEqual(args.filter(x=>x.key==='chrome_latency_info.step').map(x=>[x.value_type,x.string_value]),[['string','STEP_HANDLE_INPUT_EVENT_MAIN'],['string','STEP_SEND_INPUT_EVENT_UI']]);
+  assert.equal(args.find(x=>x.key==='debug.event').string_value,'MouseWheel');
+  assert.ok(stats.every(x=>x.value!=='0'));assert.deepEqual(bounds,[{start_ts:'1000000',end_ts:'1014000'}]);
+  return tables.map(x=>x.length);
+}
+
 export async function runSmoke({ processor, out }) {
   if (![processor, out].every(p => typeof p === 'string' && isAbsolute(p) && resolve(p) === p)) throw new Error('normalized absolute processor and fresh output paths required');
   await mkdir(out, { mode: 0o700 });
@@ -618,6 +671,14 @@ export async function runSmoke({ processor, out }) {
     assert.equal(lineageResult.clockAdmission,'not_evaluated');
     const lineageTableRows=requireMainframeLineage(await readFile(join(out,'mainframe-lineage','query.stdout'),'utf8'));
     summary.mainframeLineage={authoredOnly:true,queryPolicy:lineageResult.queryPolicy,rawRowsExported:true,fixtureBytes:lineage.length,fixtureSha256:digest(lineage),tableRows:lineageTableRows,officialProcessor:lineageResult.officialProcessor,nativeSupported:false,qualification:false,captureQualified:false,fpsEligibility:false,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false,clockAdmission:'not_evaluated',fps:null,duration:null,scoring:false};
+    const wheel=authoredWheelCarrierFixture(),wheelPath=join(out,'authored-wheel-carrier-fixture.pftrace');
+    assert.equal(wheel.length,1047);assert.equal(digest(wheel),'27631b426b9e243fcb5f460617d3a4c8d4edbdade3a00841a6ebc55e1659d6f5');
+    await writeFile(wheelPath,wheel,{flag:'wx',mode:0o600});
+    const wheelResult=await runWheelCarrierDiagnostic({trace:{path:wheelPath,bytes:wheel.length,sha256:digest(wheel)},processor:{path:processor,sha256:PROCESSOR_PINS[`${process.platform}-${process.arch}`]},phases:['wheel-start','wheel-end','LatencyInfo.Flow'],out:join(out,'wheel-carrier')});
+    requireSuccessfulDiagnostic(wheelResult);assert.equal(wheelResult.queryPolicy,'wheel-carrier-compact-v1');assert.equal(wheelResult.sourceBookends.stable,true);
+    for(const key of ['qualification','captureQualified','fpsEligibility','evaluationEligibility','scoringEligibility','rankingEligibility'])assert.equal(wheelResult[key],false);
+    const wheelTableRows=requireWheelCarrier(await readFile(join(out,'wheel-carrier','query.stdout'),'utf8'));
+    summary.wheelCarrier={authoredOnly:true,queryPolicy:wheelResult.queryPolicy,rawRowsExported:true,fixtureBytes:wheel.length,fixtureSha256:digest(wheel),tableRows:wheelTableRows,officialProcessor:wheelResult.officialProcessor,nativeSupported:false,qualification:false,captureQualified:false,fpsEligibility:false,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false,clockAdmission:'not_evaluated',fps:null,duration:null,scoring:false};
     summary.status = 'success'; summary.fixtureBytes = bytes.length; summary.fixtureSha256 = digest(bytes);
     summary.graphicsFixtureBytes = graphics.length; summary.graphicsFixtureSha256 = digest(graphics);
     summary.graphicsInventory = { queryPolicy: inventoryResult.queryPolicy, rawRowsExported: inventoryResult.rawRowsExported, fixtureBytes: graphics.length, fixtureSha256: digest(graphics) };

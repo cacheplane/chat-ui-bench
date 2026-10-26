@@ -14,7 +14,8 @@ node tools/perfetto-import/run.mjs --inventory-config /absolute/inventory-config
 node tools/perfetto-import/run.mjs --target-inventory-config /absolute/target-inventory-config.json
 node tools/perfetto-import/run.mjs --scope-inventory-config /absolute/scope-inventory-config.json
 node tools/perfetto-import/run.mjs --mainframe-lineage-config /absolute/mainframe-lineage-config.json
-node --test tools/perfetto-import/run.node.mjs tools/perfetto-import/mainframe-lineage.node.mjs
+node tools/perfetto-import/run.mjs --wheel-carrier-config /absolute/wheel-carrier-config.json
+node --test tools/perfetto-import/run.node.mjs tools/perfetto-import/mainframe-lineage.node.mjs tools/perfetto-import/wheel-carrier.node.mjs
 ```
 
 Configuration shape (replace all paths and trace facts with your own retained inputs):
@@ -441,3 +442,48 @@ context-only `PipelineReporter` ancestor. This validates importer/exporter shape
 not production identity or performance. Changed-head Linux execution is supplied
 by the existing pinned-processor workflow; local macOS evidence alone is not
 Linux verification.
+
+The explicit `--wheel-carrier-config` CLI and
+`runWheelCarrierDiagnostic(config)` API select [wheel-carrier.sql](wheel-carrier.sql),
+with `queryPolicy: 'wheel-carrier-compact-v1'`. Configuration uses the same trace,
+processor, phases and fresh output fields. This exports imported graph facts;
+qualification, capture, FPS, evaluation, scoring and ranking flags remain false,
+clock admission remains `not_evaluated`, and FPS/duration remain null. The
+separate `runAuthoredFixtureWheelCarrierDiagnostic(config)` test API cannot be
+selected by the CLI and never attests an official processor.
+
+Wheel selection includes every exact `LatencyInfo.Flow`,
+`WidgetBaseInputHandler::OnHandleInputEvent`, `EventDispatch`,
+`InputLatency::MouseWheel`, and `EventLatency` slice, every supplied literal phase,
+and every literal name beginning `native-wheel-witness-v1:`. The prefix is fixed
+and case sensitive. No expected nonce, step, ID, thread or time window narrows the
+export. Binary name comparisons retain case-distinct siblings. Counts include
+zero rows for absent fixed families and phases, plus all actual prefix names.
+Phase/family/prefix collisions produce one name-count row and select each slice
+once; repeated slices and argument occurrences remain distinct.
+
+Its six tables use the compact scope schemas: name counts, selected nodes and
+their complete existing parent closure, all selected arguments, the typed
+argument dictionary, all nonzero importer statistics, and full trace bounds.
+Missing parents, cycles, cross-track ancestry, extra wheels and conflicting typed
+arguments remain visible. Flow and Widget arguments are expanded because those
+families are selected; context-only ancestor arguments are not expanded. These
+facts require a separate verifier before any request-to-wheel association.
+
+This policy alone adds before/after bounded identity/hash snapshots of the fixed
+`run.mjs` (64 KiB), fixed SQL source (16 KiB) and executed `diagnostic.sql` (16 KiB).
+Source bytes and decoded SQL are read through bounded nofollow/nonblock original
+handles; executed SQL must match the rendered hash. Any failed or changed source
+bookend fails the diagnostic. `sourceBookends.stable` describes only these three
+files' observed local stability; it does not authenticate review, creator
+execution, Node's dependency closure or native collection provenance. Trace/tool
+bookends and process limits remain unchanged: trace 32 MiB, processor 64 MiB,
+stdout 256 KiB, stderr 64 KiB and each original process at most 60 seconds.
+
+The seventh official smoke import uses a separate authored wheel fixture. It
+checks a nested marker/dispatch/main-input-Flow/MouseWheel-Widget chain, a second
+wheel Flow and prefix sibling on another thread, signed 64-bit trace IDs and
+source-defined latency step strings. Its producer schema is
+[ChromeLatencyInfo at 403906](https://github.com/google/perfetto/blob/403906f4adfbf287a02e5546f8430dcc9d56b649/protos/perfetto/trace/track_event/chrome_latency_info.proto).
+Successful authored import does not establish native provenance, raw marker
+correspondence, wheel-to-scroll-update causality, presentation population or FPS.
