@@ -16,6 +16,7 @@ node tools/perfetto-import/run.mjs --scope-inventory-config /absolute/scope-inve
 node tools/perfetto-import/run.mjs --mainframe-lineage-config /absolute/mainframe-lineage-config.json
 node tools/perfetto-import/run.mjs --wheel-carrier-config /absolute/wheel-carrier-config.json
 node --test tools/perfetto-import/run.node.mjs tools/perfetto-import/mainframe-lineage.node.mjs tools/perfetto-import/wheel-carrier.node.mjs
+node --test tools/perfetto-import/wheel-graph.node.mjs
 ```
 
 Configuration shape (replace all paths and trace facts with your own retained inputs):
@@ -487,3 +488,53 @@ source-defined latency step strings. Its producer schema is
 [ChromeLatencyInfo at 403906](https://github.com/google/perfetto/blob/403906f4adfbf287a02e5546f8430dcc9d56b649/protos/perfetto/trace/track_event/chrome_latency_info.proto).
 Successful authored import does not establish native provenance, raw marker
 correspondence, wheel-to-scroll-update causality, presentation population or FPS.
+## Pure wheel CSV and parent graph diagnostic
+
+`wheel-graph.mjs` adds two explicit pure APIs, with no file reads or subprocesses:
+`parseWheelCarrierCsvV1(bytes, { phases })` and
+`evaluateWheelCarrierGraphV1(parsed, { phaseNames, markerName })`. The parser
+accepts a `Buffer` or ordinary `Uint8Array` containing the complete fixed
+`wheel-carrier-compact-v1` six-table CSV. It rejects malformed UTF-8/CSV, incomplete
+or reordered schemas, contradictory NULL flags, noncanonical/out-of-range
+integers, inconsistent counts, dictionary references or argument multiplicities,
+and unsupported typed channels. It preserves repeated equal arguments and
+shared argument sets. IDs and SQL integers use `BigInt`; ordering uses UTF-8
+binary comparison. CSV quote decoding is performed once, matching the fixed
+query's compensation for the pinned renderer.
+
+The parser's immutable facade is privately owned by this module. The evaluator
+accepts only an original successfully parsed facade, with exactly the same
+two phase names. Expected phases must have the native wheel recipe's start/end
+grammar; the marker's nonce/carrier relation is recomputed. It requires exactly
+one prefix witness in the entire exported graph and follows its immediate
+parents, retaining intermediaries. Missing, cyclic, cross-thread, unclosed or
+inconsistently nested relevant ancestry refuses. Exactly one enclosing main
+`LatencyInfo.Flow` and one MouseWheel Widget must supply unique correctly typed
+arguments. Negative signed trace IDs are supported; `-1`, aliases and repeated
+required arguments refuse.
+
+The facade also exposes deeply frozen `stats` and `traceBounds` snapshots with
+canonical decimal integer strings and explicit nullable values, so a separate
+wrapper can inspect all statistics without reparsing CSV. Snapshots and cloned
+facades cannot be submitted as parsed ownership or authentication evidence.
+
+The private facade proves only that these caller-supplied bytes passed this
+grammar. It does not authenticate the exporter, native execution, raw instant
+type, importer correspondence, browser target, clock or complete frame
+population. Even `imported-wheel-parent-graph-consistent` remains
+`inputOrigin: 'caller-supplied-csv'`, with native/qualification/FPS/scoring
+eligibility false and FPS, rate, latency and duration null. All nonzero stats are
+retained; `statsAdmission: 'not_evaluated'` means this pure evaluator does not
+admit loss/error conditions for a native result. A successful graph must still
+pass separate original-execution, raw-event and importer checks before any
+native association claim.
+
+The parser keeps the exporter's 256 KiB byte ceiling and adds refusal ceilings:
+4096 rows each for counts, nodes and dictionary; 8192 argument rows; 1024 stats;
+one bounds row; 24576 total records; 16 KiB decoded UTF-8 per cell and 256 KiB
+total decoded text. Malformed suffixes withdraw the entire result. No caller
+prefix, argument keys, policy, callbacks or relaxed mode are accepted. Argument
+types/channels follow pinned v59.1
+[`Variadic`](https://github.com/google/perfetto/blob/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/types/variadic.h)
+and
+[`GlobalArgsTracker`](https://github.com/google/perfetto/blob/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/importers/common/global_args_tracker.h).
