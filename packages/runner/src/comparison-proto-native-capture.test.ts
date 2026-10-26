@@ -8,6 +8,8 @@ import syncFs from 'node:fs';
 import {body as protoBody,join as protoJoin,text as protoText,uint as protoUint,int32 as protoInt32} from '../../analyzer/src/browser-frame-packet-fragments.test-helper.js';
 // Authored projection faults wrap an actual original read; never physical evidence.
 const guardFault=vi.hoisted(()=>({project:null as null|((whole:any)=>any)}));
+const nativeFileFault=vi.hoisted(()=>({opened:null as null|((file:any,path:unknown)=>void)}));
+vi.mock('node:fs/promises',async importOriginal=>{const original=await importOriginal<typeof import('node:fs/promises')>();return {...original,open:async(...args:Parameters<typeof original.open>)=>{const file=await original.open(...args);nativeFileFault.opened?.(file,args[0]);return file;}};});
 // Resolve the real source reader through Vitest; no production bundle is built.
 vi.mock('node:module',async importOriginal=>{const original=await importOriginal<typeof import('node:module')>(),reader=await import('../../analyzer/src/browser-frame-whole-trace-reader.js');return {...original,createRequire:(...args:Parameters<typeof original.createRequire>)=>{const require=original.createRequire(...args);return Object.assign((id:string)=>id==='@chat-ui-bench/analyzer/internal/whole-annotation'?{...reader,readWholeUserTimingTraceV3:(...args:Parameters<typeof reader.readWholeUserTimingTraceV3>)=>{const whole=reader.readWholeUserTimingTraceV3(...args);return guardFault.project?guardFault.project(whole):whole;}}:require(id),{resolve:require.resolve});}};});
 
@@ -51,12 +53,141 @@ async function setup(){
 async function fixture(body:(h:Awaited<ReturnType<typeof setup>>,create:any)=>Promise<void>){const h=await setup();try{await body(h,await factory());}finally{await h.dispose();}}
 function unqualified(r:any){expect(r.analysis).toBe('not_evaluated');for(const key of ['qualification','captureQualified','fpsEligibility','evaluationEligibility','scoringEligibility','rankingEligibility','nativeSupported'])expect(r[key]).toBe(false);expect(r.targetLifetime).toBe('unestablished');expect(r.clockAdmission).toBe('not_evaluated');}
 async function capture(h:any,create:any){const owner=create(h.inputs);const started=await owner.start();expect(started.status,JSON.stringify(started)).toBe('open');await owner.mark('start');await owner.mark('end');const receipt=await owner.finish();return {owner,receipt};}
+const tailBinding=Object.freeze({nonce:'authored-tail-nonce',requestSha256:'a'.repeat(64),manifestSha256:'b'.repeat(64),sourceRevision:'c'.repeat(40)});
+async function tailFixture(body:(h:Awaited<ReturnType<typeof setup>>,owner:any,control:{tick(ms:number):void;invalidate():void;checks:string[];setNow(ms:number):void;setRemaining(ms:number):void;inputs:any})=>Promise<void>){
+ const h=await setup();let now=0,remaining=17000,invalid=false,subscriber:(()=>void)|undefined;const checks:string[]=[];
+ h.clock.nowMs=()=>now;
+ const inputs={...h.inputs,binding:tailBinding,tailGuard:{assertHealthy(){checks.push('healthy');if(invalid)throw Error('invalid');},onInvalidated(callback:()=>void){checks.push('subscribe');subscriber=callback;return()=>{checks.push('unsubscribe');subscriber=undefined;};},assertForwardDeadline(){checks.push('deadline');}},assertTailHeadroom(){checks.push('headroom');if(remaining<500)throw Error('anchored headroom');}};
+ const create=(nativePhase as any).createProtoNativeUserTimingCaptureV6Tail500;expect(create,'immutable Tail500 factory').toBeTypeOf('function');
+ const owner=create(inputs);
+ try{await owner.start();await owner.mark('start');await owner.mark('end');await body(h,owner,{inputs,checks,tick(ms){now=ms;for(const timer of [...h.timers.values()])if(timer.delay===500)timer.callback();},invalidate(){invalid=true;subscriber?.();},setNow(ms){now=ms;},setRemaining(ms){remaining=ms;}});}finally{await h.dispose();}
+}
+const inspectTail=(owner:unknown):any=>{const inspect=(nativePhase as any).inspectProtoNativeTail500Receipt;expect(inspect,'registered owned receipt inspector').toBeTypeOf('function');return inspect(owner);};
+it('Tail500 retains recording until one fixed timer fulfills and exports the actual owned receipt',async()=>tailFixture(async(h,owner,c)=>{
+ c.setRemaining(500);
+ const set=h.clock.setTimer;h.clock.setTimer=(cb,ms)=>{if(ms===500)h.journal.push('tail-begin');return set(cb,ms);};h.journal.push('authored-release-handles');
+ const promise=owner.finish();expect(owner.finish()).toBe(promise);await Promise.resolve();
+ expect(c.checks).toEqual(['subscribe','healthy','headroom']);expect(h.journal).not.toContain('Tracing.end');
+ expect([...h.timers.values()].filter(t=>t.delay===500)).toHaveLength(1);
+ expect(h.page.count()+h.context.count()+h.browser.count()+h.session.count()).toBeGreaterThan(14);c.setNow(499);await Promise.resolve();expect(h.journal).not.toContain('Tracing.end');c.tick(500);
+ const receipt=await promise;expect(receipt.status,JSON.stringify(receipt)).toBe('closed');expect(h.journal.filter(s=>s==='Tracing.end')).toHaveLength(1);
+ expect(receipt).toMatchObject({collectionPolicy:'native-post-phase-tail-500ms-v1',binding:tailBinding,tail:{requestedMs:500,state:'fulfilled',timer:{registrationState:'registered',disposalState:'cleared'}}});unqualified(receipt);
+ const p=inspectTail(owner);expect(inspectTail(owner)).toBe(p);const result=await p;
+ expect(result).toEqual({schema:1,collectionPolicy:'native-post-phase-tail-500ms-v1',...tailBinding,intent:{bytes:(await readFile(join(h.directory,'intent.json'))).length,sha256:createHash('sha256').update(await readFile(join(h.directory,'intent.json'))).digest('hex')},receipt:{bytes:(await readFile(join(h.directory,'receipt.json'))).length,sha256:createHash('sha256').update(await readFile(join(h.directory,'receipt.json'))).digest('hex')},tail:{requestedMs:500,state:'fulfilled'},trace:receipt.persisted});
+ expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(1536);expect(Object.isFrozen(result)).toBe(true);expect(c.checks.filter(s=>s==='healthy')).toHaveLength(2);expect(c.checks).toContain('deadline');
+ const saved=JSON.parse(await readFile(join(h.directory,'receipt.json'),'utf8'));expect(saved.operations.find((op:any)=>op.kind==='write-receipt').state).toBe('pending');
+ expect(h.journal.findIndex(s=>s.startsWith('mark:')&&s.includes(':end:'))).toBeLessThan(h.journal.indexOf('authored-release-handles'));expect(h.journal.indexOf('authored-release-handles')).toBeLessThan(h.journal.indexOf('tail-begin'));expect(h.journal.indexOf('tail-begin')).toBeLessThan(h.journal.indexOf('Tracing.end'));expect(h.timers.size).toBe(0);expect(h.page.count()+h.context.count()+h.browser.count()+h.session.count()).toBe(0);
+}));
+for(const mode of ['replace','oversize','policy','nonce','request','manifest','revision','tail']as const)it('Tail500 inspector refuses actual intent '+mode,async()=>tailFixture(async(h,owner,c)=>{
+ const final=owner.finish();await Promise.resolve();c.tick(500);await final;const path=join(h.directory,'intent.json'),bytes=await readFile(path);
+ if(mode==='replace'){await rename(path,path+'.original');await writeFile(path,bytes,{flag:'wx'});}else if(mode==='oversize')await writeFile(path,Buffer.alloc(16385));else{const data=JSON.parse(bytes.toString());if(mode==='policy')data.collectionPolicy='foreign';else if(mode==='tail')data.tail.requestedMs=499;else data.binding[mode==='nonce'?'nonce':mode==='request'?'requestSha256':mode==='manifest'?'manifestSha256':'sourceRevision']='foreign';await writeFile(path,JSON.stringify(data)+'\n');}
+ expect(await inspectTail(owner)).toMatchObject({status:'unavailable',reason:'receipt-unavailable'});
+}));
+for(const mode of ['early','backwards','nonfinite','invalidate','crash','close']as const)it('Tail500 refuses and cancels '+mode+' without a normal end or duplicate seal',async()=>tailFixture(async(h,owner,c)=>{
+ const promise=owner.finish();await Promise.resolve();const callback=[...h.timers.values()].find(t=>t.delay===500)!.callback;
+ if(mode==='early')c.tick(499);if(mode==='backwards')c.tick(-1);if(mode==='nonfinite')c.tick(NaN);if(mode==='invalidate')c.invalidate();if(mode==='crash')h.page.emit('crash');if(mode==='close'){const close=owner.close();expect(owner.close()).toBe(close);await close;}
+ const result=await promise;expect(result.status).not.toBe('closed');expect(result.failureCount).toBeGreaterThan(0);expect(h.journal.filter(s=>s==='Tracing.end')).toHaveLength(0);callback();await Promise.resolve();
+ expect(h.journal.filter(s=>s==='runner-close')).toHaveLength(1);expect(h.journal.filter(s=>s==='runner-wait')).toHaveLength(1);expect(h.journal.filter(s=>s==='detach')).toHaveLength(1);expect(result.operations.filter((op:any)=>op.kind==='write-receipt')).toHaveLength(1);expect([...h.timers.values()].filter(t=>t.delay===500)).toHaveLength(0);expect(await inspectTail(owner)).toMatchObject({status:'unavailable'});
+}));
+it('Tail500 inspector refuses legacy, fake and prematurely inspected owners permanently',async()=>fixture(async(h,create)=>{
+ for(const owner of [{collectionPolicy:'native-post-phase-tail-500ms-v1',...tailBinding},create(h.inputs),null,new Proxy({},{get(){throw Error();}})])expect(await inspectTail(owner)).toMatchObject({status:'unavailable',reason:'unregistered-owner'});
+}));
+it('Tail500 close before start joins original detach and runner cleanup once without subscribing',async()=>fixture(async(h,_create)=>{
+ let subscriptions=0;const owner=nativePhase.createProtoNativeUserTimingCaptureV6Tail500({...h.inputs,binding:tailBinding,tailGuard:{assertHealthy(){throw Error('no active capture');},onInvalidated(){subscriptions++;return()=>{};},assertForwardDeadline(){}},assertTailHeadroom(){throw Error('no active capture');}});
+ const closing=owner.close();expect(owner.close()).toBe(closing);const receipt=await closing;expect(receipt.status).toBe('unavailable');expect(subscriptions).toBe(0);expect(h.journal.filter(x=>x==='detach')).toHaveLength(1);expect(h.journal.filter(x=>x==='runner-close')).toHaveLength(1);expect(h.journal.filter(x=>x==='runner-wait')).toHaveLength(1);expect(receipt.createdRoles).toEqual([]);expect(await inspectTail(owner)).toMatchObject({status:'unavailable'});
+}));
+for(const mode of ['replace','drift','hardlink','symlink','oversize','policy','binding','tail']as const)it('Tail500 inspector refuses actual owned metadata '+mode,async()=>tailFixture(async(h,owner,c)=>{
+ const p=owner.finish();await Promise.resolve();c.tick(500);expect((await p).status).toBe('closed');const path=join(h.directory,'receipt.json'),original=await readFile(path);
+ if(mode==='replace'){await rename(path,path+'.old');await writeFile(path,original,{flag:'wx'});}else if(mode==='hardlink'){await syncFs.promises.link(path,path+'.link');}else if(mode==='symlink'){await rename(path,path+'.old');await syncFs.promises.symlink(path+'.old',path);}else if(mode==='oversize')await writeFile(path,Buffer.alloc(262145));else if(mode==='drift')await writeFile(path,Buffer.from(original.toString().replace('not_evaluated','not_evaluateX')));else{const data=JSON.parse(original.toString());if(mode==='policy')data.collectionPolicy='foreign';if(mode==='binding')data.binding.nonce='foreign';if(mode==='tail')data.tail.state='pending';await writeFile(path,JSON.stringify(data)+'\n');}
+ const inspected=inspectTail(owner);expect(await inspected).toMatchObject({status:'unavailable'});expect(inspectTail(owner)).toBe(inspected);
+}));
+it('Tail500 close after a closed finish joins the same terminal without invalidating observed facts',async()=>tailFixture(async(_h,owner,c)=>{
+ const final=owner.finish();await Promise.resolve();c.tick(500);await final;const close=owner.close();expect(owner.close()).toBe(close);expect(close).toBe(final);expect((await inspectTail(owner)).schema).toBe(1);
+}));
+it('Tail500 close before the terminal microtask prevents a timer and converges on one seal',async()=>tailFixture(async(h,owner,c)=>{
+ const final=owner.finish(),closed=owner.close();expect(owner.finish()).toBe(final);expect(owner.close()).toBe(closed);const result=await final;await closed;
+ expect(result.failureCount).toBeGreaterThan(0);expect(c.checks).toEqual([]);expect(h.journal).not.toContain('Tracing.end');expect(h.journal.filter(x=>x==='detach')).toHaveLength(1);expect(result.operations.filter((op:any)=>op.kind==='write-receipt')).toHaveLength(1);
+}));
+for(const mode of ['timer-install','timer-clear','clock-throw','initial-nonfinite','guard-check','guard-subscribe','guard-remove','headroom','timeout','topology']as const)it('Tail500 owns '+mode+' refusal without retry or unhandled cancellation',async()=>tailFixture(async(h,owner,c)=>{
+ const set=h.clock.setTimer,clear=h.clock.clearTimer;let callback:(()=>void)|undefined;
+ if(mode==='timer-install')h.clock.setTimer=(cb,ms)=>{const token=set(cb,ms);if(ms===500){callback=cb;throw Error('installed unknown');}return token;};
+ if(mode==='timer-clear')h.clock.clearTimer=token=>{const tail=h.timers.get(token as number)?.delay===500;clear(token);if(tail)throw Error('clear failed');};
+ if(mode==='clock-throw')h.clock.nowMs=()=>{throw Error('clock');};if(mode==='initial-nonfinite')c.setNow(Infinity);
+ if(mode==='guard-check')c.inputs.tailGuard.assertHealthy=()=>{throw Error('health');};if(mode==='guard-subscribe')c.inputs.tailGuard.onInvalidated=()=>{throw Error('subscribe');};if(mode==='guard-remove')c.inputs.tailGuard.onInvalidated=()=>()=>{throw Error('unsubscribe');};
+ // This closure models the worker-owned assertion; the owner must neither renew nor reinterpret it.
+ if(mode==='headroom')c.setRemaining(499);
+ const final=owner.finish();await Promise.resolve();if(mode==='timeout'){[...h.timers.values()].find(t=>t.delay===60000)!.callback();}else if(mode==='topology'){h.context.emit('page');}else if(mode==='guard-remove')c.tick(500);else if([...h.timers.values()].some(t=>t.delay===500))c.tick(500);
+ const receipt=await final;expect(receipt.status).not.toBe('closed');expect(receipt.failureCount).toBeGreaterThan(0);callback?.();await Promise.resolve();expect(h.journal.filter(x=>x==='Tracing.end')).toHaveLength(mode==='guard-remove'?1:0);expect(h.journal.filter(x=>x==='runner-close')).toHaveLength(1);expect(await inspectTail(owner)).toMatchObject({status:'unavailable'});
+}));
+it('Tail500 close during pending original raw close converges without a second sink close or seal',async()=>tailFixture(async(h,owner,c)=>{
+ const handle=await open(h.runtime.executablePath,'r'),proto=Object.getPrototypeOf(handle);await handle.close();const sync=proto.sync;let enter!:()=>void,release!:()=>void,calls=0;const entered=new Promise<void>(done=>{enter=done;});
+ const spy=vi.spyOn(proto,'sync').mockImplementation(async function(this:any){await sync.call(this);if(++calls===1)await new Promise<void>(done=>{release=done;enter();});});
+ try{const final=owner.finish();await Promise.resolve();c.tick(500);await entered;expect(owner.snapshot().originalOperationsSettled).toBe(false);const closing=owner.close();expect(owner.close()).toBe(closing);release();const receipt=await final;await closing;
+  expect(receipt.status).toBe('unavailable');expect(receipt.transport.sinkClose).toBe('fulfilled');expect(h.journal.filter(x=>x==='detach')).toHaveLength(1);expect(h.journal.filter(x=>x==='runner-close')).toHaveLength(1);expect(receipt.operations.filter((op:any)=>op.kind==='write-receipt')).toHaveLength(1);expect(calls).toBe(5);expect(await inspectTail(owner)).toMatchObject({status:'unavailable'});
+ }finally{spy.mockRestore();}
+}));
+it('Tail500 delegates equality headroom once and does not renew the anchored deadline at the callback',async()=>tailFixture(async(h,owner,c)=>{
+ c.setRemaining(500);c.inputs.tailGuard.assertHealthy=()=>{c.checks.push('healthy');if(h.clock.nowMs()>=17000)throw Error('original deadline equality');};c.setNow(16500);
+ const final=owner.finish();await Promise.resolve();expect(c.checks.filter(s=>s==='headroom')).toHaveLength(1);expect([...h.timers.values()].filter(t=>t.delay===500)).toHaveLength(1);c.tick(17000);expect((await final).status).not.toBe('closed');expect(c.checks.filter(s=>s==='headroom')).toHaveLength(1);expect(h.journal).not.toContain('Tracing.end');
+}));
+it('legacy factories never read new binding, guard or headroom getters and preserve exact DTO keys and timer calls',async()=>fixture(async(h,_create)=>{
+ let reads=0;for(const key of ['binding','tailGuard','assertTailHeadroom'])Object.defineProperty(h.inputs,key,{get(){reads++;throw Error('legacy read new input');}});
+ const delays:number[]=[],set=h.clock.setTimer;h.clock.setTimer=(cb,ms)=>{delays.push(ms);return set(cb,ms);};
+ const {receipt}=await capture(h,nativePhase.createProtoNativeUserTimingCaptureV6);expect(reads).toBe(0);expect(delays).not.toContain(500);expect(delays.filter(ms=>ms===60000)).toHaveLength(1);expect(Object.keys(receipt).sort()).toEqual(['schemaVersion','policy','status','failures','failureCount','createdRoles','operations','originalOperationsSettled','transport','persistedWholeInput','persisted','target','runtime','marks','runner','analysis','qualification','captureQualified','fpsEligibility','evaluationEligibility','scoringEligibility','rankingEligibility','nativeSupported','targetLifetime','clockAdmission'].sort());
+ const intent=JSON.parse(await readFile(join(h.directory,'intent.json'),'utf8'));expect(Object.keys(intent).sort()).toEqual(['schemaVersion','policy','runId','phaseId','runtime','analysis'].sort());
+}));
+it('Tail500 premature registered inspection stays refused after successful completion',async()=>tailFixture(async(_h,owner,c)=>{
+ const inspection=inspectTail(owner);expect(await inspection).toEqual({status:'unavailable',reason:'owner-not-ready'});const finish=owner.finish();await Promise.resolve();c.tick(500);expect((await finish).status).toBe('closed');expect(inspectTail(owner)).toBe(inspection);expect(await inspection).toEqual({status:'unavailable',reason:'owner-not-ready'});
+}));
+it('Tail500 close after normal end dispatch joins one original collector cleanup and one seal',async()=>tailFixture(async(h,owner,c)=>{
+ const send=h.session.send;let close:any;h.session.send=async(method,parameters)=>{if(method==='Tracing.end'){close=owner.close();expect(owner.close()).toBe(close);}return send(method,parameters);};
+ const final=owner.finish();await Promise.resolve();c.tick(500);const receipt=await final;await close;
+ expect(receipt.status).not.toBe('closed');expect(h.journal.filter(x=>x==='Tracing.end')).toHaveLength(1);expect(h.journal.filter(x=>x==='detach')).toHaveLength(1);expect(h.journal.filter(x=>x==='runner-close')).toHaveLength(1);expect(receipt.operations.filter((op:any)=>op.kind==='write-receipt')).toHaveLength(1);expect(await inspectTail(owner)).toMatchObject({status:'unavailable'});
+}));
+for(const late of [false,true])it('Tail500 close during receipt write owns one seal and preserves '+(late?'late original settlement':'actual completed refusal'),async()=>tailFixture(async(h,owner,c)=>{
+ const handle=await open(h.runtime.executablePath,'r'),proto=Object.getPrototypeOf(handle);await handle.close();const write=proto.write;let enter!:()=>void,release!:()=>void;const entered=new Promise<void>(done=>{enter=done;});let writes=0;
+ const spy=vi.spyOn(proto,'write').mockImplementation(async function(this:any,...args:any[]){const ack=await write.apply(this,args);if(Buffer.isBuffer(args[0])&&args[0].toString().includes('"createdRoles"')){writes++;await new Promise<void>(done=>{release=done;enter();});}return ack;});
+ try{const final=owner.finish();await Promise.resolve();c.tick(500);await entered;const closed=owner.close();expect(owner.close()).toBe(closed);
+  if(late){for(const timer of [...h.timers.values()])if(timer.delay===10000)timer.callback();}else release();
+  const receipt=await final;await closed;expect(receipt.status).toBe(late?'pending':'unavailable');expect(writes).toBe(1);const inspection=inspectTail(owner);expect(await inspection).toMatchObject({status:'unavailable'});
+  if(late){expect(receipt.operations.find((op:any)=>op.kind==='write-receipt').state).toBe('pending');release();await vi.waitFor(()=>expect(owner.snapshot().operations.find((op:any)=>op.kind==='write-receipt').state).toBe('fulfilled'));expect(owner.snapshot().status).not.toBe('closed');expect(inspectTail(owner)).toBe(inspection);expect(writes).toBe(1);}
+  expect(h.journal.filter(x=>x==='detach')).toHaveLength(1);expect(h.journal.filter(x=>x==='runner-close')).toHaveLength(1);
+ }finally{spy.mockRestore();}
+}));
+for(const mode of ['EOF','stat','close','deadline','pending-read','pending-close']as const)it('Tail500 inspector owns bounded original '+mode+' refusal and caches it',async()=>tailFixture(async(h,owner,c)=>{
+ const final=owner.finish();await Promise.resolve();c.tick(500);expect((await final).status).toBe('closed');
+ const handle=await open(h.runtime.executablePath,'r'),proto=Object.getPrototypeOf(handle);await handle.close();let spy:any,release!:()=>void,enter!:()=>void;const entered=new Promise<void>(done=>{enter=done;});let calls=0;
+ if(mode==='EOF'){const read=proto.read;spy=vi.spyOn(proto,'read').mockImplementation(async function(this:any,...args:any[]){const actual=await read.apply(this,args);return args[2]===1?{...actual,bytesRead:1}:actual;});}
+ if(mode==='stat'){const get=proto.stat;spy=vi.spyOn(proto,'stat').mockImplementation(async function(this:any,...args:any[]){const actual=await get.apply(this,args);if(++calls===2)actual.ctimeMs+=1;return actual;});}
+ if(mode==='close')nativeFileFault.opened=(file,path)=>{if(path===join(h.directory,'intent.json')){const close=file.close;file.close=async()=>{await close.call(file);throw Error('original close rejected');};}};
+ if(mode==='deadline')c.inputs.tailGuard.assertForwardDeadline=()=>{throw Error('anchored worker deadline');};
+ if(mode==='pending-read'){const read=proto.read;spy=vi.spyOn(proto,'read').mockImplementation(async function(this:any,...args:any[]){const actual=await read.apply(this,args);if(++calls===1)await new Promise<void>(done=>{release=done;enter();});return actual;});}
+ if(mode==='pending-close')nativeFileFault.opened=(file,path)=>{if(path===join(h.directory,'intent.json')){const close=file.close;file.close=async()=>{await close.call(file);if(++calls===1)await new Promise<void>(done=>{release=done;enter();});};}};
+ try{const inspection=inspectTail(owner);expect(inspectTail(owner)).toBe(inspection);if(mode.startsWith('pending-')){await entered;for(const timer of [...h.timers.values()])if(timer.delay===10000)timer.callback();}
+  expect(await inspection).toEqual({status:'unavailable',reason:'receipt-unavailable'});expect(inspectTail(owner)).toBe(inspection);
+  if(mode.startsWith('pending-')){expect(owner.snapshot().originalOperationsSettled).toBe(false);release();await vi.waitFor(()=>expect(owner.snapshot().originalOperationsSettled).toBe(true));expect(inspectTail(owner)).toBe(inspection);expect(await inspection).toMatchObject({status:'unavailable'});expect(owner.snapshot().status).not.toBe('closed');}
+ }finally{nativeFileFault.opened=null;spy?.mockRestore();}
+}));
+it('Tail500 inspector permanently refuses when the anchored deadline expires during final original receipt close',async()=>tailFixture(async(h,owner,c)=>{
+ const final=owner.finish();await Promise.resolve();c.tick(500);expect((await final).status).toBe('closed');let expired=false,closes=0;
+ c.inputs.tailGuard.assertForwardDeadline=()=>{if(expired)throw Error('anchored deadline expired');};
+ nativeFileFault.opened=(file,path)=>{if(path===join(h.directory,'receipt.json')){const close=file.close;file.close=async()=>{await close.call(file);closes++;expired=true;};}};
+ try{const inspection=inspectTail(owner);expect(await inspection).toEqual({status:'unavailable',reason:'receipt-unavailable'});expect(closes).toBe(1);expect(owner.snapshot().originalOperationsSettled).toBe(true);expect(owner.snapshot().operations.find((op:any)=>op.kind==='inspect-close-receipt.json').state).toBe('fulfilled');expired=false;expect(inspectTail(owner)).toBe(inspection);expect(await inspection).toEqual({status:'unavailable',reason:'receipt-unavailable'});expect(closes).toBe(1);}
+ finally{nativeFileFault.opened=null;}
+}));
+it('Tail500 inspector caches before descriptor work and uses only the forward deadline after detach',async()=>tailFixture(async(h,owner,c)=>{
+ const final=owner.finish();await Promise.resolve();c.tick(500);await final;let reads=0,inner:any;
+ c.inputs.tailGuard.assertHealthy=()=>{throw Error('live identity deliberately unavailable after detach');};
+ nativeFileFault.opened=(_file,path)=>{if(path===join(h.directory,'intent.json')||path===join(h.directory,'receipt.json')){reads++;inner=inspectTail(owner);}};
+ try{const inspection=inspectTail(owner);expect((await inspection).schema).toBe(1);expect(inner).toBe(inspection);expect(reads).toBe(2);expect(owner.snapshot().operations.filter((op:any)=>op.kind.startsWith('inspect-'))).toEqual(expect.arrayContaining([expect.objectContaining({kind:'inspect-read-intent.json',state:'fulfilled'}),expect.objectContaining({kind:'inspect-close-intent.json',state:'fulfilled'}),expect.objectContaining({kind:'inspect-read-receipt.json',state:'fulfilled'}),expect.objectContaining({kind:'inspect-close-receipt.json',state:'fulfilled'})]));expect(owner.snapshot().operations.length).toBeLessThanOrEqual(64);expect(owner.snapshot().originalOperationsSettled).toBe(true);}
+ finally{nativeFileFault.opened=null;}
+}));
 function inspectPhase(owner:unknown):any {
  const inspect=(nativePhase as unknown as Record<string,unknown>).inspectProtoNativePhase;
  expect(inspect,'new synchronous source-owned phase inspection export').toBeTypeOf('function');
  return (inspect as (owner:unknown)=>unknown)(owner);
 }
-async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:ReturnType<typeof nativePhase.createProtoNativeCapture>,r:any,names:string[])=>Promise<void>,mode='pair',modern:boolean|'v3'|'v4'|'v5'|'v6'=false){
+async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:ReturnType<typeof nativePhase.createProtoNativeCapture>,r:any,names:string[])=>Promise<void>,mode='pair',modern:boolean|'v3'|'v4'|'v5'|'v6'|'tail500'=false){
  await fixture(async(h,create)=>{
   const names:string[]=[],mark=h.phase.mark,send=h.session.send;
   if(mode==='escaped'){h.inputs.runId='"\\'.repeat(16);h.inputs.phaseId='"\\'.repeat(16);h.setTarget({targetInfo:{targetId:'"\\'.repeat(128),type:'page',url:'https://authored.invalid/',browserContextId:'context'}});}
@@ -87,15 +218,20 @@ async function phaseFixture(run:(h:Awaited<ReturnType<typeof setup>>,owner:Retur
    }
    return send(method,parameters);
   };
-  if(modern){create=(nativePhase as unknown as Record<string,any>)[modern==='v6'?'createProtoNativeUserTimingCaptureV6':modern==='v5'?'createProtoNativeUserTimingCaptureV5':modern==='v4'?'createProtoNativeUserTimingCaptureV4':modern==='v3'?'createProtoNativeUserTimingCaptureV3':'createProtoNativeUserTimingCapture'];expect(create,'versioned capture factory').toBeTypeOf('function');}
+  if(modern){create=(nativePhase as unknown as Record<string,any>)[modern==='tail500'?'createProtoNativeUserTimingCaptureV6Tail500':modern==='v6'?'createProtoNativeUserTimingCaptureV6':modern==='v5'?'createProtoNativeUserTimingCaptureV5':modern==='v4'?'createProtoNativeUserTimingCaptureV4':modern==='v3'?'createProtoNativeUserTimingCaptureV3':'createProtoNativeUserTimingCapture'];expect(create,'versioned capture factory').toBeTypeOf('function');}
+  if(modern==='tail500')Object.assign(h.inputs,{binding:tailBinding,tailGuard:{assertHealthy(){},onInvalidated(){return()=>{};},assertForwardDeadline(){}},assertTailHeadroom(){}});
   const owner=create(h.inputs);expect((await owner.start()).status).toBe('open');await owner.mark('start');await owner.mark('end');
-  const finishing=owner.finish();expect(owner.finish()).toBe(finishing);const r=await finishing;expect(r.status).toBe('closed');
+  const finishing=owner.finish();expect(owner.finish()).toBe(finishing);if(modern==='tail500'){await Promise.resolve();h.clock.nowMs=()=>500;for(const timer of [...h.timers.values()])if(timer.delay===500)timer.callback();}const r=await finishing;expect(r.status).toBe('closed');
   await run(h,owner,r,names);
  });
 }
 const inspectTimingV3=(owner:unknown):any=>{const inspect=(nativePhase as unknown as Record<string,any>).inspectProtoNativeUserTimingPhaseV3;expect(inspect).toBeTypeOf('function');return inspect(owner);};
 const inspectTimingV4=(owner:unknown):any=>{const inspect=(nativePhase as unknown as Record<string,any>).inspectProtoNativeUserTimingPhaseV4;expect(inspect).toBeTypeOf('function');return inspect(owner);};
 const inspectTimingV5=(owner:unknown):any=>{const inspect=(nativePhase as unknown as Record<string,any>).inspectProtoNativeUserTimingPhaseV5;expect(inspect).toBeTypeOf('function');return inspect(owner);};
+it('Tail500 uses the unchanged V6 reader and phase boundaries with no new authority',async()=>phaseFixture(async(_h,owner,_r,names)=>{
+ const read=vi.spyOn(syncFs,'openSync');try{const result=nativePhase.inspectProtoNativeUserTimingPhaseV6(owner);expect(result).toMatchObject({policy:'source-owned-user-timing-phase-inventory-diagnostic-v6',status:'phase-registry-inventory-diagnostic',rows:names.map(name=>({name,representation:'event_name'})),authority:{FPS:null,duration:null,clockAdmission:'not_evaluated',nativeSupported:false}});expect(read).toHaveBeenCalledTimes(1);expect(nativePhase.inspectProtoNativeUserTimingPhaseV6(owner)).toBe(result);expect(read).toHaveBeenCalledTimes(1);expect(Object.keys(result).sort()).toEqual(['policy','wholeInputFailure','status','reason','runId','phaseId','targetId','input','counters','rows','authority'].sort());expect(Object.keys(result.rows[0]!)).toHaveLength(22);}
+ finally{read.mockRestore();}
+},'pair','tail500'));
 it('V5 owner accepts counter-default metadata with one original inspection and fixed false authority',async()=>phaseFixture(async(_h,owner,_r,names)=>{
  const read=vi.spyOn(syncFs,'openSync');try{expect(inspectTimingV4(owner)).toMatchObject({reason:'unregistered-owner',wholeInputFailure:null});expect(read).not.toHaveBeenCalled();const r=inspectTimingV5(owner);expect(r).toMatchObject({policy:'source-owned-user-timing-phase-inventory-diagnostic-v5',status:'phase-registry-inventory-diagnostic',wholeInputFailure:null,counters:{packets:3},rows:names.map(name=>({name,trackUuid:'7',clockId:'3'})),authority:{nativeSupported:false,FPS:null,duration:null,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false}});expect(inspectTimingV5(owner)).toBe(r);expect(read).toHaveBeenCalledTimes(1);expect(Object.isFrozen(r)).toBe(true);}finally{read.mockRestore();}
 },'counter-defaults','v5'));
