@@ -15,8 +15,8 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const tuple = s => Object.fromEntries(['dev', 'ino', 'mode', 'nlink', 'size', 'mtimeNs', 'ctimeNs'].map(k => [k, String(s[k])]));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-async function snapshot(input, limit) {
-  if (!input || !isAbsolute(input.path ?? '') || !SHA.test(input.sha256 ?? '')) throw new Error('explicit absolute input path and lowercase SHA256 required');
+async function snapshot(input, limit, retainSource = false) {
+  if (!input || !isAbsolute(input.path ?? '') || (!retainSource && !SHA.test(input.sha256 ?? ''))) throw new Error('explicit absolute input path and lowercase SHA256 required');
   const pathBefore = await lstat(input.path, { bigint: true });
   if (!pathBefore.isFile() || pathBefore.nlink !== 1n || pathBefore.size > BigInt(limit)) throw new Error('input must be one-link regular file within size limit');
   // NONBLOCK avoids hanging on a FIFO substituted between lstat and open.
@@ -28,18 +28,19 @@ async function snapshot(input, limit) {
     if (!same(original, tuple(pathBefore))) throw new Error('input path changed before open');
     if (!same(original, tuple(await lstat(input.path, { bigint: true })))) throw new Error('input path changed');
     const hash = createHash('sha256');
-    const chunk = Buffer.alloc(65536); let bytes = 0;
+    const chunk = Buffer.alloc(65536); const contents = []; let bytes = 0;
     while (true) {
       const count = (await handle.read(chunk, 0, Math.min(chunk.length, limit + 1 - bytes), bytes)).bytesRead;
       if (!count) break;
       bytes += count; if (bytes > limit) throw new Error('input read exceeded limit'); hash.update(chunk.subarray(0, count));
+      if (retainSource) contents.push(Buffer.from(chunk.subarray(0, count)));
     }
     const observed = { path: input.path, bytes, sha256: hash.digest('hex'), identity: original };
     if (!same(original, tuple(await handle.stat({ bigint: true }))) || !same(original, tuple(await lstat(input.path, { bigint: true })))) throw new Error('input changed while reading');
-    if (observed.sha256 !== input.sha256 || (input.bytes !== undefined && input.bytes !== bytes)) {
+    if (((!retainSource || input.sha256 !== undefined) && observed.sha256 !== input.sha256) || (input.bytes !== undefined && input.bytes !== bytes)) {
       const error = new Error('input bytes or SHA256 mismatch'); error.observed = observed; throw error;
     }
-    return observed;
+    return retainSource ? { observed, contents: Buffer.concat(contents) } : observed;
   } finally { await handle.close(); }
 }
 
@@ -121,6 +122,10 @@ export async function runMainframeLineageDiagnostic(options) {
   return run(options, false, 'mainframe-lineage');
 }
 
+export async function runWheelCarrierDiagnostic(options) {
+  return run(options, false, 'wheel-carrier');
+}
+
 // Authored executable test fixtures are deliberately labeled untrusted diagnostics.
 // The CLI never calls this entrypoint; no fixture result attests an official tool.
 export async function runAuthoredFixtureDiagnostic(options) {
@@ -143,15 +148,19 @@ export async function runAuthoredFixtureMainframeLineageDiagnostic(options) {
   return run(options, true, 'mainframe-lineage');
 }
 
+export async function runAuthoredFixtureWheelCarrierDiagnostic(options) {
+  return run(options, true, 'wheel-carrier');
+}
+
 async function run(options, authoredFixture, policy) {
   const { trace, processor, phases, out, deadlineMs = 60000 } = options;
   if (!isAbsolute(out ?? '')) throw new Error('absolute fresh output directory required');
   await mkdir(out, { mode: 0o700 }); // Exclusive: never modify a previous diagnostic.
   const manifest = { schema: 1, status: 'failure', diagnosticOnly: true, authoredFixture, officialProcessor: false, platform: `${process.platform}-${process.arch}`, nativeSupported: false, fps: null, duration: null, scoring: false, expectedVersion: EXPECTED_VERSION, expected: { trace, processor }, phases, processes: {} };
   if (policy === 'inventory') { manifest.queryPolicy = 'inventory-v1'; manifest.rawRowsExported = false; }
-  if (policy === 'target-inventory' || policy === 'scope-inventory' || policy === 'mainframe-lineage') {
+  if (policy === 'target-inventory' || policy === 'scope-inventory' || policy === 'mainframe-lineage' || policy === 'wheel-carrier') {
     Object.assign(manifest, {
-      queryPolicy: policy === 'mainframe-lineage' ? 'mainframe-lineage-compact-v1' : policy === 'scope-inventory' ? 'scope-inventory-compact-v1' : `${policy}-v1`, rawRowsExported: true,
+      queryPolicy: policy === 'wheel-carrier' ? 'wheel-carrier-compact-v1' : policy === 'mainframe-lineage' ? 'mainframe-lineage-compact-v1' : policy === 'scope-inventory' ? 'scope-inventory-compact-v1' : `${policy}-v1`, rawRowsExported: true,
       qualification: false, captureQualified: false, fpsEligibility: false,
       evaluationEligibility: false, scoringEligibility: false,
       rankingEligibility: false, clockAdmission: 'not_evaluated',
@@ -166,6 +175,18 @@ async function run(options, authoredFixture, policy) {
       throw error;
     }
   };
+  const sourceRoles = [];
+  const observeSource = async (stage, role) => {
+    manifest.sourceBookends ??= { before: {}, after: {}, stable: false };
+    try {
+      const result = await snapshot({ path: role.path, ...role.expected }, role.limit, true);
+      manifest.sourceBookends[stage][role.name] = result.observed;
+      return result.contents;
+    } catch (error) {
+      manifest.sourceBookends[stage][role.name] = { error: error.message, observed: error.observed ?? null };
+      throw error;
+    }
+  };
   try {
     if (!authoredFixture && (!PROCESSOR_PINS[manifest.platform] || processor?.sha256 !== PROCESSOR_PINS[manifest.platform])) throw new Error('processor hash does not match fixed platform pin');
     if (!Number.isInteger(trace?.bytes) || trace.bytes < 0 || trace.bytes > 33554432) throw new Error('explicit trace byte count within limit required');
@@ -174,10 +195,27 @@ async function run(options, authoredFixture, policy) {
     await observe('before', 'trace', trace, 33554432);
     await observe('before', 'processor', processor, 67108864);
     manifest.officialProcessor = !authoredFixture;
-    const source = await readFile(new URL(policy === 'mainframe-lineage' ? './mainframe-lineage.sql' : policy === 'scope-inventory' ? './scope-inventory.sql' : policy === 'target-inventory' ? './target-inventory.sql' : policy === 'inventory' ? './inventory.sql' : './diagnostic.sql', import.meta.url), 'utf8');
-    const sql = source.replace('__PHASE_LITERALS__', phases.map(p => `'${p.replaceAll("'", "''")}'`).join(', '));
+    let source;
+    if (policy === 'wheel-carrier') {
+      const runnerRole = { name: 'runner', path: fileURLToPath(import.meta.url), limit: 65536 };
+      const sqlRole = { name: 'sqlSource', path: fileURLToPath(new URL('./wheel-carrier.sql', import.meta.url)), limit: 16384 };
+      sourceRoles.push(runnerRole, sqlRole);
+      await observeSource('before', runnerRole);
+      source = new TextDecoder('utf-8', { fatal: true }).decode(await observeSource('before', sqlRole));
+    } else {
+      source = await readFile(new URL(policy === 'mainframe-lineage' ? './mainframe-lineage.sql' : policy === 'scope-inventory' ? './scope-inventory.sql' : policy === 'target-inventory' ? './target-inventory.sql' : policy === 'inventory' ? './inventory.sql' : './diagnostic.sql', import.meta.url), 'utf8');
+    }
+    const literals = phases.map(p => `'${p.replaceAll("'", "''")}'`);
+    const sql = policy === 'wheel-carrier'
+      ? source.replace(/__PHASE_LITERALS__|__PHASE_VALUES__/g, token => token === '__PHASE_LITERALS__'
+        ? literals.join(', ') : literals.map(p => `(${p})`).join(', '))
+      : source.replace('__PHASE_LITERALS__', literals.join(', '));
     await save('diagnostic.sql', sql);
     manifest.sql = { path: join(out, 'diagnostic.sql'), sha256: digest(sql), sourceSha256: digest(source) };
+    if (policy === 'wheel-carrier') {
+      const role = { name: 'executedSql', path: manifest.sql.path, limit: 16384, expected: { bytes: Buffer.byteLength(sql), sha256: digest(sql) } };
+      sourceRoles.push(role); await observeSource('before', role);
+    }
     for (const [name, args] of [['version', ['--version']], ['query', ['query', '-f', manifest.sql.path, trace.path]]]) {
       const result = await capture(processor.path, args, deadlineMs);
       manifest.processes[name] = result.record;
@@ -200,6 +238,17 @@ async function run(options, authoredFixture, policy) {
       manifest.status = 'failure'; manifest.error = [manifest.error, 'input identity changed across analysis'].filter(Boolean).join('; ');
     }
   }
+  if (manifest.sourceBookends) {
+    for (const role of sourceRoles) {
+      try { await observeSource('after', role); }
+      catch (error) { manifest.status = 'failure'; manifest.error = [manifest.error, error.message].filter(Boolean).join('; '); }
+    }
+    manifest.sourceBookends.stable = same(manifest.sourceBookends.before, manifest.sourceBookends.after)
+      && sourceRoles.length === 3 && Object.values(manifest.sourceBookends.before).every(x => !x.error);
+    if (!manifest.sourceBookends.stable) {
+      manifest.status = 'failure'; manifest.error = [manifest.error, 'source identity changed or source bookends incomplete'].filter(Boolean).join('; ');
+    }
+  }
   await save('manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
   return manifest;
 }
@@ -208,7 +257,7 @@ async function run(options, authoredFixture, policy) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
-    if (args.length !== 2 || !['--config', '--inventory-config', '--target-inventory-config', '--scope-inventory-config', '--mainframe-lineage-config'].includes(args[0])) throw new Error('usage: node tools/perfetto-import/run.mjs (--config|--inventory-config|--target-inventory-config|--scope-inventory-config|--mainframe-lineage-config) /absolute/config.json');
+    if (args.length !== 2 || !['--config', '--inventory-config', '--target-inventory-config', '--scope-inventory-config', '--mainframe-lineage-config', '--wheel-carrier-config'].includes(args[0])) throw new Error('usage: node tools/perfetto-import/run.mjs (--config|--inventory-config|--target-inventory-config|--scope-inventory-config|--mainframe-lineage-config|--wheel-carrier-config) /absolute/config.json');
     if (!isAbsolute(args[1]) || resolve(args[1]) !== args[1]) throw new Error('normalized absolute config path required');
     const pathStat = await lstat(args[1], { bigint: true });
     if (!pathStat.isFile() || pathStat.nlink !== 1n || pathStat.size > 16384n) throw new Error('config must be one-link regular file <=16 KiB');
@@ -227,7 +276,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       if (BigInt(length) !== before.size || !same(tuple(before), tuple(await configHandle.stat({ bigint: true }))) || !same(tuple(before), tuple(await lstat(args[1], { bigint: true })))) throw new Error('config changed during read');
       config = buffer.subarray(0, length).toString('utf8');
     } finally { await configHandle.close(); }
-    const result = await (args[0] === '--mainframe-lineage-config' ? runMainframeLineageDiagnostic : args[0] === '--scope-inventory-config' ? runScopeInventoryDiagnostic : args[0] === '--target-inventory-config' ? runTargetInventoryDiagnostic : args[0] === '--inventory-config' ? runInventoryDiagnostic : runDiagnostic)(JSON.parse(config));
+    const result = await (args[0] === '--wheel-carrier-config' ? runWheelCarrierDiagnostic : args[0] === '--mainframe-lineage-config' ? runMainframeLineageDiagnostic : args[0] === '--scope-inventory-config' ? runScopeInventoryDiagnostic : args[0] === '--target-inventory-config' ? runTargetInventoryDiagnostic : args[0] === '--inventory-config' ? runInventoryDiagnostic : runDiagnostic)(JSON.parse(config));
     process.stdout.write(`${JSON.stringify({ status: result.status, out: JSON.parse(config).out, error: result.error })}\n`);
     if (result.status !== 'success') process.exitCode = 1;
   } catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1; }

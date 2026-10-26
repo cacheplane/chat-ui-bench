@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           mkdir "$RUNNER_TEMP/perfetto-import-evidence"
           set +e
-          node --test tools/perfetto-import/run.node.mjs tools/perfetto-import/mainframe-lineage.node.mjs > "$RUNNER_TEMP/perfetto-import-evidence/unit.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/unit.stderr"
+          node --test tools/perfetto-import/run.node.mjs tools/perfetto-import/mainframe-lineage.node.mjs tools/perfetto-import/wheel-carrier.node.mjs > "$RUNNER_TEMP/perfetto-import-evidence/unit.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/unit.stderr"
           result=$?
           printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/unit.exit-code"
           exit "$result"
