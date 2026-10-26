@@ -1,0 +1,1213 @@
+{
+  "schema": 1,
+  "analysisPolicy": "stock033-presentation-origin-associations-summary-v1",
+  "artifactKind": "curated-summary-with-complete-edges; raw typed arguments intentionally referenced externally",
+  "fullEvidence": {
+    "filename": "2026-10-25-stock033-presentation-origin-associations.json",
+    "bytes": 810510,
+    "sha256": "bfc406fb7f09c56d426a2b27523f62cb32b3ed3a8055a55a0aa9d4b9b29cc104",
+    "plannedReleaseTag": "stock033-native-v9-verification-20261025-a",
+    "publicationStatus": "planned by root; not published by this investigation",
+    "contains": "All22 reporter and164 graphics records with complete typed argument occurrences, scope draw evidence, inputs, source pins, and original script hash."
+  },
+  "trace": {
+    "path": "/private/tmp/cub-033t500-a/p/capture/trace.pftrace",
+    "bytes": 233200,
+    "sha256": "936e52d56cf71b75a64e9440364f0838611ec95572ff633de7aa7198856ede95"
+  },
+  "sourceRevision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+  "originalAnalysisScript": {
+    "name": "2026-10-25-stock033-presentation-origin-associations.py",
+    "sha256": "6255b8eabac1dfbee8841624d2a278eefecbffe779fe6a9f9fde746995d5b882"
+  },
+  "inputReferences": [
+    {
+      "path": "/private/tmp/chat-ui-bench-native-stock033-tail500-main4ed-analysis-20261025/target/query.stdout",
+      "bytes": 211002,
+      "sha256": "99f69ab1cab76e717d72635757d40bb74e2b874ef1f6002612ca233195f05dda"
+    },
+    {
+      "path": "/private/tmp/chat-ui-bench-native-stock033-tail500-main4ed-analysis-20261025/scope/query.stdout",
+      "bytes": 168658,
+      "sha256": "78cd5efbc16733895ef84cd7cd8f34547e687611e970b98f293e8e881139039f"
+    },
+    {
+      "path": "/private/tmp/chat-ui-bench-native-stock033-tail500-main4ed-analysis-20261025/target/diagnostic.sql",
+      "bytes": 3759,
+      "sha256": "21cc0b3e8daa56120224c61d81814562ee49955c4d253b7162dcac2c85051f45"
+    },
+    {
+      "path": "/private/tmp/chat-ui-bench-native-stock033-tail500-main4ed-analysis-20261025/scope/diagnostic.sql",
+      "bytes": 5181,
+      "sha256": "1c747e339582fc805a9f5896ba2254b031d66500a8e83bb4b4af13abe60d03c9"
+    }
+  ],
+  "primarySources": [
+    {
+      "path": "components/viz/service/display/display.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/service/display/display.cc?format=TEXT",
+      "bytes": 59029,
+      "sha256": "4212a829989dc32da99d3addf2833fb1711d368bd0889c0fefad7af2f8e1495c"
+    },
+    {
+      "path": "components/viz/service/display/surface_aggregator.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/service/display/surface_aggregator.cc?format=TEXT",
+      "bytes": 111412,
+      "sha256": "3fa6dc503f79d6d0347db054029d5fa4e68ef6238b1dc11c23ed4f18b8c94d1d"
+    },
+    {
+      "path": "components/viz/service/surfaces/surface.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/service/surfaces/surface.cc?format=TEXT",
+      "bytes": 42615,
+      "sha256": "d42c553c93be3fc2a7f3e500ff70dd6ac104d3e0cf5947aa575b160ebe8c4ced"
+    },
+    {
+      "path": "components/viz/service/display/display_scheduler.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/service/display/display_scheduler.cc?format=TEXT",
+      "bytes": 34905,
+      "sha256": "a352cfa48b49075bbe94c410d3959ae48d68c86f30c0e4327343dd7a578ded48"
+    },
+    {
+      "path": "cc/metrics/compositor_frame_reporting_controller.h",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/metrics/compositor_frame_reporting_controller.h?format=TEXT",
+      "bytes": 10767,
+      "sha256": "aef3d749b74cbdc435ff8c92db7bcabcf4ff300bd5a306f4ecd6486811a6b27a"
+    },
+    {
+      "path": "cc/metrics/compositor_frame_reporter.h",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/metrics/compositor_frame_reporter.h?format=TEXT",
+      "bytes": 26839,
+      "sha256": "da80ff9f9607d733f54da8caa2ad75c272f5669463dcdf0a3a103fe9af06a454"
+    },
+    {
+      "path": "cc/scheduler/scheduler.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/scheduler/scheduler.cc?format=TEXT",
+      "bytes": 46120,
+      "sha256": "e6126cfa6095c66ba43cf9b160ffd4acccefcb5f639c84f274a8abda6fa9c802"
+    },
+    {
+      "path": "cc/trees/layer_tree_host_impl.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/trees/layer_tree_host_impl.cc?format=TEXT",
+      "bytes": 242916,
+      "sha256": "d96b905bf5e63dcd9e76707df8c119294651540d671bfc5b0ff14b03ad740efd"
+    },
+    {
+      "path": "cc/trees/proxy_impl.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/trees/proxy_impl.cc?format=TEXT",
+      "bytes": 42455,
+      "sha256": "aec8b6c79c86e93598d6a83da5f6e19848f24559892c080ed69c75aa01fa7a5b"
+    },
+    {
+      "path": "cc/metrics/compositor_frame_reporting_controller.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/metrics/compositor_frame_reporting_controller.cc?format=TEXT",
+      "bytes": 43590,
+      "sha256": "de5e9fe6acb709f46e3031bfb3bfba3cc5fd521848b5d38e9626dd01c53e8c23"
+    },
+    {
+      "path": "components/viz/service/frame_sinks/compositor_frame_sink_support.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/service/frame_sinks/compositor_frame_sink_support.cc?format=TEXT",
+      "bytes": 74735,
+      "sha256": "6f939ec77186878c96a82ad6ea835531992b909ab2eb77dd1953cb627de68259"
+    },
+    {
+      "path": "cc/metrics/compositor_frame_reporter.cc",
+      "bytes": 94108,
+      "sha256": "70e6129552aef3f29c3e2fea247b8c785b0fc1addb7680a76166e409ffd30c80",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/metrics/compositor_frame_reporter.cc",
+      "copiedFrom": "/private/tmp/cub-native-target-binding-source/compositor_frame_reporter.cc"
+    },
+    {
+      "path": "perfetto-v59.1__graphics_pipeline.sql",
+      "url": "https://raw.githubusercontent.com/google/perfetto/v59.1/src/trace_processor/perfetto_sql/stdlib/chrome/graphics_pipeline.sql",
+      "bytes": 6544,
+      "sha256": "ee1441cd6268d2d21433cfb9095b6c69a58e8b0ce46e3f87b0c9f6d11959c921"
+    },
+    {
+      "path": "chromium__trace_id_helper.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/trace_event/trace_id_helper.cc?format=TEXT",
+      "bytes": 550,
+      "sha256": "0a28a03fc161c66261c4085f10ecde35fffccd4bc7618e84055ae99eff941309"
+    },
+    {
+      "path": "chromium__trace_id_helper.h",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/trace_event/trace_id_helper.h?format=TEXT",
+      "bytes": 815,
+      "sha256": "a412c4d8424fd702b8358e69e083c5dbe3ead4391fd9db1f40793df04553c88e"
+    },
+    {
+      "path": "sqlite-lang_select.html",
+      "url": "https://www.sqlite.org/lang_select.html",
+      "bytes": 2033807,
+      "sha256": "f850d5a0e9441d348535494f9c647ea90548a03a1c7bd51cdac6c7943e6dc785",
+      "qualification": "Official SQLite documentation retrieved2026-10-25; not source-pinned to processor binary"
+    },
+    {
+      "path": "sqlite-windowfunctions.html",
+      "url": "https://www.sqlite.org/windowfunctions.html",
+      "bytes": 923326,
+      "sha256": "541a738f7fd26efca132111ef51e74c2a3233054faa3471ee88f9696ebe97e98",
+      "qualification": "Official SQLite documentation retrieved2026-10-25; not source-pinned to processor binary"
+    }
+  ],
+  "counts": {
+    "reporters": 22,
+    "graphics": 164,
+    "reporterOrigins": 22,
+    "reporterFeedback": 4,
+    "aggregationMembershipOccurrences": 8
+  },
+  "reporterOriginEdges": [
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "0",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220441"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_NO_UPDATE_DESIRED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "96"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "3",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220439"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_NO_UPDATE_DESIRED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "97"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "6",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220391"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_NO_UPDATE_DESIRED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "106"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "210",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220389"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_NO_UPDATE_DESIRED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "107"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "455",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220387"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_PRESENTED_ALL"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "108"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "772",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220414"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_PRESENTED_ALL"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "109"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "773",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220414"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_PRESENTED_PARTIAL"
+          }
+        ],
+        "frame_type": [
+          {
+            "type": "string",
+            "value": "FORKED"
+          }
+        ],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "109"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": true,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1016",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220410"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_PRESENTED_PARTIAL"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "110"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1200",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220404"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "111"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1397",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220402"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "112"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1510",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220358"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "113"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1554",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220356"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "114"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1596",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220354"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "115"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1636",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220384"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "116"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1676",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220382"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "117"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1717",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220380"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "118"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1758",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220378"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "119"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1798",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220376"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "120"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1841",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220374"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "121"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1883",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220372"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "122"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "1923",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220370"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_DROPPED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "123"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    },
+    {
+      "kind": "reporter-original-beginframe",
+      "sliceId": "2399",
+      "occurrence": 0,
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220583"
+      },
+      "fields": {
+        "state": [
+          {
+            "type": "string",
+            "value": "STATE_NO_UPDATE_DESIRED"
+          }
+        ],
+        "frame_type": [],
+        "frame_sequence": [
+          {
+            "type": "uint",
+            "value": "126"
+          }
+        ],
+        "frame_source": [
+          {
+            "type": "uint",
+            "value": "4294967297"
+          }
+        ],
+        "layer_tree_host_id": [
+          {
+            "type": "uint",
+            "value": "2"
+          }
+        ]
+      },
+      "frameTypePresent": false,
+      "mainImplRole": "unknown"
+    }
+  ],
+  "reporterFeedbackEdges": [
+    {
+      "kind": "reporter-feedback-display",
+      "sliceId": "455",
+      "occurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220386"
+      }
+    },
+    {
+      "kind": "reporter-feedback-display",
+      "sliceId": "772",
+      "occurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220588"
+      }
+    },
+    {
+      "kind": "reporter-feedback-display",
+      "sliceId": "773",
+      "occurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220412"
+      }
+    },
+    {
+      "kind": "reporter-feedback-display",
+      "sliceId": "1016",
+      "occurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220408"
+      }
+    }
+  ],
+  "aggregationMembershipOccurrenceEdges": [
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "645",
+      "argumentOccurrence": 0,
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]",
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220387"
+      },
+      "displayOccurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220386"
+      }
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "645",
+      "argumentOccurrence": 1,
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[1]",
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220271"
+      },
+      "displayOccurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220386"
+      }
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "903",
+      "argumentOccurrence": 0,
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]",
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220414"
+      },
+      "displayOccurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220412"
+      }
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "903",
+      "argumentOccurrence": 1,
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[1]",
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220271"
+      },
+      "displayOccurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220412"
+      }
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "1085",
+      "argumentOccurrence": 0,
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]",
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220410"
+      },
+      "displayOccurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220408"
+      }
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "1085",
+      "argumentOccurrence": 1,
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[1]",
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220271"
+      },
+      "displayOccurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220408"
+      }
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "2275",
+      "argumentOccurrence": 0,
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[0]",
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220590"
+      },
+      "displayOccurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220588"
+      }
+    },
+    {
+      "kind": "resolved-aggregation-membership",
+      "sliceId": "2275",
+      "argumentOccurrence": 1,
+      "arrayKey": "chrome_graphics_pipeline.aggregated_surface_frame_trace_ids[1]",
+      "origin": {
+        "type": "int",
+        "value": "-1273753029367220271"
+      },
+      "displayOccurrence": 0,
+      "display": {
+        "type": "int",
+        "value": "-1273753029367220588"
+      }
+    }
+  ],
+  "scopedFirstDrawFacts": {
+    "firstDraw109Observed": false,
+    "firstDrawSequencesObserved": [
+      "106",
+      "107",
+      "108",
+      "125",
+      "126"
+    ],
+    "mainFrameIdAcrossDraws109to124": "-6448226711786209111",
+    "mainFrameIdAtDraw125": "-6448226711786209115",
+    "commitActivationArgumentCoverage": "Not selected/argument-expanded by retained exports; no assertion of trace absence."
+  },
+  "conclusions": [
+    "Current-submission surface to reporter-origin is not one-to-one in pinned source.",
+    "Reporter773 explicitly FORKED; preserve772/773 as separate observations with unknown exact main/impl roles.",
+    "Final aggregate2275 contains125 and0271, not109; reporter772 connects109 origin to final feedback display.",
+    "Surface0271 repeats in all4 aggregate lists; preserve all8 membership occurrences.",
+    "Reporter for equal origin125 unobserved; cause unresolved. Destruction emits backdated records; fixed tail and zero open slices do not prove reporter closure."
+  ],
+  "unknowns": [
+    "No emitted frame_token bridge from submission to controller reporter queue in these selected arguments.",
+    "Seq125 reporter lifetime/emission/capture state unresolved.",
+    "Persistent0271 target identity and visible contribution unknown."
+  ],
+  "decisiveNextEvidence": "If separately authorized: explicit submission frame_token plus main/impl origins, adoption/termination/destruction identity, feedback drain and stop boundary. No new capture performed.",
+  "SQLAddendum": {
+    "filename": "2026-10-25-stock033-first-display-sql-addendum-v1.md",
+    "jsonFilename": "2026-10-25-stock033-first-display-sql-addendum-v1.json",
+    "jsonSHA256": "a9211d8ff4aa60e8f3496e26d01c4d161e731f07a04a902dea6a128c798206b4",
+    "summary": "Pinned SQL deduplicates display steps by descending ts, joins aggregation argument occurrences, then combines first_value ordered by ts with GROUP BY surface. Grouping leaves unspecified representative values; chronological-first/last and exact planner choice are unproven. No trace-ID-as-time ordering."
+  },
+  "admission": {
+    "runtimeClockAuthorityChanged": false,
+    "rootPresentation": false,
+    "physicalPresentation": false,
+    "FPS": false,
+    "rate": false
+  },
+  "fps": null,
+  "rates": null,
+  "physicalScanout": "unqualified headless SwiftShader",
+  "historicalArtifactsModified": false,
+  "summaryScope": "ALL22 original-origin,4 feedback-display,8 raw membership occurrence edges and reporter state/frameType presence retained. Raw typed argument tables are not duplicated here; full evidence reference is explicit.",
+  "generalizedReplayHelper": {
+    "filename": "replay-presentation-occurrence-graph-v2.py",
+    "sha256": "fc5e99635202206e25579318fa3b737e3bde80dfc7a5a2f330aa274d4529163e",
+    "validationFilename": "generalized-occurrence-replay-validation-v2.json",
+    "validationSHA256": "b258021de848805b5056624843b4a3388ecd54d3a175a32a194630d539d5a04c",
+    "qualification": "Independently reviewed private retained-export replay; supported type/storage validation only, no runtime or metric authority admission."
+  }
+}
