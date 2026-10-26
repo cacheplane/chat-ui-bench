@@ -17,6 +17,11 @@
       "types": "./dist/browser-frame-same-trace-interval.d.ts",
       "import": "./dist/browser-frame-same-trace-interval.js",
       "require": "./dist/browser-frame-same-trace-interval.js"
+    },
+    "./internal/native-clock3-phase": {
+      "types": "./dist/browser-frame-native-clock3.d.ts",
+      "import": "./dist/browser-frame-native-clock3.js",
+      "require": "./dist/browser-frame-native-clock3.js"
     }
   },
   "scripts": {

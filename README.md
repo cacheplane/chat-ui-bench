@@ -470,6 +470,11 @@ The Threadplane Angular custom-transport profile is implemented with pinned
 local deterministic SSE replay transport. This profile is distinct from a
 default deployment connected to a model backend.
 
+[Fresh stock 0.3.3 native fixed-tail findings](docs/research/2026-10-25-stock033-native-tail500-findings.md)
+cover a separate 100-message diagnostic fixture. The observed capture has more
+complete terminal-event coverage; reporter ambiguity and strict diagnostic limits
+keep FPS unavailable.
+
 After building, collect long-thread evidence in a fresh output directory:
 
 ```sh
