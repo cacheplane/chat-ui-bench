@@ -13,7 +13,8 @@ node tools/perfetto-import/run.mjs --config /absolute/config.json
 node tools/perfetto-import/run.mjs --inventory-config /absolute/inventory-config.json
 node tools/perfetto-import/run.mjs --target-inventory-config /absolute/target-inventory-config.json
 node tools/perfetto-import/run.mjs --scope-inventory-config /absolute/scope-inventory-config.json
-node --test tools/perfetto-import/run.node.mjs
+node tools/perfetto-import/run.mjs --mainframe-lineage-config /absolute/mainframe-lineage-config.json
+node --test tools/perfetto-import/run.node.mjs tools/perfetto-import/mainframe-lineage.node.mjs
 ```
 
 Configuration shape (replace all paths and trace facts with your own retained inputs):
@@ -391,3 +392,52 @@ The scope fixture tests export precision; it does not establish production emitt
 width. In the captured Chromium revision, [BeginFrameArgs serialization](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/common/frame_sinks/begin_frame_args.cc#185)
 passes source and sequence through [SetInteger(int)](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/trace_event/traced_value.h#41).
 The exporter preserves the emitted value and does not restore missing source-generation bits.
+
+The explicit `--mainframe-lineage-config` CLI and
+`runMainframeLineageDiagnostic(config)` API select the separate fixed
+[mainframe-lineage.sql](mainframe-lineage.sql) policy. Its manifest uses
+`queryPolicy: 'mainframe-lineage-compact-v1'`, the same six compact scope-table
+schemas, full raw occurrence export, and the same false qualification, capture,
+FPS, evaluation, scoring and ranking flags. Clock admission remains
+`not_evaluated`; FPS and duration remain null. The configuration, official
+processor identity, custody bookends, process/stream completion, deadlines and
+byte limits are unchanged. An oversized export fails as a whole without a prefix
+or fallback. Existing full, inventory, target and scope APIs and SQL remain
+separate. The explicit authored test API is
+`runAuthoredFixtureMainframeLineageDiagnostic(config)`; the CLI cannot invoke it.
+
+This policy selects exactly these eleven names, plus the literal phase names:
+`ProxyMain::BeginMainFrame`, `ProxyMain::BeginMainFrame::commit`,
+`ProxyImpl::ReadyToCommit`, `ProxyImpl::Commit`,
+`LayerTreeHostImpl::CommitComplete`, `ProxyImpl::ReadyToActivate`,
+`LayerTreeHostImpl::ActivateSyncTree`, `ActivateLayerTree`, `Commit`,
+`MainFrame.Draw`, and `DrawFrame`. Family counts retain zero rows. A phase/family
+collision selects each slice once. It exports all selected imported typed
+arguments through the compact dictionary, preserving repeated references, NULL
+flags and context-only ancestors without expanding ancestor arguments. Scheduler
+and Graphics families are outside this selection; their existing exports are
+complementary evidence, not an automatic fallback.
+
+Names do not establish identity. In particular, `Commit` is emitted on different
+tracks for different purposes; category, track, parent and full argument context
+must remain attached. Exact emitted `main_frame_pipeline.main_frame_id` values
+can support candidate relationships across commit/activation/draw records.
+Repeated IDs across processes or tracks are retained, not automatically joined.
+Conditional `last_begin_frame_id_during_first_draw` fields are exported when
+present; missing fields are not synthesized. Never join reporter origins,
+submission tokens or target ownership by nearest timestamp or sequence alone.
+Pinned [ProxyImpl emission sites](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/trees/proxy_impl.cc)
+and [activation emission](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/trees/layer_tree_host_impl.cc)
+explain the main-frame fields. These records do not expose the controller's full
+submission-token queue or reporter adoption/destruction population. A successful
+export, a closed slice, and a longer capture tail do not prove that population
+complete, nor do they qualify presentation rate or physical scanout.
+
+The sixth official semantic smoke import uses an independent authored lineage
+fixture. It exercises actual `MainFramePipeline` protobuf fields, full-width
+integer IDs, first-draw source/sequence presence on only the first of two draws,
+shared argument sets across distinct tracks, both `Commit` contexts and a
+context-only `PipelineReporter` ancestor. This validates importer/exporter shape,
+not production identity or performance. Changed-head Linux execution is supplied
+by the existing pinned-processor workflow; local macOS evidence alone is not
+Linux verification.
