@@ -282,3 +282,57 @@ The new `reviewedCompactEvidence` compatibility record supplements the unchanged
 historical implementation pins. Storage admission establishes no producer or
 target authenticity, presentation success, FPS, rate, metric, native-support,
 evaluation, scoring or ranking authority.
+
+## Explicit V10 source R and V11 clock-layout evidence
+
+`createWholeUserTimingStudyV10` and `readWholeUserTimingTraceV10` select
+`WHOLE_USER_TIMING_V10_POLICY`, whose exact value is
+`pinned-whole-trace-user-timing-framepresented-r-diagnostic-v10`.
+V10 retains V9's codec1 inventory and adds only the supported source legacy R
+form: resolved `FramePresented`, categories `cc` and `benchmark`, explicit track
+zero, phase R, and the single `environment` string annotation `browser`.
+Same-packet state is resolved before this check. Unsupported legacy forms remain
+unavailable. `supportedLegacyFramePresented` counts supported occurrences; they
+remain included in packet and semantic commitments without becoming mark rows.
+
+`createWholeUserTimingStudyV11` and `readWholeUserTimingTraceV11` select
+`WHOLE_USER_TIMING_V11_POLICY`, whose exact value is
+`pinned-whole-trace-user-timing-clock-layout-evidence-diagnostic-v11`.
+V11 includes the same supported source R form and uses codec2 exclusively.
+`study.evidenceInventory` has `version: 2`, status
+`complete-supported-compact-observations` on success, and `facts` and
+`occurrences` arrays. Descriptors keep their codec1 fact shape. Clock facts have
+`kind: 'clock_snapshot_layout'`, optional exact `primaryTraceClock`, and ordered
+`clocks` child templates. Each template preserves field insertion order and
+presence: nontimestamp entries are `[fieldName, exactValue]`; `['timestamp']` is
+a slot. Every occurrence retains the original seven tuple columns and adds an
+eighth column: descriptor `null` or a flat ordered vector of exact unsigned64
+decimal timestamp strings. Its length equals the template's slot count. Missing
+timestamps contribute no slot; present zero, explicit false, empty children and
+empty clock arrays remain represented. No numeric conversion, default insertion,
+key/child sorting, clock matching or timestamp normalization is performed.
+
+V11 keeps the 128 normalized-fact, 256 occurrence and 512 total clock-entry
+limits. Clock entries count every occurrence, including repeated layouts.
+Fact equality now compares clock layouts separately from their per-occurrence
+timestamps; this changes V11 dictionary admission. V9/V10 codec1 outputs and
+refusals remain unchanged. Each complete original supported row is charged to
+persistence before factoring, with additional key/template/vector/tuple storage
+and extraction/iteration work charged under the same global budgets. The 32 MiB
+input, 256 KiB serialized envelope and aggregate UTF8/node/object/depth,
+state/history/work and owned-file guards remain unchanged. Failure atomically
+withdraws evidence, candidates and raw-drop facts. V11 has no Clock3 projection.
+Skipped raw fields retain their existing opaque treatment; exact body hashes and
+locations bind the original bytes without claiming full decoding.
+
+The fixed `reviewedFramePresentedClockLayout` implementation map supplements
+`auditBaseline`, `reviewedV8`, `reviewedClock3Phase` and
+`reviewedCompactEvidence`. It records reviewed revisions of the four shared
+packet, event, ordered-state and reader source modules. Historical maps, the
+compatibility id, producer/processor proto pins, old policies and NativeClock3
+labels remain unchanged. The test overlays this supplement last when checking
+current shared source bytes. These hashes record shared-source revision review;
+they confer no additional V8 or Clock3 admission or runtime authentication.
+V10/V11 storage and decoding establish no raw/imported carrier correspondence,
+target ownership, clock alignment, presentation population, performance, FPS,
+native-support, evaluation, scoring or ranking authority.

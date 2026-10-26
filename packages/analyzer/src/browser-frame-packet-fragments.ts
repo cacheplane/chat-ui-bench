@@ -1,10 +1,10 @@
 import { BodyReader, copyBody, WireBudget, WireError,newWholeWireBudget,wholeByteInputDenied, type WireField } from './browser-frame-protobuf-wire.js';
-import { decodeModernTrackEvent, decodeModernTrackEventWithMembers,decodeAnnotationTrackEvent, type EventFragment, type EventFragmentWithMembers,type AnnotationEventFragment } from './browser-frame-track-event-fragments.js';
+import { decodeModernTrackEvent, decodeModernTrackEventWithMembers,decodeAnnotationTrackEvent,decodeWholeFramePresentedTrackEvent, type EventFragment, type EventFragmentWithMembers,type AnnotationEventFragment,type WholeFramePresentedEventFragment } from './browser-frame-track-event-fragments.js';
 import type {AnnotationWork} from './browser-frame-trace-framer.js';
 export const PACKET_POLICY = 'pinned-browser-frame-packet-fragments-v1';
 export const PACKET_SOURCE = Object.freeze({ perfettoPin: '403906f4adfbf287a02e5546f8430dcc9d56b649', chromiumPin: 'f842f52ef39fd97b449eb27cff414bf05a98ddce' });
 export const PACKET_LABELS = Object.freeze({ normalizationCapability: 'structural-packet-fragments-only', runtimeQualification: 'unestablished', sourceCoverage: 'unestablished', evaluationEligibility: false, scoringEligibility: false, rankingEligibility: false } as const);
-export interface PacketOccurrence { scope: 'packet' | 'track_event' | 'reporter2' | 'graphics' | 'frame_sink'; fieldNumber: number; wireType: 0 | 1 | 2 | 5; start: number; valueStart: number; end: number }
+export interface PacketOccurrence { scope: 'packet' | 'track_event' | 'legacy_event' | 'reporter2' | 'graphics' | 'frame_sink'; fieldNumber: number; wireType: 0 | 1 | 2 | 5; start: number; valueStart: number; end: number }
 export interface ProjectionContext { bytes: Uint8Array; budget: WireBudget; occurrences: PacketOccurrence[]; skippedFields: PacketOccurrence[] }
 export interface PacketFields { timestamp?: string; timestampClockId?: string; sequenceId?: string; sequenceFlags?: string; previousPacketDropped?: string; machineId?: string; trustedPid?: string; incrementalStateCleared?: boolean; firstPacketOnSequence?: boolean }
 export interface PacketFragment extends Readonly<typeof PACKET_LABELS> {
@@ -26,6 +26,7 @@ const SELECTED = new Set([8,58,10,13,42,98,79,41,87,11,...OPAQUE]);
 // Private profiles: 0 standalone, 1 legacy whole input, 2 V3 refusal detail.
 const WHOLE_PROFILE=1,WHOLE_TIMING_V3_PROFILE=2;
 const WHOLE_PROVENANCE_PROFILE=3,PROVENANCE_FIELDS=32,PROVENANCE_REFUSAL='unsupported-packet-payload-field-124';
+const WHOLE_FRAME_PRESENTED_PROFILE=4;
 const decodePacket=createPacketDecoder();
 export function scalar(field: WireField): bigint {
   if (field.occurrence.wireType !== 0 || field.scalar === undefined) throw new WireError('selected-field-wrong-wire-type');
@@ -77,6 +78,14 @@ export function createWholeProvenancePacketDecoder(){
   return decode(input,PACKET_POLICY,false,work,WHOLE_PROVENANCE_PROFILE) as AnnotationPacketFragment|PacketUnavailable;
  };
 }
+/** Fresh once-per-whole provenance state and a fixed source-selected legacy form. */
+export function createWholeFramePresentedPacketDecoder(){
+ const decode=createPacketDecoder();
+ return function(input:unknown,work:AnnotationWork):(Omit<AnnotationPacketFragment,'event'>&{event?:WholeFramePresentedEventFragment})|PacketUnavailable{
+  if(wholeByteInputDenied(input))return{status:'unavailable',diagnostics:[{code:'unsupported-byte-view'}]};
+  return decode(input,PACKET_POLICY,false,work,WHOLE_FRAME_PRESENTED_PROFILE) as AnnotationPacketFragment|PacketUnavailable;
+ };
+}
 function createPacketDecoder(){
  let provenanceSeen=false;
  return function decodePacket(input:unknown,policy:unknown,retainMembers:boolean,annotationWork?:AnnotationWork,whole=0):PacketFragment|PacketUnavailable {
@@ -91,7 +100,7 @@ function createPacketDecoder(){
       const field = reader.next('root'); const o: PacketOccurrence = { ...field.occurrence, scope: 'packet' };
       context.occurrences.push(o);
       if (UNSUPPORTED.has(o.fieldNumber)) {
-       if(whole===WHOLE_PROVENANCE_PROFILE&&o.fieldNumber===124){
+       if((whole===WHOLE_PROVENANCE_PROFILE||whole===WHOLE_FRAME_PRESENTED_PROFILE)&&o.fieldNumber===124){
         if(provenanceSeen)throw new WireError(PROVENANCE_REFUSAL);
         provenanceSeen=true;provenanceSubset(bytes,field,budget,annotationWork!);
        }else{
@@ -122,7 +131,7 @@ function createPacketDecoder(){
         case 79: fields.trustedPid = canonicalInt32(field); break;
         case 41: fields.incrementalStateCleared = boolean(field); break;
         case 87: fields.firstPacketOnSequence = boolean(field); break;
-        case 11: event = annotationWork?decodeAnnotationTrackEvent(context,o.valueStart,o.end,annotationWork):retainMembers?decodeModernTrackEventWithMembers(context,o.valueStart,o.end):decodeModernTrackEvent(context, o.valueStart, o.end); break;
+        case 11: event = whole===WHOLE_FRAME_PRESENTED_PROFILE?decodeWholeFramePresentedTrackEvent(context,o.valueStart,o.end,annotationWork!):annotationWork?decodeAnnotationTrackEvent(context,o.valueStart,o.end,annotationWork):retainMembers?decodeModernTrackEventWithMembers(context,o.valueStart,o.end):decodeModernTrackEvent(context, o.valueStart, o.end); break;
       }
     }
     return { status: 'decoded_packet_fragment', fields, ...(event === undefined ? {} : { event }), source: PACKET_SOURCE,
