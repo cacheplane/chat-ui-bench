@@ -67,6 +67,9 @@ jobs:
       - name: Test additive raw metadata ledger after analyzer build
         run: node --test tools/perfetto-import/raw-metadata-ledger-v1.node.mjs 2>&1 | tee ci-logs/raw-metadata-ledger.log
 
+      - name: Test owned packet and state diagnostic runner after analyzer build
+        run: node --test tools/owned-paint-v12/run.node.mjs 2>&1 | tee ci-logs/owned-paint-v12.log
+
       - name: Run unit tests
         run: npm test 2>&1 | tee ci-logs/unit.log
 
