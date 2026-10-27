@@ -64,6 +64,9 @@ jobs:
       - name: Test fixed native-wheel raw census after analyzer build
         run: node --test tools/perfetto-import/native-wheel-raw-census.node.mjs 2>&1 | tee ci-logs/native-wheel-raw-census.log
 
+      - name: Test additive raw metadata ledger after analyzer build
+        run: node --test tools/perfetto-import/raw-metadata-ledger-v1.node.mjs 2>&1 | tee ci-logs/raw-metadata-ledger.log
+
       - name: Run unit tests
         run: npm test 2>&1 | tee ci-logs/unit.log
 
