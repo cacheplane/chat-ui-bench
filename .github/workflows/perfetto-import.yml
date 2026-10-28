@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           mkdir "$RUNNER_TEMP/perfetto-import-evidence"
           set +e
-          node --test tools/perfetto-import/run.node.mjs tools/perfetto-import/mainframe-lineage.node.mjs tools/perfetto-import/wheel-carrier.node.mjs tools/perfetto-import/wheel-graph.node.mjs > "$RUNNER_TEMP/perfetto-import-evidence/unit.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/unit.stderr"
+          node --test tools/perfetto-import/run.node.mjs tools/perfetto-import/mainframe-lineage.node.mjs tools/perfetto-import/wheel-carrier.node.mjs tools/perfetto-import/wheel-graph.node.mjs tools/perfetto-import/callback-inventory.node.mjs > "$RUNNER_TEMP/perfetto-import-evidence/unit.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/unit.stderr"
           result=$?
           printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/unit.exit-code"
           exit "$result"
@@ -45,6 +45,15 @@ jobs:
           node tools/perfetto-import/smoke.mjs --processor "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell" --out "$RUNNER_TEMP/perfetto-import-evidence/smoke" > "$RUNNER_TEMP/perfetto-import-evidence/smoke.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/smoke.stderr"
           result=$?
           printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/smoke.exit-code"
+          exit "$result"
+      - name: Import independent authored callback inventory with pinned production CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          node tools/perfetto-import/callback-inventory-smoke.mjs --processor "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell" --out "$RUNNER_TEMP/perfetto-import-evidence/callback-smoke" > "$RUNNER_TEMP/perfetto-import-evidence/callback-smoke.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/callback-smoke.stderr"
+          result=$?
+          printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/callback-smoke.exit-code"
           exit "$result"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()

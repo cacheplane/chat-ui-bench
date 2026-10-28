@@ -722,3 +722,111 @@ After building the analyzer, run the authored unit controls with
 control replay needs a separately frozen independent complete row oracle and
 reviewed source/build execution. No performance feasibility or metrics claim
 follows from these unit controls.
+
+## Callback inventory v1
+
+Run the additive fixed policy with:
+
+```sh
+node tools/perfetto-import/callback-inventory-run.mjs --callback-inventory-config /absolute/config.json
+```
+
+Configuration has the existing `trace: {path, bytes, sha256}`, `processor:
+{path, sha256}`, 2..16 distinct literal `phases`, fresh absolute `out`, and
+optional `deadlineMs` (1..60000) fields. The separate importable APIs are
+`runCallbackInventoryDiagnostic(config)` and the explicitly untrusted
+`runAuthoredFixtureCallbackInventoryDiagnostic(config)` in
+[callback-inventory-run.mjs](callback-inventory-run.mjs). Import has no side
+effects. Caller SQL, policy, cap and authority overrides have no effect.
+The independent runner preserves the byte identity of legacy `run.mjs`, which
+is attested by the existing feedback v1 source closure; maintaining these bounded
+execution mechanisms independently avoids silently changing that contract.
+
+[callback-inventory.sql](callback-inventory.sql) selects exact binary names
+`Graphics.Pipeline.DrawAndSwap`, `Display::FrameDisplayed`, `Graphics.Pipeline`,
+`PipelineReporter`, and literal phases. Family/phase collisions select once;
+absent names retain zero counts. No time, duration, outcome, target or ID filters,
+row limits, semantic joins, identity inversion or outcome classification apply.
+Every selected imported slice, its argument occurrences, selected track metadata,
+source/dimension argument occurrences, all nonzero importer stats and trace bounds
+are exported. Unclosed/negative spans, cancellations, partial/dropped reporters,
+repeated arguments and shared argument sets remain visible. Empty, NULL and
+literal `[NULL]` text differ through explicit NULL flags. Integers remain exact
+CSV decimal strings; consumers must avoid JavaScript Number conversion above
+2^53. Every text projection exports its original bytes as hex.
+
+Coverage is selected tracks only. Raw slice/track `parent_id` is descriptive;
+referenced parents are not expanded or certified. The verified public `track`
+view exposes id/name/type/dimension_arg_set_id/parent_id/source_arg_set_id/
+machine_id/track_group_id. An exact ID join to `__intrinsic_track` supplies
+`event_type`, `counter_unit`, `utid` and `upid`. Each track's `source` and
+`dimension` memberships expand independently, even for the same arg set; each
+absent match has a placeholder with `arg_present=0`. No arguments are deduplicated.
+The public view and intrinsic columns are checked by the independent official
+[authored smoke](callback-inventory-smoke.mjs), including merged process/thread
+tracks, both argument namespaces and an actual embedded-NUL protobuf annotation. Pinned importer debug annotation key
+overwrite can precede export: only imported occurrences are claimed.
+
+All textual projections, including fixed namespace labels, use nullable
+`<name>_bytes_hex` columns: SQL NULL remains NULL; every non-NULL value is uppercase,
+even-length `HEX(CAST(value AS BLOB))`, including an empty hex string for empty text.
+The original `<name>_is_null` flags remain authoritative where present. This
+preserves embedded NUL, quotes, CR/LF, Unicode, BOM and any imported byte sequence
+without depending on the pinned CSV renderer's NUL-truncating text behavior.
+Numeric columns are unchanged. Decode hex to bytes before interpreting text;
+invalid UTF8 is still losslessly exported. The authored smoke's convenience parser
+validates the exact raw headers, canonical hex and NULL consistency, retains all
+raw hex properties, and adds decoded base properties using fatal UTF8. Invalid
+UTF8 refuses that convenience text view separately from raw export success.
+
+The seven output tables have these frozen raw header orders (NULL flag 1 means
+SQL NULL; 0 includes empty and literal sentinel text):
+
+```text
+name_bytes_hex,event_count,arg_set_count
+id,ts,dur,depth,parent_id,name_bytes_hex,category_bytes_hex,track_id,arg_set_id,track_name_bytes_hex,utid,tid,upid,pid,process_name_bytes_hex,thread_name_bytes_hex,ts_is_null,dur_is_null,depth_is_null,parent_id_is_null,name_is_null,category_is_null,track_id_is_null,arg_set_id_is_null,track_name_is_null,utid_is_null,tid_is_null,upid_is_null,pid_is_null,process_name_is_null,thread_name_is_null
+slice_id,arg_set_id,arg_set_id_is_null,arg_present,flat_key_bytes_hex,key_bytes_hex,value_type_bytes_hex,int_value,string_value_bytes_hex,real_value,flat_key_is_null,key_is_null,value_type_is_null,int_value_is_null,string_value_is_null,real_value_is_null
+id,name_bytes_hex,type_bytes_hex,parent_id,machine_id,source_arg_set_id,dimension_arg_set_id,track_group_id,event_type_bytes_hex,counter_unit_bytes_hex,utid,upid,name_is_null,type_is_null,parent_id_is_null,machine_id_is_null,source_arg_set_id_is_null,dimension_arg_set_id_is_null,track_group_id_is_null,event_type_is_null,counter_unit_is_null,utid_is_null,upid_is_null
+track_id,namespace_bytes_hex,arg_set_id,arg_set_id_is_null,arg_present,flat_key_bytes_hex,key_bytes_hex,value_type_bytes_hex,int_value,string_value_bytes_hex,real_value,flat_key_is_null,key_is_null,value_type_is_null,int_value_is_null,string_value_is_null,real_value_is_null
+name_bytes_hex,idx,severity_bytes_hex,source_bytes_hex,value,name_is_null,idx_is_null,severity_is_null,source_is_null,value_is_null
+start_ts,end_ts,start_ts_is_null,end_ts_is_null
+```
+
+The manifest is `queryPolicy: 'callback-inventory-v1'`, `diagnosticOnly: true`,
+with all existing native/qualification/capture/FPS/evaluation/scoring/ranking
+authorities false and FPS/duration null on success and failure.
+`displayIdentityAdmission`, `callbackOutcomeAdmission`, `populationCompleteness`
+and `clockAdmission` remain `not_evaluated`. Imported duration is not evidence of
+callback success; merged track metadata cannot establish per-event display
+identity. Successful export does not establish the producer callback population.
+
+The same three-role source bookends cover the new runner (64 KiB), fixed SQL
+source (16 KiB) and rendered executed SQL (16 KiB), with fatal UTF8 decoding and
+bounded original handles. Trace/tool limits remain 32/64 MiB; stdout/stderr are
+256/64 KiB. Each original child has at most 60 seconds and must close normally
+with both original pipes at EOF/close. Byte/hash/identity bookends, fixed official
+processor version/hash, full input EOF and exclusive output remain mandatory.
+Hex encoding can increase output size; the fixed caps are unchanged.
+Overflow fails the entire export; there is no clipping success or narrower retry.
+Source stability attests only observed local files, not loaded execution history.
+
+Schema source: pinned importer
+[track tables](https://github.com/google/perfetto/blob/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/tables/track_tables.py)
+verified SHA256 `10f38f0d8600d05a26cb76123f1fbfc36f76a7794d8e6dcdf52da61bee52e37d`;
+[public track view](https://github.com/google/perfetto/blob/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/perfetto_sql/stdlib/prelude/after_eof/tracks.sql),
+verified SHA256 `73758f268351788cee1987fcf0d326ff8347f32284ad73ccabce141f34f4026a`.
+The producer's
+[display callback sites](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/service/display/display.cc)
+end spans on cancellation or sanitized callbacks without serialized success flags.
+[PipelineReporter destructor emission](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/metrics/compositor_frame_reporter.cc)
+and the pinned
+[track importer](https://github.com/google/perfetto/blob/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/importers/proto/track_event_tracker.cc)
+explain why a retained row is not an outcome or display-identity admission.
+
+Run authored controls with
+`node --test tools/perfetto-import/callback-inventory.node.mjs` and official
+verification with `node tools/perfetto-import/callback-inventory-smoke.mjs
+--processor /absolute/pinned/trace_processor_shell --out /absolute/fresh/smoke`.
+CI preserves all legacy controls and smoke steps and adds these source/authored
+checks after the pinned processor fetch. Only authored fixtures and verification
+evidence are published; captured traces and derived results remain local.
