@@ -70,6 +70,9 @@ jobs:
       - name: Test owned packet and state diagnostic runner after analyzer build
         run: node --test tools/owned-paint-v12/run.node.mjs 2>&1 | tee ci-logs/owned-paint-v12.log
 
+      - name: Test browser presentation feedback observation controls
+        run: node --test tools/perfetto-import/feedback-observations-core.node.mjs tools/perfetto-import/feedback-observations-run.node.mjs 2>&1 | tee ci-logs/feedback-observations.log
+
       - name: Run unit tests
         run: npm test 2>&1 | tee ci-logs/unit.log
 

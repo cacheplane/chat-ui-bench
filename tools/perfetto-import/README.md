@@ -1,5 +1,53 @@
 # Pinned Perfetto import diagnostic
 
+## Browser presentation-feedback observations
+
+`feedback-observations-run.mjs` runs the pinned target and scope exports, then
+counts distinct successful display-feedback observations for a selected frame
+and loader. It includes partial and forked reporters, deduplicates display IDs,
+and uses reporter terminal times in the half-open phase interval `[start,end)`.
+The output's `observedHz` is an exact rational observation rate. **It is not FPS**:
+`fps` stays null, the population is explicitly nonexhaustive, and native,
+capture, evaluation, scoring and ranking eligibility remain false.
+
+Create a canonical compact config with `JSON.stringify`, preserving this key
+order. Replace the illustrative paths, hashes, selectors and byte count with
+original capture facts and the platform processor pin documented below:
+
+```js
+const config = {
+  schema: 'browser-presentation-feedback-observations-v1',
+  trace: {path: '/absolute/trace.pftrace', bytes: 1234, sha256: '<original SHA256>'},
+  processor: {path: '/absolute/trace_processor_shell', sha256: '<platform pin>'},
+  target: {frameId: 'AUTHORED_FRAME', loaderId: 'AUTHORED_LOADER'},
+  phaseNames: {start: 'authored:start', end: 'authored:end'},
+  out: '/absolute/fresh-output',
+  deadlineMs: 60000,
+};
+// Write JSON.stringify(config) without whitespace or a trailing newline.
+```
+
+```sh
+node tools/perfetto-import/feedback-observations-run.mjs --config /absolute/config.json
+node --test tools/perfetto-import/feedback-observations-core.node.mjs tools/perfetto-import/feedback-observations-run.node.mjs
+```
+
+The wrapper verifies the original tool returns, complete output files and
+persisted source bookends. Audited use assumes a fresh trusted Node process and
+no concurrent local file mutation; disk hashes do not attest cached module
+memory. Generated SQL is verified after execution, with no in-query SQL
+bookends. The saved result is provisional: require the original returned
+publication receipt, matching file hash, and original command completion.
+Late custody failures withdraw numerical results. Refused runs retain their
+available evidence and do not retry with a narrower export.
+
+The source model targets the documented Chromium producer and official
+Perfetto revisions, with vendor build correspondence assumed. Preserve importer
+warnings and coverage disclosures; successful feedback records can be delayed
+until reporter destruction. The pure core accepts authored CSV for controls and
+always labels it untrusted. Keep captured traces and derived results local and
+keep stock, modified and authored cohorts separate.
+
 The separate `inspectNativeWheelRawCensusV1({path, bytes, sha256})` library in
 `native-wheel-raw-census.mjs` inspects a persisted trace with the fixed V11 reader
 and one additional bounded raw pass. Build the contract and analyzer first; run
