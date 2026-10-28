@@ -1,0 +1,354 @@
+{
+  "schema": "browser-presentation-feedback-observations-v1",
+  "metric": "observed-successful-browser-feedback-hz",
+  "producer": {
+    "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+    "branch": "classic-non-TreesInViz",
+    "correspondence": "vendor-assumed",
+    "traceIdPolicy": "signed-sql-int64-except-required-minus-one-sentinel"
+  },
+  "importer": {
+    "revision": "1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d",
+    "versionText": "Perfetto v59.1-1e9c61e98 (1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d)\nTrace Processor RPC API version: 14",
+    "clockContract": "official-perfetto-normalized-nanoseconds-v1",
+    "processorPins": {
+      "darwin-arm64": "8488edbefadfc4be152cda1d42d9bfcede8b47638295eb85eb3bad8cd148fdf4",
+      "linux-x64": "2434129a3af4dc9e2034a476f7b76447b490975213e301769310d3bd0d5d6458"
+    }
+  },
+  "sql": {
+    "target": {
+      "path": "target-inventory.sql",
+      "policy": "target-inventory-v1",
+      "bytes": 3647,
+      "sha256": "f1fe2faaadcc68c57933ef51fd087ea795bc704416f9375c7b115d888acf3db9",
+      "headers": [
+        [
+          "name",
+          "event_count",
+          "arg_set_count"
+        ],
+        [
+          "id",
+          "ts",
+          "dur",
+          "name",
+          "track_id",
+          "track_name",
+          "arg_set_id",
+          "utid",
+          "tid",
+          "upid",
+          "pid",
+          "process_name",
+          "thread_name",
+          "track_name_is_null",
+          "process_name_is_null",
+          "thread_name_is_null"
+        ],
+        [
+          "slice_id",
+          "name",
+          "arg_set_id",
+          "arg_present",
+          "flat_key",
+          "key",
+          "value_type",
+          "int_value",
+          "string_value",
+          "real_value",
+          "flat_key_is_null",
+          "key_is_null",
+          "value_type_is_null",
+          "int_value_is_null",
+          "string_value_is_null",
+          "real_value_is_null"
+        ],
+        [
+          "name",
+          "flat_key",
+          "key",
+          "value_type",
+          "arg_occurrence_count",
+          "slice_count",
+          "flat_key_is_null",
+          "key_is_null",
+          "value_type_is_null"
+        ],
+        [
+          "name",
+          "idx",
+          "severity",
+          "source",
+          "value"
+        ],
+        [
+          "start_ts",
+          "end_ts"
+        ],
+        [
+          "surface_frame_trace_id",
+          "display_trace_id"
+        ]
+      ],
+      "families": [
+        "BeginFrame",
+        "FrameCommittedInBrowser",
+        "FrameDeletedInBrowser",
+        "Graphics.Pipeline",
+        "PipelineReporter",
+        "ProcessReadyInBrowser",
+        "SetLayerTreeId",
+        "TracingStartedInBrowser"
+      ]
+    },
+    "scope": {
+      "path": "scope-inventory.sql",
+      "policy": "scope-inventory-compact-v1",
+      "bytes": 5069,
+      "sha256": "eb465cc5ecd17e15fc661399c146a419b386f9b389becc08c1d2a5d504d10af9",
+      "headers": [
+        [
+          "name",
+          "event_count",
+          "arg_set_count"
+        ],
+        [
+          "id",
+          "ts",
+          "dur",
+          "depth",
+          "parent_id",
+          "is_selected",
+          "name",
+          "category",
+          "track_id",
+          "track_name",
+          "arg_set_id",
+          "utid",
+          "tid",
+          "upid",
+          "pid",
+          "process_name",
+          "thread_name",
+          "parent_status",
+          "duration_status",
+          "parent_id_is_null",
+          "name_is_null",
+          "category_is_null",
+          "track_name_is_null",
+          "process_name_is_null",
+          "thread_name_is_null"
+        ],
+        [
+          "slice_id",
+          "arg_key_id",
+          "arg_set_id",
+          "arg_present",
+          "int_value",
+          "string_value",
+          "real_value",
+          "int_value_is_null",
+          "string_value_is_null",
+          "real_value_is_null"
+        ],
+        [
+          "arg_key_id",
+          "name",
+          "flat_key",
+          "key",
+          "value_type",
+          "arg_occurrence_count",
+          "slice_count",
+          "flat_key_is_null",
+          "key_is_null",
+          "value_type_is_null"
+        ],
+        [
+          "name",
+          "idx",
+          "severity",
+          "source",
+          "value",
+          "name_is_null",
+          "severity_is_null",
+          "source_is_null"
+        ],
+        [
+          "start_ts",
+          "end_ts"
+        ]
+      ],
+      "families": [
+        "DrawFrame",
+        "Graphics.Pipeline",
+        "MainFrame.Draw",
+        "Scheduler::BeginFrame",
+        "Scheduler::BeginImplFrame"
+      ]
+    }
+  },
+  "stats": {
+    "timestampRefusalNames": [
+      "clock_sync_mixed_clock_sources",
+      "track_event_thread_invalid_end"
+    ],
+    "otherNonzeroPolicy": "retain-as-nonexhaustive-coverage-diagnostics",
+    "crossExportEquality": "source-trace-only"
+  },
+  "limits": {
+    "csvBytes": 262144,
+    "totalCSVBytes": 524288,
+    "decodedCSVBytes": 262144,
+    "cellBytes": 16384,
+    "rowsPerCSV": 24576,
+    "totalRows": 49152,
+    "columns": 25,
+    "targetTableRows": [
+      4096,
+      4096,
+      8192,
+      4096,
+      1024,
+      1,
+      4096
+    ],
+    "scopeTableRows": [
+      4096,
+      4096,
+      8192,
+      4096,
+      1024,
+      1
+    ],
+    "configBytes": 16384,
+    "sourceFileBytes": 262144,
+    "totalSourceBytes": 1048576,
+    "resultBytes": 1048576,
+    "resultNodes": 65536,
+    "resultStringBytes": 524288,
+    "workUnits": 67108864,
+    "maxPathBytes": 4096,
+    "maxNameBytes": 256,
+    "maxAncestryNodes": 4096,
+    "maxArrayIndex": 4095,
+    "maxArrayPathDepth": 8,
+    "parentBudgetMs": 240000,
+    "maxProcessDeadlineMs": 60000,
+    "runtimeFileBytes": 268435456
+  },
+  "sources": [
+    {
+      "path": "cc/trees/proxy_impl.cc",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 42455,
+      "sha256": "aec8b6c79c86e93598d6a83da5f6e19848f24559892c080ed69c75aa01fa7a5b",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/trees/proxy_impl.cc"
+    },
+    {
+      "path": "cc/metrics/compositor_frame_reporter.cc",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 94108,
+      "sha256": "70e6129552aef3f29c3e2fea247b8c785b0fc1addb7680a76166e409ffd30c80",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/metrics/compositor_frame_reporter.cc"
+    },
+    {
+      "path": "cc/metrics/compositor_frame_reporting_controller.cc",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 43590,
+      "sha256": "de5e9fe6acb709f46e3031bfb3bfba3cc5fd521848b5d38e9626dd01c53e8c23",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/metrics/compositor_frame_reporting_controller.cc"
+    },
+    {
+      "path": "cc/trees/layer_tree_host_impl.cc",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 242916,
+      "sha256": "d96b905bf5e63dcd9e76707df8c119294651540d671bfc5b0ff14b03ad740efd",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/trees/layer_tree_host_impl.cc"
+    },
+    {
+      "path": "components/viz/service/frame_sinks/compositor_frame_sink_support.cc",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 74735,
+      "sha256": "6f939ec77186878c96a82ad6ea835531992b909ab2eb77dd1953cb627de68259",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/service/frame_sinks/compositor_frame_sink_support.cc"
+    },
+    {
+      "path": "cc/base/devtools_instrumentation.h",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 9686,
+      "sha256": "6550b8081e252882dae4d2d4ce7c665cfb13118a65c80d4d4be5135fec21e76f",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/base/devtools_instrumentation.h"
+    },
+    {
+      "path": "cc/trees/layer_tree_host.cc",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 81619,
+      "sha256": "47b34fb636e239a3acad1e05386bf4cc7e9e82fbdb4c366991571e4fce9da9b9",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/trees/layer_tree_host.cc"
+    },
+    {
+      "path": "components/viz/service/display/surface_aggregator.cc",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 111412,
+      "sha256": "3fa6dc503f79d6d0347db054029d5fa4e68ef6238b1dc11c23ed4f18b8c94d1d",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/service/display/surface_aggregator.cc"
+    },
+    {
+      "path": "src/trace_processor/perfetto_sql/stdlib/chrome/graphics_pipeline.sql",
+      "revision": "1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d",
+      "bytes": 6544,
+      "sha256": "ee1441cd6268d2d21433cfb9095b6c69a58e8b0ce46e3f87b0c9f6d11959c921",
+      "url": "https://raw.githubusercontent.com/google/perfetto/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/perfetto_sql/stdlib/chrome/graphics_pipeline.sql"
+    },
+    {
+      "path": "src/trace_processor/storage/stats.h",
+      "revision": "1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d",
+      "bytes": 95163,
+      "sha256": "7ad550df253f023018374f83e29c5e5ca3d1330f295c5566115ea6c36b10fb18",
+      "url": "https://raw.githubusercontent.com/google/perfetto/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/storage/stats.h"
+    },
+    {
+      "path": "src/trace_processor/tables/slice_tables.py",
+      "revision": "1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d",
+      "bytes": 8968,
+      "sha256": "eeed165c0d0d777db6419d3cb2559dadde01c7bd63926ac06ff86a7ee49cebf5",
+      "url": "https://raw.githubusercontent.com/google/perfetto/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/tables/slice_tables.py"
+    },
+    {
+      "path": "base/atomic_sequence_num.h",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 1138,
+      "sha256": "59e006cc21471ac5eb1a429b597ba59fa3d162f93387ea164aa602b6b8166a4b",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/atomic_sequence_num.h"
+    },
+    {
+      "path": "components/viz/common/frame_sinks/begin_frame_args.h",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 12872,
+      "sha256": "a1a2a5b8e0dca634ac2fa8f2766e427bf1808f7bc61d6e848ddba054d9381451",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/common/frame_sinks/begin_frame_args.h"
+    },
+    {
+      "path": "components/viz/service/display/display.cc",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 59029,
+      "sha256": "4212a829989dc32da99d3addf2833fb1711d368bd0889c0fefad7af2f8e1495c",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/service/display/display.cc"
+    },
+    {
+      "path": "base/trace_event/trace_id_helper.cc",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 550,
+      "sha256": "0a28a03fc161c66261c4085f10ecde35fffccd4bc7618e84055ae99eff941309",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/trace_event/trace_id_helper.cc"
+    },
+    {
+      "path": "base/trace_event/trace_id_helper.h",
+      "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+      "bytes": 815,
+      "sha256": "a412c4d8424fd702b8358e69e083c5dbe3ead4391fd9db1f40793df04553c88e",
+      "url": "https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/trace_event/trace_id_helper.h"
+    }
+  ]
+}
