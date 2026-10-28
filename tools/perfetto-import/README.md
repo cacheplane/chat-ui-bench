@@ -830,3 +830,88 @@ verification with `node tools/perfetto-import/callback-inventory-smoke.mjs
 CI preserves all legacy controls and smoke steps and adds these source/authored
 checks after the pinned processor fetch. Only authored fixtures and verification
 evidence are published; captured traces and derived results remain local.
+
+
+## Compact callback inventory v2
+
+The separate fixed `callback-inventory-compact-v2` policy exports the same four
+exact binary callback families and 2..16 literal phases as V1. V1 stays unchanged.
+Only distinct non-NULL text byte values are deduplicated. Every argument occurrence,
+NULL flag, numeric cell, original ordering and source/dimension membership remains.
+The first table is one global dictionary; the following seven tables replace each
+`*_bytes_hex` column in place with `*_text_id`. SQL NULL references remain NULL;
+positive contiguous IDs include a distinct empty value. ID zero is invalid.
+
+The frozen eight raw headers, in output order, are:
+
+```text
+text_id,bytes_hex
+name_text_id,event_count,arg_set_count
+id,ts,dur,depth,parent_id,name_text_id,category_text_id,track_id,arg_set_id,track_name_text_id,utid,tid,upid,pid,process_name_text_id,thread_name_text_id,ts_is_null,dur_is_null,depth_is_null,parent_id_is_null,name_is_null,category_is_null,track_id_is_null,arg_set_id_is_null,track_name_is_null,utid_is_null,tid_is_null,upid_is_null,pid_is_null,process_name_is_null,thread_name_is_null
+slice_id,arg_set_id,arg_set_id_is_null,arg_present,flat_key_text_id,key_text_id,value_type_text_id,int_value,string_value_text_id,real_value,flat_key_is_null,key_is_null,value_type_is_null,int_value_is_null,string_value_is_null,real_value_is_null
+id,name_text_id,type_text_id,parent_id,machine_id,source_arg_set_id,dimension_arg_set_id,track_group_id,event_type_text_id,counter_unit_text_id,utid,upid,name_is_null,type_is_null,parent_id_is_null,machine_id_is_null,source_arg_set_id_is_null,dimension_arg_set_id_is_null,track_group_id_is_null,event_type_is_null,counter_unit_is_null,utid_is_null,upid_is_null
+track_id,namespace_text_id,arg_set_id,arg_set_id_is_null,arg_present,flat_key_text_id,key_text_id,value_type_text_id,int_value,string_value_text_id,real_value,flat_key_is_null,key_is_null,value_type_is_null,int_value_is_null,string_value_is_null,real_value_is_null
+name_text_id,idx,severity_text_id,source_text_id,value,name_is_null,idx_is_null,severity_is_null,source_is_null,value_is_null
+start_ts,end_ts,start_ts_is_null,end_ts_is_null
+```
+
+The pinned authored capability gate rejects BLOB storage in materialized Perfetto
+tables. V2 therefore fixes one canonical uppercase even-length ASCII hex pool,
+materialized once, using explicit BINARY equality/order. Hex is injective and
+preserves byte ordering, including NUL and invalid UTF8. There is no runtime
+capability fallback. Final joins use this unique byte representation and never
+deduplicate occurrence rows. Nonzero stats are snapshotted once before the pool;
+the same snapshot supplies dictionary values and final rows. This is V2's explicit
+stats observation point. Independently imported engine analysis values can vary;
+every original nonzero snapshot row and value is retained.
+
+Run the production API `runCallbackInventoryCompactV2Diagnostic(config)` or CLI:
+
+```sh
+node tools/perfetto-import/callback-inventory-compact-v2-run.mjs --callback-inventory-compact-v2-config /absolute/config.json
+node --test tools/perfetto-import/callback-inventory-compact-v2.node.mjs
+node tools/perfetto-import/callback-inventory-compact-v2-smoke.mjs --processor /absolute/pinned/trace_processor_shell --out /absolute/fresh/smoke
+```
+
+`runAuthoredFixtureCallbackInventoryCompactV2Diagnostic` is an explicitly untrusted
+fixture API unavailable through the CLI. Callers cannot override SQL, policy, caps
+or authority flags. The runner imports no decoder. Its three source roles remain
+the runner (65536 bytes), fixed SQL source (16384 bytes) and rendered executed SQL
+(16384 bytes), with fatal UTF8 and before/after byte/hash/identity observations.
+Lexically valid long quote-heavy phases may exceed the separate rendered-SQL
+ceiling and refuse before spawning. Trace/tool caps stay 33554432/67108864 bytes;
+stdout/stderr stay 262144/65536 bytes; version and query each have 1..60000 ms.
+Original children and both original pipes must close normally with EOF. Inputs
+are fully read and hashed; output directories are exclusive. Overflow refuses the
+whole export without narrowing, retries or automatic V1/V2 fallback.
+
+The inert pure module exports `parseCallbackInventoryCompactV2Csv(bytes)`,
+`expandCallbackInventoryCompactV2(parsed)` and optional
+`decodeCallbackInventoryCompactV2Text(parsed)`. The privately owned frozen facade
+contains `tables`, each with `header` and object `rows`. Expansion returns seven
+raw V1-shaped hex tables. Numeric cells remain original strings without Number
+rounding. Pinned REAL values `inf` and `-inf` are preserved literally; authored
+NaN imports as SQL NULL with its original NULL flag. Unobserved nonfinite aliases
+and finite-decimal overflow such as `1e999` refuse. Semantic decode retains hex and adds base-name text properties using
+fatal UTF8 with BOM preservation. Invalid UTF8 refuses only that convenience view;
+a valid compact facade and completed raw expansion remain valid. Copied/proxy
+facades are rejected. Results/refusals are cached per owned facade.
+
+Fixed decoder ceilings (no overrides): 262144 raw input bytes; 16384 dictionary
+entries; 32768 dictionary plus data rows; 131072 text-reference cells; 262144 parsed
+field cells; 524288 returned field slots across concurrently retained expanded and
+semantic views; 524288 cumulatively referenced original text bytes (at most 1048576
+hex characters); and one private monotonic 4194304-unit logical work account
+spanning parse, cached expansion and optional cached text decode. Units charge
+scans, field visits, byte validation, lookup/comparison, preflight, creation and
+freezing. Repeated calls never reset the account or create a second raw expansion.
+A successful bounded raw export can separately refuse interpretation capacity.
+
+Every success/failure manifest stays diagnosticOnly with qualification, capture,
+FPS/evaluation/scoring/ranking and native authorities false; FPS and duration are
+null. Clock, display identity, callback outcome and population completeness remain
+`not_evaluated`. The compact export supplies raw selected imported evidence and
+cannot establish callback success, producer population or FPS. CI adds source
+controls and separate official authored small/repeated-text smoke while preserving
+all previous steps. Only authored fixtures/evidence are published; captured data
+and derived results stay local.
