@@ -1,5 +1,25 @@
 # Pinned Perfetto import diagnostic
 
+## Fixed request-window composition
+
+`request-window-feedback-run.mjs` exports
+`runRequestWindowFeedbackV1(originalAcquisition, configJSON)`. It requires the
+actual successful return from `runStock033RequestWindowOriginalV1` in the same
+trusted process; a parsed or copied receipt is refused. Its canonical config is
+`JSON.stringify({schema: 'native-stock033-request-window-feedback-v1',
+processor: {path, sha256}, out, deadlineMs: 60000})`, with a fresh absolute
+output directory and the pinned processor below.
+
+The adapter preserves the complete original V1 result and selects successful
+feedback terminal times in exactly `[start + 500 ms, start + 1,500 ms)` after
+verifying at least two seconds between the actual normalized owner marks.
+This request window includes startup and queue effects. Complete original
+acquisition, publication, source, runtime and trace bookends are required;
+a refusal withdraws numerical output. The rate remains observed feedback per
+second, with a nonexhaustive population and null FPS. All native data stays local.
+See [the collection profile](../native-real-chat/README.md) for preparation,
+fixed input and separate Aimock history profiles.
+
 ## Browser presentation-feedback observations
 
 `feedback-observations-run.mjs` runs the pinned target and scope exports, then

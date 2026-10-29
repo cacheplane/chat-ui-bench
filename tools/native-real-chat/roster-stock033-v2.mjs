@@ -10,6 +10,13 @@ export const nativeOwnerKeys=Object.freeze([
  'tools/native-real-chat/run.mjs','tools/native-real-chat/source-model.mjs','tools/native-real-chat/worker-core.mjs','tools/native-real-chat/worker-io.mjs',
  'tools/native-real-chat/worker-physical.mjs','tools/native-real-chat/worker-ports.mjs','tools/native-real-chat/worker.mjs'
 ].sort());
+// New family only; legacy membership and its digest domain remain unchanged.
+export const requestWindowNativeOwnerKeys=Object.freeze([...nativeOwnerKeys,
+ 'tools/native-real-chat/request-window-core.mjs','tools/native-real-chat/request-window-ports.mjs',
+ 'tools/native-real-chat/request-window-worker-core.mjs','tools/native-real-chat/request-window-worker.mjs',
+ 'tools/native-real-chat/request-window-run.mjs','tools/native-real-chat/request-window-result.mjs',
+ 'tools/native-real-chat/large-fixture-source-v1.mjs','tools/native-real-chat/request-window-fixture-entry.mjs'
+].sort());
 export const nativeRuntimeCompiledKeys=Object.freeze([
  'packages/runner/dist/comparison-proto-native-capture.js','packages/runner/dist/comparison-proto-public-ports.js','packages/runner/dist/comparison-proto-trace.js',
  'packages/analyzer/dist/browser-frame-ordered-state.js','packages/analyzer/dist/browser-frame-packet-fragments.js',
@@ -80,7 +87,7 @@ function preflight(value,maxBytes=1048576){
  }
  for(;;){const frame=enter(value);if(frame)stack.push(frame);let next;
   while(stack.length){const top=stack.at(-1);next=top.iterator.next();if(!next.done)break;active.delete(top.value);stack.pop();}
-  if(!stack.length)return;value=next.value;
+  if(!stack.length)return bytes;value=next.value;
  }
 }
 function keyName(key){
@@ -89,6 +96,7 @@ function keyName(key){
 }
 // Reused by the versioned physical adapter and owner for bounded inert DTO admission.
 export function admitStock033DataV2(value,maxBytes=1048576){if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>1048576)fail('encoded byte bound');preflight(value,maxBytes);return value;}
+export function measureStock033DataV2(value,maxBytes=1048576){if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>1048576)fail('encoded byte bound');return preflight(value,maxBytes);}
 function rows(values,max=1024){
  array(values,max);const result=new Map();
  for(const row of values){closed(row,['key','bytes','sha256']);keyName(row.key);if(!integer(row.bytes,2097152)||!sha(row.sha256)||result.has(row.key))fail('row fact/duplicate');result.set(row.key,{key:row.key,bytes:row.bytes,sha256:row.sha256});}
@@ -114,6 +122,10 @@ export function assertStock033ArchiveBudgetV2(value){
  * nor proves the authority/origin of rootAuthority. Physical original/archive identities stay with custody.
  */
 export function assembleStock033RosterV2(input){
+ return assembleRoster(input,false);
+}
+export function assembleStock033RequestWindowRosterV1(input){return assembleRoster(input,true);}
+function assembleRoster(input,requestWindow){
  preflight(input);closed(input,['roles','observedRoles','rootAuthority']);
  const expected=roleMaps(input.roles),observed=roleMaps(input.observedRoles),authority=input.rootAuthority;
  closed(authority,['product','probe','productSourceKeys','fixtureInputs','platform','architecture']);
@@ -132,7 +144,7 @@ export function assembleStock033RosterV2(input){
  const assets=hashMap(authority.product.assetHashes);if(assets.length!==12||assets.some(name=>! /^[A-Za-z0-9_.-]{1,192}$/.test(name)))fail('assets');
  const names={
   'product-source':productKeys,'probe-source':probeSourceKeys,'probe-compiled':probeCompiledKeys,'fixture-input':[...fixture.keys()],
-  'native-owner':nativeOwnerKeys,'native-runtime':[...nativeRuntimeCompiledKeys,...nativeRuntimeSourceKeys],
+  'native-owner':requestWindow?requestWindowNativeOwnerKeys:nativeOwnerKeys,'native-runtime':[...nativeRuntimeCompiledKeys,...nativeRuntimeSourceKeys],
   metadata:[...new Set([...stock033CoreMetadataKeys,...stock033MacMetadataKeys,...packageMetadata])],
   'served-asset':assets.map(name=>'apps/threadplane/dist/'+name)
  };
@@ -156,8 +168,8 @@ export function assembleStock033RosterV2(input){
  const resultRows=sorted(union.keys()).map(key=>{const row=union.get(key);return Object.freeze({...row,roles:Object.freeze(row.roles)});});
  // Preserve public role declaration order; lexical tuple order is the hash contract.
  const counts=Object.fromEntries(stock033Roles.map(role=>[role,roleCounts[role]]));
- const digestInput='native-stock033-roster-v2\0'+JSON.stringify(tuples),digestBytes=Buffer.byteLength(digestInput);
- return Object.freeze({contract:'native-stock033-roster-v2',digest:createHash('sha256').update(digestInput).digest('hex'),digestBytes,rows:Object.freeze(resultRows),roleCounts:Object.freeze(counts),membershipCount,unionCount:union.size,overlapCount:membershipCount-union.size,archiveBytes});
+ const contract=requestWindow?'native-stock033-request-window-roster-v1':'native-stock033-roster-v2',digestInput=contract+'\0'+JSON.stringify(tuples),digestBytes=Buffer.byteLength(digestInput);
+ return Object.freeze({contract,digest:createHash('sha256').update(digestInput).digest('hex'),digestBytes,rows:Object.freeze(resultRows),roleCounts:Object.freeze(counts),membershipCount,unionCount:union.size,overlapCount:membershipCount-union.size,archiveBytes});
 }
 
 /** Compiler-private loading is trusted platform work. This joins only explicit metafile inputs. */

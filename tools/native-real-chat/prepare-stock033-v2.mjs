@@ -8,7 +8,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {performance} from 'node:perf_hooks';
 import {compilerOutputBytes} from './prepare.mjs';
-import {admitStock033DataV2,assembleStock033RosterV2,assertStock033ArchiveBudgetV2,assertStock033FixtureInputsV2,assertStock033RuntimeImportsV2,stock033Roles,nativeOwnerKeys,nativeRuntimeCompiledKeys} from './roster-stock033-v2.mjs';
+import {admitStock033DataV2,measureStock033DataV2,assembleStock033RosterV2,assembleStock033RequestWindowRosterV1,requestWindowNativeOwnerKeys,assertStock033ArchiveBudgetV2,assertStock033FixtureInputsV2,assertStock033RuntimeImportsV2,stock033Roles,nativeOwnerKeys,nativeRuntimeCompiledKeys} from './roster-stock033-v2.mjs';
 import {parseStock033ProductRecord,productSourceKeys,productionSettings,stock033Identity} from '../../apps/threadplane/provenance.mjs';
 import {parseProbeRecord,contractCompiledKeys} from '../../apps/threadplane/probe-provenance.mjs';
 
@@ -19,17 +19,23 @@ const caps=Object.freeze({operations:131072,readBytes:3221225472,hashBytes:32212
 const ledgers=new WeakSet(),authoredLedgers=new WeakSet(),ledgerCounters=new WeakMap(),ledgerCeilings=new WeakMap(),platformSets=new WeakMap();
 const tailPolicy='native-post-phase-tail-500ms-v1',tailAdmissions=new WeakMap(),authoredTailAdmissions=new WeakMap();
 const wheelFamily=Object.freeze({}),wheelRecipe='native-wheel-carrier-v1',wheelAdmissions=new WeakMap(),authoredWheelAdmissions=new WeakMap();
+const requestRecipe='native-stock033-request-window-scroll-v1',requestProfiles=['native-history100-v1','native-history1000-v1','native-history10000-v1'];
+const requestFamilies=new Map(requestProfiles.map(profile=>[profile,Object.freeze({profile})])),requestAdmissions=new WeakMap(),authoredRequestAdmissions=new WeakMap();
+const requestLedgers=new WeakSet();
+function requestFamily(profile){const family=requestFamilies.get(profile);if(!family)fail('fixture profile');return family;}
+const isRequest=family=>[...requestFamilies.values()].includes(family);
 const suffix=tail=>tail?'-tail500-v1':'';
-const preparationMode=(authored,tail=false)=>tail===wheelFamily?(authored?'authored-':'')+'real-chat-stock033-tail500-wheel-v1':(authored?'authored-real-chat-history100-stock-033-v2':'real-chat-history100-stock-033-v2')+suffix(tail);
-const referencePolicy=(authored,tail=false)=>tail===wheelFamily?(authored?'authored-':'')+'source-owned-prep-stock033-tail500-wheel-v1':(authored?'authored-preparation-reference-stock-033-v2':'source-owned-preparation-reference-stock-033-v2')+suffix(tail);
-const manifestMode=(authored,tail=false)=>tail===wheelFamily?(authored?'authored-':'')+'real-chat-custody-stock033-tail500-wheel-v1':(authored?'authored-real-chat-source-custody-stock-033-v2':'real-chat-source-custody-stock-033-v2')+suffix(tail);
-const releasePolicy=tail=>tail===wheelFamily?'source-reviewed-stock033-inputs-tail500-wheel-v1':'source-reviewed-stock033-preparation-inputs-v2'+suffix(tail);
-function collectionKeys(tail){return tail===wheelFamily?['collectionPolicy','inputRecipe']:tail?['collectionPolicy']:[];}
-function collectionFields(tail){return tail===wheelFamily?{collectionPolicy:tailPolicy,inputRecipe:wheelRecipe}:tail?{collectionPolicy:tailPolicy}:{};}
-function collectionCheck(value,tail){if(tail&&value.collectionPolicy!==tailPolicy||tail===wheelFamily&&value.inputRecipe!==wheelRecipe)fail('collection policy');}
+const preparationMode=(authored,tail=false)=>isRequest(tail)?(authored?'authored-':'')+'real-chat-stock033-request-window-scroll-v1':tail===wheelFamily?(authored?'authored-':'')+'real-chat-stock033-tail500-wheel-v1':(authored?'authored-real-chat-history100-stock-033-v2':'real-chat-history100-stock-033-v2')+suffix(tail);
+const referencePolicy=(authored,tail=false)=>isRequest(tail)?(authored?'authored-':'')+'source-owned-prep-stock033-request-window-scroll-v1':tail===wheelFamily?(authored?'authored-':'')+'source-owned-prep-stock033-tail500-wheel-v1':(authored?'authored-preparation-reference-stock-033-v2':'source-owned-preparation-reference-stock-033-v2')+suffix(tail);
+const manifestMode=(authored,tail=false)=>isRequest(tail)?(authored?'authored-':'')+'real-chat-custody-stock033-request-window-scroll-v1':tail===wheelFamily?(authored?'authored-':'')+'real-chat-custody-stock033-tail500-wheel-v1':(authored?'authored-real-chat-source-custody-stock-033-v2':'real-chat-source-custody-stock-033-v2')+suffix(tail);
+const releasePolicy=tail=>isRequest(tail)?'source-reviewed-stock033-inputs-request-window-scroll-v1':tail===wheelFamily?'source-reviewed-stock033-inputs-tail500-wheel-v1':'source-reviewed-stock033-preparation-inputs-v2'+suffix(tail);
+function collectionKeys(tail){return isRequest(tail)?['inputRecipe','fixtureProfile']:tail===wheelFamily?['collectionPolicy','inputRecipe']:tail?['collectionPolicy']:[];}
+function collectionFields(tail){return isRequest(tail)?{inputRecipe:requestRecipe,fixtureProfile:tail.profile}:tail===wheelFamily?{collectionPolicy:tailPolicy,inputRecipe:wheelRecipe}:tail?{collectionPolicy:tailPolicy}:{};}
+function collectionCheck(value,tail){if(isRequest(tail)){if(value.inputRecipe!==requestRecipe||value.fixtureProfile!==tail.profile)fail('request family');return;}if(tail&&value.collectionPolicy!==tailPolicy||tail===wheelFamily&&value.inputRecipe!==wheelRecipe)fail('collection policy');}
 
 /** Injected clocks/anchors are authored-only; reconciled scalar counters may be production inputs. */
 export function createStock033PreparationLedgerV2(options={}){return createLedger(options,caps);}
+export function createStock033RequestWindowPreparationLedgerV1(options={}){const ledger=createStock033PreparationLedgerV2(options);requestLedgers.add(ledger);return ledger;}
 function createLedger(options,ceilings){
  if(!options||typeof options!=='object'||types.isProxy(options)||Object.getPrototypeOf(options)!==Object.prototype)fail('ledger options');const supplied={};for(const key of Reflect.ownKeys(options)){const descriptor=Object.getOwnPropertyDescriptor(options,key);if(!['now','startedAt','initial'].includes(key)||!Object.hasOwn(descriptor,'value'))fail('ledger options');supplied[key]=descriptor.value;}
  const injected=Object.hasOwn(supplied,'now')||Object.hasOwn(supplied,'startedAt'),{now=()=>performance.now(),initial={}}=supplied;if(typeof now!=='function')fail('ledger clock');const startedAt=supplied.startedAt===undefined?now():supplied.startedAt;if(!Number.isFinite(startedAt))fail('ledger anchor');admitStock033DataV2(initial,4096);
@@ -144,13 +150,17 @@ export function createTransferredStock033LedgerV2(input){
  const ceilings={};for(const[key,n]of Object.entries(reservation)){if(!Number.isSafeInteger(n)||n<0||n>caps[key])fail('transfer reservation');ceilings[key]=caps[key]-n;if(input.totals[key]>ceilings[key])fail('transfer capacity');}
  const ledger=createLedger({initial:input.totals},ceilings);if(input.platformSetSha256!==null)platformSets.set(ledger,input.platformSetSha256);return ledger;
 }
+export function createTransferredStock033RequestWindowLedgerV1(input){const ledger=createTransferredStock033LedgerV2(input);requestLedgers.add(ledger);return ledger;}
 export function reconcileStock033LedgerV2(ledger,baseline,final){
  ledgerOf(ledger);admitStock033DataV2({baseline,final},8192);accountingShape(baseline);accountingShape(final);
  if(baseline.platformSetSha256!==final.platformSetSha256||stock033PlatformSetSha256V2(ledger)!==baseline.platformSetSha256)fail('transfer platform drift');
  const delta={};for(const key of Object.keys(caps)){delta[key]=final.totals[key]-baseline.totals[key];if(delta[key]<0)fail('transfer counter reversal');ledger.ensureCapacity(key,delta[key]);}
  for(const[key,n]of Object.entries(delta))ledger.charge(key,n);
 }
-export function serializeStock033DataV2(value,cap,ledger){return serialize(value,cap,ledger);}
+export function serializeStock033DataV2(value,cap,ledger){return requestLedgers.has(ledger)?serializeStock033RequestWindowDataV1(value,cap,ledger):serialize(value,cap,ledger);}
+// Versioned exact inert width reservation; legacy serializer keeps its maxima.
+export function serializeStock033RequestWindowDataV1(value,cap,ledger){const width=measureStock033DataV2(value,cap-1)+1;ledgerOf(ledger).charge('serializedBytes',width);const data=Buffer.from(JSON.stringify(value)+'\n');if(data.length!==width)fail('serialized width drift');return data;}
+function serializeSelected(value,cap,ledger,tail){return isRequest(tail)?serializeStock033RequestWindowDataV1(value,cap,ledger):serialize(value,cap,ledger);}
 
 function closed(value,keys){if(!value||typeof value!=='object'||types.isProxy(value)||Object.getPrototypeOf(value)!==Object.prototype||!same(Reflect.ownKeys(value).sort(),[...keys].sort()))fail('closed data');for(const key of keys)if(!Object.hasOwn(Object.getOwnPropertyDescriptor(value,key),'value'))fail('data property');}
 function keyName(key){if(typeof key!=='string'||Buffer.byteLength(key)>192||! /^[A-Za-z0-9_@.-]+(?:\/[A-Za-z0-9_@.-]+)*$/.test(key)||key.split('/').some(part=>part==='.'||part==='..'||part==='records'))fail('member key');return key;}
@@ -173,6 +183,7 @@ function selectedOptions(options,authored,tail=false){
  const copy={};for(const key of Reflect.ownKeys(options)){if(!['mode','sourceRoot','outputDirectory','compilationDirectory','release','sourceObservation','ledger',...collectionKeys(tail)].includes(key))fail('option key');const d=Object.getOwnPropertyDescriptor(options,key);if(!Object.hasOwn(d,'value'))fail('option getter');copy[key]=d.value;}
  const {ledger,...data}=copy;admitStock033DataV2(data);closed(data,['mode','sourceRoot','outputDirectory','compilationDirectory','release','sourceObservation',...collectionKeys(tail)]);collectionCheck(data,tail);if(data.mode!==preparationMode(authored,tail))fail('v2 mode');for(const key of ['sourceRoot','outputDirectory','compilationDirectory'])absolute(data[key],256);releaseCheck(data.release,data.sourceObservation,tail);
  const owned=ledger===undefined?createStock033PreparationLedgerV2():ledgerOf(ledger);if(authored&&ledger===undefined)authoredLedgers.add(owned);if(authoredLedgers.has(owned)!==authored)fail('authored ledger boundary');if(!authored&&(process.platform!=='darwin'||process.arch!=='arm64'))fail('reviewed host');
+ if(isRequest(tail))requestLedgers.add(owned);else if(requestLedgers.has(owned))fail('request ledger boundary');
  return{...JSON.parse(JSON.stringify(data)),ledger:owned};
 }
 async function freshDirectories(sourceRoot,directories,ledger){
@@ -203,7 +214,7 @@ async function authenticate(sourceRoot,release,sourceObservation,facts,ledger,au
  // shorter than its expected row object; the domain prefix fits the spare1MiB.
  // Assembly is synchronous and inert: no await/hook can spend this reserved room.
  ledger.ensureCapacity('hashBytes',2097152);
- const roster=assembleStock033RosterV2({roles:release.roles,observedRoles:observedRoles(release,facts),rootAuthority});ledger.charge('hashBytes',roster.digestBytes);
+ const roster=(isRequest(tail)?assembleStock033RequestWindowRosterV1:assembleStock033RosterV2)({roles:release.roles,observedRoles:observedRoles(release,facts),rootAuthority});ledger.charge('hashBytes',roster.digestBytes);
  const json=key=>{const value=facts.get(key);if(!value)fail('missing metadata');return JSON.parse(value.bytes.toString('utf8'));};
  const configuration=json('apps/threadplane/angular.json'),builder=configuration.projects?.threadplane?.architect?.build;productionSettings(configuration);
  if(!same(builder.options.styles,['src/styles.css'])||builder.defaultConfiguration!=='production'||Object.hasOwn(builder.configurations.production,'styles'))fail('stock styles');
@@ -223,11 +234,23 @@ async function authenticate(sourceRoot,release,sourceObservation,facts,ledger,au
  return{roster,product,probe,rootAuthority};
 }
 function compilerCopies(built,ledger){ledger.charge('serializedBytes',3145728);const bounded=compilerOutputBytes(built);ledgerCounters.get(ledger).serializedBytes-=3145728-bounded.moduleBytes.length-bounded.metafileBytes.length;return bounded;}
-async function runtimeImports(sourceRoot,facts,roster,esbuild,ledger){
+function compilerData(value,key){if(!value||typeof value!=='object'||types.isProxy(value))fail('compiler data');const d=Object.getOwnPropertyDescriptor(value,key);if(!d||!Object.hasOwn(d,'value'))fail('compiler accessor');return d.value;}
+function compilerMetadataCopies(built,ledger){
+ if(!built||types.isProxy(built)||Object.getPrototypeOf(built)!==Object.prototype)fail('compiler output');
+ const files=compilerData(built,'outputFiles');if(!Array.isArray(files)||types.isProxy(files)||Object.getPrototypeOf(files)!==Array.prototype||compilerData(files,'length')!==1||Reflect.ownKeys(files).length!==2)fail('compiler files');
+ const file=compilerData(files,'0');if(!file||types.isProxy(file)||Object.getPrototypeOf(file)!==Object.prototype)fail('compiler file');
+ const contents=compilerData(file,'contents');if(types.isProxy(contents)||!types.isUint8Array(contents))fail('compiler module');
+ const prototype=Object.getPrototypeOf(Uint8Array.prototype),intrinsic=key=>Reflect.apply(Object.getOwnPropertyDescriptor(prototype,key).get,contents,[]),length=intrinsic('byteLength'),buffer=intrinsic('buffer');
+ if(length>2097152||types.isSharedArrayBuffer(buffer)||Reflect.apply(Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'resizable').get,buffer,[]))fail('compiler module cap');
+ // Nonbundled module contents are unused. Keep their original2MiB bound while
+ // retaining only the exact bounded metadata needed for the import audit.
+ return serializeStock033RequestWindowDataV1(compilerData(built,'metafile'),1048576,ledger);
+}
+async function runtimeImports(sourceRoot,facts,roster,esbuild,ledger,tail=false){
  const imports=[];
- for(const key of [...nativeOwnerKeys.filter(key=>key.endsWith('.mjs')),...nativeRuntimeCompiledKeys]){
+ for(const key of [...(isRequest(tail)?requestWindowNativeOwnerKeys:nativeOwnerKeys).filter(key=>key.endsWith('.mjs')),...nativeRuntimeCompiledKeys]){
   const built=await esbuild.build({stdin:{contents:facts.get(key).bytes.toString('utf8'),sourcefile:key,resolveDir:path.dirname(sourceRoot+'/'+key)},bundle:false,platform:'node',format:'esm',target:'node24',write:false,metafile:true,logLevel:'silent'});
-  compilerCopies(built,ledger);
+  if(isRequest(tail))compilerMetadataCopies(built,ledger);else compilerCopies(built,ledger);
   for(const output of Object.values(built.metafile.outputs))for(const item of output.imports){
    const name=item.path;if(isBuiltin(name))continue;
    if(name.startsWith('.'))imports.push(keyName(path.posix.normalize(path.posix.join(path.posix.dirname(key),name))));
@@ -246,6 +269,23 @@ function canonicalFixture(fixture,contract,ledger){
  const expected={sourceSha256:ledger.hash(Buffer.from(contract.canonicalSerialize(source))),eventsSha256:ledger.hash(Buffer.from(contract.canonicalSerialize(events))),historySha256:ledger.hash(Buffer.from(contract.canonicalSerialize(messages)))};
  if(fixture.status!=='source-fixture-verified'||fixture.authority!==false||!same(fixture.history,source.history.map(message=>({...message,status:'complete'})))||!same(fixture.digests,expected))fail('canonical fixture history');
 }
+function largeProfile(tail){return isRequest(tail)&&tail.profile!=='native-history100-v1';}
+function profileCount(profile){return profile==='native-history1000-v1'?1000:profile==='native-history10000-v1'?10000:100;}
+function reserveLargeFixture(tail,roster,moduleBytes,ledger){
+ if(!largeProfile(tail))return 0;
+ const count=profileCount(tail.profile)/100;
+ // Exact JSON widths for the fixed canonical ASCII profiles, including each
+ // chunk's array delimiters. IDs/status/roles and512 text bytes are fixed.
+ const chunkBytes=tail.profile==='native-history1000-v1'?579400:5803990;
+ // Existing serializedBytes counts retained exported copies. Canonical compiler
+ // internals/digest encodings retain the same trusted-platform boundary as v2.
+ if(roster.unionCount+count+4>1024)fail('unique archive bound');
+ assertStock033ArchiveBudgetV2({archiveBytes:roster.archiveBytes+chunkBytes+65536+moduleBytes,manifestBytes:1048576});
+ ledger.charge('serializedBytes',chunkBytes);ledger.ensureCapacity('hashBytes',profileCount(tail.profile)*4096+1048576);
+ return chunkBytes;
+}
+function requestSelection(options){if(!options||typeof options!=='object'||types.isProxy(options))fail('request options');const descriptor=Object.getOwnPropertyDescriptor(options,'fixtureProfile');if(!descriptor||!Object.hasOwn(descriptor,'value'))fail('fixture profile');return requestFamily(descriptor.value);}
+export async function prepareActualStock033RequestWindowV1(options){return prepareCore(options,false,requestSelection(options));}
 async function directory(filename,ledger){await ledger.operation('mkdir',()=>fs.mkdir(filename,{mode:0o700}));}
 async function archiveParent(root,key,created,ledger){let current=root;for(const part of key.split('/').slice(0,-1)){current+='/'+part;if(!created.has(current)){await directory(current,ledger);created.add(current);}}}
 /** Trusted-root API: the outer owner binds sourceRoot to this reviewed checkout and
@@ -261,44 +301,61 @@ async function prepareCore(options,authored,tail=false){
  ledger.stage('admit');await freshDirectories(sourceRoot,[outputDirectory,compilationDirectory],ledger);
  const facts=await observeMembers(sourceRoot,release,ledger),authenticated=await authenticate(sourceRoot,release,sourceObservation,facts,ledger,authored,tail),{roster,product}=authenticated;
  ledger.stage('authenticated');await verifyStock033PlatformsV2(release.platformRows,ledger);
- const esbuild=createRequire(sourceRoot+'/package.json')('esbuild');let bounded,fixture,moduleFact;
+ const esbuild=createRequire(sourceRoot+'/package.json')('esbuild');let bounded,fixture,moduleFact,chunkBytes=null;
  try{
-  await runtimeImports(sourceRoot,facts,roster,esbuild,ledger);
-  const built=await esbuild.build({absWorkingDir:sourceRoot,entryPoints:['tools/native-real-chat/fixture-entry.mjs'],bundle:true,platform:'node',format:'esm',target:'node24',write:false,metafile:true,logLevel:'silent',banner:{js:"import{createRequire as __fixtureRequire}from'node:module';const require=__fixtureRequire(import.meta.url);"}});
+  await runtimeImports(sourceRoot,facts,roster,esbuild,ledger,tail);
+  const built=await esbuild.build({absWorkingDir:sourceRoot,entryPoints:[isRequest(tail)?'tools/native-real-chat/request-window-fixture-entry.mjs':'tools/native-real-chat/fixture-entry.mjs'],bundle:true,platform:'node',format:'esm',target:'node24',write:false,metafile:true,logLevel:'silent',banner:{js:"import{createRequire as __fixtureRequire}from'node:module';const require=__fixtureRequire(import.meta.url);"}});
   // Reserve the unchanged constructor maxima before making retained compiler copies.
   bounded=compilerCopies(built,ledger);assertStock033FixtureInputsV2(release.fixtureInputs,built.metafile);
+  const reservedChunks=reserveLargeFixture(tail,roster,bounded.moduleBytes.length,ledger);
+  if(isRequest(tail)&&!largeProfile(tail)&&roster.unionCount+4>1024)fail('unique archive bound');
   // Compiler input and all named source bookends retain their original file identities.
   await observeMembers(sourceRoot,release,ledger,facts);await directory(compilationDirectory,ledger);
   moduleFact=await writeStock033FileV2(compilationDirectory+'/fixture-compiled.mjs',bounded.moduleBytes,2097152,ledger);
   await writeStock033FileV2(compilationDirectory+'/fixture-metafile.json',bounded.metafileBytes,1048576,ledger);
   await readStock033FileV2(compilationDirectory+'/fixture-compiled.mjs',2097152,ledger,moduleFact);
-  const invoked=await import(pathToFileURL(compilationDirectory+'/fixture-compiled.mjs').href);fixture=invoked.compileSourceFixture();
-  await readStock033FileV2(compilationDirectory+'/fixture-compiled.mjs',2097152,ledger,moduleFact);canonicalFixture(fixture,await import('../../packages/contract/dist/index.js'),ledger);
-  await writeStock033FileV2(compilationDirectory+'/fixture-output.json',serialize(fixture,131072,ledger),131072,ledger);
+  const invoked=await import(pathToFileURL(compilationDirectory+'/fixture-compiled.mjs').href);fixture=invoked.compileSourceFixture(isRequest(tail)?tail.profile:undefined);
+  await readStock033FileV2(compilationDirectory+'/fixture-compiled.mjs',2097152,ledger,moduleFact);
+  if(largeProfile(tail)){
+   if(invoked.inspectSourceFixture(fixture,tail.profile)!==fixture)fail('actual fixture admission');
+   admitStock033DataV2(fixture,65535);if(fixture.profile!==tail.profile||fixture.historyCount!==profileCount(tail.profile)||fixture.chunkCount!==profileCount(tail.profile)/100)fail('fixture profile');
+   chunkBytes=[];let retained=0;for(let i=0;i<fixture.chunkCount;i++){const b=invoked.readSourceFixtureChunk(fixture,tail.profile,i);if(!Buffer.isBuffer(b)||b.length>65536||b.length!==fixture.chunks[i].bytes||ledger.hash(b)!==fixture.chunks[i].sha256||retained+b.length>reservedChunks)fail('fixture chunk');retained+=b.length;chunkBytes.push(b);}
+   ledgerCounters.get(ledger).serializedBytes-=reservedChunks-retained;
+  }else canonicalFixture(fixture,await import('../../packages/contract/dist/index.js'),ledger);
+  await writeStock033FileV2(compilationDirectory+'/fixture-output.json',serializeSelected(fixture,131072,ledger,tail),131072,ledger);
  }finally{await esbuild.stop();}
  ledger.stage('compiled');await observeMembers(sourceRoot,release,ledger,facts);if(!same(await sourceInventory(sourceRoot,ledger),authenticated.rootAuthority.productSourceKeys))fail('product inventory drift');
- const history=Buffer.from(JSON.stringify(fixture.history)),archiveTotal=roster.archiveBytes+history.length+bounded.moduleBytes.length;
- if(history.length>65536)fail('history cap');assertStock033ArchiveBudgetV2({archiveBytes:archiveTotal,manifestBytes:0});
+ const history=chunkBytes?null:Buffer.from(JSON.stringify(fixture.history));let archiveTotal=roster.archiveBytes+(history?.length??chunkBytes.reduce((n,b)=>n+b.length,0))+bounded.moduleBytes.length;
+ if(history&&history.length>65536)fail('history cap');assertStock033ArchiveBudgetV2({archiveBytes:archiveTotal,manifestBytes:0});
  await directory(outputDirectory,ledger);await directory(outputDirectory+'/inputs',ledger);const created=new Set([outputDirectory+'/inputs']),records=[];
  for(const row of roster.rows){const original=facts.get(row.key);await archiveParent(outputDirectory+'/inputs',row.key,created,ledger);const archived=await writeStock033FileV2(outputDirectory+'/inputs/'+row.key,original.bytes,2097152,ledger,'archive');records.push({...row,source:sourceRoot+'/'+row.key,identity:original.fact.identity,archivedIdentity:archived.identity});}
- const historyFact=await writeStock033FileV2(outputDirectory+'/history.json',history,65536,ledger,'archive'),compiledFact=await writeStock033FileV2(outputDirectory+'/fixture-compiled.mjs',bounded.moduleBytes,2097152,ledger,'archive');
+ const ownedRows=[];let historyFact;
+ if(chunkBytes){
+  const chunks=[];for(let i=0;i<chunkBytes.length;i++){const name='history-'+String(i).padStart(3,'0')+'.json',fact=await writeStock033FileV2(outputDirectory+'/'+name,chunkBytes[i],65536,ledger,'archive');chunks.push({name,...fact});ownedRows.push({key:name,...fact});}
+  const historyManifest={schema:1,profile:tail.profile,source:fixture,chunks},data=serializeSelected(historyManifest,65536,ledger,tail);archiveTotal+=data.length;assertStock033ArchiveBudgetV2({archiveBytes:archiveTotal,manifestBytes:1048576});
+  const fact=await writeStock033FileV2(outputDirectory+'/history-manifest.json',data,65536,ledger,'archive');ownedRows.push({key:'history-manifest.json',...fact});historyFact={profile:tail.profile,manifest:fact};
+ }else{historyFact=await writeStock033FileV2(outputDirectory+'/history.json',history,65536,ledger,'archive');ownedRows.push({key:'history.json',...historyFact});}
+ const compiledFact=await writeStock033FileV2(outputDirectory+'/fixture-compiled.mjs',bounded.moduleBytes,2097152,ledger,'archive');ownedRows.push({key:'fixture-compiled.mjs',...compiledFact});
  const assets=Object.entries(product.assetHashes).map(([name,sha256])=>({name,bytes:facts.get('apps/threadplane/dist/'+name).fact.bytes,sha256}));
- const fixtureEvidence={source:fixture.digests.sourceSha256,events:fixture.digests.eventsSha256,history:fixture.digests.historySha256,projection:historyFact.sha256};
- const manifest={mode:manifestMode(authored,tail),...collectionFields(tail),records,owned:[{key:'history.json',...historyFact},{key:'fixture-compiled.mjs',...compiledFact}],platform:release.platformRows,assets,totalBytes:archiveTotal,fixture:fixtureEvidence,platformTrust:'Pinned compiler/Node/Playwright/browser internals; explicit source I/O only, no complete dynamic dependency closure.',product:stock033Identity,custody:{sourceRoot,sourceObservation,build:release.build,fixtureInputs:release.fixtureInputs},roster:{contract:roster.contract,digest:roster.digest,roleCounts:roster.roleCounts,membershipCount:roster.membershipCount,unionCount:roster.unionCount,overlapCount:roster.overlapCount}};if(authored)manifest.authoredControl=true;
- const manifestBytes=serialize(manifest,1048576,ledger);assertStock033ArchiveBudgetV2({archiveBytes:archiveTotal,manifestBytes:manifestBytes.length});
+ const fixtureEvidence={source:fixture.digests.sourceSha256,events:fixture.digests.eventsSha256,history:fixture.digests.historySha256,projection:chunkBytes?fixture.digests.projectionSha256:historyFact.sha256,...(isRequest(tail)?{profile:tail.profile}:{})};
+ const manifest={mode:manifestMode(authored,tail),...collectionFields(tail),records,owned:ownedRows,platform:release.platformRows,assets,totalBytes:archiveTotal,fixture:fixtureEvidence,platformTrust:'Pinned compiler/Node/Playwright/browser internals; explicit source I/O only, no complete dynamic dependency closure.',product:stock033Identity,custody:{sourceRoot,sourceObservation,build:release.build,fixtureInputs:release.fixtureInputs},roster:{contract:roster.contract,digest:roster.digest,roleCounts:roster.roleCounts,membershipCount:roster.membershipCount,unionCount:roster.unionCount,overlapCount:roster.overlapCount}};if(authored)manifest.authoredControl=true;
+ const manifestBytes=serializeSelected(manifest,1048576,ledger,tail);assertStock033ArchiveBudgetV2({archiveBytes:archiveTotal,manifestBytes:manifestBytes.length});
  const manifestFact=await writeStock033FileV2(outputDirectory+'/app-manifest.json',manifestBytes,1048576,ledger,'archive');
  await verifyStock033PlatformsV2(release.platformRows,ledger);await observeMembers(sourceRoot,release,ledger,facts);if(!same(await sourceInventory(sourceRoot,ledger),authenticated.rootAuthority.productSourceKeys))fail('product inventory drift');
  const template={mode:preparationMode(authored,tail),...collectionFields(tail),root:outputDirectory,nonce:randomBytes(16).toString('hex'),runtime:release.runtime,assets,fixture:fixtureEvidence,history:historyFact,manifest:manifestFact,product:stock033Identity};if(authored)template.authoredControl=true;
- const templateFact=await writeStock033FileV2(outputDirectory+'/template.json',serialize(template,4096,ledger),4096,ledger,'archive');
- const reference={policy:referencePolicy(authored,tail),...collectionFields(tail),product:stock033Identity,template:templateFact,manifest:manifestFact};if(authored)reference.authoredControl=true;serialize(reference,4096,ledger);ledger.stage('prepared');ledger.assertActive();if(ledger.pending().length)fail('pending originals');return authored?{template,reference,authoredControl:true,...(tail===wheelFamily?{inputRecipe:wheelRecipe}:{})}:{template,reference,...(tail===wheelFamily?{inputRecipe:wheelRecipe}:{})};
+ const templateFact=await writeStock033FileV2(outputDirectory+'/template.json',serializeSelected(template,4096,ledger,tail),4096,ledger,'archive');
+ const reference={policy:referencePolicy(authored,tail),...collectionFields(tail),product:stock033Identity,template:templateFact,manifest:manifestFact};if(authored)reference.authoredControl=true;serializeSelected(reference,4096,ledger,tail);ledger.stage('prepared');ledger.assertActive();if(ledger.pending().length)fail('pending originals');return authored?{template,reference,authoredControl:true,...(tail===wheelFamily?{inputRecipe:wheelRecipe}:{})}:{template,reference,...(tail===wheelFamily?{inputRecipe:wheelRecipe}:{})};
 }
 export async function verifyStock033PreparationV2(root,template,reference,{ledger=createStock033PreparationLedgerV2()}={}){
  return verifyCore(root,template,reference,ledger,false);
 }
-function preflightArchive(manifest,manifestBytes){
+function expectedOwned(tail){return largeProfile(tail)?['fixture-compiled.mjs','history-manifest.json',...Array.from({length:profileCount(tail.profile)/100},(_,i)=>'history-'+String(i).padStart(3,'0')+'.json')]:['history.json','fixture-compiled.mjs'];}
+function preflightArchive(manifest,manifestBytes,tail=false){
+ const expected=expectedOwned(tail);if(isRequest(tail)&&manifest.records.length+expected.length+2>1024)fail('unique archive bound');
  const names=new Set();let bytes=0;
  for(const row of manifest.records){closed(row,['key','bytes','sha256','roles','source','identity','archivedIdentity']);keyName(row.key);if(names.has(row.key))fail('manifest member');names.add(row.key);factShape({bytes:row.bytes,sha256:row.sha256,identity:row.identity},2097152);factShape({bytes:row.bytes,sha256:row.sha256,identity:row.archivedIdentity},2097152);bytes+=row.bytes;assertStock033ArchiveBudgetV2({archiveBytes:bytes,manifestBytes});}
- const owned=new Set();for(const row of manifest.owned){closed(row,['key','bytes','sha256','identity']);if(!['history.json','fixture-compiled.mjs'].includes(row.key)||owned.has(row.key))fail('owned member');owned.add(row.key);factShape(row,row.key==='history.json'?65536:2097152);bytes+=row.bytes;assertStock033ArchiveBudgetV2({archiveBytes:bytes,manifestBytes});}
+ const owned=new Set();for(const row of manifest.owned){closed(row,['key','bytes','sha256','identity']);if(!expected.includes(row.key)||owned.has(row.key))fail('owned member');owned.add(row.key);factShape(row,row.key==='fixture-compiled.mjs'?2097152:65536);bytes+=row.bytes;assertStock033ArchiveBudgetV2({archiveBytes:bytes,manifestBytes});}
+ if(owned.size!==expected.length)fail('owned membership');
  if(bytes!==manifest.totalBytes)fail('archive total');
 }
 function servedAssetJoin(assets,product,roster){
@@ -307,13 +364,46 @@ function servedAssetJoin(assets,product,roster){
  for(const asset of assets){closed(asset,['name','bytes','sha256']);if(typeof asset.name!=='string'||! /^[A-Za-z0-9_.-]{1,192}$/.test(asset.name)||names.has(asset.name)||!Number.isSafeInteger(asset.bytes)||asset.bytes<1||(total+=asset.bytes)>2097152)fail('served asset join');names.add(asset.name);const row=rows.get('apps/threadplane/dist/'+asset.name);if(!row||asset.sha256!==product.assetHashes[asset.name]||asset.bytes!==row.bytes||asset.sha256!==row.sha256)fail('served asset join');}
  if(!same([...names].sort(),emitted.sort()))fail('served asset join');
 }
+async function verifyLargeHistory(root,template,manifest,ledger,tail){
+ closed(template.history,['profile','manifest']);if(template.history.profile!==tail.profile)fail('history profile');
+ const rows=new Map(manifest.owned.map(row=>{const{key,...fact}=row;return[key,fact];}));
+ if(!same(rows.get('history-manifest.json'),template.history.manifest))fail('history manifest original');
+ const read=await readStock033FileV2(root+'/history-manifest.json',65536,ledger,template.history.manifest),h=JSON.parse(read.bytes);
+ closed(h,['schema','profile','source','chunks']);if(h.schema!==1||h.profile!==tail.profile||!Array.isArray(h.chunks)||h.chunks.length!==profileCount(tail.profile)/100)fail('history manifest');
+ const source=h.source;closed(source,['schema','profile','origin','identity','workload','historyCount','chunkCount','chunks','digests','authority']);
+ const count=profileCount(tail.profile),identity={threadId:`native-history${count}-source-v1`,runId:`native-history${count}-restore-v1`,epochMs:0};
+ if(source.schema!==1||source.profile!==tail.profile||source.origin!=='actual-aimock-compiler'||source.authority!==false||source.historyCount!==count||source.chunkCount!==count/100||!same(source.identity,identity)||!same(source.workload,{seed:1,historyCount:count,responseBytes:6400,journey:'history-reading'})||!Array.isArray(source.chunks)||source.chunks.length!==count/100)fail('history source profile');
+ closed(source.digests,['sourceSha256','eventsSha256','historySha256','projectionSha256','projectionBytes','chunksSha256']);
+ for(const key of ['sourceSha256','eventsSha256','historySha256','projectionSha256','chunksSha256'])if(!/^[a-f0-9]{64}$/.test(source.digests[key]))fail('history source digests');
+ ledger.ensureCapacity('hashBytes',count*4096+1048576);
+ const contract=await import('../../packages/contract/dist/index.js'),canonical=contract.createLongThreadFixture({seed:1,historyCount:count,responseBytes:6400,journey:'history-reading'});
+ if(ledger.hash(Buffer.from(contract.canonicalSerialize(canonical)))!==source.digests.sourceSha256)fail('history canonical source');
+ const messages=canonical.history.map(({id,role,text})=>({id,role,content:text})),clock=i=>({timestamp:i,metadata:{clock:'synthetic-canonical-history-restore-ms',epochMs:0,scheduledMs:i}}),events=[{type:'RUN_STARTED',threadId:identity.threadId,runId:identity.runId,...clock(0)},{type:'MESSAGES_SNAPSHOT',messages,...clock(1)},{type:'RUN_FINISHED',threadId:identity.threadId,runId:identity.runId,...clock(2)}];
+ if(ledger.hash(Buffer.from(contract.canonicalSerialize(messages)))!==source.digests.historySha256||ledger.hash(Buffer.from(contract.canonicalSerialize(events)))!==source.digests.eventsSha256)fail('history canonical AIMock digests');
+ const projection=createHash('sha256');projection.update('[');let projectionBytes=2;
+ for(let index=0;index<count/100;index++){
+  const row=h.chunks[index];closed(row,['name','bytes','sha256','identity']);const name='history-'+String(index).padStart(3,'0')+'.json';
+  const{name:ignored,...fact}=row;if(row.name!==name||!same(fact,rows.get(name)))fail('history chunk membership');
+  const sourceFact=source.chunks[index];closed(sourceFact,['index','start','count','bytes','sha256']);
+  if(sourceFact.index!==index||sourceFact.start!==index*100||sourceFact.count!==100||sourceFact.bytes!==fact.bytes||sourceFact.sha256!==fact.sha256)fail('history chunk source join');
+  const read=await readStock033FileV2(root+'/'+name,65536,ledger,fact),messages=JSON.parse(read.bytes);
+  if(!same(messages,canonical.history.slice(index*100,(index+1)*100)))fail('history canonical chunk');
+  if(read.bytes[0]!==91||read.bytes.at(-1)!==93)fail('history chunk encoding');
+  if(index){projection.update(',');projectionBytes++;}projection.update(read.bytes.subarray(1,-1));projectionBytes+=read.bytes.length-2;
+ }
+ projection.update(']');ledger.charge('hashBytes',projectionBytes);
+ if(projection.digest('hex')!==source.digests.projectionSha256||projectionBytes!==source.digests.projectionBytes||source.digests.projectionSha256!==template.fixture.projection||source.digests.sourceSha256!==template.fixture.source||source.digests.eventsSha256!==template.fixture.events||source.digests.historySha256!==template.fixture.history||template.fixture.profile!==tail.profile)fail('history full projection');
+ if(ledger.hash(Buffer.from(contract.canonicalSerialize({schema:1,profile:tail.profile,historyCount:count,chunks:source.chunks})))!==source.digests.chunksSha256)fail('history ordered commitment');
+}
 async function verifyCore(root,template,reference,ledger,authored,tail=false){
+ if(isRequest(tail))requestLedgers.add(ledger);else if(requestLedgers.has(ledger))fail('request ledger boundary');
  ledgerOf(ledger);if(authoredLedgers.has(ledger)!==authored)fail('authored ledger boundary');admitStock033DataV2(template,4095);admitStock033DataV2(reference,4095);closed(reference,['policy','product','template','manifest',...collectionKeys(tail),...(authored?['authoredControl']:[])]);closed(template,['mode','root','nonce','runtime','assets','fixture','history','manifest','product',...collectionKeys(tail),...(authored?['authoredControl']:[])]);
  collectionCheck(template,tail);collectionCheck(reference,tail);if(template.mode!==preparationMode(authored,tail)||reference.policy!==referencePolicy(authored,tail)||template.root!==root||!same(template.product,stock033Identity)||!same(reference.product,stock033Identity)||authored&&(template.authoredControl!==true||reference.authoredControl!==true))fail('v2 reference');absolute(root,256);runtimeCheck(template.runtime);if(!authored&&(process.platform!=='darwin'||process.arch!=='arm64'))fail('reviewed host');template=JSON.parse(JSON.stringify(template));reference=JSON.parse(JSON.stringify(reference));
  const owned=JSON.parse((await readStock033FileV2(root+'/template.json',4096,ledger,reference.template)).bytes);if(!same(owned,template)||!same(owned.manifest,reference.manifest))fail('original template join');
+ if(isRequest(tail)){closed(owned.fixture,['source','events','history','projection','profile']);if(owned.fixture.profile!==tail.profile)fail('fixture evidence profile');for(const key of ['source','events','history','projection'])if(!/^[a-f0-9]{64}$/.test(owned.fixture[key]))fail('fixture evidence digest');}
  const manifestRead=await readStock033FileV2(root+'/app-manifest.json',1048576,ledger,reference.manifest),manifest=JSON.parse(manifestRead.bytes);closed(manifest,['mode','records','owned','platform','assets','totalBytes','fixture','platformTrust','product','custody','roster',...collectionKeys(tail),...(authored?['authoredControl']:[])]);
- collectionCheck(manifest,tail);if(manifest.mode!==manifestMode(authored,tail)||authored&&manifest.authoredControl!==true||!same(manifest.product,stock033Identity)||!Array.isArray(manifest.records)||manifest.records.length>1024||manifest.owned.length!==2||!same(manifest.assets,template.assets)||!same(manifest.fixture,template.fixture))fail('manifest joins');
- preflightArchive(manifest,reference.manifest.bytes);
+ collectionCheck(manifest,tail);if(manifest.mode!==manifestMode(authored,tail)||authored&&manifest.authoredControl!==true||!same(manifest.product,stock033Identity)||!Array.isArray(manifest.records)||manifest.records.length>1024||manifest.owned.length!==expectedOwned(tail).length||!same(manifest.assets,template.assets)||!same(manifest.fixture,template.fixture))fail('manifest joins');
+ preflightArchive(manifest,reference.manifest.bytes,tail);
  const roles=Object.fromEntries(stock033Roles.map(role=>[role,[]])),facts=new Map();let total=0;const names=new Set();
  for(const row of manifest.records){keyName(row.key);if(names.has(row.key)||row.source!==manifest.custody.sourceRoot+'/'+row.key||!Array.isArray(row.roles)||row.roles.length<1||new Set(row.roles).size!==row.roles.length)fail('manifest member');names.add(row.key);const fact={bytes:row.bytes,sha256:row.sha256,identity:row.identity};const original=await readStock033FileV2(row.source,2097152,ledger,fact);await readStock033FileV2(root+'/inputs/'+row.key,2097152,ledger,{...fact,identity:row.archivedIdentity});facts.set(row.key,original);total+=row.bytes;
   for(const role of row.roles){if(!Object.hasOwn(roles,role))fail('manifest role');roles[role].push({key:row.key,bytes:row.bytes,sha256:row.sha256});}
@@ -323,8 +413,9 @@ async function verifyCore(root,template,reference,ledger,authored,tail=false){
  const authenticated=await authenticate(manifest.custody.sourceRoot,release,manifest.custody.sourceObservation,facts,ledger,authored,tail),roster=authenticated.roster;
  servedAssetJoin(manifest.assets,authenticated.product,roster);
  const rosterEvidence={contract:roster.contract,digest:roster.digest,roleCounts:roster.roleCounts,membershipCount:roster.membershipCount,unionCount:roster.unionCount,overlapCount:roster.overlapCount};if(!same(rosterEvidence,manifest.roster))fail('roster digest');
- const ownedNames=new Set();for(const item of manifest.owned){if(!['history.json','fixture-compiled.mjs'].includes(item.key)||ownedNames.has(item.key))fail('owned member');ownedNames.add(item.key);const {key,...fact}=item;const result=await readStock033FileV2(root+'/'+key,key==='history.json'?65536:2097152,ledger,fact);total+=result.bytes.length;if(key==='history.json'&&(!same(fact,owned.history)||fact.sha256!==owned.fixture.projection))fail('history original join');}
- if(total!==manifest.totalBytes)fail('archive total');assertStock033ArchiveBudgetV2({archiveBytes:total,manifestBytes:reference.manifest.bytes});await verifyStock033PlatformsV2(manifest.platform,ledger);ledger.assertActive();if(tail&&ledger.pending().length)fail('pending originals');if(tail)(tail===wheelFamily?(authored?authoredWheelAdmissions:wheelAdmissions):(authored?authoredTailAdmissions:tailAdmissions)).set(owned,Object.freeze({manifestSha256:manifestRead.fact.sha256,sourceRevision:manifest.custody.sourceObservation.revision,...collectionFields(tail)}));return owned;
+ const ownedNames=new Set();for(const item of manifest.owned){if(!expectedOwned(tail).includes(item.key)||ownedNames.has(item.key))fail('owned member');ownedNames.add(item.key);const {key,...fact}=item;const result=await readStock033FileV2(root+'/'+key,key==='fixture-compiled.mjs'?2097152:65536,ledger,fact);total+=result.bytes.length;if(key==='history.json'&&(!same(fact,owned.history)||fact.sha256!==owned.fixture.projection))fail('history original join');}
+ if(largeProfile(tail))await verifyLargeHistory(root,owned,manifest,ledger,tail);
+ if(total!==manifest.totalBytes)fail('archive total');assertStock033ArchiveBudgetV2({archiveBytes:total,manifestBytes:reference.manifest.bytes});await verifyStock033PlatformsV2(manifest.platform,ledger);ledger.assertActive();if(tail&&ledger.pending().length)fail('pending originals');if(tail)(isRequest(tail)?(authored?authoredRequestAdmissions:requestAdmissions):tail===wheelFamily?(authored?authoredWheelAdmissions:wheelAdmissions):(authored?authoredTailAdmissions:tailAdmissions)).set(owned,Object.freeze({manifestSha256:manifestRead.fact.sha256,sourceRevision:manifest.custody.sourceObservation.revision,...collectionFields(tail)}));return owned;
 }
 
 /** Explicit cross-platform authored controls only. No CLI selects this boundary.
@@ -345,3 +436,22 @@ export async function verifyStock033WheelCarrierTail500PreparationV2(root,templa
 function inspectWheelAdmission(owned,authored){const result=(authored?authoredWheelAdmissions:wheelAdmissions).get(owned);if(!result)fail('wheel admission');return result;}
 export function inspectStock033WheelCarrierTail500PreparationV2(owned){return inspectWheelAdmission(owned,false);}
 export function createStock033AuthoredControlV2WheelCarrierTail500(){const createLedger=options=>{const ledger=createStock033PreparationLedgerV2(options);authoredLedgers.add(ledger);return ledger;};return Object.freeze({createStock033PreparationLedgerV2:createLedger,prepareActualStock033V2WheelCarrierTail500:options=>prepareCore(options,true,wheelFamily),verifyStock033WheelCarrierTail500PreparationV2:(root,template,reference,{ledger=createLedger()}={})=>verifyCore(root,template,reference,ledger,true,wheelFamily),inspectStock033WheelCarrierTail500PreparationV2:owned=>inspectWheelAdmission(owned,true)});}
+
+export async function verifyStock033RequestWindowPreparationV1(root,template,reference,{ledger=createStock033PreparationLedgerV2()}={}){return verifyCore(root,template,reference,ledger,false,requestSelection(template));}
+export function inspectStock033RequestWindowPreparationV1(template){const admission=requestAdmissions.get(template);if(!admission)fail('request-window admission');return admission;}
+export function createStock033RequestWindowAuthoredControlV1(profile){
+ const family=requestFamily(profile),createLedger=options=>{const ledger=createStock033RequestWindowPreparationLedgerV1(options);authoredLedgers.add(ledger);return ledger;};
+ return Object.freeze({createStock033PreparationLedgerV2:createLedger,prepareActualStock033RequestWindowV1:options=>prepareCore(options,true,family),verifyStock033RequestWindowPreparationV1:(root,template,reference,{ledger=createLedger()}={})=>verifyCore(root,template,reference,ledger,true,family),inspectStock033RequestWindowPreparationV1:template=>{const value=authoredRequestAdmissions.get(template);if(!value||value.fixtureProfile!==profile)fail('authored request-window admission');return value;},reserveFixture:(roster,moduleBytes,ledger)=>reserveLargeFixture(family,roster,moduleBytes,ledger),runtimeMetadata:compilerMetadataCopies});
+}
+// Original source/platform bookends for the new family. expectedManifest comes
+// from the already admitted original preparation return, never from this file.
+export async function verifyRequestWindowOriginalsV1(root,expectedManifest){
+ const ledger=createStock033RequestWindowPreparationLedgerV1();absolute(root,256);
+ const read=await readStock033FileV2(root+'/app-manifest.json',1048576,ledger,expectedManifest),manifest=JSON.parse(read.bytes),family=requestFamily(manifest.fixtureProfile);
+ collectionCheck(manifest,family);if(manifest.mode!==manifestMode(false,family)||manifest.authoredControl!==undefined||!Array.isArray(manifest.records)||manifest.records.length>1024||!Array.isArray(manifest.owned))fail('request-window manifest');
+ preflightArchive(manifest,read.bytes.length,family);let total=0;
+ for(const row of manifest.records){if(row.source!==manifest.custody.sourceRoot+'/'+row.key)fail('source member');const fact={bytes:row.bytes,sha256:row.sha256,identity:row.identity};await readStock033FileV2(row.source,2097152,ledger,fact);await readStock033FileV2(root+'/inputs/'+row.key,2097152,ledger,{...fact,identity:row.archivedIdentity});total+=row.bytes;}
+ for(const row of manifest.owned){const{key,...fact}=row;await readStock033FileV2(root+'/'+key,key==='fixture-compiled.mjs'?2097152:65536,ledger,fact);total+=row.bytes;}
+ await verifyStock033PlatformsV2(manifest.platform,ledger);if(ledger.pending().length)fail('pending originals');
+ return{files:manifest.records.length,bytes:total,manifestSha256:read.fact.sha256,platform:{files:manifest.platform.length,bytes:manifest.platform.reduce((n,row)=>n+row.bytes,0)}};
+}
