@@ -1,5 +1,84 @@
 # Real chat native capture
 
+## Fixed request-window scroll (separate experimental profile)
+
+`native-stock033-request-window-scroll-v1` uses stock published Threadplane
+0.3.3 with one browser-paced `Input.synthesizeScrollGesture`: mouse input,
+1,600 CSS pixels upward, speed 800, no fling, no repeats. This input recipe
+has its own preparation, acquisition, result and analysis identities. Keep its
+results separate from the ordinary wheel, nonce-wheel and modified-layout
+families.
+
+The start mark creates an owned native Promise with a fixed two-second guard.
+The end mark requires the fulfilled original guard and disposes its timer.
+An early timer, changed execution context, failed gesture, changed geometry,
+changed transcript, missing original process/pipe closure or failed bookend
+refuses the run. There is no adaptive duration, retry or smaller-history fallback.
+The authored maximum-bootstrap facade uses 78 Runtime calls, including all
+64 bootstrap attempts and three original handle releases, under the existing
+80-call ceiling. These authored controls are not performance measurements.
+
+Use the source-owned preparation pair in the same trusted process:
+
+```js
+import {
+  generateStock033RequestWindowPreparationInputsV1,
+  runStock033RequestWindowPreparationOwnerV1
+} from './prepare-owner-stock033-v2.mjs';
+
+const fixtureProfile = 'native-history1000-v1';
+const generated = await generateStock033RequestWindowPreparationInputsV1({
+  fixtureProfile, inputDirectory, preparedDirectory,
+  compilationDirectory, evidenceDirectory
+});
+const prepared = await runStock033RequestWindowPreparationOwnerV1({
+  fixtureProfile, config: generated.config, generation: generated
+});
+```
+
+The fixed fixture profiles are `native-history100-v1`,
+`native-history1000-v1` and `native-history10000-v1`. All use genuine
+`@copilotkit/aimock` history restoration, seed 1, 512-byte canonical messages,
+the history-reading journey and a separately identified 6,400-byte continuation
+fixture. This collection loads history; it does not replay that continuation.
+The larger profiles retain ordered 100-message chunks, each at most 65,536
+bytes, with complete canonical source, event, history and projection digests.
+Production chunk access requires the actual compiler invocation's private
+admission. Authored structural projections and serialized copies cannot obtain it.
+
+The source-owned worker reconstructs every admitted chunk and checks the full
+projection. Its page-local comparison checks every actual transcript message
+against that owned history and returns a boolean; it does not trust an
+application-provided equality flag. Sending the complete history as a CDP
+argument and browser layout remain trusted platform work. Runtime response
+limits do not bound that argument's encoding, native layout CPU, RSS or GC.
+The 8 MiB preparation serialization, 16 MiB archive, 1,024-member archive,
+17-second capture and 19-second finalization ceilings remain in force. A named
+profile can still refuse those budgets or fail to render in time.
+
+After reviewing genuine preparation and its original completion, use
+`runStock033RequestWindowOriginalV1` from `request-window-run.mjs` under the
+one-use `NATIVE_REAL_CHAT_ONCE_RELEASE` value
+`source-reviewed-native-stock033-request-window-scroll-v1`. Its explicit CLI
+selector is `--prepared-stock033-request-window-scroll-v1`. Retain the original
+successful acquisition return in the same process for analysis. Parsing its
+persisted receipt does not recreate the private acquisition capability.
+
+`runRequestWindowFeedbackV1` in
+`../perfetto-import/request-window-feedback-run.mjs` composes the unchanged
+successful V1 feedback diagnostic with that original acquisition. It obtains
+unique normalized owner start/end timestamps from the genuine V1 interval,
+requires at least two seconds, and selects exactly
+`[start + 500 ms, start + 1,500 ms)`. This is a **request-anchored** window that
+includes startup and queue effects. It establishes neither controller-running
+time nor continuous input delivery. A V1 refusal cannot yield an interior rate.
+
+All captured traces, histories, diagnostic bundles and derived native results
+stay local. The result retains the full original V1 diagnostic and labels any
+rate as observed successful browser feedback per second. It does not establish
+an exhaustive frame population, successful target-scroller presentations,
+qualification, comparison eligibility or FPS; FPS remains null.
+
 This is a source-reviewed diagnostic path under development. Source controls do
 not launch a browser. An actual acquisition requires a separately reviewed,
 single-use outer release and closed input records.
