@@ -944,3 +944,37 @@ It retains the unchanged full V1 observation and fixed request-anchored one-seco
 subset, records the original phase publication, and keeps FPS null and all
 qualification/evaluation/scoring/ranking flags false. V1 source pins and SQL stay
 unchanged; inspection policy and fixture profile remain explicit in V2 results.
+
+The separately selected `browser-feedback-whole-graph-compact-v2` policy uses
+`feedback-observations-compact-run-v2.mjs`. It exports the complete target and
+scope graphs with fixed text dictionaries and shared argument-set registries.
+Both physical exports remain capped at 262144 bytes each. Logical fan-out,
+referenced text, rows and work have independent fixed limits; compression cannot
+bypass them. No paging, interval filtering or fallback to/from the legacy policy
+is supported. Whole-graph validation precedes request-window selection.
+
+The new text representation distinguishes SQL NULL, empty text and literal
+`[NULL]`, including all three diagnostic-statistic text fields. The old V1 core,
+model, exporter and SQL remain unchanged. The new model records the intentional
+text correction and pins the exact official processor and SQL assumptions.
+
+`request-window-compact-feedback-run-v3.mjs` accepts only the original privately
+qualified V2 acquisition and explicitly selects this new policy. Its analysis
+source closure is separate from the unchanged V2 preparation archive; a native
+operator must pin the new closure before fresh capture. The wrapper seals the
+original complete observation; the bridge joins that original returned
+publication with the original acquisition and phase publications, repeating
+source/runtime/native custody checks through its own publication. This uses the
+stated trusted-process/no-concurrent-local-mutation assumption.
+
+The diagnostic metric is observed successful browser-feedback frequency in the
+fixed request-anchored one-second window, including startup/queue time. It is not
+FPS. FPS remains null and native, capture, evaluation, scoring and ranking
+eligibility remain false. Refused earlier cohorts remain separate and unavailable.
+
+`feedback-observations-compact-smoke-v2.mjs --processor /absolute/pinned-tool
+--out /absolute/fresh-output` generates maintained authored protobufs and checks
+both official compact SQL exports and original private custody. It deliberately
+mutates its own new authored output to test refusal. It never accepts a captured
+trace path and supplies no native performance evidence. CI publishes authored
+fixtures only; captured traces and derived reports stay local.
