@@ -73,6 +73,9 @@ jobs:
       - name: Test browser presentation feedback observation controls
         run: node --test tools/perfetto-import/feedback-observations-core.node.mjs tools/perfetto-import/feedback-observations-run.node.mjs tools/perfetto-import/request-window-feedback-run.node.mjs tools/perfetto-import/request-window-feedback-run-v2.node.mjs tools/perfetto-import/feedback-compact-v2-sql.node.mjs tools/perfetto-import/feedback-observations-compact-core-v2.node.mjs tools/perfetto-import/feedback-observations-compact-parity-v2.node.mjs tools/perfetto-import/feedback-observations-compact-export-v2.node.mjs tools/perfetto-import/feedback-observations-compact-run-v2.node.mjs tools/perfetto-import/request-window-compact-feedback-run-v3.node.mjs tools/perfetto-import/feedback-observations-compact-smoke-v2.node.mjs 2>&1 | tee ci-logs/feedback-observations.log
 
+      - name: Test explicit whole-graph capacity V3 and V4 composition
+        run: node --test tools/perfetto-import/feedback-observations-capacity-core-v3.node.mjs tools/perfetto-import/feedback-observations-capacity-parity-v3.node.mjs tools/perfetto-import/feedback-observations-capacity-export-v3.node.mjs tools/perfetto-import/feedback-observations-capacity-run-v3.node.mjs tools/perfetto-import/request-window-capacity-feedback-run-v4.node.mjs tools/perfetto-import/feedback-observations-capacity-smoke-v3.node.mjs 2>&1 | tee ci-logs/feedback-capacity-v3.log
+
       - name: Run unit tests
         run: npm test 2>&1 | tee ci-logs/unit.log
 
