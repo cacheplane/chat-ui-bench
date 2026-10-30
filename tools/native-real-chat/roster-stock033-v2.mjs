@@ -26,6 +26,19 @@ export const nativeRuntimeCompiledKeys=Object.freeze([
  'packages/analyzer/dist/browser-frame-whole-trace-reader.js','packages/analyzer/dist/browser-frame-whole-trace.js'
 ].sort());
 export const nativeRuntimeSourceKeys=Object.freeze(nativeRuntimeCompiledKeys.map(key=>key.replace('/dist/','/src/').replace(/\.js$/,'.ts')).sort());
+export const requestWindowPhaseInspectionPolicyV2='request-window-postcapture-owned-v12-v1';
+export const requestWindowV2NativeOwnerKeys=Object.freeze([...requestWindowNativeOwnerKeys,
+ 'tools/native-real-chat/request-window-phase-v2.mjs','tools/native-real-chat/request-window-phase-owner-v2.mjs',
+ 'tools/native-real-chat/request-window-phase-worker-v2.mjs','tools/native-real-chat/request-window-deferred-phase-v2.mjs',
+ 'tools/native-real-chat/request-window-run-v2.mjs','tools/native-real-chat/request-window-worker-v2.mjs'
+].sort());
+// The reviewed existing V12 closure adds only these six modules; all nine
+// remaining analyzer dependencies already belong to the legacy runtime set.
+export const requestWindowV2NativeRuntimeCompiledKeys=Object.freeze([...new Set([...nativeRuntimeCompiledKeys,
+ ...['browser-frame-owned-paint-v12-budget','browser-frame-owned-paint-v12-kernel','browser-frame-owned-paint-v12',
+ 'browser-frame-owned-paint-v12-reader','browser-frame-paint-packet-adapter','browser-frame-paint-timing-r-fragments'].map(name=>'packages/analyzer/dist/'+name+'.js')
+])].sort());
+export const requestWindowV2NativeRuntimeSourceKeys=Object.freeze(requestWindowV2NativeRuntimeCompiledKeys.map(key=>key.replace('/dist/','/src/').replace(/\.js$/,'.ts')).sort());
 export const stock033CoreMetadataKeys=Object.freeze([
  'package.json','package-lock.json','tsconfig.base.json','apps/threadplane/package.json','apps/threadplane/angular.json',
  'apps/threadplane/tsconfig.json','apps/threadplane/tsconfig.app.json','apps/threadplane/.build-evidence.json',
@@ -125,6 +138,7 @@ export function assembleStock033RosterV2(input){
  return assembleRoster(input,false);
 }
 export function assembleStock033RequestWindowRosterV1(input){return assembleRoster(input,true);}
+export function assembleStock033RequestWindowRosterV2(input){return assembleRoster(input,'request-window-v2');}
 function assembleRoster(input,requestWindow){
  preflight(input);closed(input,['roles','observedRoles','rootAuthority']);
  const expected=roleMaps(input.roles),observed=roleMaps(input.observedRoles),authority=input.rootAuthority;
@@ -144,7 +158,7 @@ function assembleRoster(input,requestWindow){
  const assets=hashMap(authority.product.assetHashes);if(assets.length!==12||assets.some(name=>! /^[A-Za-z0-9_.-]{1,192}$/.test(name)))fail('assets');
  const names={
   'product-source':productKeys,'probe-source':probeSourceKeys,'probe-compiled':probeCompiledKeys,'fixture-input':[...fixture.keys()],
-  'native-owner':requestWindow?requestWindowNativeOwnerKeys:nativeOwnerKeys,'native-runtime':[...nativeRuntimeCompiledKeys,...nativeRuntimeSourceKeys],
+  'native-owner':requestWindow==='request-window-v2'?requestWindowV2NativeOwnerKeys:requestWindow?requestWindowNativeOwnerKeys:nativeOwnerKeys,'native-runtime':requestWindow==='request-window-v2'?[...requestWindowV2NativeRuntimeCompiledKeys,...requestWindowV2NativeRuntimeSourceKeys]:[...nativeRuntimeCompiledKeys,...nativeRuntimeSourceKeys],
   metadata:[...new Set([...stock033CoreMetadataKeys,...stock033MacMetadataKeys,...packageMetadata])],
   'served-asset':assets.map(name=>'apps/threadplane/dist/'+name)
  };
@@ -168,7 +182,7 @@ function assembleRoster(input,requestWindow){
  const resultRows=sorted(union.keys()).map(key=>{const row=union.get(key);return Object.freeze({...row,roles:Object.freeze(row.roles)});});
  // Preserve public role declaration order; lexical tuple order is the hash contract.
  const counts=Object.fromEntries(stock033Roles.map(role=>[role,roleCounts[role]]));
- const contract=requestWindow?'native-stock033-request-window-roster-v1':'native-stock033-roster-v2',digestInput=contract+'\0'+JSON.stringify(tuples),digestBytes=Buffer.byteLength(digestInput);
+ const contract=requestWindow==='request-window-v2'?'native-stock033-request-window-roster-v2':requestWindow?'native-stock033-request-window-roster-v1':'native-stock033-roster-v2',digestInput=contract+'\0'+JSON.stringify(tuples),digestBytes=Buffer.byteLength(digestInput);
  return Object.freeze({contract,digest:createHash('sha256').update(digestInput).digest('hex'),digestBytes,rows:Object.freeze(resultRows),roleCounts:Object.freeze(counts),membershipCount,unionCount:union.size,overlapCount:membershipCount-union.size,archiveBytes});
 }
 

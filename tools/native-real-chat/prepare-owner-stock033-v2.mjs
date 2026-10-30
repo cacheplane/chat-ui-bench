@@ -11,34 +11,48 @@ import {buildThreadplane} from '../../apps/threadplane/build.mjs';
 import {productSourceKeys,parseStock033ProductRecord} from '../../apps/threadplane/provenance.mjs';
 import {parseProbeRecord,contractCompiledKeys} from '../../apps/threadplane/probe-provenance.mjs';
 import {compilerOutputBytes} from './prepare.mjs';
-import {admitStock033DataV2,measureStock033DataV2,stock033Roles,nativeOwnerKeys,requestWindowNativeOwnerKeys,nativeRuntimeCompiledKeys,nativeRuntimeSourceKeys,stock033CoreMetadataKeys,stock033MacMetadataKeys,assembleStock033RosterV2,assembleStock033RequestWindowRosterV1} from './roster-stock033-v2.mjs';
-import {createStock033PreparationLedgerV2,createStock033RequestWindowPreparationLedgerV1,createTransferredStock033RequestWindowLedgerV1,createTransferredStock033LedgerV2,reconcileStock033LedgerV2,stock033PlatformSetSha256V2,serializeStock033DataV2,readStock033FileV2,writeStock033FileV2,observeStock033PlatformsV2,verifyStock033PlatformsV2,prepareActualStock033V2,verifyStock033PreparationV2,prepareActualStock033V2Tail500,verifyStock033Tail500PreparationV2,prepareActualStock033V2WheelCarrierTail500,verifyStock033WheelCarrierTail500PreparationV2,prepareActualStock033RequestWindowV1,verifyStock033RequestWindowPreparationV1} from './prepare-stock033-v2.mjs';
+import {admitStock033DataV2,measureStock033DataV2,stock033Roles,nativeOwnerKeys,requestWindowNativeOwnerKeys,requestWindowV2NativeOwnerKeys,requestWindowV2NativeRuntimeCompiledKeys,requestWindowV2NativeRuntimeSourceKeys,requestWindowPhaseInspectionPolicyV2,nativeRuntimeCompiledKeys,nativeRuntimeSourceKeys,stock033CoreMetadataKeys,stock033MacMetadataKeys,assembleStock033RosterV2,assembleStock033RequestWindowRosterV1,assembleStock033RequestWindowRosterV2} from './roster-stock033-v2.mjs';
+import {createStock033PreparationLedgerV2,createStock033RequestWindowPreparationLedgerV1,createTransferredStock033RequestWindowLedgerV1,createTransferredStock033LedgerV2,reconcileStock033LedgerV2,stock033PlatformSetSha256V2,serializeStock033DataV2,readStock033FileV2,writeStock033FileV2,observeStock033PlatformsV2,verifyStock033PlatformsV2,prepareActualStock033V2,verifyStock033PreparationV2,prepareActualStock033V2Tail500,verifyStock033Tail500PreparationV2,prepareActualStock033V2WheelCarrierTail500,verifyStock033WheelCarrierTail500PreparationV2,prepareActualStock033RequestWindowV1,verifyStock033RequestWindowPreparationV1,prepareActualStock033RequestWindowV2,verifyStock033RequestWindowPreparationV2} from './prepare-stock033-v2.mjs';
 
 const HERE=path.dirname(fileURLToPath(import.meta.url)),ROOT=path.resolve(HERE,'../..'),SELF=fileURLToPath(import.meta.url);
 const unavailable=()=>Error('native-stock033-preparation-owner-unavailable');
 const authority=Object.freeze({nativeSupported:false,clock:'not_evaluated',population:'not_evaluated',FPS:null,scoringEligibility:false});
 const generated=new WeakMap(),generatedTail=new WeakMap(),tailPolicy='native-post-phase-tail-500ms-v1';
 const wheelFamily=Object.freeze({}),wheelRecipe='native-wheel-carrier-v1',generatedWheel=new WeakMap();
-const requestRecipe='native-stock033-request-window-scroll-v1',requestFamilies=new Map(['native-history100-v1','native-history1000-v1','native-history10000-v1'].map(profile=>[profile,Object.freeze({profile,generated:new WeakMap()})]));
-function requestFamily(profile){const family=requestFamilies.get(profile);if(!family)throw unavailable();return family;}
-const isRequest=family=>[...requestFamilies.values()].includes(family);
+const requestRecipe='native-stock033-request-window-scroll-v1',requestProfiles=['native-history100-v1','native-history1000-v1','native-history10000-v1'],requestFamilies=new Map(requestProfiles.map(profile=>[profile,Object.freeze({profile,generated:new WeakMap()})])),requestV2Families=new Map(requestProfiles.map(profile=>[profile,Object.freeze({profile,phaseInspectionPolicy:requestWindowPhaseInspectionPolicyV2,generated:new WeakMap()})]));
+function requestFamily(profile,v2=false){const family=(v2?requestV2Families:requestFamilies).get(profile);if(!family)throw unavailable();return family;}
+const isRequest=family=>[...requestFamilies.values(),...requestV2Families.values()].includes(family);
+const isRequestV2=family=>[...requestV2Families.values()].includes(family);
+const requestVersion=family=>isRequestV2(family)?'v2':'v1';
+const selectedOwnerKeys=family=>isRequestV2(family)?requestWindowV2NativeOwnerKeys:isRequest(family)?requestWindowNativeOwnerKeys:nativeOwnerKeys;
+const selectedRuntimeKeys=family=>isRequestV2(family)?[...requestWindowV2NativeRuntimeCompiledKeys,...requestWindowV2NativeRuntimeSourceKeys]:[...nativeRuntimeCompiledKeys,...nativeRuntimeSourceKeys];
+const selectedAssembler=family=>isRequestV2(family)?assembleStock033RequestWindowRosterV2:isRequest(family)?assembleStock033RequestWindowRosterV1:assembleStock033RosterV2;
 const suffix=tail=>tail?'-tail500-v1':'';
-const collectionKeys=tail=>isRequest(tail)?['inputRecipe','fixtureProfile']:tail===wheelFamily?['collectionPolicy','inputRecipe']:tail?['collectionPolicy']:[];
-const collectionFields=tail=>isRequest(tail)?{inputRecipe:requestRecipe,fixtureProfile:tail.profile}:tail===wheelFamily?{collectionPolicy:tailPolicy,inputRecipe:wheelRecipe}:tail?{collectionPolicy:tailPolicy}:{};
-const releasePolicy=tail=>isRequest(tail)?'source-reviewed-stock033-inputs-request-window-scroll-v1':tail===wheelFamily?'source-reviewed-stock033-inputs-tail500-wheel-v1':'source-reviewed-stock033-preparation-inputs-v2'+suffix(tail);
-const configPolicy=tail=>isRequest(tail)?'native-stock033-prep-owner-request-window-scroll-v1':tail===wheelFamily?'native-stock033-prep-owner-tail500-wheel-v1':'native-stock033-preparation-owner-v2'+suffix(tail);
-const resultPolicy=tail=>isRequest(tail)?'native-stock033-prep-result-request-window-scroll-v1':tail===wheelFamily?'native-stock033-prep-result-tail500-wheel-v1':'native-stock033-preparation-owner-result-v2'+suffix(tail);
-const prepMode=tail=>isRequest(tail)?'real-chat-stock033-request-window-scroll-v1':tail===wheelFamily?'real-chat-stock033-tail500-wheel-v1':'real-chat-history100-stock-033-v2'+suffix(tail);
-const refPolicy=tail=>isRequest(tail)?'source-owned-prep-stock033-request-window-scroll-v1':tail===wheelFamily?'source-owned-prep-stock033-tail500-wheel-v1':'source-owned-preparation-reference-stock-033-v2'+suffix(tail);
-const requestType=(tail,authored=false)=>isRequest(tail)?(authored?'authored-request-window-scroll-v1':'prepare-request-window-scroll-v1'):tail===wheelFamily?(authored?'authored-tail500-wheel-v1':'prepare-tail500-wheel-v1'):authored?(tail?'authored-tail500-v1':'authored'):(tail?'prepare-tail500-v1':'prepare');
+const collectionKeys=tail=>isRequest(tail)?['inputRecipe','fixtureProfile',...(isRequestV2(tail)?['phaseInspectionPolicy']:[])]:tail===wheelFamily?['collectionPolicy','inputRecipe']:tail?['collectionPolicy']:[];
+const collectionFields=tail=>isRequest(tail)?{inputRecipe:requestRecipe,fixtureProfile:tail.profile,...(isRequestV2(tail)?{phaseInspectionPolicy:requestWindowPhaseInspectionPolicyV2}:{})}:tail===wheelFamily?{collectionPolicy:tailPolicy,inputRecipe:wheelRecipe}:tail?{collectionPolicy:tailPolicy}:{};
+const releasePolicy=tail=>isRequest(tail)?'source-reviewed-stock033-inputs-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?'source-reviewed-stock033-inputs-tail500-wheel-v1':'source-reviewed-stock033-preparation-inputs-v2'+suffix(tail);
+const configPolicy=tail=>isRequest(tail)?'native-stock033-prep-owner-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?'native-stock033-prep-owner-tail500-wheel-v1':'native-stock033-preparation-owner-v2'+suffix(tail);
+const resultPolicy=tail=>isRequest(tail)?'native-stock033-prep-result-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?'native-stock033-prep-result-tail500-wheel-v1':'native-stock033-preparation-owner-result-v2'+suffix(tail);
+const prepMode=tail=>isRequest(tail)?'real-chat-stock033-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?'real-chat-stock033-tail500-wheel-v1':'real-chat-history100-stock-033-v2'+suffix(tail);
+const refPolicy=tail=>isRequest(tail)?'source-owned-prep-stock033-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?'source-owned-prep-stock033-tail500-wheel-v1':'source-owned-preparation-reference-stock-033-v2'+suffix(tail);
+const requestType=(tail,authored=false)=>isRequest(tail)?(authored?'authored-request-window-scroll-':'prepare-request-window-scroll-')+requestVersion(tail):tail===wheelFamily?(authored?'authored-tail500-wheel-v1':'prepare-tail500-wheel-v1'):authored?(tail?'authored-tail500-v1':'authored'):(tail?'prepare-tail500-v1':'prepare');
 const generationMap=tail=>isRequest(tail)?tail.generated:tail===wheelFamily?generatedWheel:tail?generatedTail:generated;
-function collectionCheck(value,tail){if(isRequest(tail)){if(value.inputRecipe!==requestRecipe||value.fixtureProfile!==tail.profile)throw unavailable();return;}if(tail&&value.collectionPolicy!==tailPolicy||tail===wheelFamily&&value.inputRecipe!==wheelRecipe)throw unavailable();}
+function collectionCheck(value,tail){if(isRequest(tail)){if(value.inputRecipe!==requestRecipe||value.fixtureProfile!==tail.profile||(isRequestV2(tail)?value.phaseInspectionPolicy!==requestWindowPhaseInspectionPolicyV2:Object.hasOwn(value,'phaseInspectionPolicy')))throw unavailable();return;}if(tail&&value.collectionPolicy!==tailPolicy||tail===wheelFamily&&value.inputRecipe!==wheelRecipe)throw unavailable();}
 function freezeData(value){if(value&&typeof value==='object'){for(const item of Object.values(value))freezeData(item);Object.freeze(value);}return value;}
 const environment=()=>({PATH:path.dirname(process.execPath)+':/usr/bin:/bin',HOME:process.env.HOME,LC_ALL:'C'});
 function closed(value,keys,cap=1048576){admitStock033DataV2(value,cap);if(!value||typeof value!=='object'||!same(Object.keys(value).sort(),[...keys].sort()))throw unavailable();}
 function absolute(filename,max=512){if(typeof filename!=='string'||Buffer.byteLength(filename)>max||path.resolve(filename)!==filename)throw unavailable();return filename;}
 function host(){if(process.platform!=='darwin'||process.arch!=='arm64')throw unavailable();}
 function accounting(ledger){return{totals:ledger.totals(),platformSetSha256:stock033PlatformSetSha256V2(ledger)};}
+const counterKeys=Object.freeze(['operations','readBytes','hashBytes','writeBytes','externalWriteBytes','serializedBytes','platformPasses','platformReadBytes','platformReferencedBytes','archiveWriteBytes']);
+function encodeCounterTuple(totals){
+ closed(totals,counterKeys);return counterKeys.map((key,index)=>{const value=totals[key];if(!Number.isSafeInteger(value)||value<0||Object.is(value,-0))throw unavailable();return[index,value];});
+}
+function decodeCounterTuple(tuple){
+ admitStock033DataV2(tuple,1023);
+ if(!Array.isArray(tuple)||tuple.length!==counterKeys.length||!same(Object.keys(tuple),counterKeys.map((_,index)=>String(index))))throw unavailable();
+ return Object.fromEntries(counterKeys.map((key,index)=>{const pair=tuple[index];if(!Array.isArray(pair)||pair.length!==2||!same(Object.keys(pair),['0','1'])||pair[0]!==index||Object.is(pair[0],-0)||!Number.isSafeInteger(pair[1])||pair[1]<0||Object.is(pair[1],-0))throw unavailable();return[key,pair[1]];}));
+}
 function bytes(value,cap,ledger){return serializeStock033DataV2(value,cap,ledger);}
 function encodedWidth(value,cap,tail){return isRequest(tail)?measureStock033DataV2(value,cap)+1:Buffer.byteLength(JSON.stringify(value)+'\n');}
 async function mkdir(filename,ledger){await ledger.operation('owner mkdir',()=>fs.mkdir(filename,{mode:0o700}));}
@@ -120,9 +134,10 @@ function finalAllowance(config,release,inventoryOperations){
 function childRequest(config,sourceObservation,ledger,nonce,tuple,tail=false){
  ledger.ensureCapacity('serializedBytes',isRequest(tail)?0:1024);
  const request={type:requestType(tail),...collectionFields(tail),nonce,config,sourceObservation,budget:{...accounting(ledger),reservation:tuple}};
+ if(isRequestV2(tail))request.budget.totals=encodeCounterTuple(request.budget.totals);
  let width=0;for(let i=0;i<16;i++){
-  request.budget.totals.serializedBytes=ledger.totals().serializedBytes+width;admitStock033DataV2(request,1023);
-  const next=encodedWidth(request,1023,tail);if(next===width){ledger.charge('serializedBytes',width);const{reservation,...baseline}=request.budget;return{request,baseline};}width=next;
+  if(isRequestV2(tail))request.budget.totals[5][1]=ledger.totals().serializedBytes+width;else request.budget.totals.serializedBytes=ledger.totals().serializedBytes+width;admitStock033DataV2(request,1023);
+  const next=encodedWidth(request,1023,tail);if(next===width){ledger.charge('serializedBytes',width);const{reservation,...baseline}=request.budget;if(isRequestV2(tail))baseline.totals=decodeCounterTuple(baseline.totals);return{request,baseline};}width=next;
  }throw unavailable();
 }
 async function ownChild({config,source,ledger,tuple,authoredCase,tail=false}){
@@ -174,10 +189,12 @@ async function ownChild({config,source,ledger,tuple,authoredCase,tail=false}){
  * The returned build record objects are joined immediately to closed canonical bytes. */
 export async function generateStock033PreparationInputsV2(options){return generateInputs(options,false);}
 export async function generateStock033PreparationInputsV2Tail500(options){return generateInputs(options,true);}
-function selectedRequestOptions(options,keys){closed(options,[...keys,'fixtureProfile']);const family=requestFamily(options.fixtureProfile),copy={};for(const key of keys)copy[key]=key==='generation'?options[key]:structuredClone(options[key]);return{family,options:copy};}
-function selectedRequestOwnerOptions(options){admitStock033DataV2(options);return selectedRequestOptions(options,['config',...(Object.hasOwn(options??{},'generation')?['generation']:[])]);}
+function selectedRequestOptions(options,keys,v2=false){closed(options,[...keys,'fixtureProfile']);const family=requestFamily(options.fixtureProfile,v2),copy={};for(const key of keys)copy[key]=key==='generation'?options[key]:structuredClone(options[key]);return{family,options:copy};}
+function selectedRequestOwnerOptions(options,v2=false){admitStock033DataV2(options);return selectedRequestOptions(options,['config',...(Object.hasOwn(options??{},'generation')?['generation']:[])],v2);}
 export async function generateStock033RequestWindowPreparationInputsV1(options){const selected=selectedRequestOptions(options,['inputDirectory','preparedDirectory','compilationDirectory','evidenceDirectory']);return generateInputs(selected.options,selected.family);}
 export async function runStock033RequestWindowPreparationOwnerV1(options){const selected=selectedRequestOwnerOptions(options);return runOwner(selected.options,undefined,selected.family);}
+export async function generateStock033RequestWindowPreparationInputsV2(options){const selected=selectedRequestOptions(options,['inputDirectory','preparedDirectory','compilationDirectory','evidenceDirectory'],true);return generateInputs(selected.options,selected.family);}
+export async function runStock033RequestWindowPreparationOwnerV2(options){const selected=selectedRequestOwnerOptions(options,true);return runOwner(selected.options,undefined,selected.family);}
 async function generateInputs(options,tail){
  try{
   closed(options,['inputDirectory','preparedDirectory','compilationDirectory','evidenceDirectory']);options=structuredClone(options);host();if(process.env.ESBUILD_BINARY_PATH!==undefined)throw unavailable();
@@ -195,10 +212,10 @@ async function generateInputs(options,tail){
   const inventoryOps=Object.fromEntries(['realpath','lstat','readdir'].map(method=>[method,async(...args)=>{const value=await ledger.operation('generator inventory '+method,()=>fs[method](...args));if(method==='readdir'&&value.length>1024)throw unavailable();return value;}]));
   const approvedProduct=[...await productSourceKeys(source,{ops:inventoryOps}),...contractCompiledKeys].sort();
   const metadata=[...new Set([...stock033CoreMetadataKeys,...stock033MacMetadataKeys,...product.packages.map(p=>p.resolutionPath+'/package.json')])].sort();
-  const keys={'product-source':Object.keys(product.sourceHashes),'probe-source':Object.keys(probe.sourceHashes),'probe-compiled':Object.keys(probe.compiledHashes),'fixture-input':fixtureNames,'native-owner':isRequest(tail)?requestWindowNativeOwnerKeys:nativeOwnerKeys,'native-runtime':[...nativeRuntimeCompiledKeys,...nativeRuntimeSourceKeys],metadata,'served-asset':Object.keys(product.assetHashes).map(name=>'apps/threadplane/dist/'+name)};
+  const keys={'product-source':Object.keys(product.sourceHashes),'probe-source':Object.keys(probe.sourceHashes),'probe-compiled':Object.keys(probe.compiledHashes),'fixture-input':fixtureNames,'native-owner':selectedOwnerKeys(tail),'native-runtime':selectedRuntimeKeys(tail),metadata,'served-asset':Object.keys(product.assetHashes).map(name=>'apps/threadplane/dist/'+name)};
   const facts=new Map();for(const key of [...new Set(Object.values(keys).flat())].sort()){const observed=await readStock033FileV2(source+'/'+key,2097152,ledger);facts.set(key,{key,bytes:observed.fact.bytes,sha256:observed.fact.sha256});}
   const roles=Object.fromEntries(stock033Roles.map(role=>[role,[...keys[role]].sort().map(key=>facts.get(key))]));for(const row of roles['fixture-input'])if(fixtureMeta.inputs[row.key].bytes!==row.bytes)throw unavailable();
-  ledger.ensureCapacity('hashBytes',2097152);const roster=(isRequest(tail)?assembleStock033RequestWindowRosterV1:assembleStock033RosterV2)({roles,observedRoles:roles,rootAuthority:{product,probe,productSourceKeys:approvedProduct,fixtureInputs:roles['fixture-input'],platform:process.platform,architecture:process.arch}});ledger.charge('hashBytes',roster.digestBytes);
+  ledger.ensureCapacity('hashBytes',2097152);const roster=selectedAssembler(tail)({roles,observedRoles:roles,rootAuthority:{product,probe,productSourceKeys:approvedProduct,fixtureInputs:roles['fixture-input'],platform:process.platform,architecture:process.arch}});ledger.charge('hashBytes',roster.digestBytes);
   const browser=fixedBrowser(source);if(probe.nativeCompiler.executablePath!=='node_modules/@typescript/typescript-darwin-arm64/lib/tsc')throw unavailable();
   const platformPaths=fixedPlatformPaths(source,browser);
   const platformRows=await observeStock033PlatformsV2(platformPaths.map((filename,i)=>({key:'platform/file'+i,path:filename})),ledger);
@@ -261,7 +278,7 @@ async function ownerBody(options,ledger,tail=false){
   const inventory=[...await productSourceKeys(source,{ops:inventoryOps}),...contractCompiledKeys].sort();if(!same(inventory,release.roles['product-source'].map(row=>row.key).sort()))throw unavailable();
   const tuple=finalAllowance({...config,originalConfigPath:options.config.path},release,ledger.totals().operations-inventoryStart);
   ledger.stage('owner-child-dispatch');result=await ownChild({config:options.config,source:observation,ledger,tuple,tail});ledger.stage('owner-child-closed');
-  const verified=await (isRequest(tail)?verifyStock033RequestWindowPreparationV1:tail===wheelFamily?verifyStock033WheelCarrierTail500PreparationV2:tail?verifyStock033Tail500PreparationV2:verifyStock033PreparationV2)(config.preparedDirectory,result.prepared.template,result.prepared.reference,{ledger});if(!same(verified,result.prepared.template))throw unavailable();
+  const verified=await (isRequestV2(tail)?verifyStock033RequestWindowPreparationV2:isRequest(tail)?verifyStock033RequestWindowPreparationV1:tail===wheelFamily?verifyStock033WheelCarrierTail500PreparationV2:tail?verifyStock033Tail500PreparationV2:verifyStock033PreparationV2)(config.preparedDirectory,result.prepared.template,result.prepared.reference,{ledger});if(!same(verified,result.prepared.template))throw unavailable();
   const manifestRead=await readStock033FileV2(config.preparedDirectory+'/app-manifest.json',1048576,ledger,result.prepared.reference.manifest),manifest=JSON.parse(manifestRead.bytes.toString());
   if(!same(observation,await sourceObservation(source,ledger)))throw unavailable();await readStock033FileV2(config.release.path,1048576,ledger,config.release.fact);await readStock033FileV2(options.config.path,1048576,ledger,options.config.fact);
   ledger.assertFinal();if(ledger.pending().length)throw unavailable();
@@ -287,12 +304,12 @@ async function childEntry(){
  process.on('message',async request=>{
   if(received){process.exitCode=1;process.disconnect();return;}received=true;
   try{
-   if(request?.type==='authored'||request?.type==='authored-tail500-v1'||request?.type==='authored-tail500-wheel-v1'||request?.type==='authored-request-window-scroll-v1')return await authoredChild(request);
-   const tail=request?.type==='prepare-request-window-scroll-v1'?requestFamily(request.fixtureProfile):request?.type==='prepare-tail500-wheel-v1'?wheelFamily:request?.type==='prepare-tail500-v1';closed(request,['type','nonce','config','sourceObservation','budget',...collectionKeys(tail)],tail?1023:1024);collectionCheck(request,tail);if(request.type!==requestType(tail)||!/^[a-f0-9]{32}$/.test(request.nonce))throw unavailable();host();
+   if(request?.type==='authored'||request?.type==='authored-tail500-v1'||request?.type==='authored-tail500-wheel-v1'||request?.type==='authored-request-window-scroll-v1'||request?.type==='authored-request-window-scroll-v2')return await authoredChild(request);
+   const tail=request?.type==='prepare-request-window-scroll-v2'?requestFamily(request.fixtureProfile,true):request?.type==='prepare-request-window-scroll-v1'?requestFamily(request.fixtureProfile):request?.type==='prepare-tail500-wheel-v1'?wheelFamily:request?.type==='prepare-tail500-v1';closed(request,['type','nonce','config','sourceObservation','budget',...collectionKeys(tail)],tail?1023:1024);collectionCheck(request,tail);if(request.type!==requestType(tail)||!/^[a-f0-9]{32}$/.test(request.nonce))throw unavailable();host();
    closed(request.budget,['totals','platformSetSha256','reservation']);const reserved=reservationFromTuple(request.budget.reservation);
-   const ledger=(isRequest(tail)?createTransferredStock033RequestWindowLedgerV1:createTransferredStock033LedgerV2)({...request.budget,reservation:reserved}),config=await readConfig(request.config,ledger,tail);await canonicalRoot(ledger);
+   const ledger=(isRequest(tail)?createTransferredStock033RequestWindowLedgerV1:createTransferredStock033LedgerV2)({...request.budget,...(isRequestV2(tail)?{totals:decodeCounterTuple(request.budget.totals)}:{}),reservation:reserved}),config=await readConfig(request.config,ledger,tail);await canonicalRoot(ledger);
    const releaseRead=await readStock033FileV2(config.release.path,1048576,ledger,config.release.fact),release=JSON.parse(releaseRead.bytes.toString());
-   const result=await (isRequest(tail)?prepareActualStock033RequestWindowV1:tail===wheelFamily?prepareActualStock033V2WheelCarrierTail500:tail?prepareActualStock033V2Tail500:prepareActualStock033V2)({mode:prepMode(tail),...collectionFields(tail),sourceRoot:ROOT,outputDirectory:config.preparedDirectory,compilationDirectory:config.compilationDirectory,release,sourceObservation:request.sourceObservation,ledger});
+   const result=await (isRequestV2(tail)?prepareActualStock033RequestWindowV2:isRequest(tail)?prepareActualStock033RequestWindowV1:tail===wheelFamily?prepareActualStock033V2WheelCarrierTail500:tail?prepareActualStock033V2Tail500:prepareActualStock033V2)({mode:prepMode(tail),...collectionFields(tail),sourceRoot:ROOT,outputDirectory:config.preparedDirectory,compilationDirectory:config.compilationDirectory,release,sourceObservation:request.sourceObservation,ledger});
    ledger.charge('operations',2);const envelope=successEnvelope(request.nonce,result,ledger,false,tail);await new Promise((resolve,reject)=>process.send(envelope,error=>error?reject(error):resolve()));process.disconnect();
   }catch{process.exitCode=1;process.stderr.write('native-stock033-preparation-child-unavailable\n');if(process.connected)process.disconnect();}
  });
@@ -311,7 +328,7 @@ function ownerAuthoredControl(tail){
  });
 }
 async function authoredChild(request){
- const tail=request.type==='authored-request-window-scroll-v1'?requestFamily(request.fixtureProfile):request.type==='authored-tail500-wheel-v1'?wheelFamily:request.type==='authored-tail500-v1';closed(request,['type','nonce','kind',...collectionKeys(tail)],1024);collectionCheck(request,tail);if(!(tail===wheelFamily?wheelAuthoredCases:authoredCases).has(request.kind))throw unavailable();
+ const tail=request.type==='authored-request-window-scroll-v2'?requestFamily(request.fixtureProfile,true):request.type==='authored-request-window-scroll-v1'?requestFamily(request.fixtureProfile):request.type==='authored-tail500-wheel-v1'?wheelFamily:request.type==='authored-tail500-v1';closed(request,['type','nonce','kind',...collectionKeys(tail)],1024);collectionCheck(request,tail);if(!(tail===wheelFamily?wheelAuthoredCases:authoredCases).has(request.kind))throw unavailable();
  if(request.kind==='timeout'){setTimeout(()=>{},10000);return;}
  if(request.kind==='disconnect'){process.disconnect();return;}
  if(request.kind==='overflow')process.stdout.write(Buffer.alloc(65537));
@@ -324,10 +341,10 @@ async function authoredChild(request){
 }
 if(process.argv[1]===SELF){
  if(process.argv.length===3&&process.argv[2]==='--preparation-child'&&process.send)await childEntry();
- else if(process.argv.length===4&&['--config','--config-tail500-v1','--config-tail500-wheel-v1','--config-request-window-scroll-v1'].includes(process.argv[2])){
+ else if(process.argv.length===4&&['--config','--config-tail500-v1','--config-tail500-wheel-v1','--config-request-window-scroll-v1','--config-request-window-scroll-v2'].includes(process.argv[2])){
   // CLI is the trusted outer invocation. It observes the original config fact;
   // this is explicit root trust, not authentication from arbitrary DTO hashes.
-  try{host();const ledger=(process.argv[2]==='--config-request-window-scroll-v1'?createStock033RequestWindowPreparationLedgerV1:createStock033PreparationLedgerV2)(),configPath=absolute(process.argv[3]),read=await readStock033FileV2(configPath,1048576,ledger);const result=await runOwner({config:{path:configPath,fact:read.fact}},ledger,process.argv[2]==='--config-request-window-scroll-v1'?requestFamily(JSON.parse(read.bytes).fixtureProfile):process.argv[2]==='--config-tail500-wheel-v1'?wheelFamily:process.argv[2]==='--config-tail500-v1');const output=bytes(result,65536,ledger);await new Promise((resolve,reject)=>process.stdout.write(output,error=>error?reject(error):resolve()));}catch{process.exitCode=1;process.stderr.write('native-stock033-preparation-owner-unavailable\n');}
+  try{host();const ledger=(process.argv[2].startsWith('--config-request-window-scroll-')?createStock033RequestWindowPreparationLedgerV1:createStock033PreparationLedgerV2)(),configPath=absolute(process.argv[3]),read=await readStock033FileV2(configPath,1048576,ledger);const result=await runOwner({config:{path:configPath,fact:read.fact}},ledger,process.argv[2].startsWith('--config-request-window-scroll-')?requestFamily(JSON.parse(read.bytes).fixtureProfile,process.argv[2]==='--config-request-window-scroll-v2'):process.argv[2]==='--config-tail500-wheel-v1'?wheelFamily:process.argv[2]==='--config-tail500-v1');const output=bytes(result,65536,ledger);await new Promise((resolve,reject)=>process.stdout.write(output,error=>error?reject(error):resolve()));}catch{process.exitCode=1;process.stderr.write('native-stock033-preparation-owner-unavailable\n');}
  }else{process.exitCode=1;process.stderr.write('native-stock033-preparation-owner-unavailable\n');}
 }
 
@@ -335,3 +352,5 @@ export async function generateStock033PreparationInputsV2WheelCarrierTail500(opt
 export async function runStock033PreparationOwnerV2WheelCarrierTail500(options){return runOwner(options,undefined,wheelFamily);}
 export function createStock033OwnerAuthoredControlV2WheelCarrierTail500(){return ownerAuthoredControl(wheelFamily);}
 export function createStock033RequestWindowOwnerAuthoredControlV1(profile){requestFamily(profile);return Object.freeze({...ownerAuthoredControl(requestFamily(profile)),selectOwnerOptions:options=>selectedRequestOwnerOptions(options).options,requestLedger:()=>createStock033RequestWindowPreparationLedgerV1(),transferRequestLedger:input=>createTransferredStock033RequestWindowLedgerV1(input)});}
+
+export function createStock033RequestWindowOwnerAuthoredControlV2(profile){const family=requestFamily(profile,true);return Object.freeze({...ownerAuthoredControl(family),selectOwnerOptions:options=>selectedRequestOwnerOptions(options,true).options,requestLedger:()=>createStock033RequestWindowPreparationLedgerV1(),transferRequestLedger:input=>createTransferredStock033RequestWindowLedgerV1(input),encodeCounterTuple,decodeCounterTuple});}
