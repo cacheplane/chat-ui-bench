@@ -935,3 +935,12 @@ cannot establish callback success, producer population or FPS. CI adds source
 controls and separate official authored small/repeated-text smoke while preserving
 all previous steps. Only authored fixtures/evidence are published; captured data
 and derived results stay local.
+
+Request-window feedback V2 is a separate selection in
+`request-window-feedback-run-v2.mjs`, with schema
+`native-stock033-request-window-feedback-v2`. It accepts only an original V2
+acquisition after successful separately owned post-capture V12 phase inspection.
+It retains the unchanged full V1 observation and fixed request-anchored one-second
+subset, records the original phase publication, and keeps FPS null and all
+qualification/evaluation/scoring/ranking flags false. V1 source pins and SQL stay
+unchanged; inspection policy and fixture profile remain explicit in V2 results.

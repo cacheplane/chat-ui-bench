@@ -8,7 +8,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {performance} from 'node:perf_hooks';
 import {compilerOutputBytes} from './prepare.mjs';
-import {admitStock033DataV2,measureStock033DataV2,assembleStock033RosterV2,assembleStock033RequestWindowRosterV1,requestWindowNativeOwnerKeys,assertStock033ArchiveBudgetV2,assertStock033FixtureInputsV2,assertStock033RuntimeImportsV2,stock033Roles,nativeOwnerKeys,nativeRuntimeCompiledKeys} from './roster-stock033-v2.mjs';
+import {admitStock033DataV2,measureStock033DataV2,assembleStock033RosterV2,assembleStock033RequestWindowRosterV1,assembleStock033RequestWindowRosterV2,requestWindowPhaseInspectionPolicyV2,requestWindowNativeOwnerKeys,requestWindowV2NativeOwnerKeys,requestWindowV2NativeRuntimeCompiledKeys,assertStock033ArchiveBudgetV2,assertStock033FixtureInputsV2,assertStock033RuntimeImportsV2,stock033Roles,nativeOwnerKeys,nativeRuntimeCompiledKeys} from './roster-stock033-v2.mjs';
 import {parseStock033ProductRecord,productSourceKeys,productionSettings,stock033Identity} from '../../apps/threadplane/provenance.mjs';
 import {parseProbeRecord,contractCompiledKeys} from '../../apps/threadplane/probe-provenance.mjs';
 
@@ -20,18 +20,23 @@ const ledgers=new WeakSet(),authoredLedgers=new WeakSet(),ledgerCounters=new Wea
 const tailPolicy='native-post-phase-tail-500ms-v1',tailAdmissions=new WeakMap(),authoredTailAdmissions=new WeakMap();
 const wheelFamily=Object.freeze({}),wheelRecipe='native-wheel-carrier-v1',wheelAdmissions=new WeakMap(),authoredWheelAdmissions=new WeakMap();
 const requestRecipe='native-stock033-request-window-scroll-v1',requestProfiles=['native-history100-v1','native-history1000-v1','native-history10000-v1'];
-const requestFamilies=new Map(requestProfiles.map(profile=>[profile,Object.freeze({profile})])),requestAdmissions=new WeakMap(),authoredRequestAdmissions=new WeakMap();
+const requestFamilies=new Map(requestProfiles.map(profile=>[profile,Object.freeze({profile})])),requestV2Families=new Map(requestProfiles.map(profile=>[profile,Object.freeze({profile,phaseInspectionPolicy:requestWindowPhaseInspectionPolicyV2})])),requestAdmissions=new WeakMap(),authoredRequestAdmissions=new WeakMap();
 const requestLedgers=new WeakSet();
-function requestFamily(profile){const family=requestFamilies.get(profile);if(!family)fail('fixture profile');return family;}
-const isRequest=family=>[...requestFamilies.values()].includes(family);
+function requestFamily(profile,v2=false){const family=(v2?requestV2Families:requestFamilies).get(profile);if(!family)fail('fixture profile');return family;}
+const isRequest=family=>[...requestFamilies.values(),...requestV2Families.values()].includes(family);
+const isRequestV2=family=>[...requestV2Families.values()].includes(family);
+const requestVersion=family=>isRequestV2(family)?'v2':'v1';
+const selectedOwnerKeys=family=>isRequestV2(family)?requestWindowV2NativeOwnerKeys:isRequest(family)?requestWindowNativeOwnerKeys:nativeOwnerKeys;
+const selectedRuntimeKeys=family=>isRequestV2(family)?requestWindowV2NativeRuntimeCompiledKeys:nativeRuntimeCompiledKeys;
+const selectedAssembler=family=>isRequestV2(family)?assembleStock033RequestWindowRosterV2:isRequest(family)?assembleStock033RequestWindowRosterV1:assembleStock033RosterV2;
 const suffix=tail=>tail?'-tail500-v1':'';
-const preparationMode=(authored,tail=false)=>isRequest(tail)?(authored?'authored-':'')+'real-chat-stock033-request-window-scroll-v1':tail===wheelFamily?(authored?'authored-':'')+'real-chat-stock033-tail500-wheel-v1':(authored?'authored-real-chat-history100-stock-033-v2':'real-chat-history100-stock-033-v2')+suffix(tail);
-const referencePolicy=(authored,tail=false)=>isRequest(tail)?(authored?'authored-':'')+'source-owned-prep-stock033-request-window-scroll-v1':tail===wheelFamily?(authored?'authored-':'')+'source-owned-prep-stock033-tail500-wheel-v1':(authored?'authored-preparation-reference-stock-033-v2':'source-owned-preparation-reference-stock-033-v2')+suffix(tail);
-const manifestMode=(authored,tail=false)=>isRequest(tail)?(authored?'authored-':'')+'real-chat-custody-stock033-request-window-scroll-v1':tail===wheelFamily?(authored?'authored-':'')+'real-chat-custody-stock033-tail500-wheel-v1':(authored?'authored-real-chat-source-custody-stock-033-v2':'real-chat-source-custody-stock-033-v2')+suffix(tail);
-const releasePolicy=tail=>isRequest(tail)?'source-reviewed-stock033-inputs-request-window-scroll-v1':tail===wheelFamily?'source-reviewed-stock033-inputs-tail500-wheel-v1':'source-reviewed-stock033-preparation-inputs-v2'+suffix(tail);
-function collectionKeys(tail){return isRequest(tail)?['inputRecipe','fixtureProfile']:tail===wheelFamily?['collectionPolicy','inputRecipe']:tail?['collectionPolicy']:[];}
-function collectionFields(tail){return isRequest(tail)?{inputRecipe:requestRecipe,fixtureProfile:tail.profile}:tail===wheelFamily?{collectionPolicy:tailPolicy,inputRecipe:wheelRecipe}:tail?{collectionPolicy:tailPolicy}:{};}
-function collectionCheck(value,tail){if(isRequest(tail)){if(value.inputRecipe!==requestRecipe||value.fixtureProfile!==tail.profile)fail('request family');return;}if(tail&&value.collectionPolicy!==tailPolicy||tail===wheelFamily&&value.inputRecipe!==wheelRecipe)fail('collection policy');}
+const preparationMode=(authored,tail=false)=>isRequest(tail)?(authored?'authored-':'')+'real-chat-stock033-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?(authored?'authored-':'')+'real-chat-stock033-tail500-wheel-v1':(authored?'authored-real-chat-history100-stock-033-v2':'real-chat-history100-stock-033-v2')+suffix(tail);
+const referencePolicy=(authored,tail=false)=>isRequest(tail)?(authored?'authored-':'')+'source-owned-prep-stock033-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?(authored?'authored-':'')+'source-owned-prep-stock033-tail500-wheel-v1':(authored?'authored-preparation-reference-stock-033-v2':'source-owned-preparation-reference-stock-033-v2')+suffix(tail);
+const manifestMode=(authored,tail=false)=>isRequest(tail)?(authored?'authored-':'')+'real-chat-custody-stock033-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?(authored?'authored-':'')+'real-chat-custody-stock033-tail500-wheel-v1':(authored?'authored-real-chat-source-custody-stock-033-v2':'real-chat-source-custody-stock-033-v2')+suffix(tail);
+const releasePolicy=tail=>isRequest(tail)?'source-reviewed-stock033-inputs-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?'source-reviewed-stock033-inputs-tail500-wheel-v1':'source-reviewed-stock033-preparation-inputs-v2'+suffix(tail);
+function collectionKeys(tail){return isRequest(tail)?['inputRecipe','fixtureProfile',...(isRequestV2(tail)?['phaseInspectionPolicy']:[])]:tail===wheelFamily?['collectionPolicy','inputRecipe']:tail?['collectionPolicy']:[];}
+function collectionFields(tail){return isRequest(tail)?{inputRecipe:requestRecipe,fixtureProfile:tail.profile,...(isRequestV2(tail)?{phaseInspectionPolicy:requestWindowPhaseInspectionPolicyV2}:{})}:tail===wheelFamily?{collectionPolicy:tailPolicy,inputRecipe:wheelRecipe}:tail?{collectionPolicy:tailPolicy}:{};}
+function collectionCheck(value,tail){if(isRequest(tail)){if(value.inputRecipe!==requestRecipe||value.fixtureProfile!==tail.profile||(isRequestV2(tail)?value.phaseInspectionPolicy!==requestWindowPhaseInspectionPolicyV2:Object.hasOwn(value,'phaseInspectionPolicy')))fail('request family');return;}if(tail&&value.collectionPolicy!==tailPolicy||tail===wheelFamily&&value.inputRecipe!==wheelRecipe)fail('collection policy');}
 
 /** Injected clocks/anchors are authored-only; reconciled scalar counters may be production inputs. */
 export function createStock033PreparationLedgerV2(options={}){return createLedger(options,caps);}
@@ -214,7 +219,7 @@ async function authenticate(sourceRoot,release,sourceObservation,facts,ledger,au
  // shorter than its expected row object; the domain prefix fits the spare1MiB.
  // Assembly is synchronous and inert: no await/hook can spend this reserved room.
  ledger.ensureCapacity('hashBytes',2097152);
- const roster=(isRequest(tail)?assembleStock033RequestWindowRosterV1:assembleStock033RosterV2)({roles:release.roles,observedRoles:observedRoles(release,facts),rootAuthority});ledger.charge('hashBytes',roster.digestBytes);
+ const roster=selectedAssembler(tail)({roles:release.roles,observedRoles:observedRoles(release,facts),rootAuthority});ledger.charge('hashBytes',roster.digestBytes);
  const json=key=>{const value=facts.get(key);if(!value)fail('missing metadata');return JSON.parse(value.bytes.toString('utf8'));};
  const configuration=json('apps/threadplane/angular.json'),builder=configuration.projects?.threadplane?.architect?.build;productionSettings(configuration);
  if(!same(builder.options.styles,['src/styles.css'])||builder.defaultConfiguration!=='production'||Object.hasOwn(builder.configurations.production,'styles'))fail('stock styles');
@@ -248,7 +253,7 @@ function compilerMetadataCopies(built,ledger){
 }
 async function runtimeImports(sourceRoot,facts,roster,esbuild,ledger,tail=false){
  const imports=[];
- for(const key of [...(isRequest(tail)?requestWindowNativeOwnerKeys:nativeOwnerKeys).filter(key=>key.endsWith('.mjs')),...nativeRuntimeCompiledKeys]){
+ for(const key of [...selectedOwnerKeys(tail).filter(key=>key.endsWith('.mjs')),...selectedRuntimeKeys(tail)]){
   const built=await esbuild.build({stdin:{contents:facts.get(key).bytes.toString('utf8'),sourcefile:key,resolveDir:path.dirname(sourceRoot+'/'+key)},bundle:false,platform:'node',format:'esm',target:'node24',write:false,metafile:true,logLevel:'silent'});
   if(isRequest(tail))compilerMetadataCopies(built,ledger);else compilerCopies(built,ledger);
   for(const output of Object.values(built.metafile.outputs))for(const item of output.imports){
@@ -284,8 +289,9 @@ function reserveLargeFixture(tail,roster,moduleBytes,ledger){
  ledger.charge('serializedBytes',chunkBytes);ledger.ensureCapacity('hashBytes',profileCount(tail.profile)*4096+1048576);
  return chunkBytes;
 }
-function requestSelection(options){if(!options||typeof options!=='object'||types.isProxy(options))fail('request options');const descriptor=Object.getOwnPropertyDescriptor(options,'fixtureProfile');if(!descriptor||!Object.hasOwn(descriptor,'value'))fail('fixture profile');return requestFamily(descriptor.value);}
+function requestSelection(options,v2=false){if(!options||typeof options!=='object'||types.isProxy(options))fail('request options');const descriptor=Object.getOwnPropertyDescriptor(options,'fixtureProfile');if(!descriptor||!Object.hasOwn(descriptor,'value'))fail('fixture profile');const policy=Object.getOwnPropertyDescriptor(options,'phaseInspectionPolicy');if(v2?(!policy||!Object.hasOwn(policy,'value')||policy.value!==requestWindowPhaseInspectionPolicyV2):policy!==undefined)fail('phase inspection policy');return requestFamily(descriptor.value,v2);}
 export async function prepareActualStock033RequestWindowV1(options){return prepareCore(options,false,requestSelection(options));}
+export async function prepareActualStock033RequestWindowV2(options){return prepareCore(options,false,requestSelection(options,true));}
 async function directory(filename,ledger){await ledger.operation('mkdir',()=>fs.mkdir(filename,{mode:0o700}));}
 async function archiveParent(root,key,created,ledger){let current=root;for(const part of key.split('/').slice(0,-1)){current+='/'+part;if(!created.has(current)){await directory(current,ledger);created.add(current);}}}
 /** Trusted-root API: the outer owner binds sourceRoot to this reviewed checkout and
@@ -438,16 +444,23 @@ export function inspectStock033WheelCarrierTail500PreparationV2(owned){return in
 export function createStock033AuthoredControlV2WheelCarrierTail500(){const createLedger=options=>{const ledger=createStock033PreparationLedgerV2(options);authoredLedgers.add(ledger);return ledger;};return Object.freeze({createStock033PreparationLedgerV2:createLedger,prepareActualStock033V2WheelCarrierTail500:options=>prepareCore(options,true,wheelFamily),verifyStock033WheelCarrierTail500PreparationV2:(root,template,reference,{ledger=createLedger()}={})=>verifyCore(root,template,reference,ledger,true,wheelFamily),inspectStock033WheelCarrierTail500PreparationV2:owned=>inspectWheelAdmission(owned,true)});}
 
 export async function verifyStock033RequestWindowPreparationV1(root,template,reference,{ledger=createStock033PreparationLedgerV2()}={}){return verifyCore(root,template,reference,ledger,false,requestSelection(template));}
-export function inspectStock033RequestWindowPreparationV1(template){const admission=requestAdmissions.get(template);if(!admission)fail('request-window admission');return admission;}
-export function createStock033RequestWindowAuthoredControlV1(profile){
- const family=requestFamily(profile),createLedger=options=>{const ledger=createStock033RequestWindowPreparationLedgerV1(options);authoredLedgers.add(ledger);return ledger;};
- return Object.freeze({createStock033PreparationLedgerV2:createLedger,prepareActualStock033RequestWindowV1:options=>prepareCore(options,true,family),verifyStock033RequestWindowPreparationV1:(root,template,reference,{ledger=createLedger()}={})=>verifyCore(root,template,reference,ledger,true,family),inspectStock033RequestWindowPreparationV1:template=>{const value=authoredRequestAdmissions.get(template);if(!value||value.fixtureProfile!==profile)fail('authored request-window admission');return value;},reserveFixture:(roster,moduleBytes,ledger)=>reserveLargeFixture(family,roster,moduleBytes,ledger),runtimeMetadata:compilerMetadataCopies});
+function inspectRequestAdmission(template,v2,authored=false){const admission=(authored?authoredRequestAdmissions:requestAdmissions).get(template);if(!admission||(v2?admission.phaseInspectionPolicy!==requestWindowPhaseInspectionPolicyV2:Object.hasOwn(admission,'phaseInspectionPolicy')))fail('request-window admission');return admission;}
+export function inspectStock033RequestWindowPreparationV1(template){return inspectRequestAdmission(template,false);}
+export async function verifyStock033RequestWindowPreparationV2(root,template,reference,{ledger=createStock033PreparationLedgerV2()}={}){return verifyCore(root,template,reference,ledger,false,requestSelection(template,true));}
+export function inspectStock033RequestWindowPreparationV2(template){return inspectRequestAdmission(template,true);}
+export function createStock033RequestWindowAuthoredControlV1(profile){return requestAuthoredControl(profile,false);}
+export function createStock033RequestWindowAuthoredControlV2(profile){return requestAuthoredControl(profile,true);}
+function requestAuthoredControl(profile,v2){
+ const family=requestFamily(profile,v2),version=v2?'V2':'V1',createLedger=options=>{const ledger=createStock033RequestWindowPreparationLedgerV1(options);authoredLedgers.add(ledger);return ledger;};
+ return Object.freeze({createStock033PreparationLedgerV2:createLedger,['prepareActualStock033RequestWindow'+version]:options=>prepareCore(options,true,family),['verifyStock033RequestWindowPreparation'+version]:(root,template,reference,{ledger=createLedger()}={})=>verifyCore(root,template,reference,ledger,true,family),['inspectStock033RequestWindowPreparation'+version]:template=>{const value=inspectRequestAdmission(template,v2,true);if(value.fixtureProfile!==profile)fail('authored request-window admission');return value;},reserveFixture:(roster,moduleBytes,ledger)=>reserveLargeFixture(family,roster,moduleBytes,ledger),runtimeMetadata:compilerMetadataCopies});
 }
 // Original source/platform bookends for the new family. expectedManifest comes
 // from the already admitted original preparation return, never from this file.
-export async function verifyRequestWindowOriginalsV1(root,expectedManifest){
+export async function verifyRequestWindowOriginalsV1(root,expectedManifest){return verifyRequestOriginals(root,expectedManifest,false);}
+export async function verifyRequestWindowOriginalsV2(root,expectedManifest){return verifyRequestOriginals(root,expectedManifest,true);}
+async function verifyRequestOriginals(root,expectedManifest,v2){
  const ledger=createStock033RequestWindowPreparationLedgerV1();absolute(root,256);
- const read=await readStock033FileV2(root+'/app-manifest.json',1048576,ledger,expectedManifest),manifest=JSON.parse(read.bytes),family=requestFamily(manifest.fixtureProfile);
+ const read=await readStock033FileV2(root+'/app-manifest.json',1048576,ledger,expectedManifest),manifest=JSON.parse(read.bytes),family=requestFamily(manifest.fixtureProfile,v2);
  collectionCheck(manifest,family);if(manifest.mode!==manifestMode(false,family)||manifest.authoredControl!==undefined||!Array.isArray(manifest.records)||manifest.records.length>1024||!Array.isArray(manifest.owned))fail('request-window manifest');
  preflightArchive(manifest,read.bytes.length,family);let total=0;
  for(const row of manifest.records){if(row.source!==manifest.custody.sourceRoot+'/'+row.key)fail('source member');const fact={bytes:row.bytes,sha256:row.sha256,identity:row.identity};await readStock033FileV2(row.source,2097152,ledger,fact);await readStock033FileV2(root+'/inputs/'+row.key,2097152,ledger,{...fact,identity:row.archivedIdentity});total+=row.bytes;}

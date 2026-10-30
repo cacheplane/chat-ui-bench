@@ -62,6 +62,15 @@ const UNKNOWN_USER_TIMING_PHASE_V3=userTimingPhaseV3Refusal('unregistered-owner'
 const userTimingPhaseV4Refusal=modernRefusal(USER_TIMING_PHASE_V4_POLICY);
 const userTimingPhaseV5Refusal=modernRefusal(USER_TIMING_PHASE_V5_POLICY);
 const userTimingPhaseV6Refusal=modernRefusal(USER_TIMING_PHASE_V6_POLICY);
+export type ProtoClosedCollectionBindingV1=Readonly<{policy:'source-owned-closed-collection-binding-v1';status:'unavailable';authority:typeof PHASE_AUTHORITY}|{policy:'source-owned-closed-collection-binding-v1';status:'source-owned-closed-collection-binding';input:Readonly<{bytes:number;sha256:string}>;identity:Readonly<{dev:number;ino:number}>;marks:readonly Readonly<{phase:'start'|'end';name:string;state:'fulfilled';runId:string;phaseId:string;targetId:string}>[];target:Readonly<{frameId:string;loaderId:string;url:string;targetId:string;browserContextId:string}>;authority:typeof PHASE_AUTHORITY}>;
+const CLOSED_COLLECTION_UNAVAILABLE:ProtoClosedCollectionBindingV1=Object.freeze({policy:'source-owned-closed-collection-binding-v1',status:'unavailable',authority:PHASE_AUTHORITY});
+const closedCollectionOwners=new WeakMap<object,()=>ProtoClosedCollectionBindingV1>();
+/** Binds the originally created trace descriptor. No semantic reader or current
+ * pathname observation is performed; consumers must verify against this identity. */
+export function inspectProtoNativeClosedCollectionV1(owner:unknown):ProtoClosedCollectionBindingV1{
+ if(owner===null||typeof owner!=='object'||types.isProxy(owner))return CLOSED_COLLECTION_UNAVAILABLE;
+ return closedCollectionOwners.get(owner)?.()??CLOSED_COLLECTION_UNAVAILABLE;
+}
 /** Exact source-created identity only. This DTO grants no native admission. */
 export function inspectProtoNativePhase(owner:unknown):Readonly<ProtoPhaseInventoryDiagnostic>{
  if(owner===null||typeof owner!=='object'||types.isProxy(owner))return UNKNOWN_PHASE;
@@ -486,6 +495,17 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
   const projected=projectPrivate();if(phaseCached)return phaseCached;
   try{const checked=phaseOutput(projected);return phaseCached??=checked;}catch{return phaseCached??=refusePhase('result-capacity');}
  }
+ let closedCollectionAttempted=false,closedCollectionCached:ProtoClosedCollectionBindingV1=CLOSED_COLLECTION_UNAVAILABLE;
+ function inspectClosedCollection():ProtoClosedCollectionBindingV1{
+  if(closedCollectionAttempted)return closedCollectionCached;closedCollectionAttempted=true;
+  try{
+   const t=receipt.transport,a=receipt.target.before,b=receipt.target.after;
+   if(finishState!=='fulfilled'||!ended||receipt.status!=='closed'||receipt.failureCount||receipt.operations.some(op=>op.state!=='fulfilled')||receipt.operations.filter(op=>op.kind==='write-receipt').length!==1||t?.outcome!=='protocol-closed'||!t.originalOperationsSettled||!t.completeClosureObserved||t.pending.length||receipt.runner.close!=='fulfilled'||receipt.runner.wait?.exitCode!==0||receipt.runner.wait.signal!==null||!a||!b||JSON.stringify(a)!==JSON.stringify(b)||receipt.persistedWholeInput!=='verified'||!receipt.persisted||!rawIdentity||!Number.isSafeInteger(rawIdentity.dev)||!Number.isSafeInteger(rawIdentity.ino)||rawIdentity.dev<0||rawIdentity.ino<0||receipt.marks.length!==2||receipt.marks.some((m,i)=>m.phase!==(i?'end':'start')||m.state!=='fulfilled'||m.targetId!==a.targetId))return closedCollectionCached;
+   const marks=Object.freeze(receipt.marks.map(m=>Object.freeze({...m,state:'fulfilled' as const}))),input=Object.freeze({...receipt.persisted}),identity=Object.freeze({...rawIdentity}),target=Object.freeze({...a});
+   const value:ProtoClosedCollectionBindingV1=Object.freeze({policy:'source-owned-closed-collection-binding-v1',status:'source-owned-closed-collection-binding',input,identity,marks,target,authority:PHASE_AUTHORITY});
+   if(Buffer.byteLength(JSON.stringify(value))>4096)return closedCollectionCached;return closedCollectionCached=value;
+  }catch{return closedCollectionCached;}
+ }
  const owner={
   start():Promise<ProtoNativeCaptureReceipt>{
    if(starting)return starting;
@@ -524,6 +544,7 @@ function createNativeCapture(inputs:ProtoNativeCaptureInputs,userTiming:boolean,
   },
   snapshot,
  };
+ closedCollectionOwners.set(owner,inspectClosedCollection);
  if(tailSelection)tail500Owners.set(owner,inspectTailPrivate);
  if(userTiming)userTimingPhaseOwners.set(owner,{policy:phasePolicy,inspect:inspectPrivate});else phaseOwners.set(owner,inspectPrivate as()=>Readonly<ProtoPhaseInventoryDiagnostic>);return owner;
 }

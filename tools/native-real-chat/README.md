@@ -500,3 +500,39 @@ one-to-one behavior. Chrome may also synthesize a phase-ended raw wheel without
 a second DOM dispatch; preserve extra raw occurrences without assigning their
 role from counts or timing. Even verified wheel association leaves wheel-to-GSU
 and gesture-jank linkage unavailable and supports no FPS claim.
+
+### Separately selected post-capture V12 inspection
+
+The request-window V2 preparation APIs bind
+`phaseInspectionPolicy: request-window-postcapture-owned-v12-v1` before fixture
+compilation and request creation. They retain the stock 0.3.3 package identity,
+fixed gesture, fixture profiles, two-second guard, and original 17/19-second
+capture/finalization deadlines. V1 preparation, capture and V6 inspection remain
+separate selections.
+
+Use `generateStock033RequestWindowPreparationInputsV2` and
+`runStock033RequestWindowPreparationOwnerV2` with the original generator return.
+The dedicated `request-window-run-v2.mjs` module exports
+`runStock033RequestWindowOriginalV2` and
+`qualifyRequestWindowAcquisitionV2(original, {out})`. The first returns an original
+closed collection capability with inspection deferred. The second uses a distinct
+60-second forward / 65-second finalization process to read the complete original
+trace through the existing V12 reader. Copies, persisted JSON and old V1 returns
+cannot acquire the new analysis capability. A failed inspection is terminal for
+that original attempt.
+
+V12 has explicitly different fixed analysis limits: 4096 disclosure groups,
+4096 metadata facts and 8192 metadata occurrences. The new phase projection keeps
+its own 128-candidate and 8 KiB output limits. It requires full physical and
+semantic completion, all five manifests, global ordinary-root resolution,
+explained sequence initialization, no contradictory or unexplained drops, and
+unique actual owner marks. It never retries with another policy, clips the input,
+or changes a capacity on refusal.
+
+The original created trace descriptor identity is bound before pathname readback.
+Source, runtime, trace, original process/pipe closure and publication checks remain
+mandatory through qualification and later feedback bookends. The separate
+`request-window-feedback-run-v2.mjs` bridge records the phase publication and
+explicit inspection policy while composing the unchanged full V1 feedback
+observation. Captures, diagnostic bundles and native-derived reports stay local.
+No phase receipt establishes FPS, native qualification, scoring or ranking.
