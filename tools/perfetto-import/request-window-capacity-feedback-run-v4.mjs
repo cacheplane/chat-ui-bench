@@ -72,6 +72,27 @@ async function snapshot(path,limit,check,expected=null,retain=false){
 async function sources(check){const out={};let total=0;for(const [name,pin]of Object.entries(PINS)){out[name]=(await snapshot(join(BASE,name),262144,check,{sha256:pin})).fact;total+=out[name].bytes;}for(const path of[fileURLToPath(import.meta.url),...['feedback-observations-capacity-run-v3.mjs','feedback-observations-capacity-export-v3.mjs'].map(name=>join(BASE,name)),join(BASE,'../native-real-chat/request-window-core.mjs'),join(BASE,'../native-real-chat/request-window-run-v2.mjs')]){const f=(await snapshot(path,262144,check)).fact;out[path]=f;total+=f.bytes;}ensure(total<=1048576,'source-capacity');return out;}
 function configOf(raw){ensure(typeof raw==='string'&&Buffer.byteLength(raw)<=16384,'invalid-config');const c=JSON.parse(raw),expected={schema:c.schema,feedbackPolicy:c.feedbackPolicy,processor:{path:c.processor?.path,sha256:c.processor?.sha256},out:c.out,deadlineMs:c.deadlineMs};ensure(equal(c,expected)&&JSON.stringify(expected)===raw&&c.schema===SCHEMA&&c.feedbackPolicy===FEEDBACK_POLICY,'invalid-config');const pathOK=p=>typeof p==='string'&&p.isWellFormed()&&Buffer.byteLength(p)<=4096&&isAbsolute(p)&&resolve(p)===p&&!/[\x00-\x1f\x7f-\x9f]/.test(p);ensure(pathOK(c.processor.path)&&pathOK(c.out)&&typeof c.processor.sha256==='string'&&/^[a-f0-9]{64}$/.test(c.processor.sha256)&&Number.isSafeInteger(c.deadlineMs)&&c.deadlineMs>=1&&c.deadlineMs<=60000,'invalid-config');return c;}
 function refused(stage,reason){return{schema:SCHEMA,status:'unavailable',stage,reason,publication:null,originalCapacityV3:null,projection:null,...BOUNDARIES};}
+function classifyCapacityReturn(value){
+ // Inspect only fixed own data slots. Reject proxies before any reflection;
+ // unused evidence, accessors, and serialization hooks are never visited.
+ const plain=v=>v!==null&&typeof v==='object'&&!types.isProxy(v)&&[Object.prototype,null].includes(Object.getPrototypeOf(v));
+ const token=v=>typeof v==='string'&&v.length<=96&&/^[a-z][a-z0-9-]{0,95}$/.test(v);
+ try{
+  if(!plain(value))return null;
+  const status=own(value,'status'),stage=own(value,'stage'),reason=own(value,'reason'),publication=own(value,'publication'),observation=own(value,'observation');
+  if(status==='observed')return{status,stage,reason,publication,observation};
+  if(status!=='unavailable'||publication!==null||!['config','output','source','target','scope','core','custody','publication'].includes(stage)||!token(reason)||!plain(observation))return null;
+  for(const [key,expected]of Object.entries({schema:'browser-presentation-feedback-observations-capacity-v3',capacityProfile:'whole-graph-capacity-v3',wireFormat:'compact-v2',status:'unavailable',count:null,interval:null,observedHz:null,...BOUNDARIES}))if(own(observation,key)!==expected)return null;
+  const events=own(observation,'events');if(types.isProxy(events)||!Array.isArray(events)||own(events,'length')!==0)return null;
+  const observationStage=own(observation,'stage'),observationReason=own(observation,'reason');
+  if(!(observationStage===null||token(observationStage))||!(observationReason===null||token(observationReason)))return null;
+  const diagnostic={schema:'capacity-refusal-diagnostic-v1',wrapperStage:stage,wrapperReason:reason,observationStage,observationReason};
+  // This fresh fixed tuple has 11 nodes (root plus five key/value pairs).
+  // Grammar bounds its maximum to 424 UTF-8 bytes; retain defensive ceilings.
+  ensure(1+2*Object.keys(diagnostic).length<=16&&Buffer.byteLength(JSON.stringify(diagnostic))<=512,'refusal-capacity');
+  return{status,diagnostic};
+ }catch{return null;}
+}
 async function writePublication(path,payload,check){ensure(payload.length<=1048576,'result-capacity');check();const h=await open(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);let id;try{let offset=0;while(offset<payload.length){check();const n=(await h.write(payload,offset,payload.length-offset,offset)).bytesWritten;ensure(n>0,'publication-write');offset+=n;}await h.sync();id=identity(await h.stat({bigint:true}));}finally{await h.close();}return(await snapshot(path,1048576,check,{bytes:payload.length,sha256:hash(payload),identity:id})).fact;}
 
 export async function runRequestWindowCapacityFeedbackV4(originalAcquisition,configJSON){
@@ -83,16 +104,18 @@ export async function runRequestWindowCapacityFeedbackV4(originalAcquisition,con
   stage='phase-inspection';const phaseInspection=await acquisition.inspectRequestWindowPhaseQualificationV2(originalAcquisition);ensure(equal(phaseInspection.facts,facts),'phase-inspection-binding');boundedData(phaseInspection);const phaseIdentity=own(phaseInspection.publication,'identity'),phaseIdentityKeys=['dev','ino','mode','nlink','size','mtimeNs','ctimeNs'];ensure(Array.isArray(phaseIdentity)&&phaseIdentity.length===7&&phaseIdentity.every(v=>typeof v==='string'&&/^-?(0|[1-9][0-9]*)$/.test(v)&&v!=='-0'),'phase-identity-codec');const expectedPhasePublication={...phaseInspection.publication,identity:Object.fromEntries(phaseIdentityKeys.map((k,i)=>[k,phaseIdentity[i]]))};const phasePublication=(await snapshot(phaseInspection.publication.path,65536,check,expectedPhasePublication)).fact;
   stage='source';const before=await sources(check),runtime=(await snapshot(process.execPath,268435456,check)).fact;
   const originalTrace=(await snapshot(facts.trace.path,33554432,check,facts.trace)).fact,originalPublication=(await snapshot(facts.publication.path,1048576,check,facts.publication)).fact;
+  async function bookends(wholePublication){check();ensure(equal(facts,await acquisition.verifyRequestWindowAcquisitionV2(originalAcquisition)),'acquisition-drift');await snapshot(originalTrace.path,33554432,check,originalTrace);await snapshot(originalPublication.path,1048576,check,originalPublication);if(wholePublication)await snapshot(wholePublication.path,1048576,check,wholePublication);await snapshot(phasePublication.path,65536,check,phasePublication);ensure(equal(before,await sources(check)),'source-bookend');await snapshot(runtime.path,268435456,check,runtime);check();}
   await mkdir(config.out,{mode:0o700});
   stage='capacity-v3';const originalCapacityV3=await runBrowserPresentationFeedbackObservationsCapacityV3(JSON.stringify({schema:'browser-presentation-feedback-observations-capacity-v3',capacityProfile:'whole-graph-capacity-v3',wireFormat:'compact-v2',trace:{path:originalTrace.path,bytes:originalTrace.bytes,sha256:originalTrace.sha256},processor:config.processor,target:facts.target,phaseNames:facts.phaseNames,out:join(config.out,'capacity-v3'),deadlineMs:config.deadlineMs}));check();
-  ensure(originalCapacityV3?.status==='observed'&&originalCapacityV3.stage===null&&originalCapacityV3.reason===null&&originalCapacityV3.publication,'whole-capacity-refusal');
+  const classified=classifyCapacityReturn(originalCapacityV3);
+  if(classified?.status==='unavailable'){stage='custody';await bookends(null);check();return{...refused('capacity-v3','whole-capacity-refusal'),underlyingFailure:classified.diagnostic};}
+  ensure(classified?.status==='observed'&&classified.stage===null&&classified.reason===null&&classified.publication,'whole-capacity-refusal');
   stage='capacity-publication';const published=await snapshot(originalCapacityV3.publication.path,1048576,check,originalCapacityV3.publication,true);ensure(published.contents.toString('utf8')===JSON.stringify({schema:'browser-presentation-feedback-observations-capacity-v3',capacityProfile:'whole-graph-capacity-v3',wireFormat:'compact-v2',publicationState:'provisional-snapshot-requires-original-returned-receipt',observation:originalCapacityV3.observation}),'capacity-publication-content');
   stage='projection';const authored=projectAuthoredRequestWindowCapacityFeedbackV4(originalCapacityV3.observation,facts),projection={...authored,executionEvidence:'source-owned-original-capacity-v3-composition',inputOrigin:originalCapacityV3.observation.inputOrigin,traceOrigin:'original-source-owned-request-window-acquisition',clockContract:originalCapacityV3.observation.clockContract};
-  async function bookends(){check();ensure(equal(facts,await acquisition.verifyRequestWindowAcquisitionV2(originalAcquisition)),'acquisition-drift');await snapshot(originalTrace.path,33554432,check,originalTrace);await snapshot(originalPublication.path,1048576,check,originalPublication);await snapshot(published.fact.path,1048576,check,published.fact);await snapshot(phasePublication.path,65536,check,phasePublication);ensure(equal(before,await sources(check)),'source-bookend');await snapshot(runtime.path,268435456,check,runtime);check();}
-  stage='custody';await bookends();
+  stage='custody';await bookends(published.fact);
   const result={schema:SCHEMA,feedbackPolicy:FEEDBACK_POLICY,status:'observed',stage:null,reason:null,publicationState:'provisional-snapshot-requires-original-returned-receipt',originalCapacityV3,projection,evidence:{phaseInspectionPublication:phasePublication,sourcesBefore:before,runtimeBefore:runtime,acquisitionPublication:originalPublication,capacityPublication:published.fact,sourceExecutionAssumption:'fresh-trusted-process-reviewed-modules',localExecutionAssumption:'fresh-trusted-process-no-concurrent-local-mutation'},...BOUNDARIES};boundedData(result);
   stage='publication';const publication=await writePublication(join(config.out,'result.json'),Buffer.from(JSON.stringify(result)),check);
-  stage='custody';await bookends();await snapshot(publication.path,1048576,check,publication);
+  stage='custody';await bookends(published.fact);await snapshot(publication.path,1048576,check,publication);
   check();return{...result,publication};
  }catch(error){return refused(stage,typeof error?.message==='string'&&/^[a-z][a-z0-9-]{0,95}$/.test(error.message)?error.message:'operation-failed');}
 }

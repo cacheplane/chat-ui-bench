@@ -1011,6 +1011,22 @@ results stay separate. There is no automatic fallback or reevaluation of failed
 captures. FPS remains null and all measurement/scoring/ranking eligibility flags
 remain false.
 
+For a future explicitly selected fresh request-window capacity-feedback V4 call,
+a well-formed unavailable V3 return can add `underlyingFailure` after the shared
+custody checks pass. Its `capacity-refusal-diagnostic-v1` schema contains only
+`wrapperStage`, `wrapperReason`, `observationStage`, and `observationReason`.
+Wrapper stages are `config`, `output`, `source`, `target`, `scope`, `core`,
+`custody`, or `publication`; reason codes and non-null observation codes are
+lowercase ASCII tokens of at most 96 characters. Observation stage and reason
+are independently nullable. The five-field object is bounded to 424 bytes and
+11 nodes, with defensive limits of 512 bytes and 16 nodes.
+
+These are report-only descriptive codes. Metrics remain unavailable, FPS stays
+null, and the codes confer no source custody, metric, scoring, or ranking
+authority. Malformed returns keep the existing flat refusal; a later custody
+failure takes priority and drops the diagnostic. This does not replay retained
+evidence or select or start a fresh run.
+
 This profile preserves the pinned processor's CSV numeric projection; it does
 not introduce a binary64 roundtrip codec. Perfetto v59.1's
 [CSV DOUBLE formatter](https://github.com/google/perfetto/blob/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/shell/csv_result_formatter.cc#L43)
