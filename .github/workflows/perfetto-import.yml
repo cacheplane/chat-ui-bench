@@ -82,6 +82,15 @@ jobs:
           result=$?
           printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/feedback-compact-v2-smoke.exit-code"
           exit "$result"
+      - name: Verify explicit capacity V3 exports on new authored inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          node tools/perfetto-import/feedback-observations-capacity-smoke-v3.mjs --processor "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell" --out "$RUNNER_TEMP/perfetto-import-evidence/feedback-capacity-v3-smoke" > "$RUNNER_TEMP/perfetto-import-evidence/feedback-capacity-v3-smoke.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/feedback-capacity-v3-smoke.stderr"
+          result=$?
+          printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/feedback-capacity-v3-smoke.exit-code"
+          exit "$result"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:

@@ -978,3 +978,49 @@ both official compact SQL exports and original private custody. It deliberately
 mutates its own new authored output to test refusal. It never accepts a captured
 trace path and supplies no native performance evidence. CI publishes authored
 fixtures only; captured traces and derived reports stay local.
+
+The separately selected `browser-feedback-whole-graph-capacity-v3` profile keeps
+the compact V2 wire format and both original SQL programs. It expands fixed
+resource admission to 2 MiB per complete CSV export, 4 MiB total, 32768 physical
+and logical arguments per role, 8192 slices/registry sets, and 16 MiB of logical
+referenced text per role. It retains the original semantic predicates,
+dictionary/cell/protocol checks, 67108864-unit work ledger, result limits, and
+60-second process / 240-second parent budgets. A supported resource or semantic
+refusal remains possible. No caller can override these limits.
+
+The pure API is `evaluateBrowserFeedbackObservationsCapacityV3`. The source-owned
+wrapper `runBrowserPresentationFeedbackObservationsCapacityV3` requires exact
+schema `browser-presentation-feedback-observations-capacity-v3`, capacityProfile
+`whole-graph-capacity-v3`, wireFormat `compact-v2`, and the original trace,
+processor, target, phase names, fresh output and deadline selection. New exporter
+originals carry a separate private brand; copied, authored and earlier-profile
+returns cannot be promoted. Every full query output is captured, closed, hashed
+and reread before the whole graph is evaluated. Version stdout stays capped at
+262144 bytes; query stdout is capped at 2097152; stderr stays at 65536. Late
+original process completion is rejected from observed elapsed time even when a
+timer callback is delayed.
+
+Fresh runs must select this policy before capture. The composition API
+`runRequestWindowCapacityFeedbackV4` requires schema
+`native-stock033-request-window-capacity-feedback-v4` and explicit feedbackPolicy
+`browser-feedback-whole-graph-capacity-v3`. It accepts the genuine qualified V2
+acquisition and V12 phase evidence, preserves complete graph
+validation before the unchanged request-anchored one-second subset, and records
+`originalCapacityV3` / `capacityPublication` evidence. Earlier profiles and
+results stay separate. There is no automatic fallback or reevaluation of failed
+captures. FPS remains null and all measurement/scoring/ranking eligibility flags
+remain false.
+
+This profile preserves the pinned processor's CSV numeric projection; it does
+not introduce a binary64 roundtrip codec. Perfetto v59.1's
+[CSV DOUBLE formatter](https://github.com/google/perfetto/blob/1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d/src/trace_processor/shell/csv_result_formatter.cc#L43)
+uses a fixed buffer and `%f`, so fractional values may round and extreme values
+may truncate. Integer nanosecond timestamps and identifiers retain their existing
+strict handling. The new capacity changes do not repair or conceal that source
+assumption.
+
+`feedback-observations-capacity-smoke-v3.mjs` checks the new official exporter
+and custody on fresh maintained authored protobufs only. Like the earlier smoke,
+it deliberately mutates only its own synthetic output to verify refusal. CI
+publishes authored evidence only; captured data and capacity diagnostics remain
+local.
