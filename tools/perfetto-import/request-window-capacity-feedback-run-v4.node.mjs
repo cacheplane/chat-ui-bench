@@ -5,6 +5,8 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
+import {authoredGraph,selector} from './feedback-observations-fixtures.mjs';
+import {exportCompactGraphV2} from './feedback-observations-compact-fixtures-v2.mjs';
 const api=await import('./request-window-capacity-feedback-run-v4.mjs').catch(()=>({}));
 const recipe='native-stock033-request-window-scroll-v1';
 const binding={nonce:'a'.repeat(32),requestSha256:'b'.repeat(64),manifestSha256:'c'.repeat(64),sourceRevision:'d'.repeat(40)};
@@ -21,7 +23,7 @@ test('production source closure retains literal compact pins and no replacement 
 
 // Test-only source-copy harness. Production exports no dependency injection or
 // rebranding API; these fabricated capabilities never enter the production module.
-async function authoredHarness(mode='ok'){
+async function authoredHarness(mode='ok',failureScript=''){
  const root=await mkdtemp(join(tmpdir(),'request-window-feedback-authored-')),perf=join(root,'perfetto-import'),native=join(root,'native-real-chat');await mkdir(perf);await mkdir(native);
  const sourcePath=join(perf,'request-window-capacity-feedback-run-v4.mjs');let source=await readFile(new URL('./request-window-capacity-feedback-run-v4.mjs',import.meta.url),'utf8');await writeFile(sourcePath,source);
  for(const name of['feedback-observations-capacity-run-v3.mjs','feedback-observations-capacity-core-v3.mjs','feedback-observations-capacity-source-model-v3.json','feedback-observations-capacity-export-v3.mjs','feedback-target-compact-v2.sql','feedback-scope-compact-v2.sql'])await copyFile(new URL(name,import.meta.url),join(perf,name));
@@ -29,15 +31,30 @@ async function authoredHarness(mode='ok'){
  const fact=async path=>{const b=await readFile(path),s=await stat(path,{bigint:mode==='private-ns-codec'});return{path,bytes:b.length,sha256:createHash('sha256').update(b).digest('hex'),identity:mode==='private-ns-codec'?Object.fromEntries(['dev','ino','mode','nlink','size','mtimeNs','ctimeNs'].map(k=>[k,String(s[k])])):Object.fromEntries(['dev','ino','size','mtimeMs','ctimeMs'].map(k=>[k,s[k]]))};};
  const trace=join(root,'trace'),outer=join(root,'outer'),processor=join(root,'processor');await writeFile(trace,'{}');await writeFile(outer,'{}');await writeFile(processor,'authored-only');
  const ownedFacts={...facts(),trace:await fact(trace),publication:await fact(outer),target:{frameId:'frame',loaderId:'loader'}};
+ if(mode==='genuine-refusal'){const chosen=JSON.parse(selector);ownedFacts.target=chosen.target;ownedFacts.phaseNames=chosen.phaseNames;}
  if(mode==='identity-extra')ownedFacts.trace.identity.extra=true;if(mode==='identity-missing')delete ownedFacts.trace.identity.ino;
- const phaseStat=await stat(outer,{bigint:true}),phaseIdentity=['dev','ino','mode','nlink','size','mtimeNs','ctimeNs'].map(k=>String(phaseStat[k]));if(mode==='phase-identity-extra')phaseIdentity.push('0');if(mode==='phase-identity-inode')phaseIdentity[1]=String(BigInt(phaseIdentity[1])+1n);
+ const phasePath=mode.startsWith('refusal')?join(root,'phase'):outer;if(phasePath!==outer)await writeFile(phasePath,'{}');
+ const phaseStat=await stat(phasePath,{bigint:true}),phaseIdentity=['dev','ino','mode','nlink','size','mtimeNs','ctimeNs'].map(k=>String(phaseStat[k]));if(mode==='phase-identity-extra')phaseIdentity.push('0');if(mode==='phase-identity-inode')phaseIdentity[1]=String(BigInt(phaseIdentity[1])+1n);
  const capsule=join(root,'authored-capsule.mjs');await writeFile(capsule,`import {mkdir,writeFile} from 'node:fs/promises';import {createHash} from 'node:crypto';const owned=new WeakMap();let verifies=0;export let calls=0;const mode=${JSON.stringify(mode)};const observation=${JSON.stringify(observation())};export function admit(facts){const original={};owned.set(original,facts);return original;}export function inspectRequestWindowAcquisitionV2(original){if(!owned.has(original))throw Error('original-capability');return owned.get(original);}export async function verifyRequestWindowAcquisitionV2(original){if(++verifies>1&&mode==='late-acquisition')throw Error('late-acquisition');return inspectRequestWindowAcquisitionV2(original);}export async function inspectRequestWindowPhaseQualificationV2(original){return{facts:inspectRequestWindowAcquisitionV2(original),publication:{...inspectRequestWindowAcquisitionV2(original).publication,identity:${JSON.stringify(phaseIdentity)}}};}export async function runBrowserPresentationFeedbackObservationsCapacityV3(raw){calls++;const c=JSON.parse(raw);if(mode==='compact-refusal')return{status:'unavailable',publication:null};await mkdir(c.out);const p=c.out+'/result.json';const payload=JSON.stringify({schema:'browser-presentation-feedback-observations-capacity-v3',capacityProfile:'whole-graph-capacity-v3',wireFormat:'compact-v2',publicationState:'provisional-snapshot-requires-original-returned-receipt',observation});await writeFile(p,payload);const publication={path:p,bytes:Buffer.byteLength(payload),sha256:createHash('sha256').update(payload).digest('hex')};if(mode==='publication-change')await writeFile(p,payload+' ');if(mode==='phase-publication-change')await writeFile(${JSON.stringify(outer)},'changed');if(mode==='trace-change')await writeFile(${JSON.stringify(trace)},'replaced');if(mode==='source-change')await writeFile(${JSON.stringify(join(perf,'feedback-scope-compact-v2.sql'))},'changed');if(mode==='native-source-change')await writeFile(${JSON.stringify(join(native,'request-window-run-v2.mjs'))},'changed');return{status:'observed',stage:null,reason:null,publication,observation};}`);
+ if(mode.startsWith('refusal')){let c=await readFile(capsule,'utf8');c='export let touches=0,thenProbes=0;\n'+c.replace("mode==='late-acquisition'","mode==='refusal-late-acquisition'").replace('publication:{...inspectRequestWindowAcquisitionV2(original).publication,identity:',`publication:{...inspectRequestWindowAcquisitionV2(original).publication,path:${JSON.stringify(phasePath)},identity:`).replace("calls++;const c=JSON.parse(raw);",`calls++;const c=JSON.parse(raw);const refusal={status:'unavailable',stage:'core',reason:'authored-wrapper-refusal',publication:null,observation:{...observation,status:'unavailable',stage:'relations',reason:'authored-core-refusal',count:null,interval:null,observedHz:null,events:[]}};${failureScript};return refusal;`);await writeFile(capsule,c);}
+ {let c=await readFile(capsule,'utf8');c='export const audit=[];\n'+c.replace('if(++verifies>1',"audit.push('verify');if(++verifies>1").replace('calls++;const c=',"audit.push('wrapper');calls++;const c=");await writeFile(capsule,c);}
+ if(mode==='genuine-refusal'){
+  const modelHash=await genuineAuthoredV3(perf,processor),oldModelHash='02807672dea27faa9f09bb1bc820c629d25ff97713b972d8f45b16f919c887ca';source=source.replace(oldModelHash,modelHash);
+  let c=await readFile(capsule,'utf8');c='export let actualResult;\n'+c.replace('calls++;const c=JSON.parse(raw);',`calls++;actualResult=await (await import(${JSON.stringify(pathToFileURL(join(perf,'feedback-observations-capacity-run-v3.mjs')).href)})).runBrowserPresentationFeedbackObservationsCapacityV3(raw);return actualResult;const c=JSON.parse(raw);`);await writeFile(capsule,c);
+ }
  const capsuleURL=pathToFileURL(capsule).href;source=source.replace(/import \* as acquisition from '[^']+';/,`import * as acquisition from ${JSON.stringify(capsuleURL)};`).replace("import {runBrowserPresentationFeedbackObservationsCapacityV3} from './feedback-observations-capacity-run-v3.mjs';",`import {runBrowserPresentationFeedbackObservationsCapacityV3} from ${JSON.stringify(capsuleURL)};`).replace("from '../native-real-chat/request-window-core.mjs'",`from ${JSON.stringify(new URL('../native-real-chat/request-window-core.mjs',import.meta.url).href)}`).replaceAll('fileURLToPath(import.meta.url)',JSON.stringify(sourcePath));
+ source=`import {audit as authoredAudit} from ${JSON.stringify(capsuleURL)};\n`+source.replace('check();const ls=await lstat',"authoredAudit.push(path);check();const ls=await lstat").replace('ensure(payload.length<=1048576',"authoredAudit.push('publish');ensure(payload.length<=1048576");
+ if(mode.startsWith('refusal-runtime')||mode==='refusal-late-elapsed'||mode==='refusal-late-close'){
+  const runtime=join(root,'authored-runtime');await writeFile(runtime,'authored runtime');source=source.replaceAll('process.execPath',JSON.stringify(runtime));
+  if(mode==='refusal-late-elapsed')source='let authoredExpired=false,authoredRuntimeCloses=0;\n'+source.replaceAll('performance.now()','(authoredExpired?300001:0)').replace('await h.close();check();',`await h.close();if(path===${JSON.stringify(runtime)}&&++authoredRuntimeCloses===2)authoredExpired=true;check();`);
+  if(mode==='refusal-late-close')source='let authoredRuntimeCloses=0;\n'+source.replace('await h.close();check();',`await h.close();if(path===${JSON.stringify(runtime)}&&++authoredRuntimeCloses===2)throw Error('authored-close');check();`);
+ }
  if(mode==='late-final-close')source='let authoredFinalCloses=0,authoredExpired=false;\n'+source.replaceAll('performance.now()','(authoredExpired?300001:0)').replace('await h.close();',"await h.close();if(path.endsWith('/out/result.json')&&++authoredFinalCloses===2)authoredExpired=true;");
  if(mode==='source-pin')await writeFile(join(perf,'feedback-target-compact-v2.sql'),'changed');if(mode==='model-pin')await writeFile(join(perf,'feedback-observations-capacity-source-model-v3.json'),'{}');if(mode==='core-pin')await writeFile(join(perf,'feedback-observations-capacity-core-v3.mjs'),'// changed');
  const harness=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64')),caps=await import(capsuleURL),original=caps.admit(ownedFacts);
- return{harness,caps,original,config:JSON.stringify({schema:'native-stock033-request-window-capacity-feedback-v4',feedbackPolicy:'browser-feedback-whole-graph-capacity-v3',processor:{path:processor,sha256:'0'.repeat(64)},out:join(root,'out'),deadlineMs:1000})};
+ return{harness,caps,original,root,config:JSON.stringify({schema:'native-stock033-request-window-capacity-feedback-v4',feedbackPolicy:'browser-feedback-whole-graph-capacity-v3',processor:{path:processor,sha256:mode==='genuine-refusal'?createHash('sha256').update('authored-only').digest('hex'):'0'.repeat(64)},out:join(root,'out'),deadlineMs:1000})};
 }
+test('direct authored unavailable wrapper preserves bounded refusal codes only',async()=>{const h=await authoredHarness('refusal'),r=await h.harness.runRequestWindowCapacityFeedbackV4(h.original,h.config);assert.deepEqual(r.underlyingFailure,{schema:'capacity-refusal-diagnostic-v1',wrapperStage:'core',wrapperReason:'authored-wrapper-refusal',observationStage:'relations',observationReason:'authored-core-refusal'});assert.equal(r.status,'unavailable');assert.equal(r.stage,'capacity-v3');assert.equal(r.reason,'whole-capacity-refusal');for(const key of['publication','originalCapacityV3','projection','fps'])assert.equal(r[key],null);assert.equal(h.caps.calls,1);await assert.rejects(readFile(join(JSON.parse(h.config).out,'result.json')),{code:'ENOENT'});});
 test('authored orchestration retains original compact publication, binds names, and seals own result',async()=>{const h=await authoredHarness(),r=await h.harness.runRequestWindowCapacityFeedbackV4(h.original,h.config);assert.equal(r.status,'observed',r.reason);assert.equal(r.projection.count,'2');assert.equal(r.projection.executionEvidence,'source-owned-original-capacity-v3-composition');assert.equal(r.projection.fps,null);assert.equal(r.originalCapacityV3.observation.count,'4');assert.equal(h.caps.calls,1);const payload=await readFile(r.publication.path);assert.equal(payload.length,r.publication.bytes);assert.equal(createHash('sha256').update(payload).digest('hex'),r.publication.sha256);assert.equal(JSON.parse(payload).publicationState,'provisional-snapshot-requires-original-returned-receipt');});
 test('private ns identity is separately supported without approximating native millisecond facts',async()=>{const h=await authoredHarness('private-ns-codec'),r=await h.harness.runRequestWindowCapacityFeedbackV4(h.original,h.config);assert.equal(r.status,'observed',r.reason);});
 for(const mode of['source-pin','model-pin','core-pin','compact-refusal','publication-change','trace-change','source-change','native-source-change','late-acquisition','identity-extra','identity-missing','late-final-close','phase-identity-extra','phase-identity-inode','phase-publication-change'])test('authored orchestration withdraws every numeric field on '+mode,async()=>{const h=await authoredHarness(mode),r=await h.harness.runRequestWindowCapacityFeedbackV4(h.original,h.config);assert.equal(r.status,'unavailable');assert.equal(r.projection,null);assert.equal(r.originalCapacityV3,null);assert.equal(r.publication,null);assert.equal(r.fps,null);if(['source-pin','model-pin','core-pin'].includes(mode))assert.equal(h.caps.calls,0);});
@@ -46,3 +63,118 @@ test('V2 projection refuses missing or crossed phase inspection policy and prese
 test('V3 explicit compact policy cannot be omitted or crossed before acquisition work',async()=>{const c={schema:'native-stock033-request-window-capacity-feedback-v4',feedbackPolicy:'browser-feedback-whole-graph-capacity-v3',processor:{path:'/private/tmp/authored-unread',sha256:'0'.repeat(64)},out:'/private/tmp/authored-uncreated',deadlineMs:1000};for(const policy of[undefined,'browser-presentation-feedback-observations-v1']){const r=await api.runRequestWindowCapacityFeedbackV4({},JSON.stringify({...c,feedbackPolicy:policy}));assert.equal(r.status,'unavailable');assert.equal(r.stage,'config');assert.equal(r.projection,null);}});
 
 test('authored window projection cannot cross whole capacity profile or wire version',()=>{for(const change of[{capacityProfile:'compact-v2'},{capacityProfile:undefined},{wireFormat:'expanded-v1'},{schema:'browser-presentation-feedback-observations-compact-v2'}])assert.throws(()=>api.projectAuthoredRequestWindowCapacityFeedbackV4({...observation(),...change},facts()));});
+
+const falseFlags=['exhaustivePopulation','nativeSupported','captureQualified','evaluationEligibility','scoringEligibility','rankingEligibility'];
+function flatRefusal(r,stage='capacity-v3',reason='whole-capacity-refusal'){
+ assert.deepEqual(r,{schema:'native-stock033-request-window-capacity-feedback-v4',status:'unavailable',stage,reason,publication:null,originalCapacityV3:null,projection:null,fps:null,...Object.fromEntries(falseFlags.map(k=>[k,false]))});
+}
+async function refusalControl(script,eligible=false,mode='refusal',thenProbes=0){
+ const h=await authoredHarness(mode,script),r=await h.harness.runRequestWindowCapacityFeedbackV4(h.original,h.config);
+ assert.equal(h.caps.calls,1);assert.equal(h.caps.touches,0);assert.equal(h.caps.thenProbes,thenProbes);assert.equal(r.status,'unavailable');
+ for(const key of['publication','originalCapacityV3','projection','fps'])assert.equal(r[key],null);
+ for(const key of falseFlags)assert.equal(r[key],false);
+ for(const path of['result.json','capacity-v3/result.json'])await assert.rejects(readFile(join(JSON.parse(h.config).out,path)),{code:'ENOENT'});
+ if(eligible)assert.ok(r.underlyingFailure);else flatRefusal(r,'capacity-v3',script==="throw Error('authored-wrapper-throw')"?'authored-wrapper-throw':'whole-capacity-refusal');
+ return{h,r};
+}
+test('every wrapper stage and independent null observation codes retain their own values',async()=>{
+ for(const stage of['config','output','source','target','scope','core','custody','publication']){
+  const{r}=await refusalControl(`refusal.stage=${JSON.stringify(stage)}`,true);assert.equal(r.underlyingFailure.wrapperStage,stage);
+ }
+ for(const pair of[[null,null],[null,'reason'],['stage',null]]){const{r}=await refusalControl(`refusal.observation.stage=${JSON.stringify(pair[0])};refusal.observation.reason=${JSON.stringify(pair[1])}`,true);assert.equal(r.underlyingFailure.observationStage,pair[0]);assert.equal(r.underlyingFailure.observationReason,pair[1]);}
+ const token='a'.repeat(96),{r}=await refusalControl(`refusal.stage='publication';refusal.reason=${JSON.stringify(token)};refusal.observation.stage=${JSON.stringify(token)};refusal.observation.reason=${JSON.stringify(token)}`,true);
+ assert.equal(Buffer.byteLength(JSON.stringify(r.underlyingFailure)),424);assert.equal(1+2*Object.keys(r.underlyingFailure).length,11);assert.ok(424<=512&&11<=16);assert.deepEqual(Object.keys(r.underlyingFailure),['schema','wrapperStage','wrapperReason','observationStage','observationReason']);
+});
+test('malformed primitive, status, profile, publication, metrics, and flags stay exactly flat',async()=>{
+ const scripts=["return null","return 1","return true","return 'unavailable'","return new String('unavailable')","delete refusal.status","refusal.status='observed';delete refusal.observation","refusal.status='foreign'","refusal.publication={}","refusal.stage='foreign'","refusal.observation=null","refusal.observation.events=[{}]"];
+ for(const [field,value]of[['schema','wrong'],['capacityProfile','compact-v2'],['wireFormat','expanded-v1'],['status','observed'],['count','0'],['interval',{}],['observedHz',0],['fps',60],...falseFlags.map(k=>[k,true])])scripts.push(`refusal.observation[${JSON.stringify(field)}]=${JSON.stringify(value)}`);
+ for(const root of['refusal','refusal.observation'])for(const field of root==='refusal'?['status','stage','reason','publication','observation']:['schema','capacityProfile','wireFormat','status','stage','reason','count','interval','observedHz','fps','events',...falseFlags])scripts.push(`delete ${root}[${JSON.stringify(field)}]`);
+ for(const expr of['refusal.reason','refusal.observation.stage','refusal.observation.reason'])for(const value of["1","true","new String('code')",JSON.stringify('a'.repeat(97)),JSON.stringify('a\ncode'),JSON.stringify('/private/path'),JSON.stringify('UPPER'),JSON.stringify('é')])scripts.push(`${expr}=${value}`);
+ for(const value of["1","true","new String('core')"])scripts.push(`refusal.stage=${value}`);
+ for(const expr of['refusal.status','refusal.publication','refusal.observation',...['schema','capacityProfile','wireFormat','status','count','interval','observedHz','fps','events',...falseFlags].map(k=>'refusal.observation.'+k)])for(const value of['1','true',"new String('unavailable')"])scripts.push(`${expr}=${value}`);
+ for(const script of scripts)await refusalControl(script);
+});
+test('fixed own-data dispatch rejects inherited slots, accessors and proxies with zero bridge traps',async()=>{
+ const trap="()=>{touches++;throw Error('hook-must-not-run')}";
+ // Promise resolution probes `then` before the awaited value reaches V4.
+ // Permit that language-level probe; all diagnostic reflection traps stay zero.
+ const proxy=value=>`new Proxy(${value},{get:(target,key)=>{if(key==='then'){thenProbes++;return undefined}touches++;throw Error('hook-must-not-run')},getPrototypeOf:${trap},getOwnPropertyDescriptor:${trap},ownKeys:${trap}})`;
+ await refusalControl(`return ${proxy('refusal')}`,false,'refusal',1);
+ for(const root of['refusal','refusal.observation']){
+  for(const field of root==='refusal'?['status','stage','reason','publication','observation']:['schema','capacityProfile','wireFormat','status','stage','reason','count','interval','observedHz','fps','events',...falseFlags]){
+   await refusalControl(`Object.defineProperty(${root},${JSON.stringify(field)},{get:${trap}})`);
+   await refusalControl(`const inherited=${root}[${JSON.stringify(field)}];delete ${root}[${JSON.stringify(field)}];Object.setPrototypeOf(${root},{[${JSON.stringify(field)}]:inherited})`);
+  }
+ }
+ for(const expr of['refusal.status','refusal.stage','refusal.reason','refusal.publication','refusal.observation',...['schema','capacityProfile','wireFormat','status','stage','reason','count','interval','observedHz','fps','events',...falseFlags].map(k=>'refusal.observation.'+k)])await refusalControl(`${expr}=${proxy('{}')}`);
+ await refusalControl(`refusal.observation.events=${proxy('[]')}`);
+ await refusalControl(`refusal.status='observed';Object.defineProperty(refusal,'stage',{get:${trap}})`);
+});
+test('unused extras and serialization hooks are ignored on root, observation, and empty events',async()=>{
+ await refusalControl("for(const value of[refusal,refusal.observation,refusal.observation.events]){Object.defineProperty(value,'toJSON',{get(){touches++;throw Error('serialize')}});Object.defineProperty(value,'evidence',{get(){touches++;throw Error('evidence')}})}",true);
+ await refusalControl("Object.setPrototypeOf(refusal,null);Object.setPrototypeOf(refusal.observation,null)",true);
+ const {r}=await refusalControl("throw Error('authored-wrapper-throw')");
+ assert.equal(r.reason,'authored-wrapper-throw');
+});
+test('huge required refusal codes are rejected before serializing original objects or quoting supplied text',async()=>{
+ for(const field of['refusal.reason','refusal.observation.stage','refusal.observation.reason']){
+  const h=await authoredHarness('refusal',`const huge='a'.repeat(524289);${field}=huge;
+   for(const value of[refusal,refusal.observation,refusal.observation.events])for(const key of['toJSON','evidence'])Object.defineProperty(value,key,{get(){touches++;throw Error('metadata-hook')}});
+   const stringify=JSON.stringify;JSON.stringify=function(value,...args){
+    if(value===huge||value===refusal||value===refusal.observation||value===refusal.observation.events||(value&&typeof value==='object'&&['wrapperReason','observationStage','observationReason'].some(key=>Object.getOwnPropertyDescriptor(value,key)?.value===huge))){touches++;throw Error('unsafe-serialization')}
+    return stringify.call(this,value,...args);
+   };`),stringify=JSON.stringify;
+  let r;try{r=await h.harness.runRequestWindowCapacityFeedbackV4(h.original,h.config);}finally{JSON.stringify=stringify;}
+  flatRefusal(r);assert.equal(h.caps.touches,0);assert.equal(h.caps.thenProbes,0);assert.equal(h.caps.calls,1);
+  for(const path of['result.json','capacity-v3/result.json'])await assert.rejects(readFile(join(JSON.parse(h.config).out,path)),{code:'ENOENT'});
+ }
+});
+test('late acquisition, phase, trace, native publication, source, runtime, elapsed and close failures supersede eligible codes',async()=>{
+ const cases=[['refusal-late-acquisition','', 'late-acquisition'],['refusal',"await writeFile(c.out+'/../phase','changed')",'file-commitment'],['refusal',"await writeFile(c.out+'/../trace','changed')",'file-commitment'],['refusal',"await writeFile(c.out+'/../outer','changed')",'file-commitment'],['refusal',"await writeFile(c.out+'/../perfetto-import/feedback-scope-compact-v2.sql','changed')",'file-commitment'],['refusal',"await writeFile(c.out+'/../native-real-chat/request-window-run-v2.mjs','changed')",'source-bookend'],['refusal-runtime',"await writeFile(c.out+'/../authored-runtime','changed')",'file-commitment'],['refusal-late-elapsed','', 'elapsed-budget'],['refusal-late-close','', 'authored-close']];
+ for(const [mode,script,reason]of cases){const mutation=script.replaceAll("c.out+'/../","c.out.slice(0,-'/out/capacity-v3'.length)+'/"),h=await authoredHarness(mode,mutation),r=await h.harness.runRequestWindowCapacityFeedbackV4(h.original,h.config);flatRefusal(r,'custody',reason);assert.equal(h.caps.calls,1);await assert.rejects(readFile(join(JSON.parse(h.config).out,'result.json')),{code:'ENOENT'});}
+});
+test('common custody order is unchanged before and after successful exclusive publication',async()=>{
+ const h=await authoredHarness(),r=await h.harness.runRequestWindowCapacityFeedbackV4(h.original,h.config);assert.equal(r.status,'observed',r.reason);
+ assert.equal(Object.hasOwn(r,'underlyingFailure'),false);
+ assert.deepEqual(Object.keys(r),['schema','feedbackPolicy','status','stage','reason','publicationState','originalCapacityV3','projection','evidence','fps',...falseFlags,'publication']);
+ const a=h.caps.audit,start=a.indexOf('wrapper'),publish=a.indexOf('publish');assert.ok(start<publish);
+ const expected=['verify',join(h.root,'trace'),join(h.root,'outer'),join(h.root,'out/capacity-v3/result.json'),join(h.root,'outer'),...['feedback-observations-capacity-source-model-v3.json','feedback-observations-capacity-core-v3.mjs','feedback-target-compact-v2.sql','feedback-scope-compact-v2.sql','request-window-capacity-feedback-run-v4.mjs','feedback-observations-capacity-run-v3.mjs','feedback-observations-capacity-export-v3.mjs'].map(n=>join(h.root,'perfetto-import',n)),join(h.root,'native-real-chat/request-window-core.mjs'),join(h.root,'native-real-chat/request-window-run-v2.mjs'),process.execPath];
+ assert.deepEqual(a.slice(publish-expected.length,publish),expected);
+ const second=a.indexOf('verify',publish);assert.deepEqual(a.slice(second,second+expected.length),expected);assert.equal(a[second+expected.length],r.publication.path);
+ const failure=await refusalControl('',true),fa=failure.h.caps.audit,fi=fa.indexOf('wrapper');assert.deepEqual(fa.slice(fi+1),['verify',join(failure.h.root,'trace'),join(failure.h.root,'outer'),join(failure.h.root,'phase'),...expected.slice(5,-1).map(p=>p.replace(h.root,failure.h.root)),process.execPath]);
+});
+
+// Minimal authored exporter setup follows the existing V3 wrapper controls.
+// Only the copied model's processor pin and wrapper's model hash/byte pin are
+// substituted for an authored file. V3 wrapper logic and the complete core stay
+// unchanged; no official processor, captured trace, or external CSV is opened.
+async function genuineAuthoredV3(base,processor){
+ const hash=b=>createHash('sha256').update(b).digest('hex'),modelPath=join(base,'feedback-observations-capacity-source-model-v3.json'),model=JSON.parse(await readFile(modelPath));
+ for(const key of Object.keys(model.importer.processorPins))model.importer.processorPins[key]=hash(await readFile(processor));
+ const bytes=JSON.stringify(model,null,2)+'\n';await writeFile(modelPath,bytes);
+ const wrapperPath=join(base,'feedback-observations-capacity-run-v3.mjs'),originalWrapper=await readFile(wrapperPath,'utf8'),wrapper=originalWrapper.replace(/const MODEL_HASH='[a-f0-9]+';/,`const MODEL_HASH='${hash(bytes)}';`).replace('bytes:15907','bytes:'+Buffer.byteLength(bytes));
+ assert.equal(wrapper.replace(`const MODEL_HASH='${hash(bytes)}';`,originalWrapper.match(/const MODEL_HASH='[a-f0-9]+';/)[0]).replace('bytes:'+Buffer.byteLength(bytes),'bytes:15907'),originalWrapper);await writeFile(wrapperPath,wrapper);
+ const graph=authoredGraph();graph.nodes[1].id=graph.nodes[0].id;const encoded=exportCompactGraphV2(graph),csv={target:encoded.target.bytes.toString(),scope:encoded.scope.bytes.toString()};
+ await writeFile(join(base,'feedback-observations-capacity-export-v3.mjs'),`
+ import * as fs from 'node:fs/promises';import{createHash}from'node:crypto';import{fileURLToPath}from'node:url';import{dirname,join}from'node:path';
+ const BASE=dirname(fileURLToPath(import.meta.url)),csv=${JSON.stringify(csv)},brands=new WeakMap();export let calls=0;
+ export const EXPECTED_VERSION=${JSON.stringify(model.importer.versionText)},PROCESSOR_PINS=${JSON.stringify(model.importer.processorPins)};
+ const hash=b=>createHash('sha256').update(b).digest('hex');async function fact(path){const b=await fs.readFile(path),s=await fs.stat(path,{bigint:true});return{path,bytes:b.length,sha256:hash(b),identity:Object.fromEntries(['dev','ino','mode','nlink','size','mtimeNs','ctimeNs'].map(k=>[k,String(s[k])]))};}
+ async function put(path,bytes){await fs.writeFile(path,bytes);return fact(path);}
+ async function run(role,o){calls++;await fs.mkdir(o.out);const model=JSON.parse(await fs.readFile(join(BASE,'feedback-observations-capacity-source-model-v3.json'))),spec=model.sql[role],source=await fs.readFile(join(BASE,spec.path),'utf8'),sql=Buffer.from(source.replace('__PHASE_LITERALS__',o.phases.map(s=>"'"+s.replaceAll("'","''")+"'").join(', '))),files={};
+ files.sql=await put(join(o.out,'diagnostic.sql'),sql);const before={trace:await fact(o.trace.path),processor:await fact(o.processor.path)},runtime={before:await fact(process.execPath)},sources={exporter:await fact(fileURLToPath(import.meta.url)),modelSource:await fact(join(BASE,'feedback-observations-capacity-source-model-v3.json')),sqlSource:await fact(join(BASE,spec.path)),executedSql:files.sql},processes={};
+ for(const [name,args]of[['version',['--version']],['query',['query','-f',files.sql.path,o.trace.path]]]){const record={args,code:0,signal:null,closed:true,error:null,exit:{code:0,signal:null},close:{code:0,signal:null},timedOut:false,elapsedDeadlineExceeded:false,closeElapsedMs:1,elapsedMs:2,groupAbsent:true,original:{pid:123,ppid:process.pid,pgid:123},streams:{}};for(const stream of['stdout','stderr']){const bytes=Buffer.from(stream==='stderr'?'':name==='version'?EXPECTED_VERSION:csv[role]);files[name+'.'+stream]=await put(join(o.out,name+'.'+stream),bytes);record.streams[stream]={eof:true,closed:true,error:null,forcedDestroy:false,bytes:bytes.length,observedBytes:bytes.length,chunks:bytes.length?1:0,sha256:hash(bytes)};}processes[name]=record;}
+ runtime.after=runtime.before;const manifest={capacityProfile:'whole-graph-capacity-v3',wireFormat:'compact-v2',rawRowsExported:false,compactWholeGraph:true,status:'success',authoredFixture:false,officialProcessor:true,platform:process.platform+'-'+process.arch,queryPolicy:role+'-feedback-compact-v2',expectedVersion:EXPECTED_VERSION,observedVersion:EXPECTED_VERSION,expected:{trace:o.trace,processor:o.processor},phases:o.phases,before,after:before,runtime,sourceBookends:{before:sources,after:sources,stable:true},sql:{path:files.sql.path,sha256:files.sql.sha256,sourceSha256:spec.sha256},processes,fps:null,nativeSupported:false,captureQualified:false,evaluationEligibility:false,scoringEligibility:false,rankingEligibility:false};files.manifest=await put(join(o.out,'manifest.json'),JSON.stringify(manifest)+'\\n');brands.set(manifest,{manifest,files});return manifest;}
+ export function runTargetFeedbackCapacityExportV3(o){return run('target',o);}export function runScopeFeedbackCapacityExportV3(o){return run('scope',o);}export function inspectFeedbackCapacityExportV3(original){if(!brands.has(original))throw Error('original-exporter-capability');return brands.get(original);}export async function verifyFeedbackCapacityExportV3(original){return inspectFeedbackCapacityExportV3(original);}
+ `);
+ return hash(bytes);
+}
+test('genuine complete V3 wrapper and core preserve their authored relation refusal through V4',async()=>{
+ const h=await authoredHarness('genuine-refusal'),r=await h.harness.runRequestWindowCapacityFeedbackV4(h.original,h.config),actual=h.caps.actualResult;
+ assert.equal(h.caps.calls,1);assert.equal(actual.status,'unavailable');assert.equal(actual.stage,'core');assert.equal(actual.reason,'sql-order');assert.equal(actual.observation.stage,'relations');assert.equal(actual.observation.reason,'sql-order');
+ assert.deepEqual(r.underlyingFailure,{schema:'capacity-refusal-diagnostic-v1',wrapperStage:actual.stage,wrapperReason:actual.reason,observationStage:actual.observation.stage,observationReason:actual.observation.reason});
+ const exporter=await import(pathToFileURL(join(h.root,'perfetto-import/feedback-observations-capacity-export-v3.mjs')).href);assert.equal(exporter.calls,2);
+ assert.deepEqual(await readFile(join(h.root,'perfetto-import/feedback-observations-capacity-core-v3.mjs')),await readFile(new URL('./feedback-observations-capacity-core-v3.mjs',import.meta.url)));
+ for(const key of['publication','originalCapacityV3','projection','fps'])assert.equal(r[key],null);
+ for(const path of['result.json','capacity-v3/result.json'])await assert.rejects(readFile(join(JSON.parse(h.config).out,path)),{code:'ENOENT'});
+});
