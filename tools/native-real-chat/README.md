@@ -536,3 +536,29 @@ mandatory through qualification and later feedback bookends. The separate
 explicit inspection policy while composing the unchanged full V1 feedback
 observation. Captures, diagnostic bundles and native-derived reports stay local.
 No phase receipt establishes FPS, native qualification, scoring or ranking.
+
+### Explicit trace pre-roll acquisition
+
+V2 preparation can select
+`captureProtocol: 'request-window-trace-preroll-1000-v1'`. Pass that exact option
+to both `generateStock033RequestWindowPreparationInputsV2` and
+`runStock033RequestWindowPreparationOwnerV2`. The selected protocol is bound into
+the preparation, original request and acquisition publication. V1 rejects it;
+omitting it retains the existing V2 acquisition sequence.
+
+This protocol starts tracing before a fixed 1000 ms wait, then rechecks the
+selected context, complete idle history and all seven scroll geometry fields
+before marking the scroll phase. The source-owned Node monotonic clock must
+observe between 1000 and 2000 ms inclusive. Early or late completion refuses;
+there is no retry. The original capture deadline must have at least four seconds
+remaining before the wait and the existing two-second headroom at phase start.
+The Runtime call limit, handle releases, gesture and browser-clock phase guard
+remain unchanged.
+
+Use fresh fixtures and captures for this acquisition protocol, retaining the
+protocol label with each result. The original receipt is retained as `preRoll`
+alongside `captureProtocol` and in `observedCollection.input.preRoll`; it describes
+elapsed Node time, not browser/trace clock alignment or compositor completeness.
+Every existing whole-trace, target, contribution and window check still applies.
+A pre-roll receipt cannot qualify a failed capture or establish FPS, scoring or
+ranking. Captured data and derived diagnostics remain local.

@@ -2,6 +2,7 @@ import {types} from 'node:util';
 import {GRAMMAR,RuntimeGate} from './worker-core.mjs';
 
 export const REQUEST_WINDOW_RECIPE='native-stock033-request-window-scroll-v1';
+export const REQUEST_WINDOW_CAPTURE_PROTOCOL_V1='request-window-trace-preroll-1000-v1';
 export const REQUEST_WINDOW_RUN_ID='native-request-window-v1';
 const unavailable=()=>new Error('native-request-window-unavailable');
 function own(value,key){if(!value||typeof value!=='object'||types.isProxy(value))throw unavailable();const d=Object.getOwnPropertyDescriptor(value,key);if(!d||!Object.hasOwn(d,'value'))throw unavailable();return d.value;}
