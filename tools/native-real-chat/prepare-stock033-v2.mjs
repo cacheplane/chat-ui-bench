@@ -20,11 +20,12 @@ const ledgers=new WeakSet(),authoredLedgers=new WeakSet(),ledgerCounters=new Wea
 const tailPolicy='native-post-phase-tail-500ms-v1',tailAdmissions=new WeakMap(),authoredTailAdmissions=new WeakMap();
 const wheelFamily=Object.freeze({}),wheelRecipe='native-wheel-carrier-v1',wheelAdmissions=new WeakMap(),authoredWheelAdmissions=new WeakMap();
 const requestRecipe='native-stock033-request-window-scroll-v1',requestProfiles=['native-history100-v1','native-history1000-v1','native-history10000-v1'];
-const requestFamilies=new Map(requestProfiles.map(profile=>[profile,Object.freeze({profile})])),requestV2Families=new Map(requestProfiles.map(profile=>[profile,Object.freeze({profile,phaseInspectionPolicy:requestWindowPhaseInspectionPolicyV2})])),requestAdmissions=new WeakMap(),authoredRequestAdmissions=new WeakMap();
+const captureProtocol='request-window-trace-preroll-1000-v1';
+const requestFamilies=new Map(requestProfiles.map(profile=>[profile,Object.freeze({profile})])),requestV2Families=new Map(requestProfiles.map(profile=>[profile,Object.freeze({profile,phaseInspectionPolicy:requestWindowPhaseInspectionPolicyV2})])),requestPrerollFamilies=new Map(requestProfiles.map(profile=>[profile,Object.freeze({profile,phaseInspectionPolicy:requestWindowPhaseInspectionPolicyV2,captureProtocol})])),requestAdmissions=new WeakMap(),authoredRequestAdmissions=new WeakMap();
 const requestLedgers=new WeakSet();
-function requestFamily(profile,v2=false){const family=(v2?requestV2Families:requestFamilies).get(profile);if(!family)fail('fixture profile');return family;}
-const isRequest=family=>[...requestFamilies.values(),...requestV2Families.values()].includes(family);
-const isRequestV2=family=>[...requestV2Families.values()].includes(family);
+function requestFamily(profile,v2=false,selection={}){admitStock033DataV2(selection,128);closed(selection,Object.hasOwn(selection,'captureProtocol')?['captureProtocol']:[]);if(Object.hasOwn(selection,'captureProtocol')&&(!v2||selection.captureProtocol!==captureProtocol))fail('capture protocol');const family=(Object.hasOwn(selection,'captureProtocol')?requestPrerollFamilies:v2?requestV2Families:requestFamilies).get(profile);if(!family)fail('fixture profile');return family;}
+const isRequest=family=>[...requestFamilies.values(),...requestV2Families.values(),...requestPrerollFamilies.values()].includes(family);
+const isRequestV2=family=>[...requestV2Families.values(),...requestPrerollFamilies.values()].includes(family);
 const requestVersion=family=>isRequestV2(family)?'v2':'v1';
 const selectedOwnerKeys=family=>isRequestV2(family)?requestWindowV2NativeOwnerKeys:isRequest(family)?requestWindowNativeOwnerKeys:nativeOwnerKeys;
 const selectedRuntimeKeys=family=>isRequestV2(family)?requestWindowV2NativeRuntimeCompiledKeys:nativeRuntimeCompiledKeys;
@@ -34,9 +35,9 @@ const preparationMode=(authored,tail=false)=>isRequest(tail)?(authored?'authored
 const referencePolicy=(authored,tail=false)=>isRequest(tail)?(authored?'authored-':'')+'source-owned-prep-stock033-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?(authored?'authored-':'')+'source-owned-prep-stock033-tail500-wheel-v1':(authored?'authored-preparation-reference-stock-033-v2':'source-owned-preparation-reference-stock-033-v2')+suffix(tail);
 const manifestMode=(authored,tail=false)=>isRequest(tail)?(authored?'authored-':'')+'real-chat-custody-stock033-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?(authored?'authored-':'')+'real-chat-custody-stock033-tail500-wheel-v1':(authored?'authored-real-chat-source-custody-stock-033-v2':'real-chat-source-custody-stock-033-v2')+suffix(tail);
 const releasePolicy=tail=>isRequest(tail)?'source-reviewed-stock033-inputs-request-window-scroll-'+requestVersion(tail):tail===wheelFamily?'source-reviewed-stock033-inputs-tail500-wheel-v1':'source-reviewed-stock033-preparation-inputs-v2'+suffix(tail);
-function collectionKeys(tail){return isRequest(tail)?['inputRecipe','fixtureProfile',...(isRequestV2(tail)?['phaseInspectionPolicy']:[])]:tail===wheelFamily?['collectionPolicy','inputRecipe']:tail?['collectionPolicy']:[];}
-function collectionFields(tail){return isRequest(tail)?{inputRecipe:requestRecipe,fixtureProfile:tail.profile,...(isRequestV2(tail)?{phaseInspectionPolicy:requestWindowPhaseInspectionPolicyV2}:{})}:tail===wheelFamily?{collectionPolicy:tailPolicy,inputRecipe:wheelRecipe}:tail?{collectionPolicy:tailPolicy}:{};}
-function collectionCheck(value,tail){if(isRequest(tail)){if(value.inputRecipe!==requestRecipe||value.fixtureProfile!==tail.profile||(isRequestV2(tail)?value.phaseInspectionPolicy!==requestWindowPhaseInspectionPolicyV2:Object.hasOwn(value,'phaseInspectionPolicy')))fail('request family');return;}if(tail&&value.collectionPolicy!==tailPolicy||tail===wheelFamily&&value.inputRecipe!==wheelRecipe)fail('collection policy');}
+function collectionKeys(tail){return isRequest(tail)?['inputRecipe','fixtureProfile',...(isRequestV2(tail)?['phaseInspectionPolicy']:[]),...(Object.hasOwn(tail,'captureProtocol')?['captureProtocol']:[])]:tail===wheelFamily?['collectionPolicy','inputRecipe']:tail?['collectionPolicy']:[];}
+function collectionFields(tail){return isRequest(tail)?{inputRecipe:requestRecipe,fixtureProfile:tail.profile,...(isRequestV2(tail)?{phaseInspectionPolicy:requestWindowPhaseInspectionPolicyV2}:{}),...(Object.hasOwn(tail,'captureProtocol')?{captureProtocol}:{})}:tail===wheelFamily?{collectionPolicy:tailPolicy,inputRecipe:wheelRecipe}:tail?{collectionPolicy:tailPolicy}:{};}
+function collectionCheck(value,tail){if(isRequest(tail)){if(Object.hasOwn(value,'captureProtocol')!==Object.hasOwn(tail,'captureProtocol')||Object.hasOwn(tail,'captureProtocol')&&value.captureProtocol!==captureProtocol||value.inputRecipe!==requestRecipe||value.fixtureProfile!==tail.profile||(isRequestV2(tail)?value.phaseInspectionPolicy!==requestWindowPhaseInspectionPolicyV2:Object.hasOwn(value,'phaseInspectionPolicy')))fail('request family');return;}if(tail&&value.collectionPolicy!==tailPolicy||tail===wheelFamily&&value.inputRecipe!==wheelRecipe)fail('collection policy');}
 
 /** Injected clocks/anchors are authored-only; reconciled scalar counters may be production inputs. */
 export function createStock033PreparationLedgerV2(options={}){return createLedger(options,caps);}
@@ -289,7 +290,7 @@ function reserveLargeFixture(tail,roster,moduleBytes,ledger){
  ledger.charge('serializedBytes',chunkBytes);ledger.ensureCapacity('hashBytes',profileCount(tail.profile)*4096+1048576);
  return chunkBytes;
 }
-function requestSelection(options,v2=false){if(!options||typeof options!=='object'||types.isProxy(options))fail('request options');const descriptor=Object.getOwnPropertyDescriptor(options,'fixtureProfile');if(!descriptor||!Object.hasOwn(descriptor,'value'))fail('fixture profile');const policy=Object.getOwnPropertyDescriptor(options,'phaseInspectionPolicy');if(v2?(!policy||!Object.hasOwn(policy,'value')||policy.value!==requestWindowPhaseInspectionPolicyV2):policy!==undefined)fail('phase inspection policy');return requestFamily(descriptor.value,v2);}
+function requestSelection(options,v2=false){if(!options||typeof options!=='object'||types.isProxy(options))fail('request options');const descriptor=Object.getOwnPropertyDescriptor(options,'fixtureProfile');if(!descriptor||!Object.hasOwn(descriptor,'value'))fail('fixture profile');const policy=Object.getOwnPropertyDescriptor(options,'phaseInspectionPolicy');if(v2?(!policy||!Object.hasOwn(policy,'value')||policy.value!==requestWindowPhaseInspectionPolicyV2):policy!==undefined)fail('phase inspection policy');const capture=Object.getOwnPropertyDescriptor(options,'captureProtocol');if(capture&&!Object.hasOwn(capture,'value'))fail('capture protocol');return requestFamily(descriptor.value,v2,capture?{captureProtocol:capture.value}:{});}
 export async function prepareActualStock033RequestWindowV1(options){return prepareCore(options,false,requestSelection(options));}
 export async function prepareActualStock033RequestWindowV2(options){return prepareCore(options,false,requestSelection(options,true));}
 async function directory(filename,ledger){await ledger.operation('mkdir',()=>fs.mkdir(filename,{mode:0o700}));}
@@ -449,10 +450,10 @@ export function inspectStock033RequestWindowPreparationV1(template){return inspe
 export async function verifyStock033RequestWindowPreparationV2(root,template,reference,{ledger=createStock033PreparationLedgerV2()}={}){return verifyCore(root,template,reference,ledger,false,requestSelection(template,true));}
 export function inspectStock033RequestWindowPreparationV2(template){return inspectRequestAdmission(template,true);}
 export function createStock033RequestWindowAuthoredControlV1(profile){return requestAuthoredControl(profile,false);}
-export function createStock033RequestWindowAuthoredControlV2(profile){return requestAuthoredControl(profile,true);}
-function requestAuthoredControl(profile,v2){
- const family=requestFamily(profile,v2),version=v2?'V2':'V1',createLedger=options=>{const ledger=createStock033RequestWindowPreparationLedgerV1(options);authoredLedgers.add(ledger);return ledger;};
- return Object.freeze({createStock033PreparationLedgerV2:createLedger,['prepareActualStock033RequestWindow'+version]:options=>prepareCore(options,true,family),['verifyStock033RequestWindowPreparation'+version]:(root,template,reference,{ledger=createLedger()}={})=>verifyCore(root,template,reference,ledger,true,family),['inspectStock033RequestWindowPreparation'+version]:template=>{const value=inspectRequestAdmission(template,v2,true);if(value.fixtureProfile!==profile)fail('authored request-window admission');return value;},reserveFixture:(roster,moduleBytes,ledger)=>reserveLargeFixture(family,roster,moduleBytes,ledger),runtimeMetadata:compilerMetadataCopies});
+export function createStock033RequestWindowAuthoredControlV2(profile,selection={}){return requestAuthoredControl(profile,true,selection);}
+function requestAuthoredControl(profile,v2,selection={}){
+ const family=requestFamily(profile,v2,selection),version=v2?'V2':'V1',createLedger=options=>{const ledger=createStock033RequestWindowPreparationLedgerV1(options);authoredLedgers.add(ledger);return ledger;};
+ return Object.freeze({createStock033PreparationLedgerV2:createLedger,['prepareActualStock033RequestWindow'+version]:options=>prepareCore(options,true,family),['verifyStock033RequestWindowPreparation'+version]:(root,template,reference,{ledger=createLedger()}={})=>verifyCore(root,template,reference,ledger,true,family),['inspectStock033RequestWindowPreparation'+version]:template=>{const value=inspectRequestAdmission(template,v2,true);collectionCheck(value,family);return value;},reserveFixture:(roster,moduleBytes,ledger)=>reserveLargeFixture(family,roster,moduleBytes,ledger),runtimeMetadata:compilerMetadataCopies});
 }
 // Original source/platform bookends for the new family. expectedManifest comes
 // from the already admitted original preparation return, never from this file.
@@ -460,7 +461,7 @@ export async function verifyRequestWindowOriginalsV1(root,expectedManifest){retu
 export async function verifyRequestWindowOriginalsV2(root,expectedManifest){return verifyRequestOriginals(root,expectedManifest,true);}
 async function verifyRequestOriginals(root,expectedManifest,v2){
  const ledger=createStock033RequestWindowPreparationLedgerV1();absolute(root,256);
- const read=await readStock033FileV2(root+'/app-manifest.json',1048576,ledger,expectedManifest),manifest=JSON.parse(read.bytes),family=requestFamily(manifest.fixtureProfile,v2);
+ const read=await readStock033FileV2(root+'/app-manifest.json',1048576,ledger,expectedManifest),manifest=JSON.parse(read.bytes),family=requestSelection(manifest,v2);
  collectionCheck(manifest,family);if(manifest.mode!==manifestMode(false,family)||manifest.authoredControl!==undefined||!Array.isArray(manifest.records)||manifest.records.length>1024||!Array.isArray(manifest.owned))fail('request-window manifest');
  preflightArchive(manifest,read.bytes.length,family);let total=0;
  for(const row of manifest.records){if(row.source!==manifest.custody.sourceRoot+'/'+row.key)fail('source member');const fact={bytes:row.bytes,sha256:row.sha256,identity:row.identity};await readStock033FileV2(row.source,2097152,ledger,fact);await readStock033FileV2(root+'/inputs/'+row.key,2097152,ledger,{...fact,identity:row.archivedIdentity});total+=row.bytes;}

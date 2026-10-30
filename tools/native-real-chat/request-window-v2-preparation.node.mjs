@@ -6,6 +6,56 @@ import * as owner from './prepare-owner-stock033-v2.mjs';
 import * as roster from './roster-stock033-v2.mjs';
 import {authoredRequestTree} from './request-window-preparation.test-helper.mjs';
 const policy='request-window-postcapture-owned-v12-v1';
+const captureProtocol='request-window-trace-preroll-1000-v1';
+test('pre-roll helper enters only the V2 source-owner closure',()=>{
+ const key='tools/native-real-chat/request-window-preroll-v1.mjs';assert.ok(roster.requestWindowV2NativeOwnerKeys.includes(key));assert.ok(!roster.requestWindowNativeOwnerKeys.includes(key));assert.ok(!roster.nativeOwnerKeys.includes(key));
+});
+for(const profile of ['native-history100-v1','native-history1000-v1','native-history10000-v1'])test('selected pre-roll '+profile+' binds every preparation publication and private admission',()=>authoredRequestTree(profile,async({options})=>{
+ options.captureProtocol=captureProtocol;options.release.captureProtocol=captureProtocol;
+ const control=prep.createStock033RequestWindowAuthoredControlV2(profile,{captureProtocol});options.ledger=control.createStock033PreparationLedgerV2({initial:{serializedBytes:1876934}});const prepared=await control.prepareActualStock033RequestWindowV2(options);
+ assert.ok(options.ledger.totals().serializedBytes<=8388608);assert.ok(options.ledger.totals().archiveWriteBytes<=16777216);assert.ok(options.ledger.totals().operations<=131072);
+ for(const value of [prepared.template,prepared.reference,JSON.parse(await fs.readFile(options.outputDirectory+'/app-manifest.json'))])assert.equal(value.captureProtocol,captureProtocol);
+ assert.ok(Buffer.byteLength(JSON.stringify(prepared.template)+'\n')<=4096);assert.ok(Buffer.byteLength(JSON.stringify(prepared)+'\n')<=65536);
+ const original=await control.verifyStock033RequestWindowPreparationV2(options.outputDirectory,prepared.template,prepared.reference);assert.equal(control.inspectStock033RequestWindowPreparationV2(original).captureProtocol,captureProtocol);
+ assert.throws(()=>control.inspectStock033RequestWindowPreparationV2(structuredClone(original)));
+ await assert.rejects(prep.createStock033RequestWindowAuthoredControlV2(profile).verifyStock033RequestWindowPreparationV2(options.outputDirectory,prepared.template,prepared.reference));
+ for(const key of ['template','reference']){const bad=structuredClone(prepared);delete bad[key].captureProtocol;await assert.rejects(control.verifyStock033RequestWindowPreparationV2(options.outputDirectory,bad.template,bad.reference));}
+ const ownerControl=owner.createStock033RequestWindowOwnerAuthoredControlV2(profile,{captureProtocol}),request=ownerControl.requestEnvelope('/authored/input/config.json',2000000).request,result=ownerControl.resultEnvelope('x');
+ for(const value of [request,result,result.template,result.reference])assert.equal(value.captureProtocol,captureProtocol);
+ assert.ok(Buffer.byteLength(JSON.stringify(request))<=1023);assert.ok(Buffer.byteLength(JSON.stringify(result))<=8191);
+ assert.deepEqual(ownerControl.selectOwnerOptions({fixtureProfile:profile,captureProtocol,config:{path:'/authored/config'}}),{config:{path:'/authored/config'}});
+},2));
+test('pre-roll selection refuses unknown, accessor, proxy and V1 fields before source work',async()=>{
+ let proxyReads=0;const proxy=new Proxy({captureProtocol},{getOwnPropertyDescriptor(){proxyReads++;throw Error('proxy read');}});
+ for(const create of [prep.createStock033RequestWindowAuthoredControlV2,owner.createStock033RequestWindowOwnerAuthoredControlV2])assert.throws(()=>create('native-history100-v1',proxy));assert.equal(proxyReads,0);
+ for(const capture of ['foreign',undefined,null]){
+  assert.throws(()=>prep.createStock033RequestWindowAuthoredControlV2('native-history100-v1',{captureProtocol:capture}));
+  await assert.rejects(owner.generateStock033RequestWindowPreparationInputsV2({fixtureProfile:'native-history100-v1',captureProtocol:capture}));
+ }
+ for(const options of [new Proxy({captureProtocol},{}),Object.defineProperty({},'captureProtocol',{get(){throw Error('accessor');}}),{captureProtocol,extra:true}])assert.throws(()=>prep.createStock033RequestWindowAuthoredControlV2('native-history100-v1',options));
+ await assert.rejects(prep.prepareActualStock033RequestWindowV1({fixtureProfile:'native-history100-v1',captureProtocol}));
+ await assert.rejects(owner.generateStock033RequestWindowPreparationInputsV1({fixtureProfile:'native-history100-v1',captureProtocol}));
+});
+test('selected pre-roll child retains exact selection through original IPC completion',async()=>{
+ const result=await owner.createStock033RequestWindowOwnerAuthoredControlV2('native-history100-v1',{captureProtocol}).run('success');
+ for(const value of [result.request,result.prepared.template,result.prepared.reference])assert.equal(value.captureProtocol,captureProtocol);
+ assert.deepEqual(result.child.exit,{code:0,signal:null});assert.deepEqual(result.child.close,{code:0,signal:null});
+});
+test('selected pre-roll source helper import stays inside the exact V2 owner closure',()=>authoredRequestTree('native-history100-v1',async({options,update,refresh})=>{
+ options.captureProtocol=captureProtocol;options.release.captureProtocol=captureProtocol;
+ await update('tools/native-real-chat/request-window-worker-v2.mjs',"import './request-window-preroll-v1.mjs';\n");await refresh();await prep.createStock033RequestWindowAuthoredControlV2('native-history100-v1',{captureProtocol}).prepareActualStock033RequestWindowV2(options);
+},2));
+test('legacy source closure rejects importing the pre-roll helper',()=>authoredRequestTree('native-history100-v1',async({options,update,refresh})=>{
+ await update('tools/native-real-chat/request-window-worker.mjs',"import './request-window-preroll-v1.mjs';\n");await refresh();await assert.rejects(prep.createStock033RequestWindowAuthoredControlV1('native-history100-v1').prepareActualStock033RequestWindowV1(options),/unapproved local runtime import/);
+}));
+test('selected preparation refuses crossed or missing options and release fields before IO',()=>authoredRequestTree('native-history100-v1',async({options})=>{
+ for(const selected of [false,true])for(const optionsSelected of [false,true])for(const releaseSelected of [false,true]){
+  if(selected===optionsSelected&&selected===releaseSelected)continue;
+  const control=prep.createStock033RequestWindowAuthoredControlV2('native-history100-v1',selected?{captureProtocol}:{}),ledger=control.createStock033PreparationLedgerV2(),bad=structuredClone(options);bad.ledger=ledger;
+  if(optionsSelected)bad.captureProtocol=captureProtocol;if(releaseSelected)bad.release.captureProtocol=captureProtocol;
+  await assert.rejects(control.prepareActualStock033RequestWindowV2(bad));assert.equal(ledger.snapshot().operations,0);
+ }
+},2));
 test('V2 compact counter wire preserves all original counters and rejects malformed indexed tuples',()=>{
  const control=owner.createStock033RequestWindowOwnerAuthoredControlV2('native-history10000-v1');
  const totals=control.requestLedger().totals(),keys=Object.keys(totals);keys.forEach((key,i)=>totals[key]=i+1);
@@ -28,7 +78,7 @@ test('V12 closure is exact and only the V2 request family gains new names',()=>{
  assert.ok(Array.isArray(roster.requestWindowV2NativeOwnerKeys));
  assert.equal(roster.nativeRuntimeCompiledKeys.length,13);assert.equal(roster.nativeRuntimeSourceKeys.length,13);
  assert.equal(roster.requestWindowNativeOwnerKeys.length,21);
- assert.equal(roster.requestWindowV2NativeOwnerKeys.length,27);
+ assert.equal(roster.requestWindowV2NativeOwnerKeys.length,28);
  for(const name of ['request-window-phase-v2','request-window-phase-owner-v2','request-window-phase-worker-v2','request-window-deferred-phase-v2','request-window-run-v2','request-window-worker-v2']){const key='tools/native-real-chat/'+name+'.mjs';assert.ok(roster.requestWindowV2NativeOwnerKeys.includes(key));assert.ok(!roster.requestWindowNativeOwnerKeys.includes(key));assert.ok(!roster.nativeOwnerKeys.includes(key));}
  assert.equal(roster.requestWindowV2NativeRuntimeCompiledKeys.length,19);assert.equal(new Set(roster.requestWindowV2NativeRuntimeCompiledKeys).size,19);
  for(const name of ['browser-frame-owned-paint-v12-budget','browser-frame-owned-paint-v12-kernel','browser-frame-owned-paint-v12','browser-frame-owned-paint-v12-reader','browser-frame-paint-packet-adapter','browser-frame-paint-timing-r-fragments'])assert.ok(roster.requestWindowV2NativeRuntimeCompiledKeys.includes('packages/analyzer/dist/'+name+'.js'));

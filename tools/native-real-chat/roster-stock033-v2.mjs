@@ -28,6 +28,7 @@ export const nativeRuntimeCompiledKeys=Object.freeze([
 export const nativeRuntimeSourceKeys=Object.freeze(nativeRuntimeCompiledKeys.map(key=>key.replace('/dist/','/src/').replace(/\.js$/,'.ts')).sort());
 export const requestWindowPhaseInspectionPolicyV2='request-window-postcapture-owned-v12-v1';
 export const requestWindowV2NativeOwnerKeys=Object.freeze([...requestWindowNativeOwnerKeys,
+ 'tools/native-real-chat/request-window-preroll-v1.mjs',
  'tools/native-real-chat/request-window-phase-v2.mjs','tools/native-real-chat/request-window-phase-owner-v2.mjs',
  'tools/native-real-chat/request-window-phase-worker-v2.mjs','tools/native-real-chat/request-window-deferred-phase-v2.mjs',
  'tools/native-real-chat/request-window-run-v2.mjs','tools/native-real-chat/request-window-worker-v2.mjs'
