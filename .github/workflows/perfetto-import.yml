@@ -109,6 +109,15 @@ jobs:
           result=$?
           printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/presentation-coverage-v2.exit-code"
           exit "$result"
+      - name: Verify presentation uint64 exporter V3 on new private authored dense input
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          node tools/perfetto-import/presentation-coverage-smoke-v3.mjs --processor "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell" --out "$RUNNER_TEMP/perfetto-presentation-coverage-v3-authored-private" > "$RUNNER_TEMP/perfetto-import-evidence/presentation-coverage-v3.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/presentation-coverage-v3.stderr"
+          result=$?
+          printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/presentation-coverage-v3.exit-code"
+          exit "$result"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:

@@ -1263,3 +1263,53 @@ completion. No SQL filtering, packing, deadline extension or partial-success
 fallback is applied.
 Only bounded smoke summaries and authored test logs are uploaded by CI; authored
 raw traces, CSVs and full results stay in the private runner temporary directory.
+
+## Presentation uint64 exporter V3
+
+`presentation-coverage-run-v3.mjs` adds the fixed
+`typed-uint64-decimal-export-v3` exporter policy. Its inventory remains
+`whole-selected-presentation-coverage-v2`, using the original V2 model, wire
+reader and core. V1 and V2 files remain unchanged. The five-source closure
+contains the new V3 runner and SQL plus those three V2 files. The runner's
+frozen `EXPORT_CONTRACT.sql` identifies the executed query; the V2 model's SQL
+fact identifies its legacy exporter.
+
+Pinned Perfetto v59.1 stores typed unsigned arguments in a signed `int_value`
+SQL column. V3 formats only typed `uint` cells whose integer storage is negative
+with `printf('%llu', int_value)`, in both slice and track argument exports.
+It sorts high-bit uint storage after nonnegative storage so the strict reader's
+BigInt numeric order remains valid. Nonnegative uint, null and all other types
+retain their original cells. No floating arithmetic or reader coercion occurs;
+negative uint, overflow, missing values and invalid bools still fail validation.
+
+Use `runPresentationCoverageDiagnosticV3` with ordered configuration fields
+`schema` (`browser-presentation-coverage-inventory-run-v3`), `policy`
+(`whole-selected-presentation-coverage-v2`), `exportPolicy`
+(`typed-uint64-decimal-export-v3`), `trace`, `processor`, `target`, `phaseNames`,
+`out` and `deadlineMs`. The genuine native adapter is
+`runPresentationCoverageFromAcquisitionV3`; its ordered configuration fields are
+`schema` (`browser-presentation-coverage-from-acquisition-v3`), `policy`,
+`exportPolicy`, `processor`, `out` and `deadlineMs`. It requires the actual
+original qualified acquisition V2 capability. Results, refusals, process
+manifests and original-only inspect/verify summaries explicitly retain both
+policies; the nested inventory schema and policy remain V2.
+
+`inspectPresentationCoverageRunV3` and `verifyPresentationCoverageRunV3` require
+the original V3 return. Copies, parsed JSON and V2 returns cannot substitute.
+All V2 capacity, work, process, deadline and custody checks remain in force.
+Every FPS/native/qualification/scoring authority remains false or null.
+
+```sh
+node --test tools/perfetto-import/presentation-coverage-export-v3.node.mjs tools/perfetto-import/presentation-coverage-adapter-v3.node.mjs
+node tools/perfetto-import/presentation-coverage-smoke-v3.mjs --processor /absolute/pinned-tool --out /absolute/fresh-authored-output
+```
+
+The smoke constructs fresh authored inputs, checks all nine uint boundaries
+through uint64 max, compares all 13 tables in one original processor process,
+and completes a separate 12K-descendant original run through final live receipt
+verification and irreversible output-drift refusal. The no-high-bit fixture
+retains exact CSV bytes; the boundary fixture permits only the declared typed
+uint changes and their numeric ordering. Official fixture track UUID arguments
+are typed signed integers; separate full-table pure fixtures exercise typed
+uint source/dimension track arguments. CI uploads bounded smoke summaries and
+test logs, retaining raw authored artifacts in private temporary directories.
