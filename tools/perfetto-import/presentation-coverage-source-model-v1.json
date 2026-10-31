@@ -1,0 +1,408 @@
+{
+  "schema": "browser-presentation-coverage-inventory-v1",
+  "policy": "whole-selected-presentation-coverage-v1",
+  "wireFormat": "presentation-coverage-compact-v1",
+  "producer": {
+    "revision": "f842f52ef39fd97b449eb27cff414bf05a98ddce",
+    "branch": "classic-non-TreesInViz",
+    "correspondence": "vendor-assumed",
+    "traceIdPolicy": "signed-sql-int64-except-required-minus-one-sentinel"
+  },
+  "importer": {
+    "revision": "1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d",
+    "versionText": "Perfetto v59.1-1e9c61e98 (1e9c61e9844affd7dccd3d42d9ea9f3a3d10cf6d)\nTrace Processor RPC API version: 14",
+    "clockContract": "official-perfetto-normalized-nanoseconds-v1",
+    "processorPins": {
+      "darwin-arm64": "8488edbefadfc4be152cda1d42d9bfcede8b47638295eb85eb3bad8cd148fdf4",
+      "linux-x64": "2434129a3af4dc9e2034a476f7b76447b490975213e301769310d3bd0d5d6458"
+    }
+  },
+  "sql": {
+    "path": "presentation-coverage-v1.sql",
+    "bytes": 13072,
+    "sha256": "f34249cdfb8a003b24e9e342dd09f1e92a0c943a49dd9e239dadd28c9480822e",
+    "headers": [
+      [
+        "text_id",
+        "text_hex",
+        "valid_text"
+      ],
+      [
+        "name_text_id",
+        "event_count",
+        "arg_set_count"
+      ],
+      [
+        "id",
+        "ts",
+        "dur",
+        "depth",
+        "parent_id",
+        "is_seed",
+        "name_text_id",
+        "category_text_id",
+        "track_id",
+        "arg_set_id",
+        "utid",
+        "tid",
+        "upid",
+        "pid",
+        "track_name_text_id",
+        "process_name_text_id",
+        "thread_name_text_id"
+      ],
+      [
+        "arg_set_id",
+        "arg_count",
+        "slice_count"
+      ],
+      [
+        "arg_set_id",
+        "flat_key_text_id",
+        "key_text_id",
+        "value_type_text_id",
+        "int_value",
+        "string_value_text_id",
+        "real_value"
+      ],
+      [
+        "id",
+        "name_text_id",
+        "type_text_id",
+        "parent_id",
+        "machine_id",
+        "source_arg_set_id",
+        "dimension_arg_set_id",
+        "track_group_id",
+        "event_type_text_id",
+        "counter_unit_text_id",
+        "utid",
+        "upid"
+      ],
+      [
+        "track_id",
+        "namespace_text_id",
+        "arg_set_id"
+      ],
+      [
+        "arg_set_id",
+        "arg_count",
+        "reference_count"
+      ],
+      [
+        "arg_set_id",
+        "flat_key_text_id",
+        "key_text_id",
+        "value_type_text_id",
+        "int_value",
+        "string_value_text_id",
+        "real_value"
+      ],
+      [
+        "upid",
+        "pid",
+        "name_text_id"
+      ],
+      [
+        "utid",
+        "tid",
+        "upid",
+        "name_text_id"
+      ],
+      [
+        "name_text_id",
+        "idx",
+        "severity_text_id",
+        "source_text_id",
+        "value"
+      ],
+      [
+        "start_ts",
+        "end_ts"
+      ]
+    ],
+    "families": [
+      "FrameSequenceTrackerV3",
+      "FrameSequenceTracker",
+      "PipelineReporter",
+      "Graphics.Pipeline",
+      "Graphics.Pipeline.DrawAndSwap",
+      "Display::FrameDisplayed",
+      "BeginFrame",
+      "SetLayerTreeId",
+      "TracingStartedInBrowser",
+      "FrameCommittedInBrowser",
+      "FrameDeletedInBrowser",
+      "ProcessReadyInBrowser",
+      "MainFrame.Draw",
+      "Scheduler::BeginFrame",
+      "Scheduler::BeginImplFrame",
+      "DrawFrame"
+    ]
+  },
+  "limits": {
+    "csvBytes": 2097152,
+    "rows": 196608,
+    "columns": 32,
+    "cellBytes": 16384,
+    "dictionaryEntries": 16384,
+    "dictionaryBytes": 262144,
+    "slices": 8192,
+    "tracks": 8192,
+    "identities": 8192,
+    "arguments": 32768,
+    "references": 16384,
+    "stats": 1024,
+    "referencedTextBytes": 16777216,
+    "nodes": 262144,
+    "edges": 262143,
+    "depth": 64,
+    "work": 67108864,
+    "resultBytes": 262144,
+    "diagnosticEntries": 8192
+  },
+  "stats": {
+    "timestampRefusalNames": [
+      "clock_sync_mixed_clock_sources",
+      "track_event_thread_invalid_end"
+    ],
+    "unknownPolicy": "retain-unknown-no-qualification",
+    "severityClassification": {
+      "data_loss": "known-data-loss",
+      "error": "known-import-error",
+      "info": "unknown"
+    },
+    "knownNameClassifications": {
+      "clock_sync_mixed_clock_sources": {
+        "classification": "known-timestamp-corruption",
+        "severity": "error",
+        "source": "analysis"
+      },
+      "track_event_thread_invalid_end": {
+        "classification": "known-timestamp-corruption",
+        "severity": "error",
+        "source": "trace"
+      }
+    },
+    "nameClassificationScope": "only-these-two-name-contracts-positively-verified-on-pinned-official-authored-input; other-data-loss-and-error-severities-disclosed; all-other-names-unknown"
+  },
+  "assumptions": {
+    "browserSourceCorrespondence": "vendor-assumed",
+    "producerEmissionCompleteness": "unproved",
+    "realProjection": "pinned-perfetto-v59.1-percent-f-not-binary64-roundtrip"
+  },
+  "sourceRoster": [
+    "runner",
+    "model",
+    "wire",
+    "core",
+    "sql",
+    "executedSql",
+    "runtime",
+    "processor"
+  ],
+  "fieldPolicies": {
+    "sqlIntegerDomain": "signed-int64-except-typed-uint-argument-cell",
+    "textNull": "dictionary-id-zero-only-never-SQL-NULL-cell",
+    "requiredColumns": [
+      [
+        "text_id",
+        "text_hex",
+        "valid_text"
+      ],
+      [
+        "name_text_id",
+        "event_count",
+        "arg_set_count"
+      ],
+      [
+        "id",
+        "ts",
+        "dur",
+        "depth",
+        "is_seed",
+        "track_id"
+      ],
+      [
+        "arg_set_id",
+        "arg_count",
+        "slice_count"
+      ],
+      [
+        "arg_set_id",
+        "flat_key_text_id",
+        "key_text_id",
+        "value_type_text_id"
+      ],
+      [
+        "id"
+      ],
+      [
+        "track_id",
+        "namespace_text_id"
+      ],
+      [
+        "arg_set_id",
+        "arg_count",
+        "reference_count"
+      ],
+      [
+        "arg_set_id",
+        "flat_key_text_id",
+        "key_text_id",
+        "value_type_text_id"
+      ],
+      [
+        "upid",
+        "pid"
+      ],
+      [
+        "utid",
+        "tid"
+      ],
+      [
+        "name_text_id",
+        "severity_text_id",
+        "source_text_id",
+        "value"
+      ],
+      [
+        "start_ts",
+        "end_ts"
+      ]
+    ],
+    "argumentTypes": [
+      "bool",
+      "int",
+      "uint",
+      "real",
+      "string",
+      "pointer"
+    ],
+    "unknownArgumentTypes": "retain-as-unsupported-with-key-type-value-evidence",
+    "realValues": "finite-decimal-or-inf-minus-inf-preserved-as-importer-projection-never-rate",
+    "duration": "nonnegative-or-minus-one-only",
+    "rowOrder": [
+      [
+        "text_id"
+      ],
+      [
+        "name_text_id"
+      ],
+      [
+        "ts",
+        "id"
+      ],
+      [
+        "arg_set_id"
+      ],
+      [
+        "arg_set_id",
+        "flat_key_text_id",
+        "key_text_id",
+        "value_type_text_id",
+        "int_value",
+        "string_value_text_id",
+        "real_value"
+      ],
+      [
+        "id"
+      ],
+      [
+        "track_id",
+        "namespace_text_id"
+      ],
+      [
+        "arg_set_id"
+      ],
+      [
+        "arg_set_id",
+        "flat_key_text_id",
+        "key_text_id",
+        "value_type_text_id",
+        "int_value",
+        "string_value_text_id",
+        "real_value"
+      ],
+      [
+        "upid"
+      ],
+      [
+        "utid"
+      ],
+      [
+        "name_text_id",
+        "idx"
+      ],
+      [
+        "start_ts",
+        "end_ts"
+      ]
+    ],
+    "seedRule": "fixed-names-or-original-phase-names-or-tracker-named-track; complete-descendant-and-ancestor-context",
+    "diagnosticEntries": "hard-admission-count-of-summary-evidence-items-and-visits; may-refuse-before-result-byte-cap"
+  },
+  "semanticPolicies": {
+    "reporterStates": [
+      "STATE_PRESENTED_ALL",
+      "STATE_PRESENTED_PARTIAL",
+      "STATE_NO_UPDATE_DESIRED",
+      "STATE_DROPPED"
+    ],
+    "graphicsSteps": [
+      "STEP_ISSUE_BEGIN_FRAME",
+      "STEP_RECEIVE_BEGIN_FRAME",
+      "STEP_GENERATE_RENDER_PASS",
+      "STEP_GENERATE_COMPOSITOR_FRAME",
+      "STEP_SUBMIT_COMPOSITOR_FRAME",
+      "STEP_RECEIVE_COMPOSITOR_FRAME",
+      "STEP_RECEIVE_BEGIN_FRAME_DISCARD",
+      "STEP_DID_NOT_PRODUCE_FRAME",
+      "STEP_DID_NOT_PRODUCE_COMPOSITOR_FRAME",
+      "STEP_DRAW_AND_SWAP",
+      "STEP_SURFACE_AGGREGATION",
+      "STEP_SEND_BUFFER_SWAP",
+      "STEP_BUFFER_SWAP_POST_SUBMIT",
+      "STEP_FINISH_BUFFER_SWAP",
+      "STEP_SWAP_BUFFERS_ACK"
+    ],
+    "displaySteps": [
+      "STEP_DRAW_AND_SWAP",
+      "STEP_SURFACE_AGGREGATION",
+      "STEP_SEND_BUFFER_SWAP",
+      "STEP_BUFFER_SWAP_POST_SUBMIT",
+      "STEP_FINISH_BUFFER_SWAP",
+      "STEP_SWAP_BUFFERS_ACK"
+    ],
+    "reporterFields": {
+      "display": [
+        "frame_reporter.display_trace_id",
+        "int",
+        "signed-int64-except-minus-one"
+      ],
+      "source": [
+        "frame_reporter.frame_source",
+        "uint",
+        "uint64"
+      ],
+      "sequence": [
+        "frame_reporter.frame_sequence",
+        "uint",
+        "uint64"
+      ],
+      "tree": [
+        "frame_reporter.layer_tree_host_id",
+        "uint",
+        "positive-int32"
+      ],
+      "surface": [
+        "frame_reporter.surface_frame_trace_id",
+        "int",
+        "signed-int64-except-minus-one"
+      ]
+    },
+    "associationPolicy": "raw-process-tree-source-sequence-surface-hints-remain-unproved-without-lifetime-loader-source-closure",
+    "gateShape": "closed-status-evidenceRefs-reason; no metric qualification",
+    "inspectorPolicy": "O(1)-frozen-cached-reference-lookup-consumes-one-unit-and-never-refreshes-account"
+  }
+}
