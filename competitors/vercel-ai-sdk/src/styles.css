@@ -1,0 +1,11 @@
+/* Benchmark-owned renderer and scroll policy; these are not AI SDK UI defaults. */
+* { box-sizing:border-box; }
+html, body, #root { height:100%; margin:0; font:16px Arial,sans-serif; }
+.benchmark-app { height:100%; display:flex; flex-direction:column; padding:12px; gap:8px; }
+.benchmark-title { font-size:12px; color:#555; }
+.benchmark-scroll { flex:1; min-height:0; overflow-y:auto; overflow-anchor:none; border:1px solid #ddd; padding:12px; }
+.benchmark-message { width:90%; margin:12px 0; padding:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+.benchmark-message.user { margin-left:auto; background:#f3f3f3; }
+form { display:flex; gap:8px; }
+textarea { flex:1; min-height:64px; font:inherit; resize:none; }
+button { font:inherit; }

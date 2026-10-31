@@ -1,0 +1,63 @@
+name: Competitor functional conformance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: competitor-functional-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functional:
+    name: Four-stack functional conformance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: true
+      COPILOTKIT_TELEMETRY_DISABLED: 'true'
+      DO_NOT_TRACK: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.20.0'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            competitors/*/package-lock.json
+      - name: Install root and independently locked competitors
+        run: |
+          npm install --global npm@11.19.0
+          npm ci --no-audit --no-fund
+          for profile in copilotkit assistant-ui vercel-ai-sdk; do
+            npm ci --prefix "competitors/$profile" --workspaces=false --ignore-scripts --no-audit --no-fund
+          done
+      - name: Advisory competitor audits
+        continue-on-error: true
+        run: |
+          for profile in copilotkit assistant-ui vercel-ai-sdk; do
+            npm audit --prefix "competitors/$profile" --workspaces=false --audit-level=high || echo "::warning::Advisory audit findings or audit error for $profile"
+          done
+      - name: Build stock Threadplane and isolated competitor profiles
+        run: |
+          npm run build --workspace @chat-ui-bench/threadplane
+          for profile in copilotkit assistant-ui vercel-ai-sdk; do
+            npm test --prefix "competitors/$profile" --workspaces=false
+            npm run typecheck --prefix "competitors/$profile" --workspaces=false
+            npm run build --prefix "competitors/$profile" --workspaces=false
+          done
+      - name: Install pinned browser
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Verify source, lifecycle, isolation, and browser transport controls
+        run: node --test --test-concurrency=1 tools/competitor-comparison/*.node.mjs
+      - name: Verify eight positive journeys and omitted-delta rejection
+        run: node tools/competitor-comparison/verify.mjs "$RUNNER_TEMP/four-stack-functional"
+      # Private fixtures, DOM prose, source receipts, and captured data are not uploaded.

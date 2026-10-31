@@ -54,7 +54,7 @@ export class ReplayTransport implements AgentTransport {
         signal.addEventListener('abort', abort, { once: true });
         if (signal.aborted)
             abort();
-        let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+        let reader: ReadableStreamDefaultReader<Uint8Array> | undefined, eof = false;
         const clock = this.options.clock ?? (() => performance.now());
         try {
             const response = await (this.options.fetch ?? fetch)(this.url, { signal: controller.signal });
@@ -64,8 +64,10 @@ export class ReplayTransport implements AgentTransport {
             const chunks = async function* () { while (true) {
                 controller.signal.throwIfAborted();
                 const result = await reader!.read();
-                if (result.done)
+                if (result.done) {
+                    eof = true;
                     return;
+                }
                 yield result.value;
             } };
             let text = '', responseId: string | null = null;
@@ -94,10 +96,12 @@ export class ReplayTransport implements AgentTransport {
             }
         }
         finally {
-            controller.abort();
+            // Aborting an already exhausted fetch can turn normal browser
+            // completion into ERR_ABORTED. Failure/early return still cancels.
+            if (!eof) controller.abort();
             signal.removeEventListener('abort', abort);
             try {
-                await reader?.cancel();
+                if (!eof) await reader?.cancel();
             }
             finally {
                 reader?.releaseLock();

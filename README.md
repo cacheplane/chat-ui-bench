@@ -537,7 +537,15 @@ offscreen content, but an overlapping bounding box never proves visible glyphs.
 Native range queries can force layout and enumerate text fragments, so fewer
 JavaScript queries alone do not establish lower rendering overhead.
 
-| Stack | Planned configurations |
+The independent [four-stack functional harness](tools/competitor-comparison/README.md)
+adds stock Threadplane 0.3.3, CopilotKit React, assistant-ui's complete official
+Thread kit, and AI SDK UI with an explicitly benchmark-owned plain-text renderer.
+Its first scope is H100/R6400, follow and history-reading journeys, and an
+omitted-delta rejection control. Independent locks isolate competitor dependency
+graphs. Functional conformance does not establish performance, FPS, or rankings;
+native trace qualification and the larger comparison matrix remain separate.
+
+| Stack | Additional planned configurations |
 | --- | --- |
 | Threadplane Angular | Implemented custom transport; documented default planned separately |
 | assistant-ui React | Default kit and documented virtualized composition |

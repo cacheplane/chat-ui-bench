@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { ReplayTransport } from './replay-transport.js';
 import type { Message, ReplayEvent } from '@chat-ui-bench/contract';
 const api = { ReplayTransport };
@@ -11,6 +11,17 @@ test.each([0, -1, 201, NaN, 1.5])('rejects unidentifiable omission fault %s', va
     expect(() => new ReplayTransport({ omitDeltaSequence: value })).toThrow('fault');
 });
 function response(items: unknown[]) { return new Response(items.map(e => `data: ${JSON.stringify(e)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } }); }
+test('verified EOF releases the original reader without aborting a completed fetch',async()=>{
+    const fetched=response(events),reader=fetched.body!.getReader();
+    const cancel=vi.spyOn(reader,'cancel'),release=vi.spyOn(reader,'releaseLock');
+    vi.spyOn(fetched.body!,'getReader').mockImplementation(()=>reader as never);
+    let signal:AbortSignal|undefined;
+    const transport=new ReplayTransport({fetch:async(_url,options)=>{signal=options!.signal as AbortSignal;return fetched;}});
+    transport.loadHistory('t',history);transport.connect('https://fixture.test/replay');
+    for await(const event of transport.stream('a','t',null,new AbortController().signal))void event;
+    expect(signal!.aborted).toBe(false);expect(cancel).not.toHaveBeenCalled();expect(release).toHaveBeenCalledTimes(1);
+    transport.dispose();expect(signal!.aborted).toBe(false);
+});
 test.each([undefined, 2])('translates received deltas and persists only yielded text (omission %s)', async (omit) => {
     expect(typeof api.ReplayTransport).toBe('function');
     const transport = new api.ReplayTransport({ fetch: async () => response(events), omitDeltaSequence: omit });
