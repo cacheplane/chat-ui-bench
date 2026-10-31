@@ -1040,3 +1040,70 @@ and custody on fresh maintained authored protobufs only. Like the earlier smoke,
 it deliberately mutates only its own synthetic output to verify refusal. CI
 publishes authored evidence only; captured data and capacity diagnostics remain
 local.
+
+The separately selected `browser-feedback-whole-graph-packed-result-capacity-v4`
+profile changes the output representation while retaining the complete graph
+checks, compact V2 input, original V3 exporters, SQL, process deadlines and input
+limits. Its pure evaluator is `evaluateBrowserFeedbackObservationsCapacityV4`.
+Observed results contain one `proof` with resultFormat
+`browser-feedback-packed-result-v1`. Decoding it reproduces the entire prior
+pure-core result, with the new profile identities, including every repeated
+relation, coverage field, diagnostic, original supplied-input origin and
+null/false authority field. The outer core DTO does not duplicate the expanded
+events or rate.
+
+The packed envelope has ordered `schema`, `strings`, `shapes` and `body` fields.
+Unique strings and ordered object-key shapes use canonical first-encounter
+order; the ASCII typed body retains every value occurrence. There are no graph
+backreferences or alias elision. The complete body is validated before any
+bounded summary or event query, including unselected content. Proof numbers are
+safe integers excluding negative zero; finite elapsed-time floats remain in
+ordinary wrapper evidence outside the proof. Strings preserve UTF-16 code units,
+including lone surrogates, without Unicode normalization. Body parsing neither
+uses `JSON.parse` nor materializes the expanded graph.
+
+The unchanged wire limits are 1,048,576 bytes, 65,536 nodes and 524,288 UTF-8
+string bytes. The new profile separately bounds the logical expanded proof to
+4,194,304 canonical JSON bytes, 262,144 nodes, 262,143 edges, depth 64 with root
+depth zero, and 4,194,304 string bytes. Private event indexing is capped at 8192
+events; fixed-path indexing has no caller-supplied paths. These limits do not
+guarantee admission of every otherwise valid input. One 67,108,864-unit account
+covers semantics, packing, validation, queries, complete composition walks and
+new output native passes. Repeated operations consume that account; exhaustion
+cannot recover through a reset, refund or replacement budget.
+
+`runBrowserPresentationFeedbackObservationsCapacityV4` accepts the new schema,
+capacityProfile and resultFormat explicitly. It preserves original exporter
+capabilities and an eight-role source closure: wrapper, core, result model,
+codec, original exporter, original input model, target SQL and scope SQL. The
+exporter's model source joins the separately frozen V3 input model. Pure-core
+proofs retain their untrusted supplied-CSV origin inside the wrapper's separate
+attestation. Only the exact original returned wrapper can be inspected or
+verified; parsed/copied data and structural codec views provide no execution
+authority. Later verification retains the original custody, deadline and work
+account. Both the provisional publication and the entire returned DTO including
+its FileFact are metered. A late refusal retains the failed provisional file
+without returning a success receipt. Wrapper failures retain only fixed core
+failure codes, omitting cached diagnostic bodies to keep the complete failure
+bounded even after account exhaustion.
+
+Fresh request-window runs explicitly select schema
+`native-stock033-request-window-capacity-feedback-v5` and this new feedbackPolicy.
+`runRequestWindowCapacityFeedbackV5` requires the original qualified V2
+acquisition and V12 phase evidence, and obtains its original Capacity V4 receipt
+internally. It verifies all
+full-phase events before selecting the unchanged one-second half-open window.
+The result retains `originalCapacityV4` once and stores ordered
+`selectedEventIndices`, plus fixed proof/coverage/diagnostic references, instead
+of duplicating graph objects. The structural authored projection API is separate
+and cannot create an original acquisition or wrapper receipt. An upstream
+refusal can add only the bounded `capacity-refusal-diagnostic-v2` code tuple
+after custody succeeds; a later custody failure withdraws that tuple.
+
+Earlier profiles, stock releases, modified configurations and refused cohorts
+remain separate. There is no automatic fallback or replay of failed captures.
+The descriptive metric remains observed successful browser-feedback frequency;
+FPS stays null and all native/capture/evaluation/scoring/ranking eligibility
+flags remain false. Authored controls establish representation, custody and
+resource behavior, not native performance. Captured traces, diagnostic bundles
+and derived reports remain local.
