@@ -76,6 +76,9 @@ jobs:
       - name: Test explicit whole-graph capacity V3 and V4 composition
         run: node --test tools/perfetto-import/feedback-observations-capacity-core-v3.node.mjs tools/perfetto-import/feedback-observations-capacity-parity-v3.node.mjs tools/perfetto-import/feedback-observations-capacity-export-v3.node.mjs tools/perfetto-import/feedback-observations-capacity-run-v3.node.mjs tools/perfetto-import/request-window-capacity-feedback-run-v4.node.mjs tools/perfetto-import/feedback-observations-capacity-smoke-v3.node.mjs 2>&1 | tee ci-logs/feedback-capacity-v3.log
 
+      - name: Test packed feedback proof and V5 composition controls
+        run: node --test tools/perfetto-import/feedback-observations-packed-result-v1.node.mjs tools/perfetto-import/feedback-packed-authored-fixture-v1.node.mjs tools/perfetto-import/feedback-observations-capacity-core-v4.node.mjs tools/perfetto-import/feedback-observations-capacity-run-v4.node.mjs tools/perfetto-import/request-window-capacity-feedback-run-v5.node.mjs 2>&1 | tee ci-logs/feedback-capacity-v4.log
+
       - name: Run unit tests
         run: npm test 2>&1 | tee ci-logs/unit.log
 
