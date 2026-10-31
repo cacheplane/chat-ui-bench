@@ -91,6 +91,15 @@ jobs:
           result=$?
           printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/feedback-capacity-v3-smoke.exit-code"
           exit "$result"
+      - name: Verify presentation coverage inventory on new private authored inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          node tools/perfetto-import/presentation-coverage-smoke-v1.mjs --processor "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell" --out "$RUNNER_TEMP/perfetto-presentation-coverage-authored-private" > "$RUNNER_TEMP/perfetto-import-evidence/presentation-coverage.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/presentation-coverage.stderr"
+          result=$?
+          printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/presentation-coverage.exit-code"
+          exit "$result"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:

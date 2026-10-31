@@ -79,6 +79,12 @@ jobs:
       - name: Test packed feedback proof and V5 composition controls
         run: node --test tools/perfetto-import/feedback-observations-packed-result-v1.node.mjs tools/perfetto-import/feedback-packed-authored-fixture-v1.node.mjs tools/perfetto-import/feedback-observations-capacity-core-v4.node.mjs tools/perfetto-import/feedback-observations-capacity-run-v4.node.mjs tools/perfetto-import/request-window-capacity-feedback-run-v5.node.mjs 2>&1 | tee ci-logs/feedback-capacity-v4.log
 
+      - name: Test additive presentation coverage inventory controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tools/perfetto-import/presentation-coverage-core-v1.node.mjs tools/perfetto-import/presentation-coverage-run-v1.node.mjs tools/perfetto-import/presentation-coverage-process-v1.node.mjs tools/perfetto-import/presentation-coverage-adapter-v1.node.mjs 2>&1 | tee ci-logs/presentation-coverage-v1.log
+
       - name: Run unit tests
         run: npm test 2>&1 | tee ci-logs/unit.log
 

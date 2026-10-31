@@ -1107,3 +1107,93 @@ FPS stays null and all native/capture/evaluation/scoring/ranking eligibility
 flags remain false. Authored controls establish representation, custody and
 resource behavior, not native performance. Captured traces, diagnostic bundles
 and derived reports remain local.
+
+## Presentation coverage inventory V1
+
+`presentation-coverage-run-v1.mjs` is a separately selected, whole-selected-graph
+diagnostic. It retains the complete fixed CSV export of tracker, reporter,
+graphics, phase and context slices, track ancestry, raw argument multisets,
+process/thread identities, nonzero stats and trace bounds. The bounded result
+references that retained file rather than duplicating the expanded graph.
+Every raw graphics family member is disclosed, including malformed or missing
+IDs/steps; equal display IDs in different processes remain unproved aliases.
+Tracker expected/drop counters are smoothness accounting, not unique displayed
+frame counts. Closed tracker slices do not establish complete reporter emission.
+
+The pure API is `evaluatePresentationCoverageV1(csvBytes, selectorJSON)`.
+The selector is canonical
+`JSON.stringify({target:{frameId,loaderId},phaseNames:{start,end}})`.
+`runPresentationCoverageDiagnosticV1(configJSON)` requires canonical ordered
+configuration:
+
+```js
+JSON.stringify({
+  schema: 'browser-presentation-coverage-inventory-run-v1',
+  policy: 'whole-selected-presentation-coverage-v1',
+  trace: {path, bytes, sha256},
+  processor: {path: processorPath, sha256: processorSha256},
+  target: {frameId, loaderId},
+  phaseNames: {start, end},
+  out: freshAbsoluteDirectory,
+  deadlineMs: 60000,
+})
+```
+
+The library-only `runPresentationCoverageFromAcquisitionV1(original, configJSON)`
+instead requires the actual original privately qualified V2 acquisition in the
+same trusted process, and derives trace/target/phase identities internally. Its
+configuration contains ordered `schema` (value
+`browser-presentation-coverage-from-acquisition-v1`), `policy`, `processor`,
+`out` and `deadlineMs` only. The adapter joins the old acquisition closure with
+the separately pinned new analysis closure. Copied or parsed originals cannot
+acquire native origin. Changing capture categories, timing or runtime requires
+a separate capture profile; this inventory uses already-enabled categories.
+
+The official runner pins Perfetto v59.1 and source/SQL/runtime/input bookends,
+requires complete original child/pipe/process-group closure, and caps CSV at
+2 MiB and result publication at 256 KiB. It never pages, truncates or retries
+with a narrower graph. Late custody/resource failure withdraws success receipts.
+Original receipt inspection/verification uses private same-process brands;
+persisted result files remain provisional without the returned original.
+Trusted module memory and no concurrent local mutation remain assumptions;
+browser/source correspondence remains vendor-assumed.
+
+Success means a retained, validated diagnostic export. Missing associations,
+outcomes, tracker closure and unknown statistics remain explicit. Source emission
+completeness stays unproved, all FPS/native/capture/qualification/evaluation/
+scoring/ranking authority remains false or null, and no frequency is calculated.
+Existing feedback Capacity V4 and request-window V5 contracts are unchanged.
+
+```sh
+node --test tools/perfetto-import/presentation-coverage-core-v1.node.mjs tools/perfetto-import/presentation-coverage-run-v1.node.mjs
+node --test tools/perfetto-import/presentation-coverage-process-v1.node.mjs tools/perfetto-import/presentation-coverage-adapter-v1.node.mjs
+node tools/perfetto-import/presentation-coverage-smoke-v1.mjs --processor /absolute/pinned-tool --out /absolute/fresh-authored-output
+```
+
+The smoke creates its own maintained authored protobuf and mutates only that
+new authored output to test custody refusal. It accepts no captured trace path.
+Captured inputs and derived inventories remain local and out of CI.
+CI keeps newly authored coverage raw traces/CSVs/proofs in a private runner
+temporary directory outside artifact uploads; only authored control logs and
+bounded smoke summaries are published. The fixed inventory also caps logical
+work at 67,108,864 units and summary evidence/visits at 8,192 entries. Unknown
+field types, malformed typed identities, missing tracker roots, failed/conflicting
+reporter outcomes, raw surface-ID links and incomplete source/sequence relations
+remain explicit diagnostics. Gate statuses include evidence references and
+reasons; a candidate phase pair never grants a target-owned interval.
+
+One original 240-second parent clock and the same irreversible 67,108,864-unit
+account cover configuration, selector, SQL rendering, graph analysis and new
+artifact work. Production children use the fixed 60-second deadline. Exact
+canonical configuration/selector JSON and SHA256 bindings are retained in the
+manifest and result; the native adapter also binds its original configuration.
+Generated process output reserves `4 * (stdoutCap + 65536)` units before each
+capture, without refund. A generated write reserves `3 * bytes`; a generated
+custody reread reserves `2 * bytes`, or `4 * bytes` when retaining its contents.
+Binary caller trace, source, runtime and processor custody retains its separate
+fixed file/read/deadline bounds. These reservations do not change the graph,
+wire or publication limits and cannot be reset between stages or inspections.
+Failed verification terminally withdraws the original receipt, even if a changed
+file is restored later. The authored adapter harness reuses the original owner
+API source with injected capabilities; it establishes composition behavior, not
+genuine native capture or native measurement authority.
