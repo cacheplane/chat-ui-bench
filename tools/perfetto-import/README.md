@@ -1197,3 +1197,69 @@ Failed verification terminally withdraws the original receipt, even if a changed
 file is restored later. The authored adapter harness reuses the original owner
 API source with injected capabilities; it establishes composition behavior, not
 genuine native capture or native measurement authority.
+
+## Presentation coverage capacity V2
+
+`presentation-coverage-run-v2.mjs` selects the additive fixed
+`whole-selected-presentation-coverage-v2` profile. The V1 files and contracts
+remain unchanged. V2 uses the same whole-selected SQL expressions, compact V1
+grammar, graph checks, evidence semantics and all-false/null authority fields.
+Only `_pc_selected` and `_pc_context` change from views to materialized tables,
+so repeated dictionary/context branches reuse the same selected relations.
+An official authored comparison executes both forms in one original process
+and compares all 13 tables byte-for-byte, including stats; only the CLI's single
+empty statement-separator line between the two output groups is excluded after
+checking both groups and the trace-bounds/header boundary. V2 changes the
+source-selected capacity envelope:
+
+| Limit | V1 | V2 |
+| --- | ---: | ---: |
+| CSV/query stdout bytes | 2,097,152 | 8,388,608 |
+| Selected slices | 8,192 | 32,768 |
+| Logical nodes | 262,144 | 524,288 |
+| Logical edges/ancestry entries | 262,143 | 1,048,575 |
+| Diagnostic entries/visits | 8,192 | 65,536 |
+| Result/manifest bytes | 262,144 | 4,194,304 |
+| Shared prepaid work | 67,108,864 | 536,870,912 |
+
+Other ceilings are unchanged, including dictionary, argument and reference
+counts, text expansion, depth 64, 196,608 total rows, 32 columns and 16,384 bytes
+per cell.
+All ceilings apply together: admitting 32K slices at the wire layer does not
+promise every graph of that size completes its diagnostics, serialization or
+official SQL within the unchanged 60-second child/240-second parent deadlines.
+The work account is never renewed between parsing, core evaluation, output
+reservation/writes/readback or live receipt verification. Unknown evidence never
+becomes a rate, FPS, native support, target ownership or scoring qualification.
+
+Use `runPresentationCoverageDiagnosticV2` with schema
+`browser-presentation-coverage-inventory-run-v2` and the V2 policy. The genuine
+native composition API is `runPresentationCoverageFromAcquisitionV2`, with schema
+`browser-presentation-coverage-from-acquisition-v2`; its acquisition argument is
+still the original qualified acquisition V2 capability. `inspectPresentationCoverageRunV2`
+and `verifyPresentationCoverageRunV2` require the original V2 diagnostic return;
+V1 accounts/receipts and parsed/cloned JSON cannot substitute for it. Limits are
+not caller-configurable, and V1 refusal never automatically selects V2.
+
+Run the additive authored controls and the independent official authored smoke:
+
+```sh
+node --test tools/perfetto-import/presentation-coverage-capacity-v2.node.mjs tools/perfetto-import/presentation-coverage-core-v2.node.mjs tools/perfetto-import/presentation-coverage-run-v2.node.mjs tools/perfetto-import/presentation-coverage-process-v2.node.mjs tools/perfetto-import/presentation-coverage-adapter-v2.node.mjs
+node tools/perfetto-import/presentation-coverage-smoke-v2.mjs --processor /absolute/pinned-tool --out /absolute/fresh-authored-output
+```
+
+Authored tests cover 32K wire admission and 32K+1 refusal, late malformed
+selected rows, small-graph semantic parity, irreversible exhaustion and a
+12K-descendant tracker graph retaining 12K distinct counter observations with
+a result larger than V1's 256KiB. Diagnostic entry admission counts both
+tracker memberships and counter visits; the dense authored case requires
+more than 32,768 entries, which motivated the finite V2 ceiling of 65,536.
+The official smoke constructs a separate 12K-descendant authored protobuf with
+shared argument sets. Before materialization, authored large tracker graphs
+encountered guarded processor refusal; an instrumented authored-only source copy
+confirmed the 60-second query deadline, SIGKILL, original group absence and closed
+streams. Parser admission alone therefore does not imply official query
+completion. No SQL filtering, packing, deadline extension or partial-success
+fallback is applied.
+Only bounded smoke summaries and authored test logs are uploaded by CI; authored
+raw traces, CSVs and full results stay in the private runner temporary directory.
