@@ -16,8 +16,13 @@ series remain separate.
 
 The fixture has 100 history messages, a 6,400-byte response, and 200 deltas
 scheduled 50 ms apart. Both follow and history-reading journeys are functional
-controls. History-reading waits for at least 512 response characters in public
-SDK state during the active run. Turn anchoring additionally requires three
+controls. The version 2 history-reading protocol requires at least 512 visible
+current-response characters matching a prefix of actual public SDK text during
+the active run, with native identity or unique prose correspondence. A response
+ID or an SDK length alone cannot establish rendered readiness. Pointer movement
+precedes the final two-animation-callback readiness fence; the same actual response is checked
+again immediately before the original single -600 native wheel gesture.
+Turn anchoring additionally requires three
 stable scroll-position intervals within a two-second setup bound, separating
 the gesture from stock run-start anchoring. Bottom following remains active
 and may move continuously; these samples are not frame performance measurements. It uses native
@@ -62,6 +67,9 @@ or `vercel-ai-sdk`; `--journey` selects `follow` or `history-reading`.
 `--omit-delta 100` deliberately omits one actual source delta while leaving
 expected fixture bytes unchanged. Such an invocation must fail admission.
 Output directories must be fresh. Failures are retained without hidden retries.
+Version 1 outcomes keep their original meaning and remain separate. Failure logs
+include bounded scalar geometry, rendered-prefix length, wheel delivery counts,
+and native-control availability, without raw message prose or captured traces.
 
 The output includes private fixtures, public SDK snapshots, selected DOM prose,
 source/HTTP receipts, build asset hashes, and process closure. Keep this evidence

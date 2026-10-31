@@ -9,7 +9,7 @@ function authored(journey='follow'){
  const final={messages:[...history,response],running:false,error:null,responseId:response.id,operation:{kind:'original-run-promise',status:'fulfilled'}};
  const dom=message=>({mountedCount:100,errors:[],items:[{nativeId:message.id,text:message.text,visible:true,top:100,bottom:200}]});
  const evidence={pageErrors:[],initial,final,capabilities:{rendering:'all-mounted',scrollPolicy:'bottom-follow',returnToResponse:'native-control'},domInitial:dom(history[99]),domFinal:{...dom(response),mountedCount:101},server:{closed:true,errors:[],playbacks:{continuation:{started:true,completed:true,aborted:false,error:null}},sourceEmissions:value.continuation.map(x=>({kind:'continuation',eventType:x.type})),requests:[{method:'POST',path:'/stream/ui',status:200,sourceEof:true,responseFinished:true,responseClosed:true,clientAborted:false,error:null}]},network:{finished:['/stream/ui'],failed:[],external:[],resourceErrors:[]},cleanup:{publicDispose:{settled:true,fulfilled:true},browserClosed:true,serverExit:{code:0,signal:null},serverClose:{code:0,signal:null}}};
- if(journey==='history-reading'){evidence.domAfterWheel=dom(history[98]);evidence.domBeforeReturn=dom(history[98]);evidence.scroll={deltaY:-600,beforeTop:1200,afterTop:600,anchorId:'history-98',nativeDispatch:true,returnClicked:true};}
+ if(journey==='history-reading'){evidence.beforeWheelState={...final,messages:[...history,{...response,text:response.text.slice(0,1024)}],running:true,operation:{kind:'original-run-promise',status:'pending'}};evidence.domBeforeWheel={...dom({...response,text:response.text.slice(0,512)}),mountedCount:101};evidence.domAfterWheel=dom(history[98]);evidence.domBeforeReturn=dom(history[98]);evidence.scroll={deltaY:-600,beforeTop:1200,afterTop:600,anchorId:'history-98',nativeDispatch:true,returnClicked:true};}
  evidence.networkGuardBeforeCleanup={closed:false,overflow:false,policy:{version:'chromium-cdp-owned-origin-block-v1'}};evidence.networkGuardAfterCleanup={closed:true,overflow:false,policy:{version:'chromium-cdp-owned-origin-block-v1'}};return{value,evidence};
 }
 test('functional admission preserves unavailable performance/FPS meaning',()=>{
@@ -44,4 +44,16 @@ test('network guard must remain bounded and live through validation, then close 
  for(const change of [x=>x.networkGuardBeforeCleanup.closed=true,x=>x.networkGuardAfterCleanup.closed=false,x=>x.networkGuardAfterCleanup.overflow=true]){
   const{value,evidence}=authored();change(evidence);assert.throws(()=>api.admitFunctionalCase(value,evidence),/network-guard/);
  }
+});
+test('streaming readiness requires the actual visible current response prefix, not just SDK state',()=>{
+ const{value,evidence}=authored('history-reading');
+ assert.equal(typeof api.streamingReadiness,'function');
+ assert.equal(api.streamingReadiness(value.publicContext,evidence.beforeWheelState,evidence.domBeforeWheel).responseId,evidence.final.responseId);
+ for(const change of [x=>x.domBeforeWheel.items[0].text=x.initial.messages[99].text,x=>x.domBeforeWheel.items[0].nativeId='history-3',x=>x.domBeforeWheel.items[0].visible=false,x=>x.domBeforeWheel.items[0].text=x.domBeforeWheel.items[0].text.slice(0,511),x=>x.beforeWheelState.running=false]){
+  const{value,evidence}=authored('history-reading');change(evidence);assert.throws(()=>api.streamingReadiness(value.publicContext,evidence.beforeWheelState,evidence.domBeforeWheel));
+ }
+});
+test('a historical anchor cannot replace actual rendered response readiness',()=>{
+ const{value,evidence}=authored('history-reading');evidence.domBeforeWheel=evidence.domAfterWheel;
+ assert.throws(()=>api.admitFunctionalCase(value,evidence),/streaming-response-not-ready/);
 });

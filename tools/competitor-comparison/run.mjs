@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {chromium} from 'playwright';
 import {createFunctionalCase} from './fixtures.mjs';
 import {launchCaseServer} from './process.mjs';
-import {admitFunctionalCase,validateHistory,matchVisible,continuationPath} from './admission.mjs';
+import {admitFunctionalCase,validateHistory,matchVisible,continuationPath,streamingReadiness} from './admission.mjs';
 import {installOwnedNetworkGuard} from './network.mjs';
 
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
@@ -105,8 +105,22 @@ export async function runFunctionalCase({profile,journey,out,omitDelta}){
    // Use the same observed prose gate across profiles. An empty assistant ID
    // can precede stock run-start anchoring; wheel input must follow that stage.
    await page.waitForFunction(()=>{const state=window.competitorBench.read();return state.error!==null||state.messages.at(-1)?.text.length>=512;},{},{timeout:10000});
-   evidence.beforeWheelState=await evaluate(page,()=>window.competitorBench.read());
-   if(evidence.beforeWheelState.error!==null||!evidence.beforeWheelState.running||evidence.beforeWheelState.messages.at(-1).text.length<512)throw Error('functional-active-history-phase');
+   const pointerDOM=await evaluate(page,collectDOM,selectors),pointerRect=pointerDOM.scroll.rect;
+   if(pointerRect.width<=0||pointerRect.height<=0)throw Error('functional-scroll-geometry');
+   const x=pointerRect.x+pointerRect.width/2,y=pointerRect.y+Math.min(pointerRect.height/3,120);await page.mouse.move(x,y);
+   await evaluate(page,selector=>{
+    const node=document.querySelector(selector),records=[];window.__functionalWheel=records;
+    node.addEventListener('wheel',event=>{if(records.length>=32)return;const row={trusted:event.isTrusted,deltaY:event.deltaY,target:event.target instanceof Element?event.target.tagName:null,beforeTop:node.scrollTop,defaultPrevented:null};records.push(row);queueMicrotask(()=>{row.defaultPrevented=event.defaultPrevented;});},{capture:true,passive:true});
+   },selectors.scroller);
+   const readinessDeadline=performance.now()+5000;let rendered=false;
+   while(performance.now()<readinessDeadline){
+    evidence.domBeforeWheel=await evaluate(page,collectDOM,selectors);
+    evidence.beforeWheelState=await evaluate(page,()=>window.competitorBench.read());
+    try{evidence.renderedReadiness=streamingReadiness(source.publicContext,evidence.beforeWheelState,evidence.domBeforeWheel);rendered=true;break;}
+    catch(error){if(message(error)!=='competitor-streaming-response-not-ready')throw error;}
+    await page.waitForTimeout(50);
+   }
+   if(!rendered)throw Error('functional-rendered-response-readiness-deadline');
    evidence.wheelReadiness=evidence.capabilities.scrollPolicy==='turn-anchoring'?await evaluate(page,selector=>new Promise((resolve,reject)=>{
     const node=document.querySelector(selector),samples=[];let stable=0,last=null,stopped=false;
     const timer=setTimeout(()=>{stopped=true;reject(Error('functional-native-scroll-not-settled'));},2000);
@@ -117,14 +131,13 @@ export async function runFunctionalCase({profile,journey,out,omitDelta}){
      if(samples.length>=128){clearTimeout(timer);reject(Error('functional-scroll-readiness-bound'));return;}requestAnimationFrame(observe);
     };requestAnimationFrame(observe);
    }),selectors.scroller):{criterion:'active-bottom-follow-no-stationarity-required'};
+   await evaluate(page,()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const before=await evaluate(page,collectDOM,selectors),rect=before.scroll.rect;
    evidence.domBeforeWheel=before;
-   if(rect.width<=0||rect.height<=0)throw Error('functional-scroll-geometry');
-   await evaluate(page,selector=>{
-    const node=document.querySelector(selector),records=[];window.__functionalWheel=records;
-    node.addEventListener('wheel',event=>{if(records.length>=32)return;const row={trusted:event.isTrusted,deltaY:event.deltaY,target:event.target instanceof Element?event.target.tagName:null,beforeTop:node.scrollTop,defaultPrevented:null};records.push(row);queueMicrotask(()=>{row.defaultPrevented=event.defaultPrevented;});},{capture:true,passive:true});
-   },selectors.scroller);
-   const x=rect.x+rect.width/2,y=rect.y+Math.min(rect.height/3,120);await page.mouse.move(x,y);await page.mouse.wheel(0,-600);
+   evidence.beforeWheelState=await evaluate(page,()=>window.competitorBench.read());
+   evidence.renderedReadiness=streamingReadiness(source.publicContext,evidence.beforeWheelState,before);
+   if(rect.width<=0||rect.height<=0||x<rect.x||x>=rect.x+rect.width||y<rect.y||y>=rect.y+rect.height)throw Error('functional-scroll-geometry');
+   await page.mouse.wheel(0,-600);
    try{await page.waitForFunction(({selector,top})=>document.querySelector(selector).scrollTop<top-1,{selector:selectors.scroller,top:before.scroll.top},{timeout:5000});}
    finally{evidence.wheelEvents=await evaluate(page,()=>window.__functionalWheel);evidence.domAfterWheel=await evaluate(page,collectDOM,selectors);}
    await evaluate(page,()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
@@ -143,6 +156,8 @@ export async function runFunctionalCase({profile,journey,out,omitDelta}){
   if(journey==='history-reading'){
    evidence.domBeforeReturn=await evaluate(page,collectDOM,selectors);
    if(!selectors.returnToResponse)throw Error('functional-native-return-unsupported');
+   evidence.returnControl=await evaluate(page,selector=>{const nodes=Array.from(document.querySelectorAll(selector));return{count:nodes.length,visibleCount:nodes.filter(node=>node.checkVisibility({visibilityProperty:true,opacityProperty:true})).length};},selectors.returnToResponse);
+   if(!matchVisible(evidence.domBeforeReturn,evidence.final.messages).some(item=>item.id===evidence.scroll.anchorId))throw Error('functional-historical-anchor-lost-before-return');
    await page.locator(selectors.returnToResponse).click({timeout:10000});evidence.scroll.returnClicked=true;
   }
    const response=evidence.final.messages.find(message=>message.id===evidence.final.responseId);
@@ -176,7 +191,8 @@ export async function runFunctionalCase({profile,journey,out,omitDelta}){
  let admission=null;
  try{if(failure)throw Error(failure.message);admission=admitFunctionalCase(source,evidence);}catch(error){failure??={message:message(error)};}
  await write(out,'evidence.json',evidence);
- const result={schema:'four-stack-functional-case-v1',profile,journey,purpose:'functional-conformance-development',fixtureDigests:source.publicContext.digests,fixture,assets:beforeAssets,status:failure?'invalid':'functional-pass',failure,admission,unsafeOutstanding,performance:false,scoringEligibility:false,FPS:null};
+ if(failure)failure.diagnostics={renderedReadiness:evidence.renderedReadiness??null,beforeWheel:evidence.domBeforeWheel?.scroll??null,afterWheel:evidence.domAfterWheel?.scroll??null,beforeReturn:evidence.domBeforeReturn?.scroll??null,returnControl:evidence.returnControl??null,wheelEventCount:evidence.wheelEvents?.length??0,trustedWheelCount:evidence.wheelEvents?.filter(event=>event.trusted).length??0,wheelDeltaY:evidence.wheelEvents?.reduce((sum,event)=>sum+event.deltaY,0)??0};
+ const result={schema:'four-stack-functional-case-v2',profile,journey,purpose:'functional-conformance-development',fixtureDigests:source.publicContext.digests,fixture,assets:beforeAssets,status:failure?'invalid':'functional-pass',failure,admission,unsafeOutstanding,performance:false,scoringEligibility:false,FPS:null};
  await write(out,'result.json',result);return result;
 }
 
@@ -190,7 +206,7 @@ async function main(args){
  for(const profile of profiles)for(const journey of journeys){
   const result=await runFunctionalCase({profile,journey,out:path.join(out,profile+'-'+journey),omitDelta:omit});results.push(result);console.log(JSON.stringify({profile,journey,status:result.status,failure:result.failure,FPS:null}));if(result.unsafeOutstanding)throw Error('functional-original-ownership-unsettled');
  }
- await write(out,'summary.json',{schema:'four-stack-functional-invocation-v1',mode:'headless',historyCount:100,responseBytes:6400,results:results.map(({profile,journey,status,failure})=>({profile,journey,status,failure})),performance:false,FPS:null});
+ await write(out,'summary.json',{schema:'four-stack-functional-invocation-v2',mode:'headless',historyCount:100,responseBytes:6400,results:results.map(({profile,journey,status,failure})=>({profile,journey,status,failure})),performance:false,FPS:null});
  if(results.some(x=>x.status!=='functional-pass'))process.exitCode=1;
 }
 if(process.argv[1]&&pathToFileURL(path.resolve(process.argv[1])).href===import.meta.url)main(process.argv.slice(2)).catch(error=>{console.error(message(error));process.exitCode=1;});

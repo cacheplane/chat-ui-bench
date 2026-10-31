@@ -30,6 +30,6 @@ assert.deepEqual(evidence.cleanup.serverExit,{code:0,signal:null});
 assert.deepEqual(evidence.cleanup.serverClose,{code:0,signal:null});
 assert.deepEqual(evidence.network.failed,[]);
 assert.ok(evidence.network.finished.includes('/stream/ui'));
-const summary={schema:'four-stack-functional-verification-v1',results:results.map(({profile,journey,status,failure})=>({profile,journey,status,failure})),negativeControl:'omitted-delta-rejected-with-original-closure',performance:false,scoringEligibility:false,FPS:null};
+const summary={schema:'four-stack-functional-verification-v2',results:results.map(({profile,journey,status,failure})=>({profile,journey,status,failure})),negativeControl:'omitted-delta-rejected-with-original-closure',performance:false,scoringEligibility:false,FPS:null};
 await fs.writeFile(path.join(out,'verification.json'),JSON.stringify(summary,null,2)+'\n',{flag:'wx',mode:0o600});
 assert.ok(results.every(result=>result.status==='functional-pass'),'all eight functional cases must pass');
