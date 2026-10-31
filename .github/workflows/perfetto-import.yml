@@ -118,6 +118,15 @@ jobs:
           result=$?
           printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/presentation-coverage-v3.exit-code"
           exit "$result"
+      - name: Verify presentation association ledger on new private authored input
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          node tools/perfetto-import/presentation-association-ledger-smoke-v1.mjs --processor "$RUNNER_TEMP/perfetto-import-tool/trace_processor_shell" --out "$RUNNER_TEMP/perfetto-association-ledger-authored-private" > "$RUNNER_TEMP/perfetto-import-evidence/presentation-association-ledger.stdout" 2> "$RUNNER_TEMP/perfetto-import-evidence/presentation-association-ledger.stderr"
+          result=$?
+          printf '%s\n' "$result" > "$RUNNER_TEMP/perfetto-import-evidence/presentation-association-ledger.exit-code"
+          exit "$result"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:

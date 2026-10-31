@@ -1313,3 +1313,69 @@ uint changes and their numeric ordering. Official fixture track UUID arguments
 are typed signed integers; separate full-table pure fixtures exercise typed
 uint source/dimension track arguments. CI uploads bounded smoke summaries and
 test logs, retaining raw authored artifacts in private temporary directories.
+
+## Original-core presentation association ledger V1
+
+`presentation-association-ledger-v1.mjs` derives source evidence from the actual
+original return of `evaluatePresentationCoverageV2`. Its deeply frozen literal
+`PRESENTATION_ASSOCIATION_CONTRACT_V1` declares the fixed source profile,
+recognition rules and separate ledger limits. Existing V1/V2/V3 production
+contracts remain unchanged; no new SQL or public runner is introduced.
+
+`buildPresentationAssociationLedgerV1(originalCoreV2)` accepts one genuine core
+capability. JSON, copies, proxies and unavailable results cannot substitute.
+The module attempts each admitted original core once, including failed attempts,
+and gives successful ledgers their own private brand.
+`inspectPresentationAssociationLedgerV1(originalLedger)` returns a compact
+summary and rechecks the original core. Parent-core exhaustion withdraws this
+inspector irreversibly. No caller cap/config options or JSON admission path exist.
+
+Every original candidate group and raw reporter/graphics evidence remains in
+the ledger, including unkeyed, failed, no-update, partial, duplicate, unknown
+step and surface-only records. Raw display-ID rows reference separate process
+groups; they establish no qualified target association. Rows containing an
+unknown process explicitly remain unresolved; unknown-only groups remain
+unassociated. Repeated mapping references are grouped as same-process/tree-value
+hints, retaining the original target/lifetime uncertainty. Reporter state counts
+count raw records, including an unclassified bucket; they are not frame counts.
+
+Under the pinned emitter source contract, exact
+`STEP_SEND_ON_BEGIN_FRAME_MOJO_MESSAGE` and
+`STEP_SEND_SUBMIT_COMPOSITOR_FRAME_MOJO_MESSAGE` steps with unique valid typed surface
+IDs receive separate source-role annotations. Missing, duplicate, wrong-typed or
+sentinel identities stay unusable. These annotations establish neither accepted
+submission nor successful presentation. Original V2 unsupported/malformed labels
+remain intact; observations and matching counts do not extend the supported enum.
+
+The rules reference the pinned [BeginFrame send](https://github.com/chromium/chromium/blob/f842f52ef39fd97b449eb27cff414bf05a98ddce/components/viz/service/frame_sinks/compositor_frame_sink_support.cc#L1238-L1251)
+and [compositor metadata send](https://github.com/chromium/chromium/blob/f842f52ef39fd97b449eb27cff414bf05a98ddce/cc/mojo_embedder/async_layer_tree_frame_sink.cc#L247-L267).
+The contract records each complete source file's byte count and SHA256.
+
+Ledger work has its own fixed 64Mi-unit prepaid envelope, 4MiB serialized result,
+524,288 value nodes, 1,048,575 edges, 65,536 **new ledger index/reference slots**,
+and depth 64. Inherited evidence arrays retain their original parent admission
+and also pass the ledger's node/edge/byte seal; inherited rows are not charged as
+new index slots. Over-capacity computation returns no partial ledger and cannot
+retry on the same original. These limits preserve the parent's existing work
+account and deadlines; they do not expose or reset that hidden account.
+
+This pure module establishes original-core computation only. It does not
+establish native origin, file custody, exhaustive population, outcome closure
+or measurement qualification. Native private composition must retain and verify
+the live original RunV3 receipt, source-pin/bookend this module and bind its
+ledger witness to the actual coverage publication. All nativeSupported/FPS/rate/
+qualification/scoring fields remain false or null. A still-inspectable pure
+ledger cannot replace a withdrawn parent run receipt.
+
+```sh
+node --test tools/perfetto-import/presentation-association-ledger-v1.node.mjs
+node tools/perfetto-import/presentation-association-ledger-smoke-v1.mjs --processor /absolute/pinned-tool --out /absolute/fresh-authored-output
+```
+
+The new maintained authored smoke obtains an official original RunV3/core,
+retains cross-process pairs, partial/duplicate/drop/no-update records and typed
+SEND distinctions, and verifies the original parent through final readback. It
+mutates only its own new output to prove irreversible parent-custody refusal.
+The smoke establishes official authored import, not native capture. CI uploads
+bounded summaries and test logs; raw authored trace/CSV/full ledger remain in
+private runner temporary directories.

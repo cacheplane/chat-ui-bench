@@ -97,6 +97,12 @@ jobs:
           set -euo pipefail
           node --test tools/perfetto-import/presentation-coverage-export-v3.node.mjs tools/perfetto-import/presentation-coverage-adapter-v3.node.mjs 2>&1 | tee ci-logs/presentation-coverage-v3.log
 
+      - name: Test original-core presentation association ledger V1
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tools/perfetto-import/presentation-association-ledger-v1.node.mjs 2>&1 | tee ci-logs/presentation-association-ledger-v1.log
+
       - name: Run unit tests
         run: npm test 2>&1 | tee ci-logs/unit.log
 
