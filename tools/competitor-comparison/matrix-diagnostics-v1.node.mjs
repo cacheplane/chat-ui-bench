@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {closedData} from '../../competitors/shared/context.mjs';
 import {historyPrefixCharacters} from './matrix-policy-v3.mjs';
 
@@ -40,8 +40,12 @@ test('stage markers record dispatch and fulfillment/rejection in controller cloc
  assert.deepEqual(d.record.stages.map(({name,dispatchElapsedMs,fulfilledElapsedMs,rejectedElapsedMs})=>({name,dispatchElapsedMs,fulfilledElapsedMs,rejectedElapsedMs})),[{name:'start',dispatchElapsedMs:10,fulfilledElapsedMs:20,rejectedElapsedMs:undefined},{name:'response-id-wait',dispatchElapsedMs:20,fulfilledElapsedMs:undefined,rejectedElapsedMs:50}]);
 });
 
-const sourcePath='tools/competitor-comparison/matrix-run-v3.mjs';
-const baseline=execFileSync('git',['show','4f0f2cfb068af660c030f4c9cfb9fed08f816f49:'+sourcePath],{encoding:'utf8'});
+// Exact tools/competitor-comparison/matrix-run-v3.mjs bytes from public commit
+// 4f0f2cfb068af660c030f4c9cfb9fed08f816f49, before diagnostics were added.
+// Pin the authored source fixture so shallow checkouts retain the same baseline.
+const baselineBytes=await fs.readFile(new URL('./fixtures/matrix-run-v3-pre-diagnostics.source.txt',import.meta.url));
+assert.equal(createHash('sha256').update(baselineBytes).digest('hex'),'a2044a0924ec14bf01f94493501edfd2a19478bb9d408db38af7b73cf5a06cf5','exact pre-diagnostics baseline source');
+const baseline=baselineBytes.toString('utf8');
 const current=await fs.readFile(new URL('./matrix-run-v3.mjs',import.meta.url),'utf8');
 test('runner persists diagnostics and captures sample before readiness validation',()=>{
  assert.ok(current.includes("import {createMatrixDiagnostics}"),'runner imports recorder');
