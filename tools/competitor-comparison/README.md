@@ -77,6 +77,51 @@ local; do not upload it as CI or release artifacts. No existing captured traces
 are read by this runner. Results explicitly have `performance: false`,
 `scoringEligibility: false`, and `FPS: null`.
 
-This slice does not qualify timing, memory, rendering cost, presentation coverage,
-or rankings. Larger history/response matrices, repeated native measurements,
-trace binding, and presentation verification remain separate work.
+The separate **matrix v3** protocol expands the functional workload to 100,
+1,000 and 10,000 history messages and 6,400 or 262,144 response bytes, across
+all four profiles and both journeys: 48 positive cases. Its 49th case omits
+source delta 100 from Vercel/H10000/R262144/follow and requires the exact
+resulting content mismatch with otherwise complete original-operation custody.
+Matrix contexts use schema 2; the preceding functional v2 workload and bounds
+keep their original meaning.
+
+```sh
+node tools/competitor-comparison/matrix-run-v3.mjs --verify --out /absolute/new/local-matrix
+```
+
+For explicit development subsets, omit `--verify` and supply any of `--profile`,
+`--history-count` (100/1000/10000), `--response-bytes` (6400/262144) or
+`--journey`. Subset manifests say `debug`; they cannot establish full-matrix
+success. Every selected slot is declared before execution. Failure, unavailable
+ownership or exhausted budgets remain visible, including unattempted slots;
+there are no automatic retries or alternate configurations.
+
+Matrix observation acquires the complete actual public SDK transcript once
+before and once after the run into separate hashed local files. Intermediate
+polling reads actual scalar SDK progress; response prose is sampled separately
+for functional DOM correspondence. A fixed 5×5 viewport hit-test grid and up to
+two identified response/anchor centers select visible message roots, with at
+most 32 selected roots. Hidden descendants are not read. Full mounted counts
+are collected only at bookends. This reduces additional observer work; it does
+not imply constant-cost SDK internals.
+
+History reading waits for the first 16 canonical deltas' cumulative character
+budget (512 or 20,976), observed in actual SDK and visible DOM prose. From the
+same final clipped viewport and response rectangle, it requests one native
+upward wheel of `ceil(max(600, viewportMidpointY - responseTop))` pixels. Values
+over 1,048,576 are rejected. Trusted input, final cancellation state, actual
+upward movement, historical anchor preservation and native return remain
+required. This is a normalized history-seek functional control, separate from
+v2's fixed -600-pixel gesture and any sustained-scroll performance workload.
+
+Matrix-only envelopes are explicit: 8 MiB context and request body, 32 MiB
+private fixture, 16 MiB per transcript, 2 MiB per evidence/result, 80 MiB per
+case and 4 GiB per invocation with reserved failure publication space. A case
+has 240 seconds plus at most 30 seconds of original cleanup; the invocation
+has 1,200 seconds. A deadline cannot turn an unsettled operation into success.
+Output files are exclusively created, byte bounded and hash referenced.
+
+These functional protocols do not qualify timing, memory, rendering cost,
+presentation coverage, FPS or rankings. Repeated native measurements, trace
+binding, and presentation verification remain separate work. Keep all private
+matrix evidence local as well.

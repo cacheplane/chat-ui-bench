@@ -2,7 +2,7 @@ import { Component, useLayoutEffect, useMemo, type PropsWithChildren } from 'rea
 import { createRoot } from 'react-dom/client';
 import { AssistantRuntimeProvider, useLocalRuntime } from '@assistant-ui/react';
 import { Thread } from './components/assistant-ui/elements/thread.aui';
-import { parsePublicContext } from '../../shared/context.mjs';
+import { loadContext } from './context.ts';
 import type { PublicContext } from '../../shared/protocol.ts';
 import { createBridge } from './bridge.ts';
 import { createSource } from './adapter.ts';
@@ -13,8 +13,7 @@ import './shell.css';
 
 async function boot() {
   const contextResponse = await fetch('/context', { cache: 'no-store' });
-  if (!contextResponse.ok) throw new Error(`Context request failed (${contextResponse.status})`);
-  const context = parsePublicContext(await contextResponse.json());
+  const context = await loadContext(contextResponse);
   if (context.profile !== 'assistant-ui') throw new Error('Wrong profile context');
   const element = document.getElementById('root');
   if (!element) throw new Error('Root element is missing');
@@ -41,7 +40,7 @@ function App({ context, unmount }: { context: PublicContext; unmount: () => void
   })), [context]);
   const runtime = useLocalRuntime(source.adapter, { initialMessages });
   useLayoutEffect(() => {
-    window.competitorBench = createBridge(runtime.thread, source, unmount);
+    window.competitorBench = createBridge(runtime.thread, source, unmount, context);
   }, [runtime, source, unmount]);
   return <AssistantRuntimeProvider runtime={runtime}><Thread /></AssistantRuntimeProvider>;
 }

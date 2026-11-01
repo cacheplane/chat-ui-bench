@@ -6,7 +6,7 @@ import {requireComparisonProvenanceSession, type ComparisonProvenanceSession} fr
 const knownConfiguration = {
   'apps/threadplane/src/app.ts': '9f9680c921700d764c4a5cd312efa12cbbc4940f7c91ef3b34d06fc75017101a',
   'apps/threadplane/src/main.ts': 'bf34029550f938e42df33b7323cd11b3db039d9297c85191596404152a4d61fa',
-  'apps/threadplane/src/host.ts': 'd912408fbdd96712ecf638d0c28e25c64cf9cff3526460d43804278081e07c17',
+  'apps/threadplane/src/host.ts': 'f3293b12a90985b16509cb536000a7d4755b05371d35cc406cfb22289f7d8496',
   'apps/threadplane/angular.json': '2f44e3bbf0d34dbf3c5c9f467d7bee638cca7c4c832d91f1448d2745fbc14838',
   'apps/threadplane/src/index.html': 'bdf214c931d38b277ffcfb32f17661db891a4f6219645739334b949331b4a05a',
   'apps/threadplane/src/styles.css': '0b92bab5449a23801ce5e8657b34d94c929682ea9b73f50f01a00443b9139d2b',

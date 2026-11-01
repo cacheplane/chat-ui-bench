@@ -53,3 +53,25 @@ test('native1.83 stop owns thread in path and exact runId-only body',async()=>{
  assert.equal((await routes.handle(request('/copilot/agent/default/stop/foreign',{runId:context.publicContext.runId}))).status,404);
  }finally{await routes.dispose();}
 });
+
+test('actual H10000 cold connect crosses native SSE parser then preserves full original continuation', {timeout:30000},async()=>{
+ const {createMatrixCase}=await import('../../../tools/competitor-comparison/matrix-fixtures-v3.mjs');
+ const {startFunctionalServer}=await import('../../../tools/competitor-comparison/server.mjs');
+ const {HttpAgent}=await import('@ag-ui/client');const fs=await import('node:fs/promises');
+ const dir=await fs.realpath(await fs.mkdtemp('/private/tmp/copilot-cold-matrix-'));
+ const context=createMatrixCase({profile:'copilotkit',historyCount:10000,responseBytes:262144,journey:'follow'});
+ let server,agent;
+ try{
+  server=await startFunctionalServer({profile:'copilotkit',assetsDirectory:dir,privateCase:context,protocol:'matrix-v3'});
+  agent=new HttpAgent({url:server.origin+'/copilot/agent/default/connect',threadId:context.publicContext.threadId,fetch:async(url,options)=>{const response=await fetch(url,options);assert.equal(response.headers.get('cache-control'),'private,no-cache,max-age=0,must-revalidate');return response;}});
+  await agent.runAgent({runId:'actual-cold-connect'});
+  assert.equal(agent.messages.length,10000);assert.deepEqual(agent.messages.map(({id,role,content})=>({id,role,text:content})),context.publicContext.history);
+  const wrong=agent.messages.map(message=>({...message}));wrong.at(-1).content='wrong history';
+  const refused=await fetch(server.origin+'/copilot/agent/default/run',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({threadId:context.publicContext.threadId,runId:context.publicContext.runId,messages:wrong,state:{},tools:[],context:[],forwardedProps:{}})});assert.equal(refused.status,400);await refused.text();assert.equal(server.getReport().sourceEmissions.length,3);
+  agent.url=server.origin+'/copilot/agent/default/run';await agent.runAgent({runId:context.publicContext.runId});
+  assert.equal(agent.isRunning,false);assert.equal(agent.messages.length,10001);
+  assert.deepEqual(agent.messages.slice(0,10000).map(({id,role,content})=>({id,role,text:content})),context.publicContext.history);
+  const expected=context.continuation.filter(e=>e.type==='TEXT_MESSAGE_CONTENT').map(e=>e.delta).join('');assert.equal(agent.messages.at(-1).content,expected);assert.equal(agent.messages.at(-1).content.length,262144);
+  await server.close();const report=server.getReport();assert.equal(report.closed,true);assert.equal(report.sourceEmissions.length,207);assert.equal(report.playbacks.seed.completed,true);assert.equal(report.playbacks.continuation.completed,true);
+ }finally{await agent?.detachActiveRun();await server?.close();await fs.rm(dir,{recursive:true,force:true});}
+});

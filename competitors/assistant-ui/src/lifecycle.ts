@@ -22,8 +22,9 @@ export function createTransition(thread: PublicThread, historyIds: readonly stri
   const settle = (error?: Error) => {
     if (status !== 'pending') return;
     status = error ? 'rejected' : 'fulfilled';
-    unsubscribe();
-    if (error) reject(error); else resolve();
+    // Settle the original promise even when public unsubscription itself fails.
+    try { unsubscribe(); }
+    finally { if (error) reject(error); else resolve(); }
   };
   unsubscribe = thread.subscribe(() => {
     const state = thread.getState();

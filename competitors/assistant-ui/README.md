@@ -32,6 +32,20 @@ cancellation statuses. Source reader rejection is separately retained, exposed a
 documented SDK error status, and awaited during cleanup; cleanup cancels the public
 run and owned reader before unmounting.
 
+For an explicit matrix-v3/schema2 context, one bridge-lifetime public subscription
+retains the actual thread snapshot and also observes the original transition.
+`readProgress()` checks only actual count, the final-user boundary, and the current
+assistant's native identity, status and text-part lengths. It neither traverses
+history nor reconstructs response text. `readResponse()` projects only that actual
+assistant; full `read()` still validates all SDK prose at bookends. Start builds
+the historical ID set once. These are wrapper access bounds: the pinned SDK's
+snapshot synchronization and repository refresh can still traverse history, and
+the added subscription has notification overhead. Current-response validation is
+proportional to its part count. Context loading uses bulk `Response.text()` and the
+explicit protocol header to select the shared preparse limit. Schema1 retains its
+original transition path. Cleanup attempts cancellation, original source drain,
+transition settlement, unsubscription and unmount even after a cleanup error.
+
 Use Node 24.20.0 and npm 11.19.0 from this directory:
 
 ```sh

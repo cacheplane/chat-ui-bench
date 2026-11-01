@@ -6,8 +6,9 @@ const root=fileURLToPath(new URL('../../',import.meta.url));
 function deadline(original,ms,label){let timer;return Promise.race([original,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label)),ms);})]).finally(()=>clearTimeout(timer));}
 
 /** A deadline is attention/containment only; successful closure awaits ORIGINAL close. */
-export async function launchCaseServer({profile,assetsDirectory,fixturePath,sha256,omitDelta}){
-  const args=['--profile',profile,'--assets',assetsDirectory,'--fixture',fixturePath,'--sha256',sha256,...(omitDelta===undefined?[]:['--omit-delta',String(omitDelta)])];
+export async function launchCaseServer({profile,assetsDirectory,fixturePath,sha256,omitDelta,protocol}){
+  if(protocol!==undefined&&protocol!=='matrix-v3')throw Error('competitor-server-protocol');
+  const args=['--profile',profile,'--assets',assetsDirectory,'--fixture',fixturePath,'--sha256',sha256,...(protocol===undefined?[]:['--protocol',protocol]),...(omitDelta===undefined?[]:['--omit-delta',String(omitDelta)])];
   const child=fork(entry,args,{cwd:root,execPath:process.execPath,execArgv:[],env:{PATH:dirname(process.execPath)+':/usr/bin:/bin',HOME:process.env.HOME,LC_ALL:'C',NODE_ENV:'production',COPILOTKIT_TELEMETRY_DISABLED:'true',DO_NOT_TRACK:'1'},stdio:['ignore','pipe','pipe','ipc']});
   const state={pid:child.pid,exit:null,close:null,disconnected:false,report:null,protocolError:null,stdout:[],stderr:[],streams:{stdout:{bytes:0,end:false,closed:false},stderr:{bytes:0,end:false,closed:false}}};
   let resolveReady,rejectReady,ready=false,resolveClose,closing=null;

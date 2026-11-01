@@ -54,3 +54,17 @@ test('prose bridge rejects extra reasoning/tool content and inapplicable SDK rol
   state.messages[0].role = 'tool';
   assert.throws(() => bridge.read(), /Unexpected SDK message role/);
 });
+
+test('legacy cleanup still drains and unmounts if transition unsubscribe throws', async () => {
+  const { createBridge } = await load();
+  const steps: string[] = [];
+  const thread = { getState: () => ({ isRunning: false, messages: [{ id: 'u', role: 'user', content: [] }] }),
+    subscribe: () => () => { steps.push('unsubscribe'); throw new Error('legacy unsubscribe fault'); },
+    startRun() {}, cancelRun() { steps.push('cancel'); } };
+  const bridge = createBridge(thread, { async dispose() { steps.push('drain'); } }, () => { steps.push('unmount'); });
+  bridge.start();
+  const original = assert.rejects(bridge.waitForRun(), /disposed/);
+  await assert.rejects(bridge.dispose(), /cleanup/);
+  await original;
+  assert.deepEqual(steps, ['cancel', 'unsubscribe', 'drain', 'unmount']);
+});
