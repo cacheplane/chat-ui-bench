@@ -8,6 +8,7 @@ import {promisify} from 'node:util';
 import {MATRIX_V3_LIMITS as LIMITS,MATRIX_V3_STAGE_MS as STAGES,matrixVerificationRoster,nativeHistorySeekV4 as nativeHistorySeek,MATRIX_V4_ACQUISITION} from './matrix-policy-v4.mjs';
 import {createMatrixDiagnostics} from './matrix-diagnostics-v1.mjs';
 import {acquireMatrixReadinessV4} from './matrix-readiness-v4.mjs';
+import {matrixCIFailureAnnotation} from './matrix-ci-summary-v1.mjs';
 
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const message=error=>String(error?.message??error).slice(0,4096);
@@ -348,7 +349,7 @@ export async function runMatrixInvocation(options){
  const store=await setup.wait(createMatrixArtifactStore({directory:selected.out}),STAGES.progress,'matrix-invocation-directory');
  const manifest={schema:'four-stack-matrix-invocation-v4',acquisition:MATRIX_V4_ACQUISITION,mode:selected.mode,selection:selected.slots.map(({id,kind,selection})=>({id,kind,selection})),policy:{caseMs:LIMITS.caseMs,invocationMs:LIMITS.invocationMs,cleanupMs:LIMITS.cleanupMs},performance:false,scoringEligibility:false,FPS:null};
  await setup.wait(store.writeManifest('manifest-initial.json',{...manifest,status:'planned'}),STAGES.progress,'matrix-initial-manifest');
- const execution=await runMatrixRoster({slots:selected.slots,invocationStarted,execute:slot=>runMatrixCase({slot,store,out:selected.out,invocationStarted}),onResult:async result=>{console.log(JSON.stringify({id:result.id,status:result.status,failure:result.failure??null,FPS:null}));}});
+ const execution=await runMatrixRoster({slots:selected.slots,invocationStarted,execute:slot=>runMatrixCase({slot,store,out:selected.out,invocationStarted}),onResult:async result=>{console.log(JSON.stringify({id:result.id,status:result.status,failure:result.failure??null,FPS:null}));if(process.env.GITHUB_ACTIONS==='true'){const annotation=matrixCIFailureAnnotation(result);if(annotation)console.log(annotation);}}});
  const final={...manifest,status:execution.complete?'complete':'incomplete',...execution,storage:store.stats()};
  const originalPublication=store.writeManifest('manifest-final.json',final);let timer;
  try{await Promise.race([originalPublication,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('matrix-final-manifest-publication-unsettled')),Math.max(1,Math.min(STAGES.progress,invocationStarted+LIMITS.invocationMs+LIMITS.cleanupMs-performance.now())));})]);}finally{clearTimeout(timer);}
