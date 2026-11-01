@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {createFunctionalCase} from '../../../tools/competitor-comparison/fixtures.mjs';
 process.env.COPILOTKIT_TELEMETRY_DISABLED='true';process.env.DO_NOT_TRACK='1';
 let id=0;
@@ -58,7 +60,7 @@ test('actual H10000 cold connect crosses native SSE parser then preserves full o
  const {createMatrixCase}=await import('../../../tools/competitor-comparison/matrix-fixtures-v3.mjs');
  const {startFunctionalServer}=await import('../../../tools/competitor-comparison/server.mjs');
  const {HttpAgent}=await import('@ag-ui/client');const fs=await import('node:fs/promises');
- const dir=await fs.realpath(await fs.mkdtemp('/private/tmp/copilot-cold-matrix-'));
+ const dir=await fs.realpath(await fs.mkdtemp(join(tmpdir(),'copilot-cold-matrix-')));
  const context=createMatrixCase({profile:'copilotkit',historyCount:10000,responseBytes:262144,journey:'follow'});
  let server,agent;
  try{

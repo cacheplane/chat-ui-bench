@@ -1,7 +1,8 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import {createHash} from 'node:crypto';
+import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {createMatrixCase} from './matrix-fixtures-v3.mjs';import {createFunctionalCase} from './fixtures.mjs';import {startFunctionalServer} from './server.mjs';import {launchCaseServer} from './process.mjs';
 const matrix=(profile='vercel-ai-sdk')=>createMatrixCase({profile,historyCount:10000,responseBytes:262144,journey:'follow'});
-async function assets(){const dir=await fs.realpath(await fs.mkdtemp('/private/tmp/matrix-server-'));await fs.writeFile(dir+'/index.html','assets');return dir;}
+async function assets(){const dir=await fs.realpath(await fs.mkdtemp(join(tmpdir(),'matrix-server-')));await fs.writeFile(dir+'/index.html','assets');return dir;}
 test('explicit matrix protocol serves actual H10000 context and validates entire >1MiB HTTP history', {timeout:20000},async()=>{
  const dir=await assets(),privateCase=matrix(),server=await startFunctionalServer({profile:'vercel-ai-sdk',assetsDirectory:dir,privateCase,protocol:'matrix-v3'});
  try{const response=await fetch(server.origin+'/context');assert.equal(response.headers.get('x-chat-ui-bench-protocol'),'matrix-v3');assert.equal(response.headers.get('cache-control'),'no-store');assert.deepEqual(await response.json(),privateCase.publicContext);
