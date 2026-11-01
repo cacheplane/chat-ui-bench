@@ -128,3 +128,32 @@ These functional protocols do not qualify timing, memory, rendering cost,
 presentation coverage, FPS or rankings. Repeated native measurements, trace
 binding, and presentation verification remain separate work. Keep all private
 matrix evidence local as well.
+
+The current **matrix v4 acquisition** keeps that same 49-case roster, source
+wire protocol (`matrix-v3`), context schema, 200×50 ms schedule, and all content,
+native input, anchor, return, HTTP/source, and cleanup checks. V3 entrypoints and
+results retain their original meaning; use separate fresh directories for v4.
+
+```sh
+node tools/competitor-comparison/matrix-run-v4.mjs --verify --out /absolute/new/local-matrix-v4
+```
+
+V4 records the exact `matrix-active-acquisition-v1` orchestration identity. For
+history reading, it prepares the real pointer and passive wheel recorder before
+starting the stream. One atomic public SDK/selected-DOM sample loop replaces
+the serial response-ID, progress, and prefix gates. A single 4,000 ms acquisition
+budget starts at the original start acknowledgment; polls do not reset it.
+Malformed samples, errors, completion, or deadlines remain terminal. Existing
+turn stability and two animation callbacks still precede a fresh exact readiness
+sample immediately before input. The pointer must still lie inside that clip.
+
+The new gesture policy is
+`visible-response-below-viewport-one-response-headroom-v4`. It requests
+`ceil(max(600, clip.bottom + max(viewportHeight, responseHeight) - responseTop))`
+pixels upward, computed from that final sample. The unchanged 1,048,576-pixel
+limit rejects excess rather than clamping. This geometric allowance cannot
+guarantee a historical anchor while content grows; actual visible historical
+identity/text, movement, cancellation, anchor preservation, and native return
+remain mandatory. All four profiles use the same formula and acquisition order.
+Versioned manifests, evidence, results, failures, and admissions carry the fixed
+acquisition identity and remain ineligible for performance or FPS reporting.
