@@ -1,11 +1,14 @@
 # Four-stack functional comparison
 
 The first slice verifies identical Aimock-generated prose fixtures across stock
-Threadplane 0.3.3, CopilotKit React 1.83.0, assistant-ui 0.15.32, and AI SDK UI
+Threadplane 0.3.4, CopilotKit React 1.83.0, assistant-ui 0.15.32, and AI SDK UI
 4.0.163 / ai 7.0.159. Each case starts a fresh browser and owned Node server.
 Independent npm projects under `competitors/` keep competitor dependencies out of
 the root workspace graph. Existing profiles, modified results, and native trace
-series remain separate.
+series remain separate. Fresh stock 0.3.4 v2 and matrix cohorts require new
+absolute output directories, retain every attempt, and use the unchanged strict
+functional gates. Historical 0.3.3 reports keep their original identities; no
+native trace or FPS qualification follows from this version migration.
 
 | Profile | Renderer and scroll ownership |
 | --- | --- |

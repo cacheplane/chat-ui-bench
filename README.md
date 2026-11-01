@@ -466,9 +466,11 @@ this check after workspace typechecking. Vendor declaration bodies retain
 `npm test -- tests/fixtures/copilotkit-httpagent.test.ts`.
 
 The Threadplane Angular custom-transport profile is implemented with pinned
-`@threadplane/*` 0.3.3 and Angular 21.2.25. It uses the published packages and a
+`@threadplane/*` 0.3.4 and Angular 21.2.25. It uses the published packages and a
 local deterministic SSE replay transport. This profile is distinct from a
-default deployment connected to a model backend.
+default deployment connected to a model backend. Fresh 0.3.4 functional runs require
+new output directories and their actual package/build identities; historical
+0.3.3 and modified 0.3.2 captures retain their original meaning.
 
 [Fresh stock 0.3.3 native fixed-tail findings](docs/research/2026-10-25-stock033-native-tail500-findings.md)
 cover a separate 100-message diagnostic fixture. The observed capture has more
@@ -538,7 +540,7 @@ Native range queries can force layout and enumerate text fragments, so fewer
 JavaScript queries alone do not establish lower rendering overhead.
 
 The independent [four-stack functional harness](tools/competitor-comparison/README.md)
-adds stock Threadplane 0.3.3, CopilotKit React, assistant-ui's complete official
+adds stock Threadplane 0.3.4, CopilotKit React, assistant-ui's complete official
 Thread kit, and AI SDK UI with an explicitly benchmark-owned plain-text renderer.
 Its first scope is H100/R6400, follow and history-reading journeys, and an
 omitted-delta rejection control. Independent locks isolate competitor dependency
