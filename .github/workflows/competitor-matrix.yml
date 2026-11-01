@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   matrix:
-    name: Four-stack matrix v4 conformance
+    name: Four-stack matrix v5 conformance
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -51,5 +51,5 @@ jobs:
       - name: Verify matrix contracts and refusal controls
         run: node --test --test-concurrency=1 tools/competitor-comparison/matrix-*.node.mjs
       - name: Verify all 48 positive cells and the exact omission negative
-        run: node tools/competitor-comparison/matrix-run-v4.mjs --verify --out "$RUNNER_TEMP/four-stack-matrix-v4"
+        run: node tools/competitor-comparison/matrix-run-v5.mjs --verify --out "$RUNNER_TEMP/four-stack-matrix-v5"
       # Private fixtures, transcripts, DOM evidence and captured data are never uploaded.

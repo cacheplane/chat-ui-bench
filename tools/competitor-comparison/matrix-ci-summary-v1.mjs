@@ -23,7 +23,7 @@ export function matrixCIFailureAnnotation(result){
   const id=ownData(result,'id');
   if(typeof id!=='string'||!ids.has(id))return generic;
   const raw=status==='invalid'?ownData(ownData(result,'failure'),'message'):ownData(result,'reason');
-  // Compare the complete match: JavaScript's $ also accepts a final newline.
+  // Publish only a complete bounded harness code.
   const match=typeof raw==='string'&&raw.length<=107?/^matrix-[a-z0-9-]{1,100}$/.exec(raw):null;
   const code=match&&match[0]===raw?raw:unpublished;
   return `::error::matrix-case-failure id=${id} status=${status} code=${code}`;

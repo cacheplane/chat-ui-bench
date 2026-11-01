@@ -129,7 +129,7 @@ presentation coverage, FPS or rankings. Repeated native measurements, trace
 binding, and presentation verification remain separate work. Keep all private
 matrix evidence local as well.
 
-The current **matrix v4 acquisition** keeps that same 49-case roster, source
+The **matrix v4 acquisition** keeps that same 49-case roster, source
 wire protocol (`matrix-v3`), context schema, 200×50 ms schedule, and all content,
 native input, anchor, return, HTTP/source, and cleanup checks. V3 entrypoints and
 results retain their original meaning; use separate fresh directories for v4.
@@ -157,3 +157,51 @@ identity/text, movement, cancellation, anchor preservation, and native return
 remain mandatory. All four profiles use the same formula and acquisition order.
 Versioned manifests, evidence, results, failures, and admissions carry the fixed
 acquisition identity and remain ineligible for performance or FPS reporting.
+
+
+The current **matrix v5 acquisition** keeps the same 49-case roster, exact
+`nativeHistorySeekV4` gesture, original source wire protocol (`matrix-v3`),
+context schema 2, sixteen-delta prefix, and every native movement, wheel
+cancellation, historical anchor, return, full SDK/content, HTTP/source,
+network, provenance, and original cleanup check. Use a fresh exclusive local
+output directory for each attempt; keep v3, v4, and v5 results and diagnostic
+cohorts separate. Captured private data stays local.
+
+```sh
+node tools/competitor-comparison/matrix-run-v5.mjs --verify --out /absolute/new/local-matrix-v5
+```
+
+V5 carries the fixed `matrix-browser-local-readiness-v1` orchestration identity.
+For history reading, the pointer and passive wheel recorder are still prepared
+before the single original start. Metadata and the source-bound controller are
+constructed before start; the actual start acknowledgment begins one whole
+4,000 ms Node-authoritative prewheel interval. Initial readiness, the original
+turn-stability requirement (or original bottom-follow skip), two animation
+callbacks, final readiness, exact Node validation, geometry, pointer containment,
+and the synchronous check immediately before the one wheel all share that
+interval and the existing case/invocation deadlines. It is stricter than v4's
+initial acquisition interval: preparation and final validation do not receive a
+fresh budget. Follow journeys retain their original operations and carry a null
+history receipt.
+
+Each of at most two browser-local readiness evaluations polls response and
+progress synchronously, waiting locally in at most 50 ms increments. It reads
+selected DOM only after the unchanged prefix threshold, with at most 80 total
+observations across initial and final acquisition. Malformed SDK/DOM data,
+errors, completion, limits, and strong Node rejection are terminal. Browser
+prefix eligibility is only a transport filter: exact Node sample/readiness
+validation alone authorizes the existing gesture. Browser and Node clocks have
+separate labels and are never joined. The metadata transport cap is 8 MiB;
+existing fixture, evidence, transcript, case, invocation, and failure caps stay
+unchanged.
+
+After the original cleanup, v5 freezes a bounded readiness receipt (at most
+16 KiB), retained inline in evidence and as a hashed local sidecar when published.
+Receipts distinguish original settlement from attention timeout. An original
+owner still unknown at cleanup marks the case unsafe and stops the invocation;
+browser closure cannot supply settlement. On-time final full samples remain
+available as diagnostic evidence, with explicit outcome and observation ordinal
+when a rejected envelope carries an older sample. Late results cannot rescue an
+acquisition or mutate sealed evidence. Unavailability or a fresh failure remains
+a finding. All v5 results, receipts, and failures remain functional evidence
+only, with `performance:false`, `scoringEligibility:false`, and `FPS:null`.
