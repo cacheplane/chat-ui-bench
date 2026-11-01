@@ -5,6 +5,44 @@ failures remain labeled findings; upstream changes are limited to our own
 Threadplane repository. See the [current findings and learning priorities](../../docs/research/2026-11-01-outcome-learning-and-threadplane-priorities.md)
 for the assistant-ui readiness finding, evidence limits and next work.
 
+## Stock Threadplane Aimock trace baseline
+
+After a stock production build, run the additive diagnostic cohort in a fresh
+local directory:
+
+```sh
+node tools/competitor-comparison/aimock-trace-run-v1.mjs --out /absolute/new/local-directory
+```
+
+This declares six attempts: H100/R6400 follow and history-reading in each of
+three rounds. It uses fresh Aimock fixtures and the V5 functional protocol.
+Filters, fewer rounds, replacement attempts and output reuse are refused.
+The V5 runner remains unchanged; source-equivalence tests check the new traced
+case's functional body and stock bridge outside enumerated capture seams.
+
+The collector starts before the response and finishes after the functional
+journey. Its six fixed CDP categories, owned-page/frame/renderer binding,
+original command/event/drain custody, actual EOF, loss status, stream close and
+session detaches qualify trace availability independently of functional status.
+All original readiness, content, history, input, deadline and cleanup checks
+remain in force. The stock guard rechecks the production build, reviewed host
+configuration and published 0.3.4 dependency pins before and after each case.
+
+Local hashed sidecars retain the compressed trace, receipt and bounded cost
+projection under the original case/invocation store limits. Keep them local;
+CI runs contracts, not this baseline, and uploads no captured evidence. Earlier
+stock, modified, legacy-fixture and instrumented cohorts retain separate identities.
+
+Cost summaries describe observed complete `X` task, layout and minor-GC events
+on the bound renderer thread over the whole capture. Categories are explicit;
+missing populations remain unavailable or not observed. Nested event classes
+are not additive. These wall durations establish neither CPU time nor an exact
+streaming-only interval. Headless presentation coverage is unverified, and
+instrumentation adds overhead. Performance/scoring eligibility stays false and
+FPS stays null; this command does not establish display FPS or a ranking.
+
+## Four-library functional comparison
+
 The first slice verifies identical Aimock-generated prose fixtures across stock
 Threadplane 0.3.4, CopilotKit React 1.83.0, assistant-ui 0.15.32, and AI SDK UI
 4.0.163 / ai 7.0.159. Each case starts a fresh browser and owned Node server.
@@ -210,3 +248,27 @@ when a rejected envelope carries an older sample. Late results cannot rescue an
 acquisition or mutate sealed evidence. Unavailability or a fresh failure remains
 a finding. All v5 results, receipts, and failures remain functional evidence
 only, with `performance:false`, `scoringEligibility:false`, and `FPS:null`.
+
+CI separates the required-intent **Harness contracts and Threadplane functional
+regression v1** check from **Four-stack matrix v5 conformance** observation.
+The former runs the matrix and Aimock contract/refusal suites and exactly
+twelve positive Threadplane cells: all three history sizes, both response sizes,
+and both journeys. It reuses V5 case execution and admission with a distinct
+strict cohort identity; filtered debug runs cannot qualify. The canonical
+browser omission negative remains in strict49, with its pure refusal controls
+also included in the harness check. The twelve-cell cohort contains no browser
+negative and does not constitute a full matrix pass.
+Shared harness provenance tests require builds of stock Threadplane and all
+three independently locked competitor environments. Competitor behavioral
+admission belongs to the observational cohort.
+
+Both checks retain their actual failures and exit codes. Existing strict49
+failures remain red findings; this separation changes no historical result,
+validator, deadline, cleanup rule, or performance authority. Both child streams
+stay in bounded private runner-local evidence; CI emits only allowlisted roster
+IDs, statuses, and complete bounded harness codes, and uploads no captured data.
+Workflow names express intent, not branch protection. Required contexts are
+configured separately in repository metadata; adding this check preserves
+existing protections and follows a successful check on the actual PR.
+Strict49 remains advisory. All results retain
+`performance:false`, `scoringEligibility:false`, and `FPS:null`.

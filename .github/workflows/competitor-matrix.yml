@@ -14,6 +14,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  threadplane-regression:
+    name: Harness contracts and Threadplane functional regression v1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: true
+      COPILOTKIT_TELEMETRY_DISABLED: 'true'
+      DO_NOT_TRACK: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.20.0'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            competitors/*/package-lock.json
+      - name: Install locked harness and provenance prerequisites
+        run: |
+          npm install --global npm@11.19.0
+          npm ci --no-audit --no-fund
+          for profile in copilotkit assistant-ui vercel-ai-sdk; do
+            npm ci --prefix "competitors/$profile" --workspaces=false --ignore-scripts --no-audit --no-fund
+          done
+      - name: Build stock Threadplane and harness provenance prerequisites
+        run: |
+          npm run build --workspace @chat-ui-bench/threadplane
+          for profile in copilotkit assistant-ui vercel-ai-sdk; do
+            npm run build --prefix "competitors/$profile" --workspaces=false
+          done
+      - name: Install pinned browser
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Verify harness contracts and refusal controls
+        run: node --test --test-concurrency=1 tools/competitor-comparison/matrix-*.node.mjs tools/competitor-comparison/aimock-*.node.mjs tools/competitor-comparison/threadplane-regression-v1.node.mjs
+      - name: Verify the fixed twelve positive Threadplane cells
+        run: node tools/competitor-comparison/matrix-ci-v2.mjs --cohort threadplane-regression-v1 --out "$RUNNER_TEMP/threadplane-functional-regression-v1"
+      # Required-intent is policy; actual required contexts are external metadata.
   matrix:
     name: Four-stack matrix v5 conformance
     runs-on: ubuntu-24.04
@@ -51,5 +90,5 @@ jobs:
       - name: Verify matrix contracts and refusal controls
         run: node --test --test-concurrency=1 tools/competitor-comparison/matrix-*.node.mjs
       - name: Verify all 48 positive cells and the exact omission negative
-        run: node tools/competitor-comparison/matrix-run-v5.mjs --verify --out "$RUNNER_TEMP/four-stack-matrix-v5"
+        run: node tools/competitor-comparison/matrix-ci-v2.mjs --cohort strict49-v5 --out "$RUNNER_TEMP/four-stack-matrix-v5"
       # Private fixtures, transcripts, DOM evidence and captured data are never uploaded.
