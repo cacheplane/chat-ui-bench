@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createFunctionalCase} from '../../../tools/competitor-comparison/fixtures.mjs';
+process.env.COPILOTKIT_TELEMETRY_DISABLED='true';process.env.DO_NOT_TRACK='1';
+let id=0;
+function fixture(){
+ const value=structuredClone(createFunctionalCase('copilotkit','follow')),suffix=String(++id);
+ value.publicContext.threadId+='-test'+suffix;value.publicContext.runId+='-test'+suffix;value.seedRunId+='-test'+suffix;
+ for(const events of [value.historyRestore,value.continuation])for(const event of events){if('threadId'in event)event.threadId=value.publicContext.threadId;if('runId'in event)event.runId=events===value.historyRestore?value.seedRunId:value.publicContext.runId;}
+ return value;
+}
+const request=(route,body,signal)=>new Request('http://127.0.0.1'+route,{method:body?'POST':'GET',...(body?{headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{}),signal});
+function input(context,runId,messages=[]){return{threadId:context.publicContext.threadId,runId,messages,state:{},tools:[],context:[],forwardedProps:{}};}
+test('real public runtime restores authored history and runs one admitted continuation',async()=>{
+ const {createRoutes}=await import('../server.mjs'),context=fixture(),calls=[];
+ const routes=await createRoutes({context,playback:async function*(kind,signal){calls.push(kind);for(const event of kind==='seed'?context.historyRestore:context.continuation){assert.equal(signal.aborted,false);yield event;}}});
+ try{
+  assert.equal(await routes.handle(request('/foreign')),null);
+  const info=await routes.handle(request('/copilot/info'));assert.equal(info.status,200);
+  const restore=await routes.handle(request('/copilot/agent/default/connect',input(context,'cold-read')));assert.equal(restore.status,200);const restored=await restore.text();assert.ok(restored.includes(context.publicContext.history[0].text));
+  const messages=context.publicContext.history.map(({id,role,text})=>({id,role,content:text}));
+  const run=await routes.handle(request('/copilot/agent/default/run',input(context,context.publicContext.runId,messages)));assert.equal(run.status,200);assert.ok((await run.text()).includes('RUN_FINISHED'));assert.deepEqual(calls,['seed','continuation']);
+  assert.equal((await routes.handle(request('/copilot/agent/default/run',input(context,context.publicContext.runId,messages)))).status,409);
+ }finally{await routes.dispose();await routes.dispose();}
+ assert.equal((await routes.handle(request('/copilot/info'))).status,410);
+});
+test('wrong thread/run/history/route cannot start playback',async()=>{
+ const {createRoutes}=await import('../server.mjs'),context=fixture(),calls=[];
+ const routes=await createRoutes({context,playback:async function*(kind){calls.push(kind);yield* context.historyRestore;}});
+ try{
+  for(const body of [input(context,'wrong'),{...input(context,context.publicContext.runId),threadId:'other'},input(context,context.publicContext.runId,[])])assert.equal((await routes.handle(request('/copilot/agent/default/run',body))).status,400);
+  assert.equal((await routes.handle(request('/copilot/threads/clear',{}))).status,404);assert.deepEqual(calls,['seed']);
+ }finally{await routes.dispose();}
+});
+test('disposal awaits the original aborted playback cleanup and public SDK operation',async()=>{
+ const {createRoutes}=await import('../server.mjs'),context=fixture();let release,started,aborted=false,disposed=false;
+ const cleanup=new Promise(resolve=>{release=resolve;}),running=new Promise(resolve=>{started=resolve;});
+ const routes=await createRoutes({context,playback:async function*(kind,signal){
+  if(kind==='seed'){yield*context.historyRestore;return;}
+  yield context.continuation[0];started();
+  await new Promise(resolve=>signal.addEventListener('abort',resolve,{once:true}));aborted=true;await cleanup;throw Error('authored cancelled continuation');
+ }});
+ const messages=context.publicContext.history.map(({id,role,text})=>({id,role,content:text}));
+ const response=await routes.handle(request('/copilot/agent/default/run',input(context,context.publicContext.runId,messages)));
+ await running;const disposal=routes.dispose().then(()=>{disposed=true;});await new Promise(resolve=>setImmediate(resolve));assert.equal(aborted,true);assert.equal(disposed,false);release();await disposal;await response.body.cancel();assert.equal(disposed,true);
+});
+
+test('native1.83 stop owns thread in path and exact runId-only body',async()=>{
+ const {createRoutes}=await import('../server.mjs'),context=fixture();const routes=await createRoutes({context,playback:async function*(kind){if(kind!=='seed')throw Error('unexpected playback');yield*context.historyRestore;}});
+ try{const route='/copilot/agent/default/stop/'+context.publicContext.threadId;
+ assert.equal((await routes.handle(request(route,{runId:context.publicContext.runId}))).status,200);
+ for(const body of [{runId:'foreign'},{runId:context.publicContext.runId,threadId:context.publicContext.threadId},{runId:context.publicContext.runId,extra:true},{}])assert.equal((await routes.handle(request(route,body))).status,400);
+ assert.equal((await routes.handle(request('/copilot/agent/default/stop/foreign',{runId:context.publicContext.runId}))).status,404);
+ }finally{await routes.dispose();}
+});

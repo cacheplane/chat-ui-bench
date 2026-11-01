@@ -1,0 +1,198 @@
+{
+  "repository": "https://github.com/assistant-ui/assistant-ui",
+  "commit": "ff654d8156680b839774296ef644b57ab1078425",
+  "profile": "Official Thread source closure, byte-for-byte; registry Base UI style chosen; aliases resolved by Vite",
+  "files": [
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/thread.aui.tsx",
+      "local": "src/components/assistant-ui/elements/thread.aui.tsx",
+      "sha256": "a3bffd8e670e51a48eedb6cf0a5ea884ffc1d212cc28e2a8bf31f7a7961399da",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/thread.aui.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/attachment.aui.tsx",
+      "local": "src/components/assistant-ui/elements/attachment.aui.tsx",
+      "sha256": "42865c61b99ff9f4fa13294c3baa090f6afd54dc7c0bbbb4283b993119271446",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/attachment.aui.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/file.tsx",
+      "local": "src/components/assistant-ui/elements/file.tsx",
+      "sha256": "af6c5c38b0409f168e1bcebacffa9efaf7ff17ecc3cc0b5fab8d4770df0454a0",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/file.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/follow-up-suggestions.aui.tsx",
+      "local": "src/components/assistant-ui/elements/follow-up-suggestions.aui.tsx",
+      "sha256": "f0db1e9cfc5f648adeb57c8ac61fbeca4ebbb4d55267a9c107709af01b73abb4",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/follow-up-suggestions.aui.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/image.tsx",
+      "local": "src/components/assistant-ui/elements/image.tsx",
+      "sha256": "916b2ca0f1097a2eb22e6e5c3ffd39a918dec71abff424b6b8795939733d53fb",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/image.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/markdown-text.tsx",
+      "local": "src/components/assistant-ui/elements/markdown-text.tsx",
+      "sha256": "7d20bd8fe709a1a6aeee24ba82531309e374740ba6181e092592275ffd6ff8ac",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/markdown-text.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/reasoning.aui.tsx",
+      "local": "src/components/assistant-ui/elements/reasoning.aui.tsx",
+      "sha256": "3ae8bcf0d84fcb9ac37a40c2046abbf46d7b8f3967b482eec84f0a743aefce65",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/reasoning.aui.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/tool-fallback.aui.tsx",
+      "local": "src/components/assistant-ui/elements/tool-fallback.aui.tsx",
+      "sha256": "31720ad79fe332a5999cc1873108da740e63c05f4b8f322bde75f8d495cbf853",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/tool-fallback.aui.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/tool-group.aui.tsx",
+      "local": "src/components/assistant-ui/elements/tool-group.aui.tsx",
+      "sha256": "757caf28ee232d4f500c8af7d6837fe7d6d2b144774a6a0bcdaff8c0c517bd9e",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/tool-group.aui.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/tooltip-icon-button.tsx",
+      "local": "src/components/assistant-ui/elements/tooltip-icon-button.tsx",
+      "sha256": "98580531a6f5a213cccd6964c0c75fd097d97b77bcca05f904df562512273363",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/tooltip-icon-button.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/ui/base/button.tsx",
+      "local": "src/components/ui/button.tsx",
+      "sha256": "de5e06ef482e702cc56abe8fbe0b1dfcfee9c30db4eafad24a38b5360188c42f",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/ui/base/button.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/ui/base/skeleton.tsx",
+      "local": "src/components/ui/skeleton.tsx",
+      "sha256": "a61009cda0a56be88eb94bfecad0fdeb7a895611e87049ee1f2617fc25cd6620",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/ui/base/skeleton.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/lib/utils.ts",
+      "local": "src/lib/utils.ts",
+      "sha256": "55bbdc94cef3e0c8a8bba386e94f97228dd2c967fe61466fc565378890550c08",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/lib/utils.ts"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/ui/base/tooltip.tsx",
+      "local": "src/components/ui/tooltip.tsx",
+      "sha256": "43cf8405ec5856165c2e7543d9e07c7bdf186c0b9f39270141a42de3dc11d0cc",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/ui/base/tooltip.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/ui/base/dialog.tsx",
+      "local": "src/components/ui/dialog.tsx",
+      "sha256": "662c25e6d4873ba41c12db62a378a1cb873d6c3846e855fc85039793823cd903",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/ui/base/dialog.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/ui/base/avatar.tsx",
+      "local": "src/components/ui/avatar.tsx",
+      "sha256": "56acc1c16834672164b7d1d920ef939bc4d5330640059bf0ec0f81cbdc7c168e",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/ui/base/avatar.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/attachment-state.ts",
+      "local": "src/components/assistant-ui/elements/attachment-state.ts",
+      "sha256": "8718cfac67e6afff2cc21981ebd934ea40c02abcf96c6d74be441a11dc37709d",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/attachment-state.ts"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/media-player.tsx",
+      "local": "src/components/assistant-ui/elements/media-player.tsx",
+      "sha256": "64a43a3554e9a3de056bcc756dd022a342a45450fa1b41a87836896d0c86dd55",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/media-player.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/utils/href.ts",
+      "local": "src/components/assistant-ui/utils/href.ts",
+      "sha256": "3a8038d038b1918ae3f58a61dcd30933633131dda341eb5bea5b6a650b31a912",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/utils/href.ts"
+    },
+    {
+      "upstream": "packages/ui/src/hooks/use-copy-to-clipboard.ts",
+      "local": "src/hooks/use-copy-to-clipboard.ts",
+      "sha256": "1f3b8a1bab79cef961f62eb25d6b58a0d16c957d63ba1faf086ad09c99712c0a",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/hooks/use-copy-to-clipboard.ts"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/reasoning.tsx",
+      "local": "src/components/assistant-ui/elements/reasoning.tsx",
+      "sha256": "02c42a1cad5fd56f4479fe65c779e9f9934c03a6e935ac92ebf98cbb46ef3cc7",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/reasoning.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/collapsible-root.tsx",
+      "local": "src/components/assistant-ui/elements/collapsible-root.tsx",
+      "sha256": "6d3e6d9a776ac9db13448606627c2ef51e5605cacb2f805379ada9b58abe4565",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/collapsible-root.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/ui/base/textarea.tsx",
+      "local": "src/components/ui/textarea.tsx",
+      "sha256": "abab274474743d7b6d30e67848e4341c2fbd491a8a300010e5da1176c7f9624f",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/ui/base/textarea.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/hooks/use-attachment-src.ts",
+      "local": "src/hooks/use-attachment-src.ts",
+      "sha256": "dfb621f1a18f4013994aa29815beddb436020105164526ab7c86b0b0a32040a1",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/hooks/use-attachment-src.ts"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/elements/surfaces.tsx",
+      "local": "src/components/assistant-ui/elements/surfaces.tsx",
+      "sha256": "5d81fbb669e67ae20026cd30ed57efc51a5e3ee0f4f5d265e1723de75359b8fa",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/elements/surfaces.tsx"
+    },
+    {
+      "upstream": "packages/ui/src/components/react/assistant-ui/utils/useIsomorphicLayoutEffect.ts",
+      "local": "src/components/assistant-ui/utils/useIsomorphicLayoutEffect.ts",
+      "sha256": "8db117d730e640655e5099e086af4e00d545c283839d9ef5885ca93419d51893",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/components/react/assistant-ui/utils/useIsomorphicLayoutEffect.ts"
+    },
+    {
+      "upstream": "packages/ui/src/globals.css",
+      "local": "src/official-globals.css",
+      "sha256": "42070e0b45bb201b2b838a52aaaa6e965f964e0b542d97f1fe517fe59c4b75a8",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/packages/ui/src/globals.css"
+    },
+    {
+      "upstream": "templates/minimal/app/globals.css",
+      "local": "src/official-theme.css",
+      "sha256": "34214c9521d2177014f34e84469096de13848a77b8dd0c3470734270c697040b",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/templates/minimal/app/globals.css"
+    },
+    {
+      "upstream": "LICENSE",
+      "local": "LICENSE.assistant-ui",
+      "sha256": "eafb05991a572efa34097474b31fef45b14a8879ed1d1a8fd77de62e6fa7d275",
+      "url": "https://raw.githubusercontent.com/assistant-ui/assistant-ui/ff654d8156680b839774296ef644b57ab1078425/LICENSE"
+    }
+  ],
+  "externalImports": [
+    "@assistant-ui/react",
+    "@assistant-ui/react-markdown",
+    "@assistant-ui/react-markdown/styles/dot.css",
+    "@base-ui/react/avatar",
+    "@base-ui/react/button",
+    "@base-ui/react/collapsible",
+    "@base-ui/react/dialog",
+    "@base-ui/react/tooltip",
+    "class-variance-authority",
+    "cn",
+    "lucide-react",
+    "react",
+    "react-dom",
+    "remark-gfm",
+    "zustand/react/shallow"
+  ]
+}

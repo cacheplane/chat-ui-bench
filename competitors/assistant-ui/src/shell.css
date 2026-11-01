@@ -1,0 +1,3 @@
+/* Benchmark containment only. Official copied Thread/theme files are unchanged. */
+html, body, #root { width: 100%; height: 100%; margin: 0; }
+body { overflow: hidden; font-family: Arial, sans-serif; }
