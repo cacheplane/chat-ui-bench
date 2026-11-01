@@ -1,5 +1,10 @@
 # Four-stack functional comparison
 
+The primary goal is to improve Threadplane through outcome learning. Competitor
+failures remain labeled findings; upstream changes are limited to our own
+Threadplane repository. See the [current findings and learning priorities](../../docs/research/2026-11-01-outcome-learning-and-threadplane-priorities.md)
+for the assistant-ui readiness finding, evidence limits and next work.
+
 The first slice verifies identical Aimock-generated prose fixtures across stock
 Threadplane 0.3.4, CopilotKit React 1.83.0, assistant-ui 0.15.32, and AI SDK UI
 4.0.163 / ai 7.0.159. Each case starts a fresh browser and owned Node server.
