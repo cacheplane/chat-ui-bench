@@ -6,6 +6,7 @@ import {performance} from 'node:perf_hooks';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {MATRIX_V3_LIMITS as LIMITS,MATRIX_V3_STAGE_MS as STAGES,matrixVerificationRoster,nativeHistorySeek} from './matrix-policy-v3.mjs';
+import {createMatrixDiagnostics} from './matrix-diagnostics-v1.mjs';
 
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const message=error=>String(error?.message??error).slice(0,4096);
@@ -121,15 +122,17 @@ async function installMatrixThreadplaneBridge(page,source,origin,wait){
 
 export async function runMatrixCase({slot,store,out,invocationStarted}){
  const started=performance.now(),deadline=createMatrixDeadline({caseStarted:started,invocationStarted}),wait=(original,ms,label)=>deadline.wait(original,ms,label);
+ const diagnostics=createMatrixDiagnostics({now:performance.now.bind(performance),origin:started});
  const [{createMatrixCase},{launchCaseServer},{observeMatrixDOM},{validateMatrixTranscript,validateMatrixProgress,matchMatrixVisible,matrixStreamingReadiness,admitMatrixCase},{installOwnedNetworkGuard},{chromium},{createMatrixSampleEvaluator}]=await wait(Promise.all([
   import('./matrix-fixtures-v3.mjs'),import('./process.mjs'),import('./matrix-observer-v3.mjs'),import('./matrix-admission-v3.mjs'),import('./network.mjs'),import('playwright'),import('./matrix-sample-v3.mjs'),
  ]),STAGES.transcript,'matrix-modules');
  const {profile,journey,responseBytes,historyCount}=slot.selection,source=createMatrixCase(slot.selection);deadline.check();
  const artifacts=await wait(store.beginCase(slot.id),STAGES.progress,'matrix-case-reservation');
  const evidence={schema:'four-stack-matrix-evidence-v3',network:{finished:[],failed:[],external:[],resourceErrors:[]},cleanup:{publicDispose:{settled:false,fulfilled:false},browserClosed:false,serverExit:null,serverClose:null},pageErrors:[],consoleErrors:[]};
+ evidence.observerDiagnostics=diagnostics.record;
  let server,browser,page,networkGuard,serverOriginal,browserOriginal,serverOutcome,selectors,initial,final,fixture,initialRef,finalRef,beforeFacts,failure=null,unsafeOutstanding=false,stopInvocation=false,runOriginal,runStarted=null,runSettledAt=null,finalReadAttempted=false;
  let validating=true;
- const fail=error=>{failure??={message:message(error)};unsafeOutstanding||=error?.unsafeOutstanding===true;};
+ const fail=error=>{diagnostics.terminal(error);failure??={message:message(error)};unsafeOutstanding||=error?.unsafeOutstanding===true;};
  const evaluate=(callback,arg,stage=STAGES.progress,label='matrix-evaluate')=>wait(page.evaluate(callback,arg),stage,label);
  const progress=async()=>{const value=await evaluate(()=>window.competitorBench.readProgress());validateMatrixProgress(source.publicContext,value);return value;};
  const dom=(countMounted=false,anchorId=null,responseId=null)=>evaluate(observeMatrixDOM,{selectors,responseId,anchorId,countMounted,maxResponseCharacters:responseBytes},STAGES.progress,'matrix-selected-dom');
@@ -172,55 +175,113 @@ export async function runMatrixCase({slot,store,out,invocationStarted}){
   await wait(page.locator(selectors.scroller).evaluate(node=>{node.scrollTop=node.scrollHeight;}),STAGES.progress,'matrix-idle-preparation');
   await wait(page.waitForFunction(selector=>{const node=document.querySelector(selector);return node&&Math.abs(node.scrollHeight-node.scrollTop-node.clientHeight)<=1;},selectors.scroller,{timeout:Math.max(1,Math.min(STAGES.nativeReturn,deadline.remaining()))}),STAGES.nativeReturn,'matrix-idle-bottom');
   await ticks();evidence.domInitial=await dom(true);matchMatrixVisible(evidence.domInitial,initial.messages);
+  diagnostics.dispatched('start');
   runStarted=performance.now();await evaluate(()=>window.competitorBench.start());
+  diagnostics.fulfilled();
+  diagnostics.dispatched('run-promise-dispatch');
   runOriginal=page.evaluate(()=>window.competitorBench.waitForRun());void runOriginal.then(()=>{runSettledAt=performance.now();},()=>{runSettledAt=performance.now();});
+  diagnostics.fulfilled();
+  diagnostics.dispatched('response-id-wait');
   await poll(()=>{const state=window.competitorBench.readProgress();return state.error!==null||state.responseId!==null;},STAGES.progress,'matrix-response-start');
+  diagnostics.fulfilled();
+  diagnostics.dispatched('streaming-progress');
   evidence.streamingProgress=await progress();
+  diagnostics.fulfilled();
   if(journey==='history-reading'){
    const prefix=responseBytes===6400?512:20976;
+   diagnostics.dispatched('prefix-wait');
    await wait(page.waitForFunction(prefix=>{const state=window.competitorBench.readProgress();return state.error!==null||state.responseCharacters>=prefix;},prefix,{timeout:Math.max(1,Math.min(STAGES.progress,deadline.remaining()))}),STAGES.progress,'matrix-prefix-phase');
+   diagnostics.fulfilled();
+   diagnostics.dispatched('pointer-dom');
    const pointerDOM=await dom(false,null,evidence.streamingProgress.responseId),clip=pointerDOM.clip;
+   diagnostics.fulfilled();
    const x=(clip.left+clip.right)/2,y=clip.top+Math.min((clip.bottom-clip.top)/3,120);if(![x,y].every(Number.isFinite)||clip.right<=clip.left||clip.bottom<=clip.top)throw Error('matrix-pointer-geometry');
+   diagnostics.dispatched('pointer-move');
    await wait(page.mouse.move(x,y),STAGES.progress,'matrix-pointer-move');
+   diagnostics.fulfilled();
+   diagnostics.dispatched('wheel-recorder');
    await evaluate(installMatrixWheelRecorder,selectors.scroller);
+   diagnostics.fulfilled();
+   diagnostics.dispatched('readiness-loop');
    const readyUntil=performance.now()+Math.min(STAGES.readiness,deadline.remaining());let ready=false;
    while(performance.now()<readyUntil){
+    diagnostics.sampleDispatched('readiness');
     const sample=await currentSample();
+    diagnostics.sampleFulfilled(sample);
     try{matrixStreamingReadiness(source.publicContext,sample.progress,sample.response,sample.dom);ready=true;break;}catch(error){if(message(error)!=='matrix-streaming-response-not-ready')throw error;}
     await wait(page.waitForTimeout(50),STAGES.progress,'matrix-rendered-prefix-poll');
    }
    if(!ready)throw Error('matrix-rendered-response-readiness-deadline');
+   diagnostics.fulfilled();
+   diagnostics.dispatched('turn-stability');
    evidence.wheelReadiness=evidence.capabilities.scrollPolicy==='turn-anchoring'?await evaluate(selector=>new Promise((resolve,reject)=>{
     const node=document.querySelector(selector),samples=[];let stable=0,last=null,stopped=false;const timer=setTimeout(()=>{stopped=true;reject(Error('matrix-native-scroll-not-settled'));},2000);
     const observe=timestamp=>{if(stopped)return;const top=node.scrollTop;samples.push({timestamp,top});stable=last!==null&&Math.abs(top-last)<=0.5?stable+1:0;last=top;if(stable>=3){clearTimeout(timer);resolve({criterion:'three-consecutive-stable-scrollTop-intervals',samples});return;}if(samples.length>=128){clearTimeout(timer);reject(Error('matrix-scroll-readiness-bound'));return;}requestAnimationFrame(observe);};requestAnimationFrame(observe);
    }),selectors.scroller,STAGES.turnStability,'matrix-turn-stability'):{criterion:'active-bottom-follow-no-stationarity-required'};
+   diagnostics.fulfilled();
+   diagnostics.dispatched('pre-wheel-ticks');
    await ticks();
-   const beforeWheel=await currentSample();evidence.beforeWheelResponse=beforeWheel.response;evidence.beforeWheelProgress=beforeWheel.progress;evidence.domBeforeWheel=beforeWheel.dom;
+   diagnostics.fulfilled();
+   diagnostics.sampleDispatched('pre-wheel');
+   const beforeWheel=await currentSample();
+   diagnostics.sampleFulfilled(beforeWheel);
+   evidence.beforeWheelResponse=beforeWheel.response;evidence.beforeWheelProgress=beforeWheel.progress;evidence.domBeforeWheel=beforeWheel.dom;
    evidence.renderedReadiness=matrixStreamingReadiness(source.publicContext,evidence.beforeWheelProgress,evidence.beforeWheelResponse,evidence.domBeforeWheel);
    const seek=nativeHistorySeek({clip:evidence.domBeforeWheel.clip,responseRect:evidence.renderedReadiness.responseRect});
    if(x<evidence.domBeforeWheel.clip.left||x>=evidence.domBeforeWheel.clip.right||y<evidence.domBeforeWheel.clip.top||y>=evidence.domBeforeWheel.clip.bottom)throw Error('matrix-pointer-left-clip');
    evidence.scroll={nativeDispatch:false,...seek,beforeTop:evidence.domBeforeWheel.scroll.top,afterTop:null,anchorId:null,returnClicked:false};
+   diagnostics.dispatched('single-wheel-dispatch-ack');
    const originalWheel=page.mouse.wheel(0,seek.deltaY);await wait(originalWheel,STAGES.nativeMovement,'matrix-original-wheel');evidence.scroll.nativeDispatch=true;
-   try{await wait(page.waitForFunction(({selector,top})=>document.querySelector(selector).scrollTop<top-1,{selector:selectors.scroller,top:evidence.scroll.beforeTop},{timeout:Math.max(1,Math.min(STAGES.nativeMovement,deadline.remaining()))}),STAGES.nativeMovement,'matrix-native-upward-movement');}
+   diagnostics.fulfilled();
+   diagnostics.dispatched('wheel-upward-movement');
+   try{await wait(page.waitForFunction(({selector,top})=>document.querySelector(selector).scrollTop<top-1,{selector:selectors.scroller,top:evidence.scroll.beforeTop},{timeout:Math.max(1,Math.min(STAGES.nativeMovement,deadline.remaining()))}),STAGES.nativeMovement,'matrix-native-upward-movement');
+    diagnostics.fulfilled();
+   }catch(error){diagnostics.stageRejected(error);throw error;}
    finally{
+    diagnostics.dispatched('wheel-event-completion');
     await poll(()=>window.__matrixWheel?.records.length>0&&window.__matrixWheel.records.every(row=>row.defaultPrevented!==null),STAGES.nativeMovement,'matrix-wheel-event-completion');
+    diagnostics.fulfilled();
+    diagnostics.dispatched('wheel-events');
     evidence.wheelEvents=await evaluate(()=>{if(window.__matrixWheel.overflow)throw Error('matrix-wheel-event-cap');return window.__matrixWheel.records;});
+    diagnostics.fulfilled();
     requireMatrixWheelDelivery(evidence.wheelEvents,seek.deltaY);
-    evidence.domAfterWheel=(await currentSample()).dom;
+    diagnostics.sampleDispatched('wheel-finally');
+    const wheelFinally=await currentSample();
+    diagnostics.sampleFulfilled(wheelFinally);
+    evidence.domAfterWheel=wheelFinally.dom;
    }
-   await ticks();const afterWheel=await currentSample();evidence.domAfterWheel=afterWheel.dom;
+   diagnostics.dispatched('after-wheel-ticks');
+   await ticks();
+   diagnostics.fulfilled();
+   diagnostics.sampleDispatched('after-wheel');
+   const afterWheel=await currentSample();
+   diagnostics.sampleFulfilled(afterWheel);
+   evidence.domAfterWheel=afterWheel.dom;
    const afterWheelResponse=afterWheel.response;
    const visible=matchMatrixVisible(evidence.domAfterWheel,[...source.publicContext.history,...(afterWheelResponse?[afterWheelResponse]:[])],{responsePrefixId:afterWheelResponse?.id}),historyIds=new Set(source.publicContext.history.map(row=>row.id)),anchor=visible.find(row=>historyIds.has(row.id));
    if(!anchor)throw Error('matrix-visible-history-anchor');evidence.scroll.anchorId=anchor.id;evidence.scroll.afterTop=evidence.domAfterWheel.scroll.top;
   }
   const runRemaining=STAGES.originalRun-(performance.now()-runStarted);
   if(runRemaining<=0&&(runSettledAt===null||runSettledAt>runStarted+STAGES.originalRun))throw Error('matrix-original-run-deadline');
+  diagnostics.dispatched('full-completion-wait');
   await wait(runOriginal,Math.max(1,runRemaining),'matrix-original-run');
+  diagnostics.fulfilled();
   if(runSettledAt>runStarted+STAGES.originalRun)throw Error('matrix-original-run-deadline');
-  evidence.afterOriginalRunProgress=await progress();await wait(clientOriginal,STAGES.nativeMovement,'matrix-browser-original-completion');
+  diagnostics.dispatched('after-run-progress');
+  evidence.afterOriginalRunProgress=await progress();
+  diagnostics.fulfilled();
+  diagnostics.dispatched('http-completion');
+  await wait(clientOriginal,STAGES.nativeMovement,'matrix-browser-original-completion');
+  diagnostics.fulfilled();
+  diagnostics.dispatched('final-public-transition');
   await poll(()=>{const state=window.competitorBench.readProgress();return state.error!==null||!state.running&&state.operation.status==='fulfilled';},STAGES.progress,'matrix-final-public-transition');
+  diagnostics.fulfilled();
+  diagnostics.dispatched('final-progress');
   evidence.finalProgress=await progress();finalReadAttempted=true;
+  diagnostics.fulfilled();
+  diagnostics.dispatched('final-transcript');
   final=await evaluate(()=>window.competitorBench.read(),undefined,STAGES.transcript,'matrix-final-transcript');
+  diagnostics.fulfilled();
   finalRef=await wait(artifacts.writeJSON('transcript-final.json',final,{kind:'transcript'}),STAGES.transcript,'matrix-final-transcript-write');
   await ticks();
   if(journey==='history-reading'){
@@ -234,7 +295,7 @@ export async function runMatrixCase({slot,store,out,invocationStarted}){
   if(!converged)throw Error('matrix-complete-response-not-visible');await ticks();evidence.domFinal=await dom(true,null,final.responseId);
   evidence.networkGuardBeforeCleanup=networkGuard.read();if(evidence.networkGuardBeforeCleanup.closed||evidence.networkGuardBeforeCleanup.overflow||context.pages().length!==1)throw Error('matrix-network-observation-invalid');
   if(evidence.pageErrors.length||evidence.network.resourceErrors.length)throw Error('matrix-page-or-resource-error');deadline.check();
- }catch(error){fail(error);if(error.serverOutcome)serverOutcome=error.serverOutcome;}
+ }catch(error){diagnostics.rejected(error);fail(error);if(error.serverOutcome)serverOutcome=error.serverOutcome;}
  finally{
   // A failed original run still has actual public state worth retaining. Never
   // replace a rejected projection or retry a failed full-transcript acquisition.
@@ -272,7 +333,7 @@ export async function runMatrixCase({slot,store,out,invocationStarted}){
  try{deadline.check();if(serverOutcome)await wait(artifacts.writeJSON('server-process.json',serverOutcome,{kind:'evidence'}),STAGES.progress,'matrix-server-receipt-write');await wait(artifacts.writeJSON('evidence.json',evidence,{kind:'evidence'}),STAGES.transcript,'matrix-evidence-write');await wait(artifacts.writeJSON('result.json',result,{kind:'result'}),STAGES.progress,'matrix-result-write');}
  catch(error){
   fail(error);result.status='invalid';result.failure=failure;stopInvocation=artifacts.stats().failed||store.stats().stopped;
-  const originalFailureWrite=artifacts.writeJSON('failure.json',{schema:'four-stack-matrix-failure-v3',id:slot.id,status:'invalid',failure,unsafeOutstanding,transcripts:evidence.transcripts,performance:false,scoringEligibility:false,FPS:null},{kind:'failure'});void originalFailureWrite.catch(()=>{});
+  const originalFailureWrite=artifacts.writeJSON('failure.json',{schema:'four-stack-matrix-failure-v3',id:slot.id,status:'invalid',failure,unsafeOutstanding,transcripts:evidence.transcripts,observerDiagnostics:diagnostics.failureRecord(),performance:false,scoringEligibility:false,FPS:null},{kind:'failure'});void originalFailureWrite.catch(()=>{});
   let timer;
   try{await Promise.race([originalFailureWrite,new Promise((_,reject)=>{const remaining=Math.min(STAGES.progress,Math.min(started+LIMITS.caseMs,invocationStarted+LIMITS.invocationMs)+LIMITS.cleanupMs-performance.now());timer=setTimeout(()=>reject(Error('matrix-failure-publication-unsettled')),Math.max(1,remaining));})]);}
   catch(publication){result.publicationUnavailable=message(publication);unsafeOutstanding||=message(publication).includes('-unsettled');stopInvocation=true;}
