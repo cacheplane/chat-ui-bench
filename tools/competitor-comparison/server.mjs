@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import {constants} from 'node:fs';
 import path from 'node:path';
 import {once} from 'node:events';
-import {parsePublicContext} from '../../competitors/shared/context.mjs';
+import {parsePublicContext, PUBLIC_CONTEXT_PROTOCOL_HEADER} from '../../competitors/shared/context.mjs';
 import {scheduledPlayback,uiSse} from './wire.mjs';
 
 const BODY_CAP=1048576,STATIC_CAP=16777216,REQUEST_CAP=512;
@@ -19,6 +19,7 @@ async function write(response,chunk,signal,row){
 /** Exported for authored ownership controls; production uses this same path. */
 export async function pipeOwnedWebResponse(response,value,signal,row){
   const headers={};for(const[key,item]of value.headers)if(!['connection','transfer-encoding','content-length'].includes(key))headers[key]=item;
+  if(value.headers.get('content-type')?.split(';')[0].trim()==='text/event-stream')headers['cache-control']='private,no-cache,max-age=0,must-revalidate';
   response.writeHead(value.status,headers);row.status=value.status;
   if(!value.body){signal.throwIfAborted();row.sourceEof=true;response.end();return;}
   const reader=value.body.getReader();let eof=false,cancelOriginal=null;
@@ -37,9 +38,9 @@ export async function pipeOwnedWebResponse(response,value,signal,row){
   }
 }
 
-async function readBody(request,row){
+async function readBody(request,row,bodyCap){
   const chunks=[];let size=0;
-  for await(const chunk of request){size+=chunk.length;if(size>BODY_CAP)throw fail(413,'body-cap');chunks.push(chunk);}
+  for await(const chunk of request){size+=chunk.length;if(size>bodyCap)throw fail(413,'body-cap');chunks.push(chunk);}
   row.bodyBytes=size;return Buffer.concat(chunks,size);
 }
 async function staticBytes(root,relative){
@@ -59,8 +60,8 @@ async function staticBytes(root,relative){
 function validateUiBody(profile,body,context){
   if(!body||typeof body!=='object'||Array.isArray(body)||body.id!==context.threadId||body.runId!==context.runId||body.trigger!=='regenerate-message')throw fail(400,'ui-identity');
   if(profile==='vercel-ai-sdk'){
-    if(!Array.isArray(body.messages)||body.messages.length!==100)throw fail(400,'ui-history');
-    for(let i=0;i<100;i++){
+    if(!Array.isArray(body.messages)||body.messages.length!==context.history.length)throw fail(400,'ui-history');
+    for(let i=0;i<context.history.length;i++){
       const message=body.messages[i],expected=context.history[i];
       if(!message||message.id!==expected.id||message.role!==expected.role||!Array.isArray(message.parts)||message.parts.length!==1||message.parts[0].type!=='text'||message.parts[0].text!==expected.text)throw fail(400,'ui-history');
     }
@@ -92,12 +93,17 @@ async function* canonicalSse(events){
 }
 
 /** Functional source/HTTP ownership only; no SDK-consumption or FPS inference. */
-export async function startFunctionalServer({profile,assetsDirectory,privateCase,omitDelta}){
+export async function startFunctionalServer({profile,assetsDirectory,privateCase,omitDelta,protocol}){
+  if(protocol!==undefined&&protocol!=='matrix-v3')throw Error('server-protocol');
+  const matrix=protocol==='matrix-v3',bodyCap=matrix?8388608:BODY_CAP;
   const context=parsePublicContext(privateCase?.publicContext);
+  if(context.schema!==(matrix?2:1))throw Error('server-protocol-schema');
+  const contextText=JSON.stringify(context);
+  if(Buffer.byteLength(contextText)>(matrix?8388608:131072))throw Error('server-context-cap');
   if(context.profile!==profile||typeof assetsDirectory!=='string'||!path.isAbsolute(assetsDirectory)||path.resolve(assetsDirectory)!==assetsDirectory||await fs.realpath(assetsDirectory)!==assetsDirectory)throw Error('server-selection');
   if(!Array.isArray(privateCase.historyRestore)||privateCase.historyRestore.length!==3||!Array.isArray(privateCase.continuation)||privateCase.continuation.length!==204||typeof privateCase.seedRunId!=='string')throw Error('server-private-case');
   if(omitDelta!==undefined&&(!Number.isInteger(omitDelta)||omitDelta<1||omitDelta>200))throw Error('server-fault');
-  const report={schema:1,profile,sourceOrigin:privateCase.origin,sourceEmissions:[],playbacks:{seed:{started:false,completed:false,aborted:false,error:null},continuation:{started:false,completed:false,aborted:false,error:null}},requests:[],closed:false,errors:[],performance:false,FPS:null};
+  const report={schema:matrix?2:1,...(matrix?{protocol}:{}),profile,sourceOrigin:privateCase.origin,sourceEmissions:[],playbacks:{seed:{started:false,completed:false,aborted:false,error:null},continuation:{started:false,completed:false,aborted:false,error:null}},requests:[],closed:false,errors:[],performance:false,FPS:null};
   const controllers=new Set(),sockets=new Set(),socketClosures=new Set(),pending=new Set();let closing=false,closeOriginal=null,plugin=null,origin=null;
   const playback=async function*(kind,signal){
     const row=report.playbacks[kind];if(!row||closing||row.started)throw fail(409,'playback-once-only');row.started=true;
@@ -129,16 +135,16 @@ export async function startFunctionalServer({profile,assetsDirectory,privateCase
         let decoded;try{decoded=decodeURIComponent(url.pathname);}catch{throw fail(400,'url-encoding');}
         if(url.search||decoded.includes('\\')||decoded.includes('\0')||decoded.split('/').some(x=>x==='.'||x==='..'))throw fail(400,'path');
         if(request.method==='GET'&&decoded==='/context'){
-          const text=JSON.stringify(context);response.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});row.status=200;await stream(response,[text],controller.signal,row);return;
+          response.writeHead(200,{'content-type':'application/json','cache-control':'no-store',...(matrix?{[PUBLIC_CONTEXT_PROTOCOL_HEADER]:'matrix-v3'}:{})});row.status=200;await stream(response,[contextText],controller.signal,row);return;
         }
         if(plugin&&decoded.startsWith('/copilot')){
-          const body=request.method==='GET'||request.method==='HEAD'?undefined:await readBody(request,row);
+          const body=request.method==='GET'||request.method==='HEAD'?undefined:await readBody(request,row,bodyCap);
           const headers=new Headers();for(let i=0;i<request.rawHeaders.length;i+=2)if(!['connection','transfer-encoding','content-length'].includes(request.rawHeaders[i].toLowerCase()))headers.append(request.rawHeaders[i],request.rawHeaders[i+1]);
           const value=await plugin.handle(new Request(url,{method:request.method,headers,signal:controller.signal,...(body===undefined?{}:{body})}));
           if(!value)throw fail(404,'plugin-route');await pipeOwnedWebResponse(response,value,controller.signal,row);return;
         }
         if(decoded==='/stream/ui'&&request.method==='POST'){
-          let body;try{body=JSON.parse((await readBody(request,row)).toString('utf8'));}catch(error){if(error.status)throw error;throw fail(400,'json');}
+          let body;try{body=JSON.parse((await readBody(request,row,bodyCap)).toString('utf8'));}catch(error){if(error.status)throw error;throw fail(400,'json');}
           validateUiBody(profile,body,context);if(report.playbacks.continuation.started)throw fail(409,'playback-once-only');
           response.writeHead(200,{'content-type':'text/event-stream; charset=utf-8','cache-control':'private,no-cache,max-age=0,must-revalidate','x-vercel-ai-ui-message-stream':'v1'});row.status=200;
           await stream(response,uiSse(playback('continuation',controller.signal)),controller.signal,row);return;
@@ -148,8 +154,8 @@ export async function startFunctionalServer({profile,assetsDirectory,privateCase
           await stream(response,canonicalSse(playback('continuation',controller.signal)),controller.signal,row);return;
         }
         if(decoded==='/stream/agui'&&request.method==='POST'&&profile!=='copilotkit'){
-          let body;try{body=JSON.parse((await readBody(request,row)).toString('utf8'));}catch(error){if(error.status)throw error;throw fail(400,'json');}
-          if(body.threadId!==context.threadId||body.runId!==context.runId||!Array.isArray(body.messages)||body.messages.length!==100||body.messages.some((m,i)=>m.id!==context.history[i].id||m.role!==context.history[i].role||m.content!==context.history[i].text))throw fail(400,'agui-identity-or-history');
+          let body;try{body=JSON.parse((await readBody(request,row,bodyCap)).toString('utf8'));}catch(error){if(error.status)throw error;throw fail(400,'json');}
+          if(body.threadId!==context.threadId||body.runId!==context.runId||!Array.isArray(body.messages)||body.messages.length!==context.history.length||body.messages.some((m,i)=>m.id!==context.history[i].id||m.role!==context.history[i].role||m.content!==context.history[i].text))throw fail(400,'agui-identity-or-history');
           if(report.playbacks.continuation.started)throw fail(409,'playback-once-only');response.writeHead(200,{'content-type':'text/event-stream; charset=utf-8','cache-control':'private,no-cache,max-age=0,must-revalidate'});row.status=200;
           await stream(response,(async function*(){for await(const event of playback('continuation',controller.signal))yield encode(event);})(),controller.signal,row);return;
         }

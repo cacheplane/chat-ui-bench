@@ -2,14 +2,13 @@ import {createElement as h,useEffect,useLayoutEffect,useMemo,useRef,useState,typ
 import {createRoot} from 'react-dom/client';
 import {useChat} from '@ai-sdk/react';
 import {DefaultChatTransport,type ChatTransport,type UIMessage} from 'ai';
-import type {CompetitorBench,PublicContext,ProseMessage} from '../../shared/protocol.ts';
+import type {MatrixCompetitorBench,PublicContext,ProseMessage} from '../../shared/protocol.ts';
 import {parsePublicContext} from '../../shared/context.mjs';
 import {createRunOperation} from './operation.mjs';
-
-const diagnostic=(error:unknown)=>error==null?null:String(error instanceof Error?error.message:error).slice(0,4096);
+import {readSdkProgress,readSdkResponse} from './projection.ts';
 
 /** This profile composes AI SDK UI hooks with benchmark-owned plain text/scroll UI. */
-export function mountBench(input:PublicContext,container:HTMLElement,transport?:ChatTransport<UIMessage>):Promise<CompetitorBench>{
+export function mountBench(input:PublicContext,container:HTMLElement,transport?:ChatTransport<UIMessage>):Promise<MatrixCompetitorBench>{
   const context=parsePublicContext(input);
   if(context.profile!=='vercel-ai-sdk')throw Error('vercel-profile-mismatch');
   return new Promise((resolve,reject)=>{
@@ -28,7 +27,14 @@ export function mountBench(input:PublicContext,container:HTMLElement,transport?:
       useEffect(()=>{
         let disposed=false;
         const operation=createRunOperation(()=>{finish.current={seen:false,error:null};return current.current.regenerate();},()=>current.current.stop(),()=>root.unmount());
-        const bench:CompetitorBench={
+        const readProgress=()=>{
+          if(disposed)throw Error('vercel-profile-disposed');
+          const disposition=operation.state(),completionError=disposition.status==='fulfilled'&&!finish.current.seen?'vercel-finish-callback-unavailable':finish.current.error;
+          return readSdkProgress(current.current,context,disposition,operation.error()??completionError);
+        };
+        const bench:MatrixCompetitorBench={
+          readProgress,
+          readResponse(){if(disposed)throw Error('vercel-profile-disposed');return readSdkResponse(current.current,context);},
           read(){
             if(disposed)throw Error('vercel-profile-disposed');
             const sdk=current.current;
@@ -36,8 +42,8 @@ export function mountBench(input:PublicContext,container:HTMLElement,transport?:
               if(m.role!=='user'&&m.role!=='assistant'||m.parts.some(p=>p.type!=='text'))throw Error('vercel-non-prose-runtime');
               return{id:m.id,role:m.role,text:m.parts.map(p=>p.type==='text'?p.text:'').join('')};
             });
-            const disposition=operation.state(),completionError=disposition.status==='fulfilled'&&!finish.current.seen?'vercel-finish-callback-unavailable':finish.current.error;
-            return{messages,running:sdk.status==='submitted'||sdk.status==='streaming',error:diagnostic(sdk.error??operation.error()??completionError),responseId:messages.length>100&&messages.at(-1)?.role==='assistant'?messages.at(-1)!.id:null,operation:disposition};
+            const progress=readProgress();
+            return{messages,running:progress.running,error:progress.error,responseId:progress.responseId,operation:progress.operation};
           },
           start(){operation.start();},waitForRun(){return operation.wait();},
           async dispose(){disposed=true;await operation.dispose();if(window.competitorBench===bench)delete window.competitorBench;},

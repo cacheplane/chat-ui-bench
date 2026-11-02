@@ -110,7 +110,7 @@ jobs:
         run: node --test apps/threadplane/functional-build.node.mjs 2>&1 | tee ci-logs/threadplane-idle-host-source-controls.log
 
       - name: Test historical dependency selection controls
-        run: node --test tools/threadplane-modified-dependencies/select.node.mjs 2>&1 | tee ci-logs/modified-dependency-controls.log
+        run: node --test tools/threadplane-modified-dependencies/select.node.mjs tools/threadplane-modified-dependencies/select-stock034.node.mjs 2>&1 | tee ci-logs/modified-dependency-controls.log
 
       - name: Test portable controlled H100 observer
         run: |
@@ -406,8 +406,8 @@ jobs:
       - name: Select reviewed 0.3.2 renderer on the current security dependency graph
         run: |
           set -o pipefail
-          node --test tools/threadplane-modified-dependencies/select.node.mjs 2>&1 | tee ci-logs/modified-dependency-controls.log
-          node tools/threadplane-modified-dependencies/select.mjs 2>&1 | tee ci-logs/historical-dependency-selection.log
+          node --test tools/threadplane-modified-dependencies/select.node.mjs tools/threadplane-modified-dependencies/select-stock034.node.mjs 2>&1 | tee ci-logs/modified-dependency-controls.log
+          node tools/threadplane-modified-dependencies/select-stock034.mjs 2>&1 | tee ci-logs/historical-dependency-selection.log
 
       - name: Install selected locked dependencies
         run: npm ci 2>&1 | tee ci-logs/install.log

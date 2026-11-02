@@ -122,7 +122,7 @@ test('orders prerequisite commands, checkpoints emits before Angular, and publis
   expect(calls).toEqual(['run build --workspace @chat-ui-bench/contract','run build --workspace @chat-ui-bench/producer','run build --workspace @chat-ui-bench/analyzer','run build --workspace @chat-ui-bench/runner','build threadplane --configuration production']);
   const instrumentation=await probe.comparisonInstrumentationBuildEvidence(root);expect(instrumentation).toMatchObject({compiler:{version:'7.0.2'}});
   const product=await (await import('./provenance.mjs')).threadplaneBuildEvidence(root);
- expect(product.packages.find((p:any)=>p.name==='@threadplane/chat').version).toBe('0.3.3');
+ expect(product.packages.find((p:any)=>p.name==='@threadplane/chat').version).toBe('0.3.4');
   expect(product.packages.find((p:any)=>p.name==='typescript').version).toBe('5.9.3');
   for(const key of probe.contractCompiledKeys)expect(product.sourceHashes[key]).toBe(instrumentation.compiledHashes[key]);
   expect(Object.keys(product.sourceHashes).some(key=>key.startsWith('packages/runner/dist/'))).toBe(false);

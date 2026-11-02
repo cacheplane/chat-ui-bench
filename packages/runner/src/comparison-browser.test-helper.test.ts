@@ -337,7 +337,11 @@ async function fixture() {
   const paddingKeys = source59.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
   // Only synthetic file/lock extrema may compact unlocked, named JavaScript/declaration copies.
   // Both use the same AST, raw literal/comment and exact newline parity checks below.
-  const syntheticExtremumPaddingKeys = [...new Set([...paddingKeys, ...output138.filter(key => (key.endsWith('.js') || key.endsWith('.d.ts')) && !hashed.has(key))])].sort();
+  // Current host-source growth exhausted that set's savings at the 2MiB lock
+  // extremum. Include these existing, unprotected analyzer outputs only in the
+  // synthetic copies; the real-byte snapshots and all resource caps stay exact.
+  const syntheticExtremumPaddingKeys = [...new Set([...paddingKeys, ...output138.filter(key => (key.endsWith('.js') || key.endsWith('.d.ts')) && !hashed.has(key)),
+    ...analyzerSelected12.filter(key => ['packages/analyzer/dist/browser-frame-trace-framer.js', 'packages/analyzer/dist/browser-frame-ordered-state.d.ts'].includes(key) && !hashed.has(key))])].sort();
   return {root, workspace, evidenceRoot, context, union, paddingKeys, syntheticExtremumPaddingKeys, syntheticExtremumProtectedKeys: [...hashed]};
 }
 const writer = () => helper.writeComparisonCiSnapshot;
@@ -632,6 +636,7 @@ test('synthetic lock compaction preserves every build-bound and non-padding memb
   const compacted=await compactSyntheticExtremumFixture(f);
   expect(compacted.some(row=>row.key.endsWith('.js')&&row.compactedBytes<row.originalBytes)).toBe(true);
   expect(compacted.some(row=>row.key.endsWith('.d.ts')&&row.compactedBytes<row.originalBytes)).toBe(true);
+  for(const key of ['packages/analyzer/dist/browser-frame-trace-framer.js','packages/analyzer/dist/browser-frame-ordered-state.d.ts'])expect(compacted.some(row=>row.key===key&&row.compactedBytes<row.originalBytes)).toBe(true);
   for(const row of compacted)expect(protectedKeys.has(row.key)).toBe(false);
   for(const row of preserved)expect((await readFile(join(f.workspace,row.key))).equals(row.bytes)).toBe(true);
 });

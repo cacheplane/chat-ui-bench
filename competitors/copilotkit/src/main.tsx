@@ -2,8 +2,8 @@ import {useEffect} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CopilotKitProvider, CopilotChat, useAgent, useCopilotKit} from '@copilotkit/react-core/v2';
 import '@copilotkit/react-core/v2/styles.css';
-import {parsePublicContext} from '../../shared/context.mjs';
-import type {CompetitorBench, PublicContext} from '../../shared/protocol.ts';
+import {parsePublicContextText, PUBLIC_CONTEXT_PROTOCOL_HEADER} from '../../shared/context.mjs';
+import type {MatrixCompetitorBench, PublicContext} from '../../shared/protocol.ts';
 import type {AbstractAgent} from '@ag-ui/client';
 import {createLifecycle} from './lifecycle.ts';
 import {createMessageProjection} from './messages.ts';
@@ -15,8 +15,7 @@ async function launch() {
   const response = await fetch('/context');
   if (!response.ok) throw new Error('Copilot context unavailable');
   const text = await response.text();
-  if (text.length > 131072) throw new Error('Copilot context exceeds bound');
-  const context = parsePublicContext(JSON.parse(text));
+  const context = parsePublicContextText(text, response.headers.get(PUBLIC_CONTEXT_PROTOCOL_HEADER) ?? 'functional-v2');
   if (context.profile !== 'copilotkit') throw new Error('Wrong Copilot profile');
   const container = document.querySelector('#root');
   if (!container) throw new Error('Copilot mount absent');
@@ -32,7 +31,7 @@ async function launch() {
       if (attached) { if (attachedAgent !== agent) reportError(new Error('Copilot public agent replaced')); return; }
       attached = true;
       attachedAgent = agent;
-      const projection = createMessageProjection(context.history.map(message => message.id));
+      const projection = createMessageProjection(context.history.map(message => message.id), context.workload.responseBytes);
       const lifecycle = createLifecycle(
         () => {
           if (agent.threadId !== context.threadId) throw new Error('Copilot public thread differs');
@@ -41,11 +40,15 @@ async function launch() {
         () => agent.detachActiveRun(),
         () => { root.unmount(); },
       );
-      const bridge: CompetitorBench = {
+      const bridge: MatrixCompetitorBench = {
         read() {
           const messages = projection.read(agent.messages);
           return {messages, running: agent.isRunning, error: lifecycle.error() ?? window.competitorBenchError ?? null, responseId: projection.responseId(), operation: lifecycle.operation()};
         },
+        readProgress() {
+          return {schema: 1, ...projection.readProgress(agent.messages), running: agent.isRunning, error: lifecycle.error() ?? window.competitorBenchError ?? null, operation: lifecycle.operation()};
+        },
+        readResponse: () => projection.readResponse(agent.messages),
         start: () => lifecycle.start(),
         waitForRun: () => lifecycle.waitForRun(),
         dispose: () => lifecycle.dispose(),

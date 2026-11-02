@@ -6,7 +6,7 @@ import {requireComparisonProvenanceSession, type ComparisonProvenanceSession} fr
 const knownConfiguration = {
   'apps/threadplane/src/app.ts': '9f9680c921700d764c4a5cd312efa12cbbc4940f7c91ef3b34d06fc75017101a',
   'apps/threadplane/src/main.ts': 'bf34029550f938e42df33b7323cd11b3db039d9297c85191596404152a4d61fa',
-  'apps/threadplane/src/host.ts': 'd912408fbdd96712ecf638d0c28e25c64cf9cff3526460d43804278081e07c17',
+  'apps/threadplane/src/host.ts': 'f3293b12a90985b16509cb536000a7d4755b05371d35cc406cfb22289f7d8496',
   'apps/threadplane/angular.json': '2f44e3bbf0d34dbf3c5c9f467d7bee638cca7c4c832d91f1448d2745fbc14838',
   'apps/threadplane/src/index.html': 'bdf214c931d38b277ffcfb32f17661db891a4f6219645739334b949331b4a05a',
   'apps/threadplane/src/styles.css': '0b92bab5449a23801ce5e8657b34d94c929682ea9b73f50f01a00443b9139d2b',
@@ -26,12 +26,12 @@ export async function resolveComparisonThreadplaneProfile(session: ComparisonPro
     if (current.sha256 !== expected || build.sourceHashes[key] !== expected) throw new Error('Unknown Threadplane configuration');
   }
   const chat = build.packages.find(row => row.name === '@threadplane/chat');
-  if (!chat || chat.version !== '0.3.3' || !chat.resolutionPath) throw new Error('Unsupported genuine Threadplane chat package');
+  if (!chat || chat.version !== '0.3.4' || !chat.resolutionPath) throw new Error('Unsupported genuine Threadplane chat package');
   const metadata = object(JSON.parse((await authority.read(`${chat.resolutionPath}/package.json`)).bytes.toString('utf8')));
   const app = object(JSON.parse((await authority.read('apps/threadplane/package.json')).bytes.toString('utf8')));
   const lock = object(JSON.parse((await authority.read('package-lock.json')).bytes.toString('utf8')));
   const row = object(object(lock.packages)[chat.resolutionPath]);
-  if (metadata.name !== '@threadplane/chat' || metadata.version !== '0.3.3' || object(app.dependencies)['@threadplane/chat'] !== '0.3.3' || row.version !== '0.3.3' || row.integrity !== chat.integrity) throw new Error('Threadplane physical pin/lock differs');
+  if (metadata.name !== '@threadplane/chat' || metadata.version !== '0.3.4' || object(app.dependencies)['@threadplane/chat'] !== '0.3.4' || row.version !== '0.3.4' || row.integrity !== chat.integrity) throw new Error('Threadplane physical pin/lock differs');
   authority.lifecycle.assertActive();
   return comparisonAdapterSchema.parse({id: 'threadplane', profile: 'threadplane-langgraph-custom-transport', capabilities: {rendering: 'all-mounted', scrollPolicy: 'bottom-follow', returnToResponse: 'native-control'}, build: structuredClone(build), configuration: {markdown: 'default', pinThresholdCssPx: 150, telemetry: 'disabled'}});
 }

@@ -43,13 +43,24 @@ export class ThreadplaneHost implements LongThreadCaptureHost {
     private identities = new Map<HTMLElement,{id:string;role:'user'|'assistant'}>();
     private phase: AdapterPhaseBoundary | null = null;
     private ordinal = 0;
+    private matrixMode = false;
+    private matrixOperationStatus: 'idle' | 'pending' | 'fulfilled' | 'rejected' = 'idle';
+    private matrixCleanup: Promise<void> | null = null;
     constructor(private readonly agent: LangGraphAgent, private readonly transport: ReplayTransport, private readonly destroy: () => void) { }
     private assertAlive(): void { if (this.disposed)
         throw new Error('Host disposed'); }
     async loadHistory(history: readonly Message[]): Promise<void> {
+        return this.loadObservedHistory(history, true);
+    }
+    async loadMatrixHistory(history: readonly Message[]): Promise<void> {
+        if (this.matrixOperationStatus !== 'idle') throw new Error('Matrix replay already started');
+        return this.loadObservedHistory(history, false);
+    }
+    private async loadObservedHistory(history: readonly Message[], legacyObservation: boolean): Promise<void> {
         this.assertAlive();
         await this.agent.stop();
         this.disconnect();
+        this.matrixMode = !legacyObservation;
         const id = `benchmark-${crypto.randomUUID()}`;
         this.historyCount = history.length;
         this.submitError = null;
@@ -71,7 +82,7 @@ export class ThreadplaneHost implements LongThreadCaptureHost {
         const list = document.querySelector('chat chat-message-list'), scroller = document.querySelector(this.locators.scroller);
         if (!list || !scroller)
             throw new Error('Native chat message list/scroller absent');
-        this.intersection = new IntersectionObserver(entries => { for (const entry of entries) {
+        if (legacyObservation) this.intersection = new IntersectionObserver(entries => { for (const entry of entries) {
             const host = entry.target as HTMLElement;
             if (entry.isIntersecting)
                 this.visible.add(host);
@@ -81,7 +92,7 @@ export class ThreadplaneHost implements LongThreadCaptureHost {
         const hosts = Array.from(list.querySelectorAll<HTMLElement>(':scope > chat-message'));
         if (hosts.length !== actual.length)
             throw new Error('Product mounted history count differs');
-        hosts.forEach((host, i) => this.annotate(host, actual[i]!));
+        hosts.forEach((host, i) => this.annotate(host, actual[i]!, legacyObservation));
         this.observer = new MutationObserver(records => {
             if (this.disposed)
                 return;
@@ -101,7 +112,7 @@ export class ThreadplaneHost implements LongThreadCaptureHost {
                         const messages = this.agent.messages(), message = messages.at(-1);
                         if (!message)
                             throw new Error('Mounted response has no actual product message');
-                        this.annotate(node, message);
+                        this.annotate(node, message, legacyObservation);
                     }
                 }
             }
@@ -110,17 +121,76 @@ export class ThreadplaneHost implements LongThreadCaptureHost {
         await frame();
         await frame();
     }
-    private annotate(host: HTMLElement, message: ProductMessage): void {
+    private annotate(host: HTMLElement, message: ProductMessage, track = true): void {
         if (host.getAttribute('data-role') !== message.role)
             throw new Error('Product DOM/runtime role divergence');
         host.dataset['benchMessageId'] = message.id;
-        this.mounted.set(message.id, host);
         if(message.role!=='user'&&message.role!=='assistant') throw new Error('Unexpected prose message role');
-        this.identities.set(host,{id:message.id,role:message.role});
-        this.intersection?.observe(host);
+        if (track) {
+            this.mounted.set(message.id, host);
+            this.identities.set(host,{id:message.id,role:message.role});
+            this.intersection?.observe(host);
+        }
     }
     connectReplay(url: string): void { this.assertAlive(); this.transport.connect(url); this.submitError = null; this.submit = this.agent.submit(null).catch(error => { this.submitError = diagnostic(error)??'[empty product rejection]'; }); }
     async waitForReplay(): Promise<void> { await this.submit; }
+    /** Matrix-only public entry retains the actual SDK promise without catch conversion. */
+    connectMatrixReplay(url: string): Promise<void> {
+        this.assertAlive();
+        if (!this.matrixMode || this.matrixOperationStatus !== 'idle') throw new Error('Matrix replay already started or history unavailable');
+        this.matrixOperationStatus = 'pending'; this.submitError = null;
+        try {
+            this.transport.connect(url);
+            const original = this.agent.submit(null); this.submit = original;
+            void original.then(() => { this.matrixOperationStatus = 'fulfilled'; }, error => {
+                this.matrixOperationStatus = 'rejected'; this.submitError = diagnostic(error) ?? '[empty product rejection]';
+            });
+            return original;
+        } catch (error) {
+            this.matrixOperationStatus = 'rejected'; this.submitError = diagnostic(error) ?? '[empty product rejection]'; throw error;
+        }
+    }
+    /** Scalar actual-agent observation; no full history projection or DOM access. */
+    readMatrixProgress() {
+        this.assertAlive(); if (!this.matrixMode) throw new Error('Matrix history unavailable');
+        const messages = this.agent.messages(), messageCount = messages.length;
+        if (!Number.isSafeInteger(messageCount) || messageCount < 0 || messageCount > this.historyCount + 1) throw new Error('Matrix actual message count');
+        const running = this.agent.isLoading() || this.agent.isThreadLoading(), productError = this.agent.error();
+        let error = productError === null || productError === undefined ? this.submitError : diagnostic(productError);
+        let responseId: string | null = null, responseCharacters: number | null = null;
+        if (messageCount > this.historyCount) {
+            const last = messages.at(-1)!;
+            if (last.role !== 'assistant' || typeof last.id !== 'string' || last.id.length < 1 || last.id.length > 128) throw new Error('Matrix actual response identity');
+            responseId = last.id; responseCharacters = raw(last).length;
+            if (responseCharacters > 262144) throw new Error('Matrix actual response limit');
+            if (last.delivery.phase !== 'streaming' && last.delivery.outcome !== 'success') error ??= `Product delivery outcome: ${last.delivery.outcome}`;
+            if (this.matrixOperationStatus === 'fulfilled' && last.delivery.phase === 'streaming') error ??= 'Matrix response remains streaming after SDK fulfillment';
+        }
+        return {schema: 1 as const, messageCount, responseId, responseCharacters, running, error, operation: {kind: 'original-run-promise' as const, status: this.matrixOperationStatus}};
+    }
+    readMatrixResponse(): {id: string; role: 'assistant'; text: string} | null {
+        this.assertAlive(); if (!this.matrixMode) throw new Error('Matrix history unavailable');
+        const messages = this.agent.messages(); if (messages.length <= this.historyCount) return null;
+        const last = messages.at(-1)!;
+        if (messages.length !== this.historyCount + 1 || last.role !== 'assistant' || typeof last.id !== 'string' || last.id.length < 1 || last.id.length > 128) throw new Error('Matrix actual response identity');
+        const text = raw(last); if (text.length > 262144) throw new Error('Matrix actual response limit');
+        return {id: last.id, role: 'assistant', text};
+    }
+    disposeMatrix(): Promise<void> {
+        if (this.matrixCleanup) return this.matrixCleanup;
+        this.disposed = true;
+        this.matrixCleanup = (async () => {
+            const errors: unknown[] = [];
+            try { this.transport.dispose(); } catch (error) { errors.push(error); }
+            try { await this.agent.stop(); } catch (error) { errors.push(error); }
+            try { await this.submit; } catch (error) { errors.push(error); }
+            try { this.disconnect(); } catch (error) { errors.push(error); }
+            try { if (window.benchHost === this) delete window.benchHost; } catch (error) { errors.push(error); }
+            try { this.destroy(); } catch (error) { errors.push(error); }
+            if (errors.length) throw new AggregateError(errors, 'Matrix host cleanup failed');
+        })();
+        return this.matrixCleanup;
+    }
     readProgress(): RuntimeProgress {
         this.assertAlive();
         const messages = this.agent.messages(), last = messages.at(-1), hasResponse = messages.length > this.historyCount && last?.role === 'assistant';
