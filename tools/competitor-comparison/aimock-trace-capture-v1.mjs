@@ -11,6 +11,10 @@ const flags={performance:false,scoringEligibility:false,FPS:null};
 function frozen(value){if(value&&typeof value==='object'){for(const v of Object.values(value))frozen(v);Object.freeze(value);}return value;}
 export const AIMOCK_TRACE_LIMITS_V1=frozen({compressedBytes:1048576,chunkBytes:65536,maxReads:4096,decodedBytes:16777216,receiptBytes:16384,wrapperOverheadBytes:65536,base64Characters:1398104,wrapperBytes:1463640,evidenceBytes:2097152});
 export const AIMOCK_TRACE_CONFIG_V1=frozen({transferMode:'ReturnAsStream',streamFormat:'json',streamCompression:'gzip',tracingBackend:'chrome',bufferUsageReportingInterval:1000,traceConfig:{recordMode:'recordUntilFull',traceBufferSizeInKb:4096,enableSampling:false,enableSystrace:false,includedCategories:['toplevel','devtools.timeline','renderer.scheduler','v8','disabled-by-default-v8.gc','disabled-by-default-devtools.timeline']}});
+export const AIMOCK_TRACE_LIMITS_V2=AIMOCK_TRACE_LIMITS_V1;
+export const AIMOCK_TRACE_CONFIG_V2=frozen({...AIMOCK_TRACE_CONFIG_V1,traceConfig:{...AIMOCK_TRACE_CONFIG_V1.traceConfig,includedCategories:['devtools.timeline','disabled-by-default-devtools.timeline']}});
+const PROFILE_V1=frozen({config:AIMOCK_TRACE_CONFIG_V1,receiptSchema:'aimock-trace-capture-v1',validationSchema:'aimock-trace-validation-v1',evidenceSchema:'aimock-trace-evidence-v1'});
+const PROFILE_V2=frozen({config:AIMOCK_TRACE_CONFIG_V2,receiptSchema:'aimock-trace-capture-v2',validationSchema:'aimock-trace-validation-v2',evidenceSchema:'aimock-trace-evidence-v2'});
 function own(value,key){const d=value&&Object.getOwnPropertyDescriptor(value,key);need(d&&Object.hasOwn(d,'value'),'timeline-own-data');return d.value;}
 function record(value,required,optional=[]){need(value&&Object.getPrototypeOf(value)===Object.prototype,'timeline-record');const keys=Reflect.ownKeys(value);need(keys.every(k=>required.includes(k)||optional.includes(k))&&required.every(k=>keys.includes(k)),'timeline-fields');const r={};for(const k of keys)r[k]=own(value,k);return r;}
 function boundedString(value,limit,code){need(typeof value==='string'&&value.length>0&&value.length<=limit,code);return value;}
@@ -28,7 +32,9 @@ function protocolChunk(raw){
 /** Source-bound browser/context/page ports. All protocol Promise outcomes are
  * observed independently; attention, browser close and detach imply no EOF.
  */
-export function createAimockTraceCaptureV1({now,origin,identity,wait,remaining,stageMs}){
+export function createAimockTraceCaptureV1(ports){return createCaptureForProfile(ports,PROFILE_V1);}
+export function createAimockTraceCaptureV2(ports){return createCaptureForProfile(ports,PROFILE_V2);}
+function createCaptureForProfile({now,origin,identity,wait,remaining,stageMs},profile){
  let setupEnd=null,setupClock=null,setupActive=false,setupReady=false,finishEnd=null,finishClock=null,finishAttention=null,completeOriginal=null,resolveComplete=null,drainOriginal=null;
  let sealed=false,snapshot=null,closing=false,browserCDP=null,pageCDP=null,stream=null,stopDispatched=false,completeSeen=false,startDispatched=false,startAck=false,ioCloseOriginal=null,ioCloseDispatched=false,draining=false,setupCalled=false,startReserved=false,stopBusy=false,closeBusy=false,endDispatchError=null;
  let retainedBytes=0,receivedBytes=0,eof=false,ioClosed=false,truncated=false,dataLossOccurred=null,publicAckMs=null;
@@ -117,11 +123,11 @@ export function createAimockTraceCaptureV1({now,origin,identity,wait,remaining,s
     const targetReply=await attend(tracked('target-info',()=>pageCDP.send('Target.getTargetInfo',{})),'target-info');need(!sealed&&!closing,'timeline-setup-closed');
     const target=own(targetReply,'targetInfo'),targetId=boundedString(own(target,'targetId'),128,'timeline-target-id');need(own(target,'type')==='page'&&own(target,'url')===url,'timeline-owned-target');
     inventory={oneOwnedPage:true,mainFrameId:frameId,targetId,documentURL:stringFact(url),origin:stringFact(expectedOrigin),browserVersion:textPreview(version),rendererMapping:'unavailable-until-actual-trace-metadata'};
-    startReserved=true;await attend(tracked('trace-start',()=>{startDispatched=true;return pageCDP.send('Tracing.start',AIMOCK_TRACE_CONFIG_V1);}),'trace-start');need(!sealed&&!closing,'timeline-setup-closed');
+    startReserved=true;await attend(tracked('trace-start',()=>{startDispatched=true;return pageCDP.send('Tracing.start',profile.config);}),'trace-start');need(!sealed&&!closing,'timeline-setup-closed');
     const supported=await attend(tracked('active-page-categories',()=>pageCDP.send('Tracing.getCategories',{})),'active-page-categories');need(!sealed&&!closing,'timeline-setup-closed');
     const supportOwner=owners.get('active-page-categories');need(supportOwner.lastStatus==='fulfilled'&&finite(supportOwner.lastSettledMs)&&supportOwner.lastSettledMs<setupClock.deadlineMs,'timeline-support-original-not-on-time');
     const list=own(supported,'categories');need(Array.isArray(list)&&list.length<=4096,'timeline-categories');const names=[];for(let i=0;i<list.length;i++)names.push(boundedString(own(list,String(i)),256,'timeline-category-name'));
-    const requested=AIMOCK_TRACE_CONFIG_V1.traceConfig.includedCategories,found=requested.filter(name=>names.includes(name));protocolSupport={stage:'active-page-categories',requested:[...requested],supportedRequested:found,returnedCount:names.length,returnedSha256:sha(JSON.stringify(names)),returnedFirst8:names.slice(0,8).map(name=>textPreview(name,32)),originalSettledMs:supportOwner.lastSettledMs,setupDeadlineMs:setupClock.deadlineMs};need(found.length===requested.length&&names.length>0,'timeline-category-unsupported');
+    const requested=profile.config.traceConfig.includedCategories,found=requested.filter(name=>names.includes(name));protocolSupport={stage:'active-page-categories',requested:[...requested],supportedRequested:found,returnedCount:names.length,returnedSha256:sha(JSON.stringify(names)),returnedFirst8:names.slice(0,8).map(name=>textPreview(name,32)),originalSettledMs:supportOwner.lastSettledMs,setupDeadlineMs:setupClock.deadlineMs};need(found.length===requested.length&&names.length>0,'timeline-category-unsupported');
     preflight();setupActive=false;setupReady=true;
    }catch(error){issue('timeline-setup-failed');throw error;}
   },
@@ -136,23 +142,25 @@ export function createAimockTraceCaptureV1({now,origin,identity,wait,remaining,s
    const ownerList=[...owners.values()],fulfilled=kind=>owners.get(kind)?.lastStatus==='fulfilled';
    const complete=captureComplete()&&fulfilled('finish')&&!unsafeOutstanding;
    const payloadBase64=Buffer.concat(chunks,retainedBytes).toString('base64');
-   const receipt={schema:'aimock-trace-capture-v1',identity,nodeClock:'node-performance-relative-to-case-start',setupClock,finishClock,sealedMs:stamp(),publicAckMs,config:AIMOCK_TRACE_CONFIG_V1,limits:AIMOCK_TRACE_LIMITS_V1,protocolSupport,inventory,startDispatched,startAcknowledged:startAck,stopDispatched,stopReason,tracingCompleteSeen:completeSeen,completion,dataLossOccurred,bufferUsage:usage,eof,ioClosed,truncated,retainedBytes,receivedBytes,totalOriginalCompressedBytes:eof?receivedBytes:null,payloadSha256:hash.digest('hex'),owners:ownerList,issues,complete,unsafeOutstanding,...flags};
+   const receipt={schema:profile.receiptSchema,identity,nodeClock:'node-performance-relative-to-case-start',setupClock,finishClock,sealedMs:stamp(),publicAckMs,config:profile.config,limits:AIMOCK_TRACE_LIMITS_V1,protocolSupport,inventory,startDispatched,startAcknowledged:startAck,stopDispatched,stopReason,tracingCompleteSeen:completeSeen,completion,dataLossOccurred,bufferUsage:usage,eof,ioClosed,truncated,retainedBytes,receivedBytes,totalOriginalCompressedBytes:eof?receivedBytes:null,payloadSha256:hash.digest('hex'),owners:ownerList,issues,complete,unsafeOutstanding,...flags};
    need(Buffer.byteLength(JSON.stringify(receipt))<=16384,'timeline-receipt-bound');snapshot=frozen({receipt:JSON.parse(JSON.stringify(receipt)),payloadBase64});return snapshot;
   },
  });
 }
 
 /** Post-seal only. Never called on the acquisition or ordinary cleanup path. */
-export function validateAimockTraceV1(snapshot){
- const result={schema:'aimock-trace-validation-v1',status:'invalid',reason:null,decodedBytes:null,decodedSha256:null,traceEventCount:null,metadataEventCount:null,rendererMapping:{status:'unavailable'},...flags};
+export function validateAimockTraceV1(snapshot){return validateTraceForProfile(snapshot,PROFILE_V1);}
+export function validateAimockTraceV2(snapshot){return validateTraceForProfile(snapshot,PROFILE_V2);}
+function validateTraceForProfile(snapshot,profile){
+ const result={schema:profile.validationSchema,status:'invalid',reason:null,decodedBytes:null,decodedSha256:null,traceEventCount:null,metadataEventCount:null,rendererMapping:{status:'unavailable'},...flags};
  try{
   const {receipt:r,payloadBase64}=snapshot;
   need(typeof payloadBase64==='string'&&payloadBase64.length<=1398104&&payloadBase64.length%4===0,'timeline-payload-base64');
   const compressed=Buffer.from(payloadBase64,'base64');need(compressed.toString('base64')===payloadBase64&&compressed.length===r.retainedBytes&&compressed.length<=1048576&&sha(compressed)===r.payloadSha256,'timeline-payload-integrity');
   if(!r.complete){result.status='capture-incomplete';result.reason='timeline-capture-incomplete';return frozen(result);}
-  need(r.schema==='aimock-trace-capture-v1'&&r.performance===false&&r.scoringEligibility===false&&r.FPS===null&&r.startDispatched===true&&r.startAcknowledged===true&&r.stopDispatched===true&&r.tracingCompleteSeen===true&&r.dataLossOccurred===false&&r.eof===true&&r.ioClosed===true&&r.truncated===false&&r.unsafeOutstanding===false&&r.issues.length===0,'timeline-capture-facts');
-  need(JSON.stringify(r.config)===JSON.stringify(AIMOCK_TRACE_CONFIG_V1)&&JSON.stringify(r.limits)===JSON.stringify(AIMOCK_TRACE_LIMITS_V1)&&r.completion?.dataLossOccurred===false&&r.completion.traceFormat==='json'&&r.completion.streamCompression==='gzip'&&r.totalOriginalCompressedBytes===r.receivedBytes&&r.retainedBytes===r.receivedBytes,'timeline-capture-facts');
-  need(r.protocolSupport?.stage==='active-page-categories'&&JSON.stringify(r.protocolSupport.requested)===JSON.stringify(AIMOCK_TRACE_CONFIG_V1.traceConfig.includedCategories)&&JSON.stringify(r.protocolSupport.supportedRequested)===JSON.stringify(AIMOCK_TRACE_CONFIG_V1.traceConfig.includedCategories)&&r.protocolSupport.returnedCount>=6&&r.protocolSupport.returnedCount<=4096&&finite(r.protocolSupport.originalSettledMs)&&r.protocolSupport.originalSettledMs<r.protocolSupport.setupDeadlineMs&&r.protocolSupport.setupDeadlineMs===r.setupClock?.deadlineMs,'timeline-support-facts');
+  need(r.schema===profile.receiptSchema&&r.performance===false&&r.scoringEligibility===false&&r.FPS===null&&r.startDispatched===true&&r.startAcknowledged===true&&r.stopDispatched===true&&r.tracingCompleteSeen===true&&r.dataLossOccurred===false&&r.eof===true&&r.ioClosed===true&&r.truncated===false&&r.unsafeOutstanding===false&&r.issues.length===0,'timeline-capture-facts');
+  need(JSON.stringify(r.config)===JSON.stringify(profile.config)&&JSON.stringify(r.limits)===JSON.stringify(AIMOCK_TRACE_LIMITS_V1)&&r.completion?.dataLossOccurred===false&&r.completion.traceFormat==='json'&&r.completion.streamCompression==='gzip'&&r.totalOriginalCompressedBytes===r.receivedBytes&&r.retainedBytes===r.receivedBytes,'timeline-capture-facts');
+  need(r.protocolSupport?.stage==='active-page-categories'&&JSON.stringify(r.protocolSupport.requested)===JSON.stringify(profile.config.traceConfig.includedCategories)&&JSON.stringify(r.protocolSupport.supportedRequested)===JSON.stringify(profile.config.traceConfig.includedCategories)&&r.protocolSupport.returnedCount>=profile.config.traceConfig.includedCategories.length&&r.protocolSupport.returnedCount<=4096&&finite(r.protocolSupport.originalSettledMs)&&r.protocolSupport.originalSettledMs<r.protocolSupport.setupDeadlineMs&&r.protocolSupport.setupDeadlineMs===r.setupClock?.deadlineMs,'timeline-support-facts');
   const expectedOwners=['browser-session','page-session','frame-tree','target-info','trace-start','active-page-categories','trace-end','trace-complete','stream-drain','finish','io-read','io-close','page-detach','browser-detach'];
   need(Array.isArray(r.owners)&&r.owners.length===expectedOwners.length&&new Set(r.owners.map(o=>o.kind)).size===expectedOwners.length&&expectedOwners.every(kind=>r.owners.some(o=>o.kind===kind)),'timeline-owner-facts');
   for(const clock of [r.setupClock,r.finishClock])need(clock&&finite(clock.startedMs)&&finite(clock.deadlineMs)&&finite(clock.budgetMs)&&clock.budgetMs>0&&clock.budgetMs<=10000&&clock.deadlineMs>clock.startedMs&&Math.abs(clock.deadlineMs-clock.startedMs-clock.budgetMs)<0.000001,'timeline-phase-clock');
@@ -169,13 +177,16 @@ export function validateAimockTraceV1(snapshot){
    if(event.ph==='M')metadata++;
   }
   need(metadata>0,'timeline-required-metadata');result.rendererMapping=mapAimockTraceRendererV1(value,r.inventory.mainFrameId);
-  const names=[...emitted].sort();result.emittedCategories={count:names.length,sha256:sha(JSON.stringify(names)),first16:names.slice(0,16).map(name=>textPreview(name)),truncated:names.length>16||names.some(name=>name.length>64),requested:AIMOCK_TRACE_CONFIG_V1.traceConfig.includedCategories.map(category=>({category,observed:emitted.has(category),meaning:emitted.has(category)?'actual-event-category-token':'not-observed-in-this-trace; support-unknown'}))};
+  const names=[...emitted].sort();result.emittedCategories={count:names.length,sha256:sha(JSON.stringify(names)),first16:names.slice(0,16).map(name=>textPreview(name)),truncated:names.length>16||names.some(name=>name.length>64),requested:profile.config.traceConfig.includedCategories.map(category=>({category,observed:emitted.has(category),meaning:emitted.has(category)?'actual-event-category-token':'not-observed-in-this-trace; support-unknown'}))};
   result.status='valid';result.decodedBytes=decoded.length;result.decodedSha256=sha(decoded);result.traceEventCount=value.traceEvents.length;result.metadataEventCount=metadata;
  }catch(error){const descriptor=error&&Object.getOwnPropertyDescriptor(error,'message');const text=descriptor&&Object.hasOwn(descriptor,'value')?descriptor.value:null;result.reason=typeof text==='string'&&/^timeline-[a-z0-9-]+$/.test(text)?text:'timeline-gzip-utf8-or-json-invalid';}
  return frozen(result);
 }
-export function createAimockTraceEvidenceV1(snapshot,validation){
- const wrapper={schema:'aimock-trace-evidence-v1',traceFormat:'json',compression:'gzip',payloadEncoding:'base64',retainedCompressedBytes:snapshot.receipt.retainedBytes,compressedSha256:snapshot.receipt.payloadSha256,capture:snapshot.receipt,validation,payloadBase64:snapshot.payloadBase64,...flags};
+export function createAimockTraceEvidenceV1(snapshot,validation){return createEvidenceForProfile(snapshot,validation,PROFILE_V1);}
+export function createAimockTraceEvidenceV2(snapshot,validation){return createEvidenceForProfile(snapshot,validation,PROFILE_V2);}
+function createEvidenceForProfile(snapshot,validation,profile){
+ need(snapshot.receipt.schema===profile.receiptSchema&&validation.schema===profile.validationSchema,'timeline-profile-mismatch');
+ const wrapper={schema:profile.evidenceSchema,traceFormat:'json',compression:'gzip',payloadEncoding:'base64',retainedCompressedBytes:snapshot.receipt.retainedBytes,compressedSha256:snapshot.receipt.payloadSha256,capture:snapshot.receipt,validation,payloadBase64:snapshot.payloadBase64,...flags};
  const overhead={...wrapper,payloadBase64:''};need(Buffer.byteLength(JSON.stringify(overhead))<=65536,'timeline-wrapper-overhead');need(wrapper.payloadBase64.length<=1398104&&Buffer.byteLength(JSON.stringify(wrapper))<=1463640&&Buffer.byteLength(JSON.stringify(wrapper))<=2097152,'timeline-wrapper-bound');return frozen(wrapper);
 }
 

@@ -70,6 +70,15 @@ proof of a specific assistant-ui defect.
 
 ## Next work
 
+A separate maintained Aimock trace V1 cohort has now completed all six declared
+H100/R6400 attempts (both journeys, three rounds) against stock 0.3.4. All six
+passed functional admission, but every six-category trace exceeded the 1 MiB
+compressed-data cap. They retain incomplete trace status and unavailable costs;
+no partial trace was decoded for costs and no FPS follows. A separately versioned
+V2 semantic task/layout profile requests two categories while preserving the
+same caps, ownership, transport and completeness checks. Its fresh attempts
+cannot replace V1 or be compared as equivalent instrumentation.
+
 1. Establish fresh stock Threadplane 0.3.4 functional and repeated trace baselines,
    beginning with H100. Retain every declared case and attempt.
 2. Use qualified task, layout and other supported cost evidence to identify
@@ -85,7 +94,10 @@ proof of a specific assistant-ui defect.
    negative controls, cleanup custody, failed statuses and unsafe-stop behavior.
    A green Threadplane regression check must never mean the full matrix passed.
 
-The last item is a CI policy follow-up, not an implemented change in this note.
-The existing all-or-nothing matrix check is still failed; its results have not
-been rewritten. Competitor failures should guide analysis without requiring
-upstream competitor changes before Threadplane work can continue.
+The CI separation is implemented as a distinct twelve-cell Threadplane cohort
+and unchanged strict49 observation. Shared harness contracts still verify all
+profile builds and preserve the existing refusal/negative controls. The full
+matrix retains its actual result; a green Threadplane cohort does not qualify
+it as passing. Repository required-check metadata is managed separately from
+workflow names. Competitor failures guide analysis without requiring upstream
+competitor changes before Threadplane work can continue.

@@ -11,7 +11,7 @@ After a stock production build, run the additive diagnostic cohort in a fresh
 local directory:
 
 ```sh
-node tools/competitor-comparison/aimock-trace-run-v1.mjs --out /absolute/new/local-directory
+node tools/competitor-comparison/aimock-trace-run-v2.mjs --out /absolute/new/local-directory
 ```
 
 This declares six attempts: H100/R6400 follow and history-reading in each of
@@ -21,12 +21,22 @@ The V5 runner remains unchanged; source-equivalence tests check the new traced
 case's functional body and stock bridge outside enumerated capture seams.
 
 The collector starts before the response and finishes after the functional
-journey. Its six fixed CDP categories, owned-page/frame/renderer binding,
+journey. V2 requests exactly `devtools.timeline` and
+`disabled-by-default-devtools.timeline` for semantic task/layout diagnostics.
+Its owned-page/frame/renderer binding,
 original command/event/drain custody, actual EOF, loss status, stream close and
 session detaches qualify trace availability independently of functional status.
 All original readiness, content, history, input, deadline and cleanup checks
 remain in force. The stock guard rechecks the production build, reviewed host
 configuration and published 0.3.4 dependency pins before and after each case.
+
+V1 remains separately executable with its original six-category profile. Its
+first declared six-attempt H100 cohort passed all functional checks but every
+trace exceeded the unchanged 1 MiB compressed-data cap. Those traces remain
+incomplete and unscored; their truncated prefixes are not decoded for costs.
+V2 is a distinct capture profile and fresh cohort, rather than a retry or
+reinterpretation of V1. It retains the same transport, completeness, ownership,
+codec and storage limits. The profiles are not timing-equivalent.
 
 Local hashed sidecars retain the compressed trace, receipt and bounded cost
 projection under the original case/invocation store limits. Keep them local;
