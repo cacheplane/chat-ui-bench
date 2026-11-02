@@ -334,3 +334,13 @@ further work as unsafe. The final bookend uses the fixed invocation plus cleanup
 deadline, independently of individual case deadlines. Keep both arms and all
 failed/unattempted outcomes separate. This diagnostic retains false performance
 and scoring flags and `FPS:null`; it does not qualify a published comparison.
+
+The shared V1/V2 trace recorder owns a completion-event waiter separately from
+raw CDP commands and attention deadlines. An actual owned page-session `close`
+or Browser `disconnected` event can reject that waiter; browser-close fulfillment
+or attention expiry alone cannot settle it. An expected page-session close
+requires actual completion, EOF, `IO.close` and owned detach dispatch; expected
+Browser disconnection requires the actual finish to have fulfilled. Unexpected
+closure keeps the capture unavailable. The fixed deadlines, caps and successful-capture
+requirements are unchanged. This terminal handling does not explain or recover
+previous missing-completion captures.
