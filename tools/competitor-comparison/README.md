@@ -282,3 +282,30 @@ configured separately in repository metadata; adding this check preserves
 existing protections and follows a successful check on the actual PR.
 Strict49 remains advisory. All results retain
 `performance:false`, `scoringEligibility:false`, and `FPS:null`.
+
+The separately declared `threadplane-aimock-growth-invocation-v1` cohort extends
+history coverage with twelve positive attempts: H1000 and H10000, R6400, both
+journeys, in three rounds. Each round runs H1000 follow/history-reading, then
+H10000 follow/history-reading. It retains the V2 `semantic-task-layout-v2`
+instrumentation, stock Threadplane 0.3.4 guards, actual V5 case admission,
+source schedule, ownership, cleanup, and storage/deadline limits. Its strict
+entry accepts only a fresh absolute output path:
+
+```sh
+node tools/competitor-comparison/aimock-trace-growth-v1.mjs --out /absolute/new/local-growth-v1
+```
+
+Every declared attempt remains in the result, including failures and unattempted
+slots after unsafe ownership or invocation expiry. Completion requires all twelve
+ordered functional passes, complete trace diagnostics, matching stock-build
+hashes, and exact selection/round joins. The existing 1,200-second invocation
+budget may expire before all twelve cases; it is never reset or resumed to fill
+missing results. Trace overflow or unavailable evidence cannot qualify costs or
+be replaced by a retry. H100 remains its separately preserved V2 baseline.
+
+Compare observed renderer task/layout intervals across scales only after
+validating transport, owned mapping, actual source/history scale, and comparable
+stock/environment/method identities. These instrumented intervals do not establish
+CPU cost, complete task coverage, wheel-handler causality, FPS, or a performance
+ranking. All results retain `performance:false`, `scoringEligibility:false`, and
+`FPS:null`; raw captured evidence stays local.
