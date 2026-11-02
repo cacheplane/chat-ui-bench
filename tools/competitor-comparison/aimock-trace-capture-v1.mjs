@@ -1,5 +1,6 @@
 // Maintained owned-page Aimock trace capture. No readiness or input authority.
 import {mapAimockTraceRendererV1} from "./aimock-trace-renderer-v1.mjs";
+import {createAimockTraceCompletionWaiterV1} from './aimock-trace-completion-waiter-v1.mjs';
 // Stream, codec, limits and actual ownership remain the reviewed V1 controls.
 import {createHash} from 'node:crypto';
 import {gunzipSync} from 'node:zlib';
@@ -35,16 +36,22 @@ function protocolChunk(raw){
 export function createAimockTraceCaptureV1(ports){return createCaptureForProfile(ports,PROFILE_V1);}
 export function createAimockTraceCaptureV2(ports){return createCaptureForProfile(ports,PROFILE_V2);}
 function createCaptureForProfile({now,origin,identity,wait,remaining,stageMs},profile){
- let setupEnd=null,setupClock=null,setupActive=false,setupReady=false,finishEnd=null,finishClock=null,finishAttention=null,completeOriginal=null,resolveComplete=null,drainOriginal=null;
+ let setupEnd=null,setupClock=null,setupActive=false,setupReady=false,finishEnd=null,finishClock=null,finishAttention=null,completeOriginal=null,completionWaiter=null,drainOriginal=null;
  let sealed=false,snapshot=null,closing=false,browserCDP=null,pageCDP=null,stream=null,stopDispatched=false,completeSeen=false,startDispatched=false,startAck=false,ioCloseOriginal=null,ioCloseDispatched=false,draining=false,setupCalled=false,startReserved=false,stopBusy=false,closeBusy=false,endDispatchError=null;
  let retainedBytes=0,receivedBytes=0,eof=false,ioClosed=false,truncated=false,dataLossOccurred=null,publicAckMs=null;
  let inventory=null,protocolSupport=null,completion=null,stopReason=null,ownedContext=null,ownedPage=null,ownedMainFrame=null;
- let endOriginal=null;const held=new WeakMap(),attentions=new WeakMap();
+ let endOriginal=null,terminalExpected=false,terminalUnexpected=false;const held=new WeakMap(),attentions=new WeakMap();
  const chunks=[],owners=new Map(),originals=[],issues=[],hash=createHash('sha256');
  const usage={count:0,first:null,last:null,max:null};
+ function onTerminal(error){
+  const released=completeSeen&&dataLossOccurred===false&&eof&&ioClosed;
+  const expected=released&&((error.message==='timeline-trace-complete-page-session-closed'&&owners.get('page-detach')?.dispatched>0)||(error.message==='timeline-trace-complete-browser-disconnected'&&owners.get('finish')?.lastStatus==='fulfilled'));
+  if(expected)terminalExpected=true;else{terminalUnexpected=true;issue(error.message);}
+ }
+
  const stamp=()=>{try{const n=now();return finite(n)&&finite(origin)&&n>=origin?n-origin:null;}catch{return null;}};
  const issue=code=>{if(!sealed&&!issues.includes(code)&&issues.length<8)issues.push(code);};
- function preflight(){need(!sealed,'timeline-sealed');const left=remaining(),n=now();need(finite(n)&&finite(origin)&&n>=origin&&finite(left)&&left>0,'timeline-case-deadline');if(setupActive){need(n<setupEnd,'timeline-setup-deadline');need(issues.length===0,'timeline-setup-ownership-invalid');}if(finishEnd!==null)need(n<finishEnd,'timeline-finish-deadline');if(ownedContext&&!closing&&owners.get('finish')?.lastStatus!=='fulfilled')need(ownedContext.pages().length===1&&ownedContext.pages()[0]===ownedPage&&ownedPage.mainFrame()===ownedMainFrame,'timeline-owned-page-changed');}
+ function preflight(){need(!sealed,'timeline-sealed');const left=remaining(),n=now();need(finite(n)&&finite(origin)&&n>=origin&&finite(left)&&left>0,'timeline-case-deadline');if(setupActive){need(n<setupEnd,'timeline-setup-deadline');need(issues.length===0,'timeline-setup-ownership-invalid');}if(finishEnd!==null)need(n<finishEnd,'timeline-finish-deadline');if(terminalUnexpected||!terminalExpected)completionWaiter?.assertOpen();if(ownedContext&&!closing&&owners.get('finish')?.lastStatus!=='fulfilled')need(ownedContext.pages().length===1&&ownedContext.pages()[0]===ownedPage&&ownedPage.mainFrame()===ownedMainFrame,'timeline-owned-page-changed');}
  function attend(original,kind){
   if(attentions.has(original))return attentions.get(original);
   const row=held.get(original);let budget,end;
@@ -73,7 +80,7 @@ function createCaptureForProfile({now,origin,identity,wait,remaining,stageMs},pr
  }
  function stop(reason){
   if(sealed||stopDispatched||stopBusy||!startDispatched||!pageCDP)return;stopBusy=true;
-  try{if(completeOriginal===null)completeOriginal=tracked('trace-complete',()=>new Promise(resolve=>{resolveComplete=resolve;}));endOriginal=tracked('trace-end',()=>{stopDispatched=true;stopReason=['functional-body-complete','before-browser-close','buffer-usage','event-mode'].includes(reason)?reason:'before-browser-close';return pageCDP.send('Tracing.end',{});});void attend(endOriginal,'trace-end').catch(()=>issue('timeline-end-attention-rejected'));}catch(error){endDispatchError=error;issue('timeline-end-rejected');}finally{stopBusy=false;}
+  try{completionWaiter.assertOpen();if(completeOriginal===null)completeOriginal=tracked('trace-complete',()=>completionWaiter.original());endOriginal=tracked('trace-end',()=>{stopDispatched=true;stopReason=['functional-body-complete','before-browser-close','buffer-usage','event-mode'].includes(reason)?reason:'before-browser-close';return pageCDP.send('Tracing.end',{});});void attend(endOriginal,'trace-end').catch(()=>issue('timeline-end-attention-rejected'));}catch(error){endDispatchError=error;issue('timeline-end-rejected');}finally{stopBusy=false;}
  }
  async function drain(){
   if(draining||sealed)return;draining=true;
@@ -92,7 +99,7 @@ function createCaptureForProfile({now,origin,identity,wait,remaining,stageMs},pr
  }
  const onComplete=input=>{
   try{
-   if(sealed)return;if(completeSeen){issue('timeline-duplicate-complete');return;}completeSeen=true;resolveComplete?.(input);need(stopDispatched,'timeline-unsolicited-complete');
+   if(sealed)return;if(completeSeen){issue('timeline-duplicate-complete');return;}completeSeen=true;completionWaiter?.complete(input);need(stopDispatched,'timeline-unsolicited-complete');
    const c=record(input,['dataLossOccurred'],['stream','traceFormat','streamCompression']);
    dataLossOccurred=typeof c.dataLossOccurred==='boolean'?c.dataLossOccurred:null;
    completion={observedMs:stamp(),dataLossOccurred,traceFormat:typeof c.traceFormat==='string'?c.traceFormat.slice(0,16):null,streamCompression:typeof c.streamCompression==='string'?c.streamCompression.slice(0,16):null};
@@ -115,8 +122,10 @@ function createCaptureForProfile({now,origin,identity,wait,remaining,stageMs},pr
    need(!setupCalled&&!sealed,'timeline-setup-once');setupCalled=true;preflight();need(finite(stageMs)&&stageMs>0&&stageMs<=10000,'timeline-setup-budget');const started=now(),budget=Math.min(stageMs,remaining());setupEnd=started+budget;setupClock={startedMs:started-origin,deadlineMs:setupEnd-origin,budgetMs:budget};setupActive=true;
    try{
     need(context.pages().length===1&&context.pages()[0]===page,'timeline-owned-one-page');ownedContext=context;ownedPage=page;ownedMainFrame=page.mainFrame();need(ownedMainFrame&&typeof ownedMainFrame==='object','timeline-owned-main-frame');const live=()=>!sealed&&!closing&&owners.get('finish')?.lastStatus!=='fulfilled';page.on('framenavigated',frame=>{if(live()&&frame===ownedMainFrame)issue('timeline-owned-navigation');});page.on('close',()=>{if(live())issue('timeline-owned-page-closed');});context.on('page',()=>{if(live())issue('timeline-owned-extra-page');});const version=boundedString(browser.version(),256,'timeline-browser-version');
+    completionWaiter=createAimockTraceCompletionWaiterV1({browser,onTerminal});
     browserCDP=await attend(tracked('browser-session',()=>browser.newBrowserCDPSession()),'browser-session');need(!sealed&&!closing,'timeline-setup-closed');
     pageCDP=await attend(tracked('page-session',()=>context.newCDPSession(page)),'page-session');need(!sealed&&!closing,'timeline-setup-closed');
+    completionWaiter.attachPageSession(pageCDP);
     pageCDP.on('Tracing.tracingComplete',onComplete);pageCDP.on('Tracing.bufferUsage',onUsage);pageCDP.on('Tracing.dataCollected',onData);
     const frames=await attend(tracked('frame-tree',()=>pageCDP.send('Page.getFrameTree',{})),'frame-tree');need(!sealed&&!closing,'timeline-setup-closed');
     const frame=own(own(frames,'frameTree'),'frame'),frameId=boundedString(own(frame,'id'),128,'timeline-frame-id'),url=boundedString(own(frame,'url'),2048,'timeline-frame-url');need(new URL(url).origin===expectedOrigin,'timeline-frame-origin');
@@ -138,7 +147,7 @@ function createCaptureForProfile({now,origin,identity,wait,remaining,stageMs},pr
   afterBrowserClose(){if(!sealed){closeIO();detach();}},
   seal(){
    if(snapshot!==null)return snapshot;
-   sealed=true;const unsafeOutstanding=[...owners.values()].some(row=>row.pending>0);
+   sealed=true;completionWaiter?.seal();if(pageCDP){pageCDP.off('Tracing.tracingComplete',onComplete);pageCDP.off('Tracing.bufferUsage',onUsage);pageCDP.off('Tracing.dataCollected',onData);}const unsafeOutstanding=[...owners.values()].some(row=>row.pending>0);
    const ownerList=[...owners.values()],fulfilled=kind=>owners.get(kind)?.lastStatus==='fulfilled';
    const complete=captureComplete()&&fulfilled('finish')&&!unsafeOutstanding;
    const payloadBase64=Buffer.concat(chunks,retainedBytes).toString('base64');
