@@ -309,3 +309,28 @@ stock/environment/method identities. These instrumented intervals do not establi
 CPU cost, complete task coverage, wheel-handler causality, FPS, or a performance
 ranking. All results retain `performance:false`, `scoringEligibility:false`, and
 `FPS:null`; raw captured evidence stays local.
+
+The additive local-build entry measures a declared package intervention against
+a pinned main control. It accepts five coherent production npm packs through a
+SHA-256-pinned `threadplane-local-pack-manifest-v1` file. The manifest records
+`current-main-control` or `render-fix-candidate`, the exact source commit, pack
+integrities and complete installed-file inventories. These packages may still
+declare version 0.3.4; they are separate from published stock. The control is
+frozen at `16f356bf1473fd306c97e2083543d392a31d7307`.
+
+```sh
+node tools/competitor-comparison/aimock-trace-local-growth-v1.mjs \
+  --out /absolute/new/local-package-growth \
+  --artifact-manifest /absolute/local-pack-manifest.json \
+  --artifact-sha256 SHA256_OF_THE_REVIEWED_MANIFEST
+```
+
+Only five lock records may replace their registry URL/integrity with the declared
+local tarballs. App sources, production settings, vendor closure, physical package
+resolution and installed bytes must verify before and after execution. Each arm
+retains the fixed twelve growth attempts, V5 functional checks and V2 trace limits;
+there are no selection, retry or cap overrides. Pending verification I/O stops
+further work as unsafe. The final bookend uses the fixed invocation plus cleanup
+deadline, independently of individual case deadlines. Keep both arms and all
+failed/unattempted outcomes separate. This diagnostic retains false performance
+and scoring flags and `FPS:null`; it does not qualify a published comparison.
