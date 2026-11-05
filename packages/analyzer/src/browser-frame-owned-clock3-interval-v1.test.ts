@@ -7,6 +7,7 @@ import * as interval from './browser-frame-owned-clock3-interval-v1.js';
 import {readWholeUserTimingTraceV8} from './browser-frame-whole-trace-reader.js';
 import {WHOLE_USER_TIMING_V8_POLICY} from './browser-frame-ordered-state.js';
 import {readOwnedPaintTraceV12} from './browser-frame-owned-paint-v12-reader.js';
+import * as ownedReader from './browser-frame-owned-paint-v12-reader.js';
 import {OWNED_PAINT_V12_POLICY} from './browser-frame-owned-paint-v12.js';
 import {body,join,text,uint} from './browser-frame-packet-fragments.test-helper.js';
 const POLICY='owned-clock3-interval-diagnostic-v1';
@@ -106,10 +107,25 @@ test('actual reader metadata and candidate capacity failures withdraw interval a
 test('independent projection work exhaustion retains a frozen bounded failure closure',()=>{
  const p=fixture();for(let i=0;i<6000;i++)p.push(packet(8n,parent()));
  owned(stream(...p),ref=>{
-  const genuine=readOwnedPaintTraceV12(JSON.stringify(ref),OWNED_PAINT_V12_POLICY);
+  // Observe the interval's genuine call-through read instead of parsing the same file twice.
+  const originalRead=vi.spyOn(ownedReader,'readOwnedPaintTraceV12');
+  const r=read(ref);
+  expect(originalRead).toHaveBeenCalledTimes(1);
+  expect(originalRead).toHaveBeenCalledWith(JSON.stringify(ref),OWNED_PAINT_V12_POLICY);
+  const observation=originalRead.mock.results[0];
+  expect(observation?.type).toBe('return');
+  if(!observation||observation.type!=='return')throw Error('genuine-reader-return-unavailable');
+  const genuine=observation.value;
   expect(genuine.status).toBe('complete-owned-whole-diagnostic');
-  const r=read(ref);expect(r).toMatchObject({reason:'projection-capacity',witness:null,traceIntervalNs:null});
+  const study=genuine.study;
+  expect(study).not.toBeNull();
+  if(!study)throw Error('genuine-study-unavailable');
+  expect(study.counters.packets).toBe(6006);
+  expect(study.evidence.occurrences).toHaveLength(6003);
+  expect(study.evidence.occurrences.filter(o=>{const fact=study.evidence.facts[o[0]]!;return fact.kind==='track_descriptor'&&fact.fields.uuid==='200';})).toHaveLength(6001);
+  expect(r).toMatchObject({status:'unavailable',reason:'projection-capacity',witness:null,traceIntervalNs:null});
   expect(Object.isFrozen(r)).toBe(true);expect(Object.isFrozen(r.authority)).toBe(true);
+  expect(Buffer.byteLength(JSON.stringify(r))).toBeLessThanOrEqual(16384);
  });
 });
 test('owned codec2 timestamp markers have exact authored arity and source witness correspondence',()=>{
