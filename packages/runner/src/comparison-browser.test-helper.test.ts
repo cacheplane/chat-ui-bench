@@ -337,11 +337,11 @@ async function fixture() {
   const paddingKeys = source59.filter(key => key.endsWith('.test.ts') && !hashed.has(key));
   // Only synthetic file/lock extrema may compact unlocked, named JavaScript/declaration copies.
   // Both use the same AST, raw literal/comment and exact newline parity checks below.
-  // Current host-source growth exhausted that set's savings at the 2MiB lock
+  // Current host/fixture-source growth exhausted that set's savings at the 2MiB lock
   // extremum. Include these existing, unprotected analyzer outputs only in the
   // synthetic copies; the real-byte snapshots and all resource caps stay exact.
   const syntheticExtremumPaddingKeys = [...new Set([...paddingKeys, ...output138.filter(key => (key.endsWith('.js') || key.endsWith('.d.ts')) && !hashed.has(key)),
-    ...analyzerSelected12.filter(key => ['packages/analyzer/dist/browser-frame-trace-framer.js', 'packages/analyzer/dist/browser-frame-ordered-state.d.ts'].includes(key) && !hashed.has(key))])].sort();
+    ...analyzerSelected12.filter(key => ['packages/analyzer/dist/browser-frame-trace-framer.js', 'packages/analyzer/dist/browser-frame-ordered-state.d.ts', 'packages/analyzer/dist/browser-frame-ordered-state.js'].includes(key) && !hashed.has(key))])].sort();
   return {root, workspace, evidenceRoot, context, union, paddingKeys, syntheticExtremumPaddingKeys, syntheticExtremumProtectedKeys: [...hashed]};
 }
 const writer = () => helper.writeComparisonCiSnapshot;
@@ -631,9 +631,12 @@ test('verified synthetic compaction follows changed source bytes instead of stal
   for(let attempt=0;attempt<2;attempt++)expect(()=>compactSyntheticExtremumText(original+'const =;')).toThrow();
 });
 test('synthetic lock compaction preserves every build-bound and non-padding member',async()=>{
-  const f=await fixture(),protectedKeys=new Set(f.syntheticExtremumProtectedKeys);
+  const f=await fixture(),protectedKeys=new Set(f.syntheticExtremumProtectedKeys),candidate='packages/analyzer/dist/browser-frame-ordered-state.js',realCandidate=await readFile(join(repository,candidate));
+  expect(f.union).toContain(candidate);expect(protectedKeys.has(candidate)).toBe(false);
   const preserved=await Promise.all(f.union.filter(key=>!f.syntheticExtremumPaddingKeys.includes(key)||protectedKeys.has(key)).map(async key=>({key,bytes:await readFile(join(f.workspace,key))})));
   const compacted=await compactSyntheticExtremumFixture(f);
+  const candidateRow=compacted.find(row=>row.key===candidate);expect(candidateRow).toBeDefined();expect(candidateRow!.compactedBytes).toBeLessThan(candidateRow!.originalBytes);
+  assertLockFixtureParity(realCandidate.toString('utf8'),await readFile(join(f.workspace,candidate),'utf8'));expect((await readFile(join(repository,candidate))).equals(realCandidate)).toBe(true);
   expect(compacted.some(row=>row.key.endsWith('.js')&&row.compactedBytes<row.originalBytes)).toBe(true);
   expect(compacted.some(row=>row.key.endsWith('.d.ts')&&row.compactedBytes<row.originalBytes)).toBe(true);
   for(const key of ['packages/analyzer/dist/browser-frame-trace-framer.js','packages/analyzer/dist/browser-frame-ordered-state.d.ts'])expect(compacted.some(row=>row.key===key&&row.compactedBytes<row.originalBytes)).toBe(true);
