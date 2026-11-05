@@ -12,9 +12,9 @@ async function tailProbe({snapshot=null,pending=false}={}){let reads=0;const per
 test('036postcase guard still runs if trace snapshot is absent',async()=>{const value=await tailProbe();assert.equal(value.reads,1);assert.equal(value.result.traceDiagnostic.status,'unavailable');assert.equal(value.result.stopInvocation,true);});
 test('036postcase pending build original stays unsafe in persisted and returned result',async()=>{const value=await tailProbe({snapshot:{},pending:true});assert.equal(value.reads,1);assert.equal(value.result.unsafeOutstanding,true);assert.equal(value.persisted.get('result.json').unsafeOutstanding,true);assert.equal(value.result.stopInvocation,true);});
 
-test('direct036 case refuses unavailable identity before original argument access or store effects',async()=>{
+test('direct036 async case gates original argument access through actual fixed authority; null model refuses',async()=>{
  const {runMatrixCase}=await import('./matrix-case-stock036-trace-v1.mjs');let effects=0;
  const args=new Proxy({},{get(){effects++;throw Error('native body accessed before fixed authority');}});
- await assert.rejects(runMatrixCase(args),/stock036-published-identity-unavailable/);assert.equal(effects,0);
+ const fixed=await import('./aimock-stock036-pins-v1.mjs');if(fixed.STOCK036_PUBLISHED_PINS_V1===null){await assert.rejects(runMatrixCase(args),/stock036-published-identity-unavailable/);assert.equal(effects,0);}else{assert.equal(guard.stock036PublishedIdentityV1().version,'0.3.6');await assert.rejects(runMatrixCase(args),/native body accessed before fixed authority/);assert.equal(effects,1);assert.throws(()=>guard.immutableStock036PinsV1(null),/published-identity-unavailable/);}
 });
 test('exported036 async wrapper has only fixed accessor and unchanged argument delegation',()=>{assert.ok(traced.includes(`export async function runMatrixCase(args){\n stock036PublishedIdentityV1();\n return runMatrixCaseOriginal(args);\n}`));});

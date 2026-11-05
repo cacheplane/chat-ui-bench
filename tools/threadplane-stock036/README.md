@@ -1,12 +1,13 @@
 # Additive registry-stock 0.3.6 preparation
 
-This path is staged and unavailable. Its fixed production identity is null.
-Threadplane 0.3.6 has not supplied the actual six-package release proof required
-by this path. No synthetic parser fixture, unit port or caller record grants
-stock admission. Existing 0.3.5, 0.3.4, 0.3.3 and modified/local results retain
-separate identities and source files.
+The fixed reviewed identity contains the five benchmark-consumed published
+0.3.6 registry records. All six synchronized packages were verified against
+release source `f34eca5f57fade29d39bcf2bf2511af8e304b04a`. The selected source
+hashes derive from unchanged canonical 0.3.4 inputs. These static facts are not
+fresh installed-package, genuine production-build or native measurement proof.
+Existing 0.3.5, 0.3.4, 0.3.3 and modified/local results retain separate identities.
 
-Activation requires independent verification of all six synchronized packages,
+Activation required independent verification of all six synchronized packages,
 the five benchmark-consumed registry versions, URLs and SHA-512 integrities,
 and review of their actual dependency, peer and optional maps. The pure
 `deriveStock036SelectionV1` model consumes only the exact canonical 0.3.4 root,
@@ -15,7 +16,8 @@ match the reviewed immutable fixed record before the selector may write. The
 root manifest remains unchanged. A changed external dependency graph requires
 separate review; a same-integrity local tarball is never a registry selection.
 
-After actual post-G03 main is green and actual release verification is complete,
+Actual post-G03 main and six-package registry verification are green. After final
+benchmark review and release provenance verification,
 use a new disposable checkout of the final reviewed revision. Only then run:
 
 ```sh
