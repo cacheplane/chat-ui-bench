@@ -10,6 +10,7 @@ import {assertLocal036SelectionsReadyV1,assertLocal036ExecutionsReadyV1,local036
 import {threadplaneBuildEvidence} from '../../apps/threadplane/provenance.mjs';
 import {probeRecordKey} from '../../apps/threadplane/probe-provenance.mjs';
 import {STOCK036_SOURCE_HASHES_V1} from './aimock-stock036-v1.mjs';
+import {validateLocal036InstallTransformV1} from './threadplane-local036-install-transform-v1.mjs';
 const ROOT=path.resolve(fileURLToPath(new URL('../../',import.meta.url)));
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const need=v=>{if(!v)throw Error('local036-build-identity');};
@@ -64,9 +65,15 @@ async function collectActual(role){
  need(refs.some(r=>r.sha256===s.sourceProofSha256));
  for(const[key,hash]of Object.entries(s.selectedSourceHashes))need(sha(await read(path.join(ROOT,key),4194304))===hash);
  const actualLock=JSON.parse(await read(path.join(ROOT,'package-lock.json'),4194304));need(equal(actualLock,JSON.parse(derived.selectedLockBytes)));
- const tarballRefs=[],installedInventoryDigests={};
+ const tarballRefs=[],installedInventoryDigests={},installedInventories={},installTransformWitnesses=[];
  for(const a of s.artifacts){const source=await read(a.sourceRef.path,8388608),bytes=await read(path.join(ROOT,a.relativeTarballPath),8388608);need(source.equals(bytes)&&bytes.length===a.bytes&&sha(bytes)===a.sha256&&'sha512-'+createHash('sha512').update(bytes).digest('base64')===a.integrity);const inventory=inspectLocal036TarV1(bytes);need(equal(inventory.map(({data,...r})=>r),a.files));const metadata=JSON.parse(inventory.find(f=>f.path==='package.json').data);need(equal(metadata,a.manifest));tarballRefs.push({path:a.relativeTarballPath,bytes:bytes.length,sha256:sha(bytes)});
-  if(LOCAL036_RUNTIME_NAMES_V1.includes(a.name)){const key=`apps/threadplane/node_modules/${a.name}`,row=actualLock.packages[key];need(row.version==='0.3.6'&&row.resolved==='file:'+a.relativeTarballPath&&row.integrity===a.integrity);for(const k of ['dependencies','optionalDependencies','peerDependencies','peerDependenciesMeta'])need(equal(metadata[k]??{},row[k]??{}));need(Boolean(row.hasInstallScript)===Boolean(metadata.scripts?.postinstall));const installed=await installedInventory(path.join(ROOT,key),a.files);need(equal(installed,a.files));installedInventoryDigests[key]=local036DigestV1(installed);}
+  if(LOCAL036_RUNTIME_NAMES_V1.includes(a.name)){const key=`apps/threadplane/node_modules/${a.name}`,row=actualLock.packages[key];need(row.version==='0.3.6'&&row.resolved==='file:'+a.relativeTarballPath&&row.integrity===a.integrity);for(const k of ['dependencies','optionalDependencies','peerDependencies','peerDependenciesMeta'])need(equal(metadata[k]??{},row[k]??{}));need(Boolean(row.hasInstallScript)===Boolean(metadata.scripts?.postinstall));const installed=await installedInventory(path.join(ROOT,key),a.files);
+   if(['@threadplane/chat','@threadplane/langgraph','@threadplane/render'].includes(a.name)){
+    const modulePath='.install-collector/development-install.mjs',tarModule=inventory.find(f=>f.path===modulePath);need(tarModule);
+    const installedModule=await read(path.join(ROOT,key,modulePath),74);
+    installTransformWitnesses.push(validateLocal036InstallTransformV1({name:a.name,version:a.version,path:modulePath,postinstall:metadata.scripts?.postinstall,tarInventory:a.files,installedInventory:installed,tarModuleBytes:tarModule.data,installedModuleBytes:installedModule}));
+   }else need(equal(installed,a.files));
+   installedInventories[key]=installed;installedInventoryDigests[key]=local036DigestV1(installed);}
  }
  const raw=await read(path.join(ROOT,'apps/threadplane/.build-evidence.json'),1048576),probe=await read(path.join(ROOT,probeRecordKey),1048576),build=await threadplaneBuildEvidence();
  need(build.production===true&&build.framework.name==='Angular'&&build.framework.version==='21.2.25'&&build.settings.optimization===true&&build.settings.sourceMaps===false&&build.packages.length===50);
@@ -75,7 +82,7 @@ async function collectActual(role){
  const selected=build.packages.filter(p=>p.name.startsWith('@threadplane/'));need(selected.length===5);
  for(const a of s.artifacts.filter(a=>LOCAL036_RUNTIME_NAMES_V1.includes(a.name)))need(selected.some(p=>equal(p,{name:a.name,version:'0.3.6',integrity:a.integrity,resolutionPath:`apps/threadplane/node_modules/${a.name}`})));
  need(equal(JSON.parse(raw),build));
- return{schema:'threadplane-local036-preparation-facts-v1',role,selectionDigest:local036DigestV1(s),sourceCommit:s.sourceCommit,selectedSourceHashes:s.selectedSourceHashes,tarballRefs,installedInventoryDigests,vendorPackagesSha256:s.vendorPackagesSha256,buildRecordRef:{path:'apps/threadplane/.build-evidence.json',bytes:raw.length,sha256:sha(raw)},parsedBuildSha256:local036DigestV1(build),probeRecordRef:{path:probeRecordKey,bytes:probe.length,sha256:sha(probe)},build};
+ return{schema:'threadplane-local036-preparation-facts-v2',role,selectionDigest:local036DigestV1(s),sourceCommit:s.sourceCommit,selectedSourceHashes:s.selectedSourceHashes,tarballRefs,installedInventories,installedInventoryDigests,installTransformWitnesses,vendorPackagesSha256:s.vendorPackagesSha256,buildRecordRef:{path:'apps/threadplane/.build-evidence.json',bytes:raw.length,sha256:sha(raw)},parsedBuildSha256:local036DigestV1(build),probeRecordRef:{path:probeRecordKey,bytes:probe.length,sha256:sha(probe)},build};
 }
 const freeze=v=>{if(v&&typeof v==='object'){for(const x of Object.values(v))freeze(x);Object.freeze(v);}return v;};
 /** Selection-only actual facts; this never returns execution or stock admission. */
@@ -88,7 +95,7 @@ export async function createLocal036BuildGuardV1(role){
 }
 
 /** Pure join model only. Production guard always obtains actual closed reader facts. */
-export function assertLocal036ExecutionFactsV1(facts,e,build){need(equal(facts.build,build)&&facts.buildRecordRef.bytes===e.buildRecordBytes&&facts.buildRecordRef.sha256===e.buildRecordSha256&&facts.parsedBuildSha256===e.parsedBuildSha256&&facts.probeRecordRef.sha256===e.probeRecordSha256&&sha(Buffer.from(JSON.stringify(facts,null,2)+'\n'))===e.preparationProofSha256);return build;}
+export function assertLocal036ExecutionFactsV1(facts,e,build){need(facts!==null&&typeof facts==='object'&&!types.isProxy(facts)&&Object.getPrototypeOf(facts)===Object.prototype&&Object.getOwnPropertyDescriptor(facts,'schema')?.value==='threadplane-local036-preparation-facts-v2');need(equal(facts.build,build)&&facts.buildRecordRef.bytes===e.buildRecordBytes&&facts.buildRecordRef.sha256===e.buildRecordSha256&&facts.parsedBuildSha256===e.parsedBuildSha256&&facts.probeRecordRef.sha256===e.probeRecordSha256&&sha(Buffer.from(JSON.stringify(facts,null,2)+'\n'))===e.preparationProofSha256);return build;}
 
 const TOOLING_KEYS=Object.freeze(['tools/threadplane-local036/fixed-experiment-v1.mjs','tools/threadplane-local036/select-v1.mjs','tools/threadplane-stock036/select-v1.mjs']);
 function validToolingHashes(value){need(value!==null&&typeof value==='object'&&!types.isProxy(value)&&!Array.isArray(value));const d=Object.getOwnPropertyDescriptors(value);need(Object.getPrototypeOf(value)===Object.prototype&&Reflect.ownKeys(d).every(k=>typeof k==='string'));need(Object.keys(d).sort().join(',')===[...TOOLING_KEYS].sort().join(',')&&Object.values(d).every(x=>Object.hasOwn(x,'value')&&typeof x.value==='string'&&/^[a-f0-9]{64}$/.test(x.value)));}

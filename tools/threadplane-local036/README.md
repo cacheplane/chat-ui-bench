@@ -14,6 +14,20 @@ All six synchronized source-built tarballs are retained and verified; only five
 browser packages get lock rows and installed inventories. The sixth, ag-ui, is
 packaging provenance, not a browser runtime dependency.
 
+The versioned known036 install-transform contract recognizes only the exact
+`.install-collector/development-install.mjs` output of Chat/LangGraph/Render's
+pinned seven install producers and literal postinstall entrypoint. The tar's
+39-byte null module may become the exact73-byte lowercase UUIDv4 module during
+ordinary installation. No package code is executed by this check. Every actual
+file row, path, count and generated-byte hash stays in preparation receiptv2;
+all other bytes must equal the tar. Full actual arrays/digests and transformation
+witnesses are frozen by the execution receipt SHA. A later different valid UUID
+is rejected even when product asset hashes remain unchanged. There is no file
+exclusion, identifier masking, environment toggle or grammar-only runtime grant.
+Old/missing preparation receipt versions cannot pass the execution join even
+with a matching caller-computed hash. These are verifier rules for normal install
+output; they make no library performance claim.
+
 Selection identity and execution identity have separate gates. Both fixed selections
 must first be independently reviewed and activated to allow real preparation. The
 closed `readLocal036PreparationFactsV1(role)` can then read actual selected files,
