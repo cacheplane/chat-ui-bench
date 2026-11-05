@@ -7,6 +7,11 @@ for the assistant-ui readiness finding, evidence limits and next work.
 
 ## Stock Threadplane Aimock trace baseline
 
+An additive [registry-stock 0.3.5 path](../threadplane-stock035/README.md) is
+staged separately. Its default guard remains unavailable until actual published
+registry identities are acquired and reviewed; it does not change the current
+0.3.4 commands, manifests, historical selectors or results below.
+
 After a stock production build, run the additive diagnostic cohort in a fresh
 local directory:
 
