@@ -12,6 +12,11 @@ does not establish FPS, balanced four-profile comparisons or a ranking.
 
 ## Stock Threadplane Aimock trace baseline
 
+An additive [registry-stock 0.3.5 path](../threadplane-stock035/README.md) is
+staged separately. Its default guard remains unavailable until actual published
+registry identities are acquired and reviewed; it does not change the current
+0.3.4 commands, manifests, historical selectors or results below.
+
 After a stock production build, run the additive diagnostic cohort in a fresh
 local directory:
 
@@ -349,3 +354,7 @@ Browser disconnection requires the actual finish to have fulfilled. Unexpected
 closure keeps the capture unavailable. The fixed deadlines, caps and successful-capture
 requirements are unchanged. This terminal handling does not explain or recover
 previous missing-completion captures.
+
+The separate [fixed four-profile interleaved diagnostic](four-profile-interleaved-v1.md)
+predeclares 48 ordered attempts with one shared budget and no fallback. Native
+refusals, missing traces and incomplete counterparts remain explicit; FPS stays null.
