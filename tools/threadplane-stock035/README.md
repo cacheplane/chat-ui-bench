@@ -2,12 +2,14 @@
 
 This path is separate from the committed stock 0.3.4 workspace, historical
 0.3.3 controls, modified 0.3.2 profile and local source-build diagnostics.
-It is currently **unavailable**: the fixed reviewed published-identity module
-is `null` until all five used 0.3.5 registry records and tarball integrities
-have been independently acquired and reviewed. The same fixed record binds
-the exact selected app manifest, root manifest and root lock SHA-256 hashes.
-Neither CLI accepts caller
-pins, local tarballs, a verifier override or a fallback release.
+The fixed reviewed identity now contains the five consumed 0.3.5 npm registry
+records and tarball integrities. All six synchronized packages were verified
+against release source `1c22d08bca079f01519e3177fd6cc588ffc90411`. The same
+immutable record binds the exact selected app manifest, root manifest and root
+lock SHA-256 hashes derived from the unchanged canonical 0.3.4 inputs. These
+static facts do not establish a genuine installed production build or native
+measurement. Neither CLI accepts caller pins, local tarballs, a verifier
+override or a fallback release.
 
 To prepare the fixed record after actual registry acquisition, the pure
 `deriveStock035SelectionV1` model accepts a parsed registry identity whose
@@ -19,7 +21,7 @@ and deeply freezes the complete record. The default build guard checks those
 actual source hashes; the real selector verifies derivation matches them before
 writing anything. Caller-supplied JSON never replaces production authority.
 
-After publication, use a fresh disposable checkout of this benchmark revision.
+Use a fresh disposable checkout of this exact benchmark revision.
 Record its exact checkout SHA, and explicitly select the reviewed registry
 packages before an ordinary install and genuine production build:
 
@@ -70,6 +72,8 @@ node --test tools/competitor-comparison/aimock-stock035-v1.node.mjs tools/compet
 ```
 
 Synthetic unit records test closed parsing/JSON derivation only. The production
-guard has one fixed source identity, and refuses before a build or browser is
-launched while publication pins are unavailable. Genuine positive admission
-must be verified after registry publication and the fresh install/build above.
+guard has one fixed source identity. Its unavailable/null identity branch
+remains closed; published metadata and pure derivation tests do not replace
+actual build evidence. Genuine positive admission requires the fresh ordinary
+install/build and default guard readback above. No native capture or FPS is
+established by activating the static identity.
