@@ -33,3 +33,5 @@ installed-package/build/default-guard bookends are required after activation;
 selection alone grants no build or native admission. Keep all attempts and raw
 traces local. Native checks, deadlines and trace limits are unchanged. FPS stays
 null; semantic event intervals are not sampled CPU time or presentation FPS.
+
+See the [audited native findings and full four-profile reproduction](../../docs/stock036-native-findings-20261105.md) for the separate baseline, coverage limits and complete preparation commands.
