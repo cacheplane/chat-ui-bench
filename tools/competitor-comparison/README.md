@@ -5,6 +5,11 @@ failures remain labeled findings; upstream changes are limited to our own
 Threadplane repository. See the [current findings and learning priorities](../../docs/research/2026-11-01-outcome-learning-and-threadplane-priorities.md)
 for the assistant-ui readiness finding, evidence limits and next work.
 
+The additive [competitor semantic trace capability](competitor-semantic-traces-v1.md)
+uses genuine isolated build records and the unchanged V5 native body with V2
+capture. Its fixed 36-case cohort remains distinct from Threadplane diagnostics and
+does not establish FPS, balanced four-profile comparisons or a ranking.
+
 ## Stock Threadplane Aimock trace baseline
 
 After a stock production build, run the additive diagnostic cohort in a fresh
