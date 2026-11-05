@@ -49,7 +49,7 @@ jobs:
       - name: Install pinned browser
         run: npx --no-install playwright install --with-deps chromium
       - name: Verify harness contracts and refusal controls
-        run: node --test --test-concurrency=1 tools/competitor-comparison/matrix-*.node.mjs tools/competitor-comparison/aimock-*.node.mjs tools/competitor-comparison/threadplane-regression-v1.node.mjs tools/competitor-comparison/threadplane-local-build-v1.node.mjs
+        run: node --test --test-concurrency=1 tools/competitor-comparison/matrix-*.node.mjs tools/competitor-comparison/aimock-*.node.mjs tools/competitor-comparison/threadplane-regression-v1.node.mjs tools/competitor-comparison/threadplane-local-build-v1.node.mjs tools/competitor-comparison/threadplane-local036-build-v1.node.mjs tools/competitor-comparison/threadplane-local036-install-transform-v1.node.mjs tools/threadplane-local036/*.node.mjs
       - name: Verify the fixed twelve positive Threadplane cells
         run: node tools/competitor-comparison/matrix-ci-v2.mjs --cohort threadplane-regression-v1 --out "$RUNNER_TEMP/threadplane-functional-regression-v1"
       # Required-intent is policy; actual required contexts are external metadata.
