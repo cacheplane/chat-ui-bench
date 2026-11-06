@@ -80,6 +80,9 @@ jobs:
             tools/competitor-comparison/aimock-stock037-v1.node.mjs \
             tools/threadplane-stock037/select-v1.node.mjs \
             tools/competitor-comparison/matrix-case-stock037-trace-v3.node.mjs \
+            tools/competitor-comparison/aimock-cpu-profile-v2.node.mjs \
+            tools/competitor-comparison/aimock-stock037-cpu-capture-v1.node.mjs \
+            tools/competitor-comparison/aimock-stock037-cpu-diagnostic-v1.node.mjs \
             tools/competitor-comparison/four-profile-stock037-large-v3.node.mjs \
             tools/competitor-comparison/semantic-large-stock037-v3-pilot.node.mjs \
             tools/competitor-comparison/semantic-large-stock037-v3-pilot-run.node.mjs \

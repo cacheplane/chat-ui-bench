@@ -540,3 +540,9 @@ export async function createSemanticLargeStock03748StoreV3(input) {
   if (arguments.length !== 1) throw Error('matrix-artifact-arguments');
   return createStore(input, STOCK037_FULL_IDS);
 }
+
+/** Separate one-slot diagnostic; cohort schedules and all storage limits stay unchanged. */
+export async function createStock037CpuDiagnosticStoreV1(input) {
+  if (arguments.length !== 1) throw Error('matrix-artifact-arguments');
+  return createStore(input, Object.freeze(['threadplane-h10000-r6400-follow-stock037-cpu-samples-v1']));
+}
