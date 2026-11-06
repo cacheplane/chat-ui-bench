@@ -5,6 +5,8 @@ import {createHash} from 'node:crypto';
 import {types} from 'node:util';
 import path from 'node:path';
 import vm from 'node:vm';
+import {deriveStock037SelectionV1} from './select-v1.mjs';
+import {stock037PublishedIdentityV1} from '../competitor-comparison/aimock-stock037-v1.mjs';
 
 const source=await readFile(new URL('./select-v1.mjs',import.meta.url),'utf8').catch(()=> '');
 const guardSource=await readFile(new URL('../competitor-comparison/aimock-stock037-v1.mjs',import.meta.url),'utf8');
@@ -24,6 +26,20 @@ function load({input=inputs(),published=null,fs={},events=[]}={}){
  return vm.runInNewContext(source.split('\nif(process.argv[1]')[0].replace(/^import .*;\n/gm,'').replace(/export /g,'')+';({deriveStock037SelectionV1,selectStock037DependenciesV1})',bindings);
 }
 test('stock037 selector has exactly two fixed APIs and closed CLI with canonical input pins',()=>{assert.deepEqual([...source.matchAll(/export (?:async )?function (\w+)/g)].map(m=>m[1]),['deriveStock037SelectionV1','selectStock037DependenciesV1']);assert.equal(source.match(/export /g)?.length,2);for(const h of Object.values(hashes))assert.ok(source.includes(h));assert.match(source,/process.argv.length===6&&process.argv\[2\]==='--root'&&process.argv\[4\]==='--expected-checkout'/);});
+test('stock037 real canonical bytes derive the verified fixed five package selection',async()=>{
+ const input={rootManifestBytes:await readFile(new URL('../../package.json',import.meta.url),'utf8'),appManifestBytes:await readFile(new URL('../../apps/threadplane/package.json',import.meta.url),'utf8'),stockLockBytes:await readFile(new URL('../../package-lock.json',import.meta.url),'utf8')},before=structuredClone(input),published=stock037PublishedIdentityV1();
+ const r=deriveStock037SelectionV1(input,published),app=JSON.parse(r.appManifestBytes),lock=JSON.parse(r.selectedLockBytes),originalLock=JSON.parse(input.stockLockBytes);
+ assert.deepEqual(input,before);assert.equal(r.publishedStockEvidence,false);assert.equal(r.selection,'registry-stock037-v1');assert.equal(r.version,'0.3.7');
+ const selectedHashes={'package.json':'cd13748fd683ee4f4d80e2244f210c4597164d4813c381855c2cd2242bf70579','apps/threadplane/package.json':'3afbc08f65dfe915bbf776859cf4fdcf9b518ee78c45ace6afc9d62f02cb6da4','package-lock.json':'3462a5fde17e5c08d2b6f579bbfc9aec1f0c00343e092296857c9d4dcbabf482'};
+ assert.deepEqual(r.selectedSourceHashes,selectedHashes);assert.deepEqual(published.selectedSourceHashes,selectedHashes);
+ const hash=b=>createHash('sha256').update(b).digest('hex');assert.equal(hash(input.rootManifestBytes),selectedHashes['package.json']);assert.equal(hash(r.appManifestBytes),selectedHashes['apps/threadplane/package.json']);assert.equal(hash(r.selectedLockBytes),selectedHashes['package-lock.json']);
+ assert.deepEqual(r.pins,published.packages);assert.equal(lock.lockfileVersion,3);assert.equal(Object.hasOwn(lock,'threadplaneModifiedDependencies'),false);assert.deepEqual(lock.packages[''],originalLock.packages['']);
+ for(const pin of published.packages){
+  const key=`apps/threadplane/node_modules/${pin.name}`,expected=structuredClone(originalLock.packages[key]);expected.version='0.3.7';expected.resolved=pin.resolved;expected.integrity=pin.integrity;
+  for(const kind of ['dependencies','peerDependencies','optionalDependencies'])for(const[name,range]of Object.entries(expected[kind]??{}))if(names.includes(name))expected[kind][name]=range.replace('0.3.4','0.3.7');
+  assert.deepEqual(lock.packages[key],expected);assert.equal(app.dependencies[pin.name],'0.3.7');assert.equal(lock.packages['apps/threadplane'].dependencies[pin.name],'0.3.7');
+ }
+});
 test('stock037 pure authored derivation fixes five rows and ranges without granting publication evidence',()=>{
  const input=inputs(),before=structuredClone(input),r=load({input}).deriveStock037SelectionV1(input,pins()),app=JSON.parse(r.appManifestBytes),lock=JSON.parse(r.selectedLockBytes);assert.deepEqual(input,before);assert.equal(r.publishedStockEvidence,false);assert.equal(r.selection,'registry-stock037-v1');assert.equal(r.version,'0.3.7');
  for(const p of pins().packages){assert.equal(app.dependencies[p.name],'0.3.7');assert.equal(lock.packages['apps/threadplane'].dependencies[p.name],'0.3.7');const row=lock.packages[`apps/threadplane/node_modules/${p.name}`];assert.equal(row.version,'0.3.7');assert.equal(row.integrity,p.integrity);assert.equal(row.resolved,p.resolved);assert.equal(row.dependencies[names[0]],'^0.3.7');assert.equal(row.peerDependencies[names[1]],'0.3.7');assert.equal(row.dependencies.external,'^1.0.0');}
