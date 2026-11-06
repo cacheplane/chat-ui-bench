@@ -61,6 +61,24 @@ jobs:
       - name: Build workspaces
         run: npm run build 2>&1 | tee ci-logs/build.log
 
+      - name: Test bounded semantic tracing and fixed comparison controls
+        run: |
+          set -euo pipefail
+          node --test --test-concurrency=1 \
+            tools/competitor-comparison/semantic-large-v3-policy.node.mjs \
+            tools/competitor-comparison/aimock-trace-capture-v3.node.mjs \
+            tools/competitor-comparison/aimock-trace-decoder-v3.node.mjs \
+            tools/competitor-comparison/matrix-artifacts-trace-v3.node.mjs \
+            tools/competitor-comparison/aimock-trace-decoder-child-v3.node.mjs \
+            tools/competitor-comparison/aimock-trace-decoder-owner-v3.node.mjs \
+            tools/competitor-comparison/matrix-case-stock036-trace-v3.node.mjs \
+            tools/competitor-comparison/matrix-case-competitor-trace-v3.node.mjs \
+            tools/competitor-comparison/four-profile-stock036-large-v3.node.mjs \
+            tools/competitor-comparison/semantic-large-v3-pilot.node.mjs \
+            tools/competitor-comparison/semantic-large-v3-pilot-run.node.mjs \
+            tools/competitor-comparison/four-profile-stock036-large-run-v3.node.mjs \
+            2>&1 | tee ci-logs/semantic-large-v3-controls.log
+
       - name: Test fixed native-wheel raw census after analyzer build
         run: node --test tools/perfetto-import/native-wheel-raw-census.node.mjs 2>&1 | tee ci-logs/native-wheel-raw-census.log
 
