@@ -1,10 +1,16 @@
 # Separate stock037 semantic acquisition
 
-This is prospective support for stock Threadplane 0.3.7 alongside CopilotKit
-React, assistant-ui and Vercel AI SDK UI. Production stock037 pins remain `null`.
-Recognizing 0.3.7 trace metadata does not establish registry availability, an
-installed build or a successful native run. No stock037 performance result is
-established by these controls.
+This supports stock Threadplane 0.3.7 alongside CopilotKit React, assistant-ui and
+Vercel AI SDK UI. All six 0.3.7 packages were verified on npm against release
+commit `055ac2e7416ee9b83a694d74421dec2e9b26c827`: version/latest metadata,
+downloaded tarball integrity, packed assets and cryptographically verified npm
+provenance bound to the signed source and actual
+[Publish run](https://github.com/cacheplane/threadplane/actions/runs/42261350683).
+The five consumed packages have fixed registry and selected-source pins. Their
+dependency and peer metadata match the canonical lock transformation. These
+facts establish registry identity; fresh ordinary installs, genuine production
+builds and successful native runs remain separate checks. No stock037
+performance result is established by these controls.
 
 The acquisition configuration is the existing semantic V3 protocol: complete
 `devtools.timeline` and `disabled-by-default-devtools.timeline` observations,
@@ -28,7 +34,7 @@ Separate fixed stores and entrypoints prevent cross-cohort references. Existing
 records. Old results reproduce from their recorded revisions, including the
 stock036 preflight at `cf58d8f80c7c6a773b7f660d036f458b375067e1`.
 
-The fixed pilot's prospective diagnostic advancement criterion permits exactly
+The fixed pilot's predeclared diagnostic advancement criterion permits exactly
 one native readiness refusal: ordinal 15, round 1, stratum 3, block 4, position 3,
 assistant-ui, 10,000 messages, history-reading, with ID
 `assistant-ui-h10000-r6400-history-reading-semantic-task-layout-large-stock037-v3-pilot-round-1`.
@@ -40,8 +46,8 @@ ineligible. That row remains a failed native case and is never qualified. This
 criterion was declared before stock037 observations; it is not an observed
 stock037 finding. Full48 has no exception. Eligibility never starts another run.
 
-Before actual capture, verify the stable release on npm, activate reviewed real
-pins, prepare a fresh isolated selected checkout and genuine builds, and confirm
+Before actual capture, prepare a fresh isolated selected checkout and genuine
+builds using the verified fixed pins, and confirm
 the quiet capture window and available space. Preserve the committed parent
 controller revision and before/after direct source hashes: the product build
 readers do not cover V3 orchestration. Retain actual build records and the child

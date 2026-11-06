@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {stock037PublishedIdentityV1} from './aimock-stock037-v1.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
 import {createHash} from 'node:crypto';
@@ -169,7 +170,7 @@ test('exact production import allowlist stays closed',()=>{assert.deepEqual(sour
 test('stock037 published identity refusal precedes argument getters and all side effects',async()=>{
  let getters=0;const args=new Proxy([],{get(){getters++;throw Error('argument-getter');}}),m=model({args,accessor(){throw Error('stock037-published-identity-unavailable');}}),out=await finished(m);
  assert.equal(out.error?.message,'stock037-published-identity-unavailable');assert.equal(getters,0);assert.deepEqual(m.events,[['accessor']]);assert.equal(m.opens,0);assert.equal(m.buildReads,0);
- assert.match(read('aimock-stock037-pins-v1.mjs'),/export const STOCK037_PUBLISHED_PINS_V1 = null;/);
+ const published=stock037PublishedIdentityV1();assert.equal(published.schema,'threadplane-published-stock037-pins-v1');assert.equal(published.version,'0.3.7');assert.notEqual(published.selectedSourceHashes,null);
 });
 test('stock037 fixed runner emits exact distinct manifest and attempt schemas',async()=>{
  const m=model(),out=await finished(m);assert.equal(out.value?.schema,'four-profile-stock037-large-invocation-v3');assert.ok(out.value.results.every(r=>r.semanticLargeAttempt.schema==='four-profile-stock037-large-attempt-v3'));

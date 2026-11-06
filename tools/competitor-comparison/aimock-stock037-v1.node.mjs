@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {types} from 'node:util';
+import {STOCK037_PUBLISHED_PINS_V1} from './aimock-stock037-pins-v1.mjs';
+import {stock037PublishedIdentityV1 as publishedStock037Identity} from './aimock-stock037-v1.mjs';
 
 const source=await readFile(new URL('./aimock-stock037-v1.mjs',import.meta.url),'utf8').catch(()=> '');
-const pinSource=await readFile(new URL('./aimock-stock037-pins-v1.mjs',import.meta.url),'utf8').catch(()=> '');
 const hostSource=await readFile(new URL('./aimock-stock034-v1.mjs',import.meta.url),'utf8');
 const hostHashes=vm.runInNewContext(hostSource.slice(0,hostSource.indexOf('export const STOCK034_INTEGRITIES')).replace('export const','const')+';STOCK034_SOURCE_HASHES_V1');
 const names=['a2ui','chat','langgraph','render','telemetry'];
@@ -13,10 +14,20 @@ const fixture=()=>({schema:'threadplane-published-stock037-pins-v1',version:'0.3
 const selected=()=>({'package.json':'cd13748fd683ee4f4d80e2244f210c4597164d4813c381855c2cd2242bf70579','package-lock.json':'a'.repeat(64),'apps/threadplane/package.json':'b'.repeat(64)});
 const exports=['validateStock037PinsV1','stock037PublishedIdentityV1','waitStock037BuildOriginalV1','assertStock037BuildV1'];
 function load(pins=null){return vm.runInNewContext(source.replace(/^import .*;\n/gm,'').replace(/export /g,'')+'\n;({'+exports.join(',')+'})',{types,Buffer,Error,STOCK034_SOURCE_HASHES_V1:hostHashes,STOCK037_PUBLISHED_PINS_V1:pins});}
-test('stock037 exact guard and literal unavailable pins surfaces',()=>{
+test('stock037 exact guard and verified published pins surfaces',()=>{
  assert.deepEqual([...source.matchAll(/export (?:async )?function (\w+)/g)].map(m=>m[1]).sort(),[...exports].sort());
  assert.equal(source.match(/export /g)?.length,4);
- assert.match(pinSource,/^\s*(?:\/\/[^\n]*\n)*export const STOCK037_PUBLISHED_PINS_V1\s*=\s*null;\s*$/);
+ const expected={schema:'threadplane-published-stock037-pins-v1',version:'0.3.7',selectedSourceHashes:{'package.json':'cd13748fd683ee4f4d80e2244f210c4597164d4813c381855c2cd2242bf70579','apps/threadplane/package.json':'3afbc08f65dfe915bbf776859cf4fdcf9b518ee78c45ace6afc9d62f02cb6da4','package-lock.json':'3462a5fde17e5c08d2b6f579bbfc9aec1f0c00343e092296857c9d4dcbabf482'},packages:[
+  {name:'@threadplane/a2ui',version:'0.3.7',resolved:'https://registry.npmjs.org/@threadplane/a2ui/-/a2ui-0.3.7.tgz',integrity:'sha512-Tv/ub1U9Y1AbvZOhNrh2x3obfm8DgsWr1/tds0hSqRKgPAleXo0pFbjIxrDttxLLxi2cEb+kKNlhNFUnL2zoIg=='},
+  {name:'@threadplane/chat',version:'0.3.7',resolved:'https://registry.npmjs.org/@threadplane/chat/-/chat-0.3.7.tgz',integrity:'sha512-1h827BtZtyGjLm8fdv8nthsotKRtdfPXlR9PGJTVLYGfsBVN7Vtl3DUNBqutoezY+FTIWDVCyQilgzdZpNZoPQ=='},
+  {name:'@threadplane/langgraph',version:'0.3.7',resolved:'https://registry.npmjs.org/@threadplane/langgraph/-/langgraph-0.3.7.tgz',integrity:'sha512-JyoAh5b5RNFkg5Ffl9a7VoThNotAMcUlrfvHEqubibT9jokXJUUjWiMqeNVtE4T8TYuUFmRn3tN1klucNpx/kw=='},
+  {name:'@threadplane/render',version:'0.3.7',resolved:'https://registry.npmjs.org/@threadplane/render/-/render-0.3.7.tgz',integrity:'sha512-lMuTgvfS4GAkRrpJHbdo/rGQxaq+vItQjLa//dzOU3uwhJCm2eo0u7tOt1sUKz0nZuxl3qfQy8OeQ4XL01EY/A=='},
+  {name:'@threadplane/telemetry',version:'0.3.7',resolved:'https://registry.npmjs.org/@threadplane/telemetry/-/telemetry-0.3.7.tgz',integrity:'sha512-/OjiAY9HqHBXsdAR/81Uz24J35jJxJSbmf6EXVuPTwieE5qNjlXy3prLf45lZ226hvCu56dSglxfDBHrvxfgbA=='}
+ ]};
+ assert.deepEqual(STOCK037_PUBLISHED_PINS_V1,expected);
+ const actual=publishedStock037Identity();assert.deepEqual(actual,expected);
+ assert.ok(Object.isFrozen(actual)&&Object.isFrozen(actual.selectedSourceHashes)&&Object.isFrozen(actual.packages)&&actual.packages.every(Object.isFrozen));
+ assert.notEqual(actual,STOCK037_PUBLISHED_PINS_V1);assert.notEqual(actual.selectedSourceHashes,STOCK037_PUBLISHED_PINS_V1.selectedSourceHashes);assert.notEqual(actual.packages,STOCK037_PUBLISHED_PINS_V1.packages);for(let i=0;i<5;i++)assert.notEqual(actual.packages[i],STOCK037_PUBLISHED_PINS_V1.packages[i]);
 });
 test('stock037 closed parser accepts authored five consumed packages only and grants no authority',()=>{const api=load(),f=fixture();assert.equal(api.validateStock037PinsV1(f),f);f.selectedSourceHashes=selected();assert.equal(api.validateStock037PinsV1(f),f);assert.throws(()=>api.stock037PublishedIdentityV1(),/published-identity-unavailable/);});
 test('stock037 parser refuses malformed releases packages integrity paths and source key shapes',()=>{
