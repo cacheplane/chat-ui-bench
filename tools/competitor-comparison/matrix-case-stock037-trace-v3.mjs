@@ -11,6 +11,7 @@ import {createMatrixReadinessControllerV5} from './matrix-readiness-v5.mjs';
 import {createMatrixDeadline,collectMatrixProvenance,captureMatrixFinalBookend,createMatrixReadinessPortV5,installMatrixWheelRecorder,requireMatrixWheelDelivery} from './matrix-run-v5.mjs';
 import {createAimockTraceCaptureV3,createAimockTraceRawEvidenceV3} from './aimock-trace-capture-v3.mjs';
 import {runAimockTraceDecoderOwnerV3} from './aimock-trace-decoder-owner-v3.mjs';
+import {createStock037CpuCaptureV1} from './aimock-stock037-cpu-capture-v1.mjs';
 import {SEMANTIC_LARGE_V3_POLICY as TRACE_POLICY,SEMANTIC_LARGE_V3_POLICY_SHA256 as TRACE_POLICY_SHA256} from './semantic-large-v3-policy.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const message=error=>String(error?.message??error).slice(0,4096);
@@ -38,6 +39,14 @@ export async function runMatrixCase(args){
  return runMatrixCaseOriginal(args);
 }
 
+const STOCK037_CPU_TOKEN=Symbol('stock037-one-cpu-diagnostic');
+export async function runStock037CpuDiagnosticCaseV1({store,out,invocationStarted}){
+ stock037PublishedIdentityV1();
+ if(arguments.length!==1||Object.keys(arguments[0]).sort().join(',')!=='invocationStarted,out,store')throw Error('stock037-cpu-case-arguments');
+ const slot={id:'threadplane-h10000-r6400-follow-stock037-cpu-samples-v1',kind:'positive',selection:{profile:'threadplane',historyCount:10000,responseBytes:6400,journey:'follow'}};
+ return runMatrixCaseOriginal({slot,store,out,invocationStarted},STOCK037_CPU_TOKEN);
+}
+
 async function runMatrixCaseOriginal({slot,store,out,invocationStarted}){
  const started=performance.now(),deadline=createMatrixDeadline({caseStarted:started,invocationStarted}),wait=(original,ms,label)=>deadline.wait(original,ms,label);
  const diagnostics=createMatrixDiagnostics({now:performance.now.bind(performance),origin:started});
@@ -56,6 +65,8 @@ async function runMatrixCaseOriginal({slot,store,out,invocationStarted}){
  if(slot.selection.profile!=='threadplane')throw Error('aimock-stock037-profile');
  stock037PublishedIdentityV1();
  let trace=null,traceIdentity=null,traceSnapshot=null,traceFailure=null,traceBuild=null,tracePublicationStop=false,traceCleanupEnd=null;
+ const cpuMode=arguments.length===2&&arguments[1]===STOCK037_CPU_TOKEN;
+ let cpu=null,cpuFailure=null,cpuSnapshot=null;
  const traceOperations=[];
  const traceRetain=original=>{const operation={original,status:'pending',value:null,error:null};traceOperations.push(operation);original.then(value=>{operation.status='fulfilled';operation.value=value;},error=>{operation.status='rejected';operation.error=error;});return operation;};
  // TRACE-V3-END create
@@ -120,7 +131,12 @@ async function runMatrixCaseOriginal({slot,store,out,invocationStarted}){
   traceBuild=assertStock037BuildV1(await waitStock037BuildOriginalV1(traceBuildRead.original,wait,STAGES.transcript,'aimock-stock037-before'));
   traceIdentity={id:slot.id,profile,historyCount,responseBytes,journey,stockVersion:'0.3.7',buildSha256:createHash('sha256').update(JSON.stringify(traceBuild)).digest('hex')};
   trace=createAimockTraceCaptureV3({now:performance.now.bind(performance),origin:started,identity:traceIdentity,wait,remaining:()=>Math.min(deadline.remaining(),traceCleanupEnd===null?Infinity:traceCleanupEnd-performance.now()),stageMs:STAGES.progress});
+  if(cpuMode)try{
+   cpu=createStock037CpuCaptureV1({now:performance.now.bind(performance),origin:started,identity:traceIdentity,wait,remaining:()=>Math.min(deadline.remaining(),traceCleanupEnd===null?Infinity:traceCleanupEnd-performance.now()),stageMs:STAGES.progress,assetHashes:traceBuild.assetHashes});
+   await cpu.setup({browser,context,page,expectedOrigin:server.origin});
+  }catch(error){cpuFailure=message(error);}
   await trace.setup({browser,context,page,expectedOrigin:server.origin});
+  if(cpu&&!cpuFailure)try{await cpu.start();}catch(error){cpuFailure=message(error);}
   trace.assertBeforeStart();
  // TRACE-V3-END setup
   diagnostics.dispatched('start');
@@ -129,6 +145,7 @@ async function runMatrixCaseOriginal({slot,store,out,invocationStarted}){
   if(readinessController){readinessCapture.ack=readinessAck;readinessController.start(readinessAck);}
  // TRACE-V3-BEGIN ack
   trace.markPublicAck();
+  if(cpu&&!cpuFailure)try{cpu.markPublicAck();}catch(error){cpuFailure=message(error);}
  // TRACE-V3-END ack
   diagnostics.fulfilled();
   diagnostics.dispatched('run-promise-dispatch');
@@ -232,6 +249,7 @@ async function runMatrixCaseOriginal({slot,store,out,invocationStarted}){
   evidence.networkGuardBeforeCleanup=networkGuard.read();if(evidence.networkGuardBeforeCleanup.closed||evidence.networkGuardBeforeCleanup.overflow||context.pages().length!==1)throw Error('matrix-network-observation-invalid');
   if(evidence.pageErrors.length||evidence.network.resourceErrors.length)throw Error('matrix-page-or-resource-error');deadline.check();
  // TRACE-V3-BEGIN finish
+  if(cpu)try{await cpu.finish();}catch(error){cpuFailure??=message(error);}
   try{await trace.finish();}catch{traceFailure='aimock-trace-finish-unavailable';}
  // TRACE-V3-END finish
  }catch(error){diagnostics.rejected(error);fail(error);if(error.serverOutcome)serverOutcome=error.serverOutcome;}
@@ -254,6 +272,7 @@ async function runMatrixCaseOriginal({slot,store,out,invocationStarted}){
   if(page){const originalDispose=page.evaluate(async()=>{if(window.competitorBench)await window.competitorBench.dispose();});void originalDispose.catch(()=>{});try{await cleanupWait(originalDispose,STAGES.publicDispose,'matrix-public-dispose');evidence.cleanup.publicDispose={settled:true,fulfilled:true};}catch(error){const unsettled=message(error).includes('-unsettled');evidence.cleanup.publicDispose={settled:!unsettled,fulfilled:false,error:message(error)};unsafeOutstanding||=unsettled;fail(error);}}
  // TRACE-V3-BEGIN cleanup-stop
   traceCleanupEnd??=cleanupStarted+LIMITS.cleanupMs;
+  if(cpu)try{const cpuFinishAttention=cpu.beforeBrowserClose();if(cpuFinishAttention!==null)await cleanupWait(cpuFinishAttention,STAGES.progress,'stock037-cpu-before-browser-close');}catch(error){cpuFailure??=message(error);}
   if(trace)try{const traceFinishAttention=trace.beforeBrowserClose();if(traceFinishAttention!==null)await cleanupWait(traceFinishAttention,STAGES.progress,'aimock-trace-before-browser-close');}catch{traceFailure??='aimock-trace-stop-unavailable';}
  // TRACE-V3-END cleanup-stop
   if(browser){const originalClose=browser.close();void originalClose.catch(()=>{});try{await cleanupWait(originalClose,STAGES.browserClose,'matrix-browser-close');evidence.cleanup.browserClosed=true;}catch(error){unsafeOutstanding=true;fail(error);}}
@@ -264,6 +283,7 @@ async function runMatrixCaseOriginal({slot,store,out,invocationStarted}){
   readinessCapture.open=false;
   if(readinessController)try{const sealed=readinessController.seal();evidence.readinessV5=sealed.receipt;unsafeOutstanding||=sealed.unsafeOutstanding;}catch(error){unsafeOutstanding=true;fail(error);}
  // TRACE-V3-BEGIN cleanup-seal
+  if(cpu)try{cpu.afterBrowserClose();cpuSnapshot=cpu.seal();unsafeOutstanding||=cpuSnapshot.receipt.unsafeOutstanding;}catch(error){unsafeOutstanding=true;cpuFailure??=message(error);}
   if(trace)try{trace.afterBrowserClose();traceSnapshot=trace.seal();unsafeOutstanding||=traceSnapshot.receipt.unsafeOutstanding;}catch{unsafeOutstanding=true;traceFailure??='aimock-trace-seal-unavailable';}
  // TRACE-V3-END cleanup-seal
  }
@@ -452,6 +472,46 @@ function receipt(r,raw){
    unsafeOutstanding=true;result.unsafeOutstanding=true;const unsafeOutstandingError=Error(failure?.message??'aimock-trace-publication-unsettled',{cause:tracePublicationError??Error('aimock-trace-ownership-unavailable')});unsafeOutstandingError.unsafeOutstanding=true;throw unsafeOutstandingError;
   }
  }
+ if(cpuMode){
+  const diagnostic={status:'unavailable',failure:cpuFailure,rawCapture:null,binding:null,ownerReceipt:null};
+  result.cpuDiagnostic=diagnostic;
+  const cpuOriginals=[];
+  const cpuOperation=async(factory,label)=>{
+   need(!storeUnknown()&&!unsafeOutstanding,'cpu-store-unavailable');deadline.check();
+   const operation=traceRetain(factory());cpuOriginals.push(operation);
+   const value=await wait(operation.original,Math.min(STAGES.progress,deadline.remaining()),label);
+   deadline.check();need(operation.status==='fulfilled','cpu-original-unsettled');return value;
+  };
+  try{
+   need(cpuSnapshot?.receipt&&cpuSnapshot.receipt.unsafeOutstanding===false,'cpu-owner-unavailable');
+   const writeRead=async(name,text,cap)=>{
+    need(typeof text==='string'&&Buffer.byteLength(text)<=cap,'cpu-byte-cap');
+    const value=JSON.parse(text);need(JSON.stringify(value)===text,'cpu-canonical');
+    const ref=await cpuOperation(()=>artifacts.writeJSON(name,value,{kind:'evidence'}),'stock037-cpu-write');
+    reference(ref,name,value,cap);
+    const read=await cpuOperation(()=>store.readJSON(ref,{kind:'evidence'}),'stock037-cpu-read');
+    const canonical=JSON.stringify(read);
+    need(Buffer.byteLength(canonical)===ref.bytes&&sha(canonical)===ref.sha256&&canonical===text,'cpu-readback');return ref;
+   };
+   diagnostic.ownerReceipt=await writeRead('stock037-cpu-owner-v1.json',JSON.stringify(cpuSnapshot.receipt),16384);
+   if(cpuSnapshot.rawJson!==null){
+    diagnostic.rawCapture=await writeRead('stock037-cpu-profile-v1.json',cpuSnapshot.rawJson,2097152);
+    need(same(cpuSnapshot.receipt.raw,{bytes:diagnostic.rawCapture.bytes,sha256:diagnostic.rawCapture.sha256}),'cpu-owner-raw-hash-join');
+   }
+   if(cpuSnapshot.bindingJson!==null){
+    diagnostic.binding=await writeRead('stock037-cpu-binding-v1.json',cpuSnapshot.bindingJson,65536);
+    need(same(cpuSnapshot.receipt.binding,{bytes:diagnostic.binding.bytes,sha256:diagnostic.binding.sha256}),'cpu-owner-binding-hash-join');
+   }
+   need(!cpuFailure&&cpuSnapshot.receipt.complete===true&&cpuSnapshot.receipt.issues.length===0&&diagnostic.rawCapture&&diagnostic.binding,'cpu-acquisition-unavailable');
+   diagnostic.status='complete';
+  }catch(error){
+   diagnostic.failure??=message(error);stopInvocation=true;
+   if(cpuOriginals.some(record=>record.status==='pending'||record.error?.unsafeOutstanding)||storeUnknown()||unsafeOutstanding){
+    unsafeOutstanding=true;result.unsafeOutstanding=true;
+    throw Object.assign(Error('stock037-cpu-publication-unsettled',{cause:error}),{unsafeOutstanding:true});
+   }
+  }
+ }
  // TRACE-V3-END publish
  try{deadline.check();if(evidence.readinessV5)readinessReceiptRef=await wait(artifacts.writeJSON('readiness-receipt.json',evidence.readinessV5,{kind:'evidence'}),STAGES.progress,'matrix-readiness-receipt-write');if(serverOutcome)await wait(artifacts.writeJSON('server-process.json',serverOutcome,{kind:'evidence'}),STAGES.progress,'matrix-server-receipt-write');await wait(artifacts.writeJSON('evidence.json',evidence,{kind:'evidence'}),STAGES.transcript,'matrix-evidence-write');await wait(artifacts.writeJSON('result.json',result,{kind:'result'}),STAGES.progress,'matrix-result-write');}
  catch(error){
@@ -464,6 +524,7 @@ function receipt(r,raw){
  }
  // TRACE-V3-BEGIN stop
  stopInvocation ||= tracePublicationStop||traceDiagnostic.status!=='complete'||unsafeOutstanding;
+ if(cpuMode)stopInvocation ||= result.cpuDiagnostic?.status!=='complete';
  // TRACE-V3-END stop
  result.unsafeOutstanding=unsafeOutstanding;result.stopInvocation=stopInvocation;return result;
 }

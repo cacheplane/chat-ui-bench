@@ -52,7 +52,7 @@ async function fixture(t, {count = 16, free, clock = 100, hooks = {}} = {}) {
   return {parent, directory, state, create, async store() {return create({directory, invocationStarted: 0});}};
 }
 const plain = value => JSON.parse(JSON.stringify(value));
-const fixedConstructorNames = ['createSemanticLarge16StoreV3', 'createSemanticLarge48StoreV3', 'createSemanticLargeStock03716StoreV3', 'createSemanticLargeStock03748StoreV3'];
+const fixedConstructorNames = ['createSemanticLarge16StoreV3', 'createSemanticLarge48StoreV3', 'createSemanticLargeStock03716StoreV3', 'createSemanticLargeStock03748StoreV3', 'createStock037CpuDiagnosticStoreV1'];
 const stock037Pilot = pilot.map(id => id.replace('-large-v3-pilot-', '-large-stock037-v3-pilot-'));
 const stock037Full = full.map(id => id.replace('-stock036-', '-stock037-'));
 
@@ -100,9 +100,9 @@ function stock037Model(constructorName) {
   return {calls, directory, create: (...args) => api[constructorName](...args), async store() {return api[constructorName]({directory, invocationStarted: 0});}};
 }
 
-test('stock037 fixed stores expose exactly four closed constructors and literal tuple-preserving schedules', () => {
-  assert.deepEqual(Object.keys(production).sort(), fixedConstructorNames);
-  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), fixedConstructorNames);
+test('fixed stores expose exactly five closed constructors and literal tuple-preserving schedules', () => {
+  assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames].sort());
+  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), [...fixedConstructorNames].sort());
   const literal = name => {
     const match = source.match(new RegExp(`const ${name} = Object\\.freeze\\(\\[([\\s\\S]*?)\\]\\);`));
     assert.ok(match, `missing private literal ${name}`);
@@ -501,7 +501,7 @@ test('whole invocation+cleanup equality dispatches no new IO, including reads an
 test('all exact frozen roster arrays are private and literal with no roster/configuration exports', () => {
   assert.match(source, /const PILOT_IDS = Object\.freeze\(\[/);
   assert.match(source, /const FULL_IDS = Object\.freeze\(\[/);
-  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), fixedConstructorNames);
+  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), [...fixedConstructorNames].sort());
   assert.equal(new Set(full).size, 48);
 });
 
@@ -651,8 +651,8 @@ test('full48 maximum ledger is 97 rows, with detached facts fitting ordinary evi
   assert.equal(facts.pendingOriginals, 0); assert.equal(facts.pendingWriters, 0);
 });
 
-test('production exports only the four closed constructors and old store source remains byte-exact', async () => {
-  assert.deepEqual(Object.keys(production).sort(), fixedConstructorNames);
+test('production exports only the five closed constructors and old store source remains byte-exact', async () => {
+  assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames].sort());
   const old = await fs.readFile(new URL('./matrix-artifacts-v3.mjs', import.meta.url));
   assert.equal(createHash('sha256').update(old).digest('hex'), '172fbdd42640c0053f07a50a939b99fa33d6e34b0b7a660cf1644b2d5d621a4e');
 });
@@ -732,5 +732,29 @@ test('no new descriptor close dispatch after cleanup hard end; acquired late han
     // Harness cleanup of its intentionally withheld descriptor; production
     // correctly dispatched no new close after the simulated absolute end.
     if (acquired) await realClose();
+  }
+});
+
+const cpuId = 'threadplane-h10000-r6400-follow-stock037-cpu-samples-v1';
+test('CPU diagnostic store admits only its one slot and retains canonical evidence bytes within existing caps', async () => {
+  const f = stock037Model('createStock037CpuDiagnosticStoreV1'), store = await f.store();
+  assert.equal(store.stats().invocationReservation, 99 * MiB);
+  await assert.rejects(store.requireSpaceBeforeNextCaseV3(stock037Pilot[0]), /roster/);
+  await store.requireSpaceBeforeNextCaseV3(cpuId);
+  const artifacts = await store.beginCase(cpuId);
+  const raw = { nodes: [{ id: 1 }], samples: [1], timeDeltas: [-1, 0] };
+  const ref = await artifacts.writeJSON('stock037-cpu-profile-v1.json', raw, {kind: 'evidence'});
+  const canonical = JSON.stringify(raw);
+  assert.equal(ref.bytes, Buffer.byteLength(canonical));
+  assert.equal(ref.sha256, createHash('sha256').update(canonical).digest('hex'));
+  assert.deepEqual(plain(await store.readJSON(ref, {kind: 'evidence'})), raw);
+  assert.equal(store.stats().chargedBytes, ref.bytes);
+  await assert.rejects(store.requireSpaceBeforeNextCaseV3(cpuId), /roster/);
+});
+test('all old fixed stores reject the CPU slot without consuming their original grant', async () => {
+  for (const name of fixedConstructorNames.slice(0, 4)) {
+    const f = stock037Model(name), store = await f.store();
+    await assert.rejects(store.requireSpaceBeforeNextCaseV3(cpuId), /roster/);
+    assert.equal(store.stats().caseReservation, 0);
   }
 });

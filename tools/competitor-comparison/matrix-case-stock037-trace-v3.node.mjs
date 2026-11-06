@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import vm from 'node:vm';
+import {EventEmitter} from 'node:events';
+import {createStock037CpuCaptureV1} from './aimock-stock037-cpu-capture-v1.mjs';
 import {types} from 'node:util';
 console.log('stock037-v3-pure-source-test-pid',process.pid);
 const read=name=>readFile(new URL('./'+name,import.meta.url),'utf8');
@@ -35,8 +37,8 @@ test('strict eight-seam parser and exact native V5/wrapper/bridge bytes',()=>{
  for(const malformed of [source.replace('TRACE-V3-END ack','TRACE-V3-END setup'),source.replace('TRACE-V3-END ack','TRACE-V3-BEGIN ack'),source.replace('TRACE-V3-BEGIN ack','TRACE-V3-BEGIN ninth'),source+'// TRACE-V3-BEGIN ninth\n'])assert.throws(()=>parse(malformed));
  for(const malformed of [source+' // TRACE-V3-BEGIN ninth\n // TRACE-V3-END ninth\n',source.replace(' // TRACE-V3-END stop\n',''),source.replace(' // TRACE-V3-BEGIN ack\n',''),source.replace(' // TRACE-V3-BEGIN ack\n',' // TRACE-V3-BEGIN finish\n')])assert.throws(()=>parse(malformed));
 });
-test('case has exactly one public export and remains fixed037 at its local identity gate',async()=>{
- assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(m=>m[1]),['runMatrixCase']);
+test('case has only ordinary and fixed CPU exports and remains fixed037 at its local identity gate',async()=>{
+ assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(m=>m[1]),['runMatrixCase','runStock037CpuDiagnosticCaseV1']);
  const {seams}=parse(source),prefix=seams.publish.slice(0,seams.publish.indexOf(' const traceDiagnostic='));
  const check=AsyncFunction('value','createHash','TRACE_POLICY','TRACE_POLICY_SHA256',prefix+'validateIdentity(value);return true;');
  const identity={id:'stock037-case',profile:'threadplane',historyCount:10,responseBytes:100,journey:'history-reading',stockVersion:'0.3.7',buildSha256:'a'.repeat(64)};
@@ -78,13 +80,14 @@ test('complete imports are closed, with no child, guard override or alternate de
  "import {createMatrixDeadline,collectMatrixProvenance,captureMatrixFinalBookend,createMatrixReadinessPortV5,installMatrixWheelRecorder,requireMatrixWheelDelivery} from './matrix-run-v5.mjs';",
  "import {createAimockTraceCaptureV3,createAimockTraceRawEvidenceV3} from './aimock-trace-capture-v3.mjs';",
  "import {runAimockTraceDecoderOwnerV3} from './aimock-trace-decoder-owner-v3.mjs';",
+ "import {createStock037CpuCaptureV1} from './aimock-stock037-cpu-capture-v1.mjs';",
  "import {SEMANTIC_LARGE_V3_POLICY as TRACE_POLICY,SEMANTIC_LARGE_V3_POLICY_SHA256 as TRACE_POLICY_SHA256} from './semantic-large-v3-policy.mjs';",
  ]);
  const active=source.slice(source.indexOf('const readinessAck='),source.indexOf('readinessController.assertBeforeWheel();'));
  assert.doesNotMatch(active,/assertStock037|threadplaneBuildEvidence|runAimockTraceDecoderOwner/);
 });
 test('public wrapper accessor refuses before any argument property is touched',async()=>{
- const wrapper=body(source,'export async function runMatrixCase(args){','\n\nasync function runMatrixCaseOriginal(').replace('export async function','async function');let reads=0;
+ const wrapper=body(source,'export async function runMatrixCase(args){','\n\nconst STOCK037_CPU_TOKEN').replace('export async function','async function');let reads=0;
  const run=AsyncFunction('stock037PublishedIdentityV1','runMatrixCaseOriginal',wrapper+';return runMatrixCase(new Proxy({},{get(){throw Error("property-touched");}}));');
  await assert.rejects(run(()=>{throw Error('stock037-published-identity-unavailable');},()=>{reads++;}),/stock037-published-identity-unavailable/);assert.equal(reads,0);
 });
@@ -96,7 +99,7 @@ test('rejected typed build or guard never constructs a collector',async()=>{
 });
 async function cleanupProbe({hook=null,clock=110,repeat=false,reject=false}={}){
  const {seams}=parse(source),calls=[];let end;
- const run=AsyncFunction('p',`const cleanupStarted=100,LIMITS={cleanupMs:30},STAGES={progress:10};let traceCleanupEnd=null,traceFailure=null;const trace=p.trace,cleanupWait=p.wait;${seams['cleanup-stop']}${repeat?seams['cleanup-stop']:''}p.browserClose();return{traceCleanupEnd,traceFailure};`);
+ const run=AsyncFunction('p',`const cleanupStarted=100,LIMITS={cleanupMs:30},STAGES={progress:10};let traceCleanupEnd=null,traceFailure=null,cpuFailure=null;const cpu=null,trace=p.trace,cleanupWait=p.wait;${seams['cleanup-stop']}${repeat?seams['cleanup-stop']:''}p.browserClose();return{traceCleanupEnd,traceFailure};`);
  const original=hook;const result=run({trace:hook===false?null:{beforeBrowserClose(){calls.push('hook');return original;}},wait(value){assert.equal(value,original);calls.push('await');return reject?Promise.reject(Error('finish-rejected')):value;},browserClose(){calls.push('browser-close');end=clock;}});
  return{result,calls,get end(){return end;}};
 }
@@ -193,7 +196,7 @@ test('source-VM typed037 guard binds exact complete actual record before collect
 });
 test('unavailable source-VM authority refuses before argument or browser/IO work, and wrong release pins refuse',async()=>{
  const {load,pins}=await authoredGuard(),api=load(null);let properties=0,work=0;
- const wrapper=body(source,'export async function runMatrixCase(args){','\n\nasync function runMatrixCaseOriginal(').replace('export async function','async function');
+ const wrapper=body(source,'export async function runMatrixCase(args){','\n\nconst STOCK037_CPU_TOKEN').replace('export async function','async function');
  const run=AsyncFunction('stock037PublishedIdentityV1','runMatrixCaseOriginal','args',wrapper+';return runMatrixCase(args);');
  await assert.rejects(run(api.stock037PublishedIdentityV1,()=>{work++;},new Proxy({},{get(){properties++;}})),/published-identity-unavailable/);
  assert.equal(properties,0);assert.equal(work,0);
@@ -410,3 +413,116 @@ test('positive-time retained original expires at established cleanup end and lat
 });
 
 }
+
+test('fixed CPU entry constructs only its literal slot without changing the ordinary wrapper', async () => {
+ assert.match(source, /export async function runStock037CpuDiagnosticCaseV1\(/);
+ const fixed=body(source,'export async function runStock037CpuDiagnosticCaseV1(','\n\nasync function runMatrixCaseOriginal(').replace('export async function','async function');
+ const token={},calls=[];
+ const run=AsyncFunction('stock037PublishedIdentityV1','runMatrixCaseOriginal','STOCK037_CPU_TOKEN',fixed+';return runStock037CpuDiagnosticCaseV1({store:1,out:2,invocationStarted:3});');
+ await run(()=>{},(...args)=>calls.push(args),token);
+ assert.equal(calls.length,1);assert.equal(calls[0][1],token);
+ assert.deepEqual(calls[0][0],{store:1,out:2,invocationStarted:3,slot:{id:'threadplane-h10000-r6400-follow-stock037-cpu-samples-v1',kind:'positive',selection:{profile:'threadplane',historyCount:10000,responseBytes:6400,journey:'follow'}}});
+});
+test('CPU finish rejection cannot skip strict timeline finish', async () => {
+ const fragment=parse(source).seams.finish;
+ assert.match(fragment,/cpu\.finish\(\)/);
+ const calls=[];
+ const run=AsyncFunction('cpu','trace','message',`let cpuFailure=null,traceFailure=null;${fragment};return {cpuFailure,traceFailure};`);
+ const value=await run({finish:async()=>{calls.push('cpu');throw Error('cpu-refused');}},{finish:async()=>calls.push('trace')},e=>e.message);
+ assert.deepEqual(calls,['cpu','trace']);assert.equal(value.cpuFailure,'cpu-refused');assert.equal(value.traceFailure,null);
+});
+test('CPU cleanup and seal failures cannot skip existing strict trace release', async () => {
+ const seams=parse(source).seams,calls=[];
+ assert.match(seams['cleanup-stop'],/cpu\.beforeBrowserClose\(\)/);
+ assert.match(seams['cleanup-seal'],/cpu\.seal\(\)/);
+ const run=AsyncFunction('cpu','trace','message',`const cleanupStarted=100,LIMITS={cleanupMs:30},STAGES={progress:10},cleanupWait=async p=>p;let traceCleanupEnd=null,traceFailure=null,cpuFailure=null,cpuSnapshot=null,traceSnapshot=null,unsafeOutstanding=false;${seams['cleanup-stop']}${seams['cleanup-seal']};return {cpuFailure,unsafeOutstanding};`);
+ const value=await run({beforeBrowserClose(){calls.push('cpu-stop');throw Error('cpu-stop-refused');},afterBrowserClose(){calls.push('cpu-after');},seal(){calls.push('cpu-seal');throw Error('cpu-seal-refused');}},{beforeBrowserClose(){calls.push('trace-stop');return null;},afterBrowserClose(){calls.push('trace-after');},seal(){calls.push('trace-seal');return{receipt:{unsafeOutstanding:false}};}},e=>e.message);
+ assert.deepEqual(calls,['cpu-stop','trace-stop','cpu-after','cpu-seal','trace-after','trace-seal']);assert.equal(value.unsafeOutstanding,true);
+});
+
+test('fixed CPU entry rejects extra ports before dispatching the private case', async () => {
+ const fixed=body(source,'export async function runStock037CpuDiagnosticCaseV1(','\n\nasync function runMatrixCaseOriginal(').replace('export async function','async function');
+ let calls=0;const run=AsyncFunction('stock037PublishedIdentityV1','runMatrixCaseOriginal','STOCK037_CPU_TOKEN','value',fixed+';return runStock037CpuDiagnosticCaseV1(value);');
+ for(const key of ['slot','selection','verify','browser','retry','timeout'])await assert.rejects(run(()=>{},()=>{calls++;},{},{store:1,out:2,invocationStarted:3,[key]:true}),/arguments/);
+ assert.equal(calls,0);
+});
+
+async function cpuPublicationProbe({mutateRead=false,pendingWrite=false,invalidOwner=false,failure=null,absentData=false,unsafe=false,sealedSnapshot=null}={}){
+ const block=parse(source).seams.publish;
+ const cpuBlock=block.slice(block.lastIndexOf('\n if(cpuMode){'));
+ const values=new Map(),writes=[],raw={nodes:[{id:1,unknown:'preserved'}],samples:[1],timeDeltas:[-1,0]},binding={schema:'binding-authored',assetHashes:{'0':'a','main.js':'b'}};
+ const rawJson=JSON.stringify(raw),bindingJson=JSON.stringify(binding);
+ const receipt={complete:!invalidOwner&&!failure,unsafeOutstanding:unsafe,issues:failure?[failure]:[],raw:{bytes:Buffer.byteLength(rawJson),sha256:sha(rawJson)},binding:{bytes:Buffer.byteLength(bindingJson),sha256:sha(bindingJson)}};
+ if(absentData){receipt.raw=null;receipt.binding=null;}
+ const p={failure,snapshot:sealedSnapshot??{rawJson:absentData?null:rawJson,bindingJson:absentData?null:bindingJson,receipt},writes,store:{readJSON:async ref=>{const value=values.get(ref.path);return mutateRead?{...value,changed:true}:value;}},artifacts:{writeJSON:async(name,value)=>{writes.push({name,value});if(pendingWrite)return new Promise(()=>{});const text=JSON.stringify(value),ref={path:'id/'+name,bytes:Buffer.byteLength(text),sha256:sha(text)};values.set(ref.path,structuredClone(value));return ref;}}};
+ const run=AsyncFunction('p',`const {store,artifacts}=p,cpuMode=true,cpuFailure=p.failure,cpuSnapshot=p.snapshot,result={},STAGES={progress:10},deadline={check(){},remaining:()=>100},message=e=>e.message,sha=p.sha,same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),need=(v,c)=>{if(!v)throw Error(c)},reference=(ref,name,value,cap)=>{need(ref.path==='id/'+name&&ref.bytes===Buffer.byteLength(JSON.stringify(value))&&ref.bytes<=cap&&ref.sha256===sha(JSON.stringify(value)),'reference');},storeUnknown=()=>false;let unsafeOutstanding=false,stopInvocation=false;const records=[];const traceRetain=original=>{const row={original,status:'pending'};records.push(row);original.then(()=>row.status='fulfilled',error=>{row.status='rejected';row.error=error;});return row;};const wait=async original=>{if(p.pendingWrite)throw Error('attention-expired');return original;};${cpuBlock};return{result,stopInvocation};`);
+ try{return{value:await run({...p,sha,pendingWrite}),writes};}catch(error){return{error,writes};}
+}
+test('CPU publication uses exact canonical evidence readbacks and owner hash references without filtering unknown fields',async()=>{
+ const value=await cpuPublicationProbe();assert.equal(value.error,undefined);
+ assert.equal(value.value.result.cpuDiagnostic.status,'complete');
+ assert.deepEqual(value.writes.map(w=>w.name),['stock037-cpu-owner-v1.json','stock037-cpu-profile-v1.json','stock037-cpu-binding-v1.json']);
+ assert.equal(value.writes[1].value.nodes[0].unknown,'preserved');assert.deepEqual(value.writes[1].value.timeDeltas,[-1,0]);
+});
+test('CPU publication refuses changed readback or unavailable owner rather than promoting data success',async()=>{
+ for(const options of [{mutateRead:true},{invalidOwner:true}]){
+  const value=await cpuPublicationProbe(options);assert.equal(value.value.result.cpuDiagnostic.status,'unavailable');assert.equal(value.value.stopInvocation,true);
+ }
+});
+test('pending original CPU writer prohibits subsequent native publication',async()=>{
+ const value=await cpuPublicationProbe({pendingWrite:true});assert.equal(value.error?.unsafeOutstanding,true);assert.equal(value.writes.length,1);
+});
+
+test('CPU setup refusal leaves strict trace setup/prestart active; ordinary mode never creates CPU owner',async()=>{
+ const seams=parse(source).seams;
+ const setup=seams.setup;
+ const run=AsyncFunction('p','token',`const STOCK037_CPU_TOKEN=p.token,{createHash}=p,slot={id:'stock-case',selection:{profile:'threadplane'}},profile='threadplane',historyCount=10000,responseBytes=6400,journey='follow',started=10,performance={now:()=>20},deadline={remaining:()=>100},STAGES={progress:10,transcript:10},wait=async x=>x,browser={},context={},page={},server={origin:'http://localhost'},stock037PublishedIdentityV1=()=>{},threadplaneBuildEvidence=async()=>({assetHashes:{'main.js':'a'.repeat(64)}}),waitStock037BuildOriginalV1=x=>x,assertStock037BuildV1=x=>x,createAimockTraceCaptureV3=p.trace,createStock037CpuCaptureV1=p.cpu,message=e=>e.message;${seams.create}${setup};return{cpuFailure,cpuMode};`);
+ for(const mode of [true,false]){
+  const calls=[],token={},p={token,createHash,cpu:()=>({setup:async()=>{calls.push('cpu-setup');throw Error('cpu-setup-refused');}}),trace:()=>({setup:async()=>calls.push('trace-setup'),assertBeforeStart:()=>calls.push('trace-prestart')})};
+  const result=mode?await run(p,token):await run(p);
+  assert.equal(result.cpuMode,mode);assert.equal(result.cpuFailure,mode?'cpu-setup-refused':null);
+  assert.deepEqual(calls,mode?['cpu-setup','trace-setup','trace-prestart']:['trace-setup','trace-prestart']);
+ }
+});
+
+test('safe CPU enable/start/stop deadline failures retain sealed owner facts exactly once without qualification',async()=>{
+ for(const failure of ['cpu-enable-refused','cpu-start-deadline','cpu-stop-deadline']){
+  const value=await cpuPublicationProbe({failure,absentData:failure!=='cpu-stop-deadline'});
+  assert.equal(value.error,undefined);const d=value.value.result.cpuDiagnostic;
+  assert.equal(d.status,'unavailable');assert.equal(d.failure,failure);assert.equal(value.value.stopInvocation,true);
+  assert.ok(d.ownerReceipt);assert.equal(value.writes.filter(w=>w.name==='stock037-cpu-owner-v1.json').length,1);
+  const receipt=value.writes.find(w=>w.name==='stock037-cpu-owner-v1.json').value;
+  assert.equal(receipt.complete,false);assert.deepEqual(receipt.issues,[failure]);
+  if(failure!=='cpu-stop-deadline'){assert.equal(d.rawCapture,null);assert.equal(d.binding,null);}
+  else{assert.ok(d.rawCapture);assert.ok(d.binding);}
+ }
+});
+test('unsafe CPU receipt never permits artifact writes',async()=>{
+ const value=await cpuPublicationProbe({failure:'cpu-stop-unsettled',unsafe:true});
+ assert.equal(value.writes.length,0);assert.equal(value.value.result.cpuDiagnostic.status,'unavailable');
+});
+
+test('real CPU owner sealed enable/start/stop deadline refusals survive actual case publication unchanged',async()=>{
+ for(const fault of ['enable','start','stop']){
+  let time=0;const session=new EventEmitter(),page=new EventEmitter(),context=new EventEmitter(),browser=new EventEmitter(),frame={};
+  page.mainFrame=()=>frame;context.pages=()=>[page];context.newCDPSession=async()=>session;session.detach=async()=>{};
+  session.send=async method=>{
+   if(method==='Profiler.enable'&&fault==='enable')throw Error('authored-enable-rejection');
+   if(method==='Browser.getVersion')return{product:'Chrome/156.0.8078.4',revision:'@f842f52ef39fd97b449eb27cff414bf05a98ddce',protocolVersion:'1.3',userAgent:'authored',jsVersion:'authored'};
+   if(method==='Page.getFrameTree')return{frameTree:{frame:{id:'frame',url:'http://127.0.0.1:1234/'}}};
+   if(method==='Target.getTargetInfo')return{targetInfo:{targetId:'target',type:'page',url:'http://127.0.0.1:1234/'}};
+   if(method==='Profiler.stop')return{profile:{nodes:[{id:1,callFrame:{functionName:'(root)',scriptId:'0',url:'',lineNumber:-1,columnNumber:-1}}],startTime:0,endTime:10,samples:[1],timeDeltas:[1]}};
+   return{};
+  };
+  const owner=createStock037CpuCaptureV1({now:()=>time,origin:0,identity:{id:'threadplane-h10000-r6400-follow-stock037-cpu-samples-v1',profile:'threadplane',historyCount:10000,responseBytes:6400,journey:'follow',stockVersion:'0.3.7',buildSha256:'a'.repeat(64)},wait:async(original,ms,label)=>{const value=await original;if(label==='stock037-cpu-'+fault&&fault!=='enable')time+=ms;return value;},remaining:()=>100000-time,stageMs:10000,assetHashes:{'main.js':'a'.repeat(64)}});
+  let failure=null;
+  try{await owner.setup({browser,context,page,expectedOrigin:'http://127.0.0.1:1234'});await owner.start();owner.markPublicAck();await owner.finish();}catch(error){failure=error.message;}
+  try{await owner.beforeBrowserClose();}catch{}owner.afterBrowserClose();const snapshot=owner.seal();
+  assert.equal(snapshot.receipt.complete,false);assert.equal(snapshot.receipt.unsafeOutstanding,false);assert.ok(failure);
+  const result=await cpuPublicationProbe({failure,sealedSnapshot:snapshot});assert.equal(result.error,undefined);
+  const diagnostic=result.value.result.cpuDiagnostic;assert.equal(diagnostic.status,'unavailable');assert.equal(diagnostic.failure,failure);assert.ok(diagnostic.ownerReceipt);
+  const retained=result.writes.find(w=>w.name==='stock037-cpu-owner-v1.json');assert.deepEqual(retained.value,snapshot.receipt);
+  assert.equal(result.writes.filter(w=>w.name==='stock037-cpu-owner-v1.json').length,1);
+  assert.equal(!!diagnostic.rawCapture,snapshot.rawJson!==null);assert.equal(!!diagnostic.binding,snapshot.bindingJson!==null);
+ }
+});
