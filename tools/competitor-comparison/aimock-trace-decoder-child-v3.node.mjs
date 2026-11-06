@@ -12,10 +12,10 @@ import {createHash} from 'node:crypto';
 import {gzipSync} from 'node:zlib';
 import {constants} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as policySha256} from './semantic-large-v3-policy.mjs';
+import {isSemanticLargeProfileStockVersionV3,SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as policySha256} from './semantic-large-v3-policy.mjs';
 const entry=fileURLToPath(new URL('./aimock-trace-decoder-child-v3.mjs',import.meta.url));
 const names=['aimock-trace-decoder-child-v3.mjs','aimock-trace-decoder-v3.mjs','semantic-large-v3-policy.mjs','aimock-trace-renderer-v1.mjs','aimock-trace-costs-v1.mjs','aimock-trace-capture-v1.mjs','aimock-trace-completion-waiter-v1.mjs'];
-const hashes=['c29d15116c6d2fb9ff8bfb5e623ab6d75a3cf54095cb5e6feb947aa2fa64616b','245f2f9e59d79fd83079941601e658ac7202c232c470dc7f545af20394eef405','d90b459e4f5092a0fc15b23d52ac5b2bf1a86afc47da46c32d8d1f3175a7b39e','19276c285dea068e493dc5518fde0ebad87e19b857f728199f0e922b347f7da3','ee25e4ac8a37d73677c69d5975edeab1cba0d8bbebb17a57e8564f6f6e91ab32','67df5242c4f7765c3cc34a5503ffc32168696622c27c3e1705b66b3af7855d38'];
+const hashes=['1435d3f7467f521841ba0c439034779eb1a1b3b454a151157d5cd468484ec10f','a114d883dbb53894ba0dd730c0b70ab9af801fbc18245b074c9e4e7a9da83454','d90b459e4f5092a0fc15b23d52ac5b2bf1a86afc47da46c32d8d1f3175a7b39e','19276c285dea068e493dc5518fde0ebad87e19b857f728199f0e922b347f7da3','ee25e4ac8a37d73677c69d5975edeab1cba0d8bbebb17a57e8564f6f6e91ab32','67df5242c4f7765c3cc34a5503ffc32168696622c27c3e1705b66b3af7855d38'];
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const token='1'.repeat(32), frame=(type,body={},t=token)=>JSON.stringify({schema:'aimock-decoder-message-v3',type,token:t,body})+'\n';
 const pin=s=>({dev:String(s.dev),ino:String(s.ino)});
@@ -35,7 +35,7 @@ function child(t){
  p.stdin.on('error',()=>{});
  return {p,e,closed,async wait(type){for(let i=0;i<400;i++){const f=e.frames.find(f=>f.type===type);if(f)return f;if(e.close)assert.fail('closed before '+type);await new Promise(r=>setTimeout(r,5));}assert.fail('timeout '+type);}};
 }
-test('fixed seven-file closure has no hidden local import and six dependencies unchanged',async()=>{
+test('fixed seven-file closure has no hidden local import and exact dependency hashes',async()=>{
  for(let i=0;i<names.length;i++){const src=await fs.readFile(path.join(path.dirname(entry),names[i]),'utf8');if(i)assert.equal(hash(src),hashes[i-1]);for(const m of src.matchAll(/(?:from\s*|import\s*)['"]([^'"]+)['"]/g))assert.ok(m[1].startsWith('node:')||names.includes(m[1].replace('./','')),m[1]);assert.doesNotMatch(src,/import\s*\(/);}
 });
 test('actual child pauses before decode, returns bounded invalid codec facts, waits for exit EOF',async t=>{
@@ -50,7 +50,7 @@ for(const trailing of ['\n','x',frame('request')])test('refuses any byte after e
 // Separate source VM harness: never exported by or configurable in the entry.
 async function harness(filesystem=fs,extra={}){
  let source=await fs.readFile(entry,'utf8');source=source.replace(/^import .*;\n/gm,'').replaceAll('import.meta.url','ENTRY_URL').replace(/^if\(process\.argv\[1\].*$/m,'');
- const sandbox={fs:filesystem,constants,path,createHash,Buffer,TextDecoder,URL,fileURLToPath,process,P,POLICY_SHA:policySha256,ENTRY_URL:new URL('./aimock-trace-decoder-child-v3.mjs',import.meta.url).href,decodeSemanticLargeSnapshotV3(){throw Error('unexpected codec');},...extra};
+ const sandbox={isSemanticLargeProfileStockVersionV3,fs:filesystem,constants,path,createHash,Buffer,TextDecoder,URL,fileURLToPath,process,P,POLICY_SHA:policySha256,ENTRY_URL:new URL('./aimock-trace-decoder-child-v3.mjs',import.meta.url).href,decodeSemanticLargeSnapshotV3(){throw Error('unexpected codec');},...extra};
  vm.runInNewContext(source+'\nglobalThis.boundary={request,parse,readRaw,sources,identity,metadata,decode,main};',sandbox);return sandbox.boundary;
 }
 function model({rootRace=0,parentRace=0,leafRace=0,descriptorRace=false,closeError=false,closePending=false,extraByte=false}={}){
@@ -93,3 +93,9 @@ test('actual codec failure keeps unavailable aggregate facts null after joined w
 test('runtime entry exports no ports and imports only its fixed builtin/codec/policy boundary',async()=>{const source=await fs.readFile(entry,'utf8');assert.doesNotMatch(source,/\bexport\b|process\.env|process\.argv\[[2-9]|gunzip|inflate|child_process|matrix-artifacts|roster/);assert.deepEqual([...source.matchAll(/^import .* from '([^']+)'/gm)].map(m=>m[1]),['node:fs/promises','node:fs','node:path','node:url','node:crypto','./aimock-trace-decoder-v3.mjs','./semantic-large-v3-policy.mjs']);});
 for(const [profile,stockVersion]of [['unknown',null],['threadplane',null],['copilotkit','0.3.6'],['assistant-ui','0.3.6'],['vercel-ai-sdk','0.3.6']])test('refuses closed profile/stock join '+profile+'/'+stockVersion+' before ready',async t=>{const b=await context();t.after(()=>fs.rm(b.artifactRoot,{recursive:true,force:true}));b.identity.profile=profile;b.identity.stockVersion=stockVersion;const c=child(t);c.p.stdin.end(frame('request',b));const e=await c.closed;assert.notEqual(e.exit.code,0);assert.equal(e.frames.length,0);});
 for(const [profile,stockVersion]of [['threadplane','0.3.6'],['copilotkit',null],['assistant-ui',null],['vercel-ai-sdk',null]])test('closed request admits exact profile/stock '+profile,async()=>{const b=await context();try{b.identity.profile=profile;b.identity.stockVersion=stockVersion;const h=await harness();assert.equal(h.request(b),b);}finally{await fs.rm(b.artifactRoot,{recursive:true,force:true});}});
+
+test('stock037 format child request recognizes authored Threadplane identity',async()=>{
+ const h=await harness(),b={identity:{id:'synthetic-v3',profile:'threadplane',historyCount:1000,responseBytes:6400,journey:'follow',stockVersion:'0.3.7',buildSha256:'a'.repeat(64)},policySha256,artifactRoot:'/authored',rootIdentity:{dev:'1',ino:'2'},caseParentIdentity:{dev:'1',ino:'3'},rawReference:{path:'synthetic-v3/aimock-trace-v3-private.json',bytes:2,sha256:hash('{}')},decoderSources:{nodeExecutableSha256:'a'.repeat(64),files:names.map(n=>({path:'tools/competitor-comparison/'+n,sha256:'b'.repeat(64)}))}};
+ assert.equal(h.request(b),b);
+ for(const [profile,stockVersion]of [['threadplane','0.3.8'],['threadplane',null],['copilotkit','0.3.7'],['vercel-ai',null]]){const bad=structuredClone(b);Object.assign(bad.identity,{profile,stockVersion});assert.throws(()=>h.request(bad),/timeline-child-request/);}
+});

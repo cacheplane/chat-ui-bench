@@ -129,6 +129,76 @@ const FULL_IDS = Object.freeze([
   'vercel-ai-sdk-h10000-r6400-history-reading-four-profile-stock036-large-v3-round-3',
 ]);
 
+// Separate stock037 identities preserve the reviewed whole Latin order above.
+const STOCK037_PILOT_IDS = Object.freeze([
+  'threadplane-h1000-r6400-follow-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'copilotkit-h1000-r6400-follow-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'vercel-ai-sdk-h1000-r6400-follow-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'assistant-ui-h1000-r6400-follow-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'copilotkit-h1000-r6400-history-reading-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'assistant-ui-h1000-r6400-history-reading-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'threadplane-h1000-r6400-history-reading-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'vercel-ai-sdk-h1000-r6400-history-reading-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'assistant-ui-h10000-r6400-follow-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'vercel-ai-sdk-h10000-r6400-follow-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'copilotkit-h10000-r6400-follow-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'threadplane-h10000-r6400-follow-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'vercel-ai-sdk-h10000-r6400-history-reading-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'threadplane-h10000-r6400-history-reading-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'assistant-ui-h10000-r6400-history-reading-semantic-task-layout-large-stock037-v3-pilot-round-1',
+  'copilotkit-h10000-r6400-history-reading-semantic-task-layout-large-stock037-v3-pilot-round-1',
+]);
+const STOCK037_FULL_IDS = Object.freeze([
+  'threadplane-h1000-r6400-follow-four-profile-stock037-large-v3-round-1',
+  'copilotkit-h1000-r6400-follow-four-profile-stock037-large-v3-round-1',
+  'vercel-ai-sdk-h1000-r6400-follow-four-profile-stock037-large-v3-round-1',
+  'assistant-ui-h1000-r6400-follow-four-profile-stock037-large-v3-round-1',
+  'copilotkit-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-1',
+  'assistant-ui-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-1',
+  'threadplane-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-1',
+  'vercel-ai-sdk-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-1',
+  'assistant-ui-h10000-r6400-follow-four-profile-stock037-large-v3-round-1',
+  'vercel-ai-sdk-h10000-r6400-follow-four-profile-stock037-large-v3-round-1',
+  'copilotkit-h10000-r6400-follow-four-profile-stock037-large-v3-round-1',
+  'threadplane-h10000-r6400-follow-four-profile-stock037-large-v3-round-1',
+  'vercel-ai-sdk-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-1',
+  'threadplane-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-1',
+  'assistant-ui-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-1',
+  'copilotkit-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-1',
+  'copilotkit-h1000-r6400-follow-four-profile-stock037-large-v3-round-2',
+  'assistant-ui-h1000-r6400-follow-four-profile-stock037-large-v3-round-2',
+  'threadplane-h1000-r6400-follow-four-profile-stock037-large-v3-round-2',
+  'vercel-ai-sdk-h1000-r6400-follow-four-profile-stock037-large-v3-round-2',
+  'assistant-ui-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-2',
+  'vercel-ai-sdk-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-2',
+  'copilotkit-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-2',
+  'threadplane-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-2',
+  'vercel-ai-sdk-h10000-r6400-follow-four-profile-stock037-large-v3-round-2',
+  'threadplane-h10000-r6400-follow-four-profile-stock037-large-v3-round-2',
+  'assistant-ui-h10000-r6400-follow-four-profile-stock037-large-v3-round-2',
+  'copilotkit-h10000-r6400-follow-four-profile-stock037-large-v3-round-2',
+  'threadplane-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-2',
+  'copilotkit-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-2',
+  'vercel-ai-sdk-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-2',
+  'assistant-ui-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-2',
+  'assistant-ui-h1000-r6400-follow-four-profile-stock037-large-v3-round-3',
+  'vercel-ai-sdk-h1000-r6400-follow-four-profile-stock037-large-v3-round-3',
+  'copilotkit-h1000-r6400-follow-four-profile-stock037-large-v3-round-3',
+  'threadplane-h1000-r6400-follow-four-profile-stock037-large-v3-round-3',
+  'vercel-ai-sdk-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-3',
+  'threadplane-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-3',
+  'assistant-ui-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-3',
+  'copilotkit-h1000-r6400-history-reading-four-profile-stock037-large-v3-round-3',
+  'threadplane-h10000-r6400-follow-four-profile-stock037-large-v3-round-3',
+  'copilotkit-h10000-r6400-follow-four-profile-stock037-large-v3-round-3',
+  'vercel-ai-sdk-h10000-r6400-follow-four-profile-stock037-large-v3-round-3',
+  'assistant-ui-h10000-r6400-follow-four-profile-stock037-large-v3-round-3',
+  'copilotkit-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-3',
+  'assistant-ui-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-3',
+  'threadplane-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-3',
+  'vercel-ai-sdk-h10000-r6400-history-reading-four-profile-stock037-large-v3-round-3',
+]);
+
 async function createStore(input, ids) {
   exactData(input, ['directory', 'invocationStarted']);
   const {directory, invocationStarted} = input;
@@ -461,4 +531,12 @@ export async function createSemanticLarge16StoreV3(input) {
 export async function createSemanticLarge48StoreV3(input) {
   if (arguments.length !== 1) throw Error('matrix-artifact-arguments');
   return createStore(input, FULL_IDS);
+}
+export async function createSemanticLargeStock03716StoreV3(input) {
+  if (arguments.length !== 1) throw Error('matrix-artifact-arguments');
+  return createStore(input, STOCK037_PILOT_IDS);
+}
+export async function createSemanticLargeStock03748StoreV3(input) {
+  if (arguments.length !== 1) throw Error('matrix-artifact-arguments');
+  return createStore(input, STOCK037_FULL_IDS);
 }
