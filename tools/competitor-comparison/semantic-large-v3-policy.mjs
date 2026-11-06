@@ -3,6 +3,13 @@
 import {createHash} from 'node:crypto';
 
 const MiB = 1024 ** 2;
+/** Format recognition only; fixed cohort/build guards retain release authority. */
+export function isSemanticLargeProfileStockVersionV3(profile, stockVersion) {
+  return arguments.length === 2 && (profile === 'threadplane'
+    ? stockVersion === '0.3.6' || stockVersion === '0.3.7'
+    : (profile === 'copilotkit' || profile === 'assistant-ui' || profile === 'vercel-ai-sdk') && stockVersion === null);
+}
+
 function freeze(value) {
   if (value && typeof value === 'object') {
     for (const child of Object.values(value)) freeze(child);

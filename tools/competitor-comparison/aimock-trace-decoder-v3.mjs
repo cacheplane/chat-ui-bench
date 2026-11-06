@@ -2,7 +2,7 @@
 // Policy identity describes acquisition only; it grants no native/release authority.
 import {createHash} from 'node:crypto';
 import {gunzipSync} from 'node:zlib';
-import {SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from './semantic-large-v3-policy.mjs';
+import {isSemanticLargeProfileStockVersionV3,SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from './semantic-large-v3-policy.mjs';
 import {mapAimockTraceRendererV1} from './aimock-trace-renderer-v1.mjs';
 import {projectOwnedRendererCostsV1} from './aimock-trace-costs-v1.mjs';
 const sha=x=>createHash('sha256').update(x).digest('hex');
@@ -38,7 +38,7 @@ function detached(input){
  }
  return freeze(visit(input,0));
 }
-function identity(v){keys(v,['id','profile','historyCount','responseBytes','journey','stockVersion','buildSha256']);for(const k of ['id','profile','journey'])need(typeof v[k]==='string'&&v[k].length>0&&Buffer.byteLength(v[k])<=256,'timeline-identity');need(integer(v.historyCount)&&integer(v.responseBytes)&&(v.stockVersion===null||v.stockVersion==='0.3.6')&&digest(v.buildSha256),'timeline-identity');}
+function identity(v){keys(v,['id','profile','historyCount','responseBytes','journey','stockVersion','buildSha256']);for(const k of ['id','profile','journey'])need(typeof v[k]==='string'&&v[k].length>0&&Buffer.byteLength(v[k])<=256,'timeline-identity');need(integer(v.historyCount)&&integer(v.responseBytes)&&isSemanticLargeProfileStockVersionV3(v.profile,v.stockVersion)&&digest(v.buildSha256),'timeline-identity');}
 function preview(v,limit=64,hashed=false){keys(v,hashed?['text','trueCharacters','truncated','sha256']:['text','trueCharacters','truncated']);need(typeof v.text==='string'&&v.text.length<=limit&&integer(v.trueCharacters)&&v.trueCharacters>=v.text.length&&typeof v.truncated==='boolean'&&v.truncated===(v.trueCharacters>limit)&&v.text.length===Math.min(v.trueCharacters,limit),'timeline-inventory');if(hashed)need(digest(v.sha256)&& (v.truncated||v.sha256===sha(v.text)),'timeline-inventory');}
 function ledger(r){
  const b=r.bufferUsage,l=r.bufferNotificationsV3;keys(b,['count','first','last','max']);keys(l,['totalCount','first8','last8','retainedCount','droppedCount','truncated']);

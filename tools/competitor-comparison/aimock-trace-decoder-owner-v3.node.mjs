@@ -9,7 +9,7 @@ import {spawn} from 'node:child_process';
 import {constants} from 'node:fs';
 import {gzipSync} from 'node:zlib';
 import {fileURLToPath} from 'node:url';
-import {SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from './semantic-large-v3-policy.mjs';
+import {isSemanticLargeProfileStockVersionV3,SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from './semantic-large-v3-policy.mjs';
 
 const entry=new URL('./aimock-trace-decoder-owner-v3.mjs',import.meta.url);
 const sha=b=>createHash('sha256').update(b).digest('hex');
@@ -28,8 +28,8 @@ test('malformed argument data rejects before accessing capabilities',async()=>{
 // The source VM below is test-local. The production export has no override ports.
 async function harness(extra={}){
  const source=(await fs.readFile(entry,'utf8')).replace(/^import .*;\n/gm,'').replace(/export /g,'').replaceAll('import.meta.url','ENTRY_URL');
- const sandbox={fs,constants,path,fileURLToPath,createHash,randomBytes,spawn,Buffer,TextDecoder,URL,process,performance,setTimeout,clearTimeout,setInterval,clearInterval,Object,JSON,P,POLICY_SHA,ENTRY_URL:entry.href,...extra};
- return vm.runInNewContext(`(function(){'use strict';${source}\nreturn {runAimockTraceDecoderOwnerV3,parse,parseRss,validateResult};})()`,sandbox);
+ const sandbox={isSemanticLargeProfileStockVersionV3,fs,constants,path,fileURLToPath,createHash,randomBytes,spawn,Buffer,TextDecoder,URL,process,performance,setTimeout,clearTimeout,setInterval,clearInterval,Object,JSON,P,POLICY_SHA,ENTRY_URL:entry.href,...extra};
+ return vm.runInNewContext(`(function(){'use strict';${source}\nreturn {runAimockTraceDecoderOwnerV3,parse,parseRss,validateResult,validateIdentity};})()`,sandbox);
 }
 const id={id:'synthetic-v3',profile:'vercel-ai-sdk',historyCount:1,responseBytes:1,journey:'follow',stockVersion:null,buildSha256:'a'.repeat(64)};
 const flags={performance:false,scoringEligibility:false,FPS:null,cpuTime:null};
@@ -179,3 +179,9 @@ test('review: multiple frame records in one event remain valid even when frame t
 
 test('race: result-ready waits exact active tick sample through parsing and finally after helper close',async t=>{const m=await model(t,'wait-result'),original=m.run();await m.flush();m.state.queryMode='pending';await m.advance(100);assert.equal(m.state.queries.length,2);m.state.queryMode='okay';m.state.sendResult();m.state.finishQuery();await m.flush();const r=await original;assert.equal(r.decoderOwner.status,'complete',JSON.stringify(r.decoderOwner));assert.deepEqual(r.decoderOwner.rss.samples.map(row=>row[0]),[0,1,2]);assert.equal(r.decoderOwner.rss.attempted,3);assert.equal(r.decoderOwner.rss.fulfilled,3);assert.equal(r.decoderOwner.rss.pending,0);assert.equal(r.decoderOwner.rss.rejected,0);assert.equal(r.decoderOwner.rss.missed,0);assert.equal(r.decoderOwner.rss.terminalSeen,true);assert.deepEqual(m.state.frames.map(f=>f.type),['request','decode-ack','exit-ack']);});
 test('race: result-ready cannot hide failed active tick sample or launch terminal/exit ack',async t=>{const m=await model(t,'wait-result'),original=m.run();await m.flush();m.state.queryMode='pending';await m.advance(100);m.state.sendResult();m.state.queryMode='malformed';m.state.finishQuery();await m.flush();const r=await original;assert.equal(r.decoderOwner.status,'unavailable');assert.equal(r.decoderResult.status,'invalid');assert.equal(r.decoderOwner.rss.attempted,2);assert.equal(r.decoderOwner.rss.fulfilled,1);assert.equal(r.decoderOwner.rss.rejected,1);assert.equal(r.decoderOwner.rss.terminalSeen,false);assert.equal(r.decoderOwner.unsafeOutstanding,false);assert.deepEqual(m.state.frames.map(f=>f.type),['request','decode-ack']);});
+
+test('stock037 format owner recognizes authored Threadplane identity',async()=>{
+ const h=await harness(),identity={...id,profile:'threadplane',stockVersion:'0.3.7'};
+ assert.doesNotThrow(()=>h.validateIdentity(identity));
+ for(const [profile,stockVersion]of [['threadplane','0.3.8'],['threadplane',null],['assistant-ui','0.3.7'],['vercel-ai',null]])assert.throws(()=>h.validateIdentity({...identity,profile,stockVersion}),/timeline-owner-arguments/);
+});

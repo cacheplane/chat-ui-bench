@@ -9,7 +9,7 @@ const filename='four-profile-stock036-large-run-v3.mjs',candidate=new URL(filena
 // The real legacy source is a behavioral RED target, never a missing dependency.
 const source=read(existsSync(candidate)?filename:'four-profile-stock036-interleaved-run-v1.mjs');
 const policyText=read('semantic-large-v3-policy.mjs');
-const P=JSON.parse(JSON.stringify(vm.runInNewContext(policyText.slice(policyText.indexOf('const MiB'),policyText.indexOf('export const SEMANTIC_LARGE_V3_POLICY_JSON')).replace('export const SEMANTIC_LARGE_V3_POLICY','const SEMANTIC_LARGE_V3_POLICY')+';JSON.parse(JSON.stringify(SEMANTIC_LARGE_V3_POLICY));')));
+const P=JSON.parse(JSON.stringify(vm.runInNewContext(policyText.slice(policyText.indexOf('const MiB'),policyText.indexOf('export const SEMANTIC_LARGE_V3_POLICY_JSON')).replace(/^export /gm,'')+';JSON.parse(JSON.stringify(SEMANTIC_LARGE_V3_POLICY));')));
 const flags=P.flags,sha=x=>createHash('sha256').update(typeof x==='string'||Buffer.isBuffer(x)?x:JSON.stringify(x)).digest('hex');
 const pilot=JSON.parse(/const roster=freeze\((\[.*?\])\);/.exec(read('semantic-large-v3-pilot.mjs'))[1]);
 const legacy=read('four-profile-stock036-interleaved-v1.mjs'),legacySchedule=legacy.slice(legacy.indexOf('const orders='),legacy.indexOf('Object.freeze(roster);'));

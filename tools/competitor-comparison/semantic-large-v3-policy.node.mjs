@@ -125,3 +125,13 @@ test('identity validation refuses altered profile, schema, digest and all config
   assert.equal(read, false);
   assert.throws(() => validateSemanticLargePolicyIdentityV3(input, {}), /semantic-large-v3-policy-arguments/);
 });
+
+import * as policyApi from './semantic-large-v3-policy.mjs';
+test('stock037 format finite relation has exact primitive pairs and arity without touching objects',()=>{
+ const relation=policyApi.isSemanticLargeProfileStockVersionV3;assert.equal(typeof relation,'function');assert.equal(relation.length,2);
+ for(const [p,v]of [['threadplane','0.3.6'],['threadplane','0.3.7'],['copilotkit',null],['assistant-ui',null],['vercel-ai-sdk',null]])assert.equal(relation(p,v),true);
+ const poisonous=new Proxy({},{get(){throw Error('coercion');},getPrototypeOf(){throw Error('reflection');}}),revoked=Proxy.revocable({},{});revoked.revoke();
+ for(const p of ['threadplane','copilotkit','assistant-ui','vercel-ai-sdk','vercel-ai','unknown','',null,undefined,0,{},[],new String('threadplane'),poisonous,revoked.proxy])for(const v of ['0.3.6','0.3.7','0.3.8','^0.3.7','0.3.7-beta.1','latest',null,undefined,0,{},[],new String('0.3.7'),poisonous,revoked.proxy])assert.equal(relation(p,v),typeof p==='string'&&(p==='threadplane'?(v==='0.3.6'||v==='0.3.7'):['copilotkit','assistant-ui','vercel-ai-sdk'].includes(p)&&v===null));
+ for(const args of [[],['threadplane'],['threadplane','0.3.7',null],['copilotkit',null,undefined]])assert.equal(relation(...args),false);
+ assert.equal(digest,'bce01bad127db70b2469209a669b7258f9fa6615e3ef92d5d6c08a763d9b95c5');
+});

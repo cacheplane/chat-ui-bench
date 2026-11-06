@@ -124,3 +124,41 @@ test('review cohort admission repeats every retained-clock and population contra
 ]){const c=cohort();assert.equal(api.admitFourProfileStock036LargeV3(c.results,c.builds,c.context),true);const row=c.results[0],record=c.context.cases[row.id];mutate(record);reseal(record);row.traceDiagnostic.decoderOriginals=record.originals.reference;row.traceDiagnostic.validation=record.validation.reference;assert.equal(api.admitFourProfileStock036LargeV3(c.results,c.builds,c.context),false);}});
 
 test('source-consistent stdin finish callback after process exit still qualifies full48',()=>{const c=cohort();assert.equal(api.admitFourProfileStock036LargeV3(c.results,c.builds,c.context),true);const row=c.results[0],r=c.context.cases[row.id];r.originals.value.decoder.stdin.finishMs=51;reseal(r);row.traceDiagnostic.decoderOriginals=r.originals.reference;row.traceDiagnostic.validation=r.validation.reference;assert.equal(api.validateSemanticLargeTraceRecordV3(r,r.raw.value.identity,sourceFacts),true);assert.equal(api.admitFourProfileStock036LargeV3(c.results,c.builds,c.context),true);});
+
+function stockRecord(version){
+ const slot=api.fourProfileStock036LargeRosterV3()[0],r=authored(slot);
+ for(const id of [r.raw.value.identity,r.raw.value.receipt.identity,r.originals.value.identity,r.validation.value.identity,r.validation.value.decoderResult.identity])id.stockVersion=version;
+ r.raw.reference.bytes=Buffer.byteLength(JSON.stringify(r.raw.value))+19+4*Math.ceil(r.raw.value.retainedCompressedBytes/3);
+ r.originals.value.rawReference=clone(r.raw.reference);r.validation.value.rawReference=clone(r.raw.reference);r.validation.value.decoderResult.rawReference=clone(r.raw.reference);
+ return reseal(r);
+}
+test('stock037 format generic validator recognizes matching record and expected identity',()=>{const r=stockRecord('0.3.7');assert.equal(api.validateSemanticLargeTraceRecordV3(r,r.raw.value.identity,sourceFacts),true);});
+
+test('stock037 format generic joins keep expected cohort, build, source and references exact',()=>{
+ for(const version of ['0.3.6','0.3.7']){
+  const r=stockRecord(version),expected=clone(r.raw.value.identity);assert.equal(api.validateSemanticLargeTraceRecordV3(r,expected,sourceFacts),true);
+  for(const change of [x=>x.stockVersion=version==='0.3.6'?'0.3.7':'0.3.6',x=>x.buildSha256='f'.repeat(64),x=>x.id='other-cohort',x=>x.profile='copilotkit']){const bad=clone(expected);change(bad);assert.equal(api.validateSemanticLargeTraceRecordV3(r,bad,sourceFacts),false);}
+  for(const change of [r=>r.originals.value.rawReference.path='other-cohort/aimock-trace-v3-private.json',r=>r.raw.reference.path='other-cohort/aimock-trace-v3-private.json',r=>r.validation.value.decoderResult.identity={...expected,buildSha256:'f'.repeat(64)},r=>r.validation.value.decoderOwner.decoderClosureSha256='f'.repeat(64),r=>r.originals.value.nodeExecutableSha256='f'.repeat(64)]){const bad=clone(r);change(bad);reseal(bad);assert.equal(api.validateSemanticLargeTraceRecordV3(bad,expected,sourceFacts),false);}
+  const badSources=clone(sourceFacts);badSources.decoderSources.files[2].sha256='f'.repeat(64);assert.equal(api.validateSemanticLargeTraceRecordV3(r,expected,badSources),false);
+ }
+ for(const version of ['0.3.8',null]){const r=stockRecord(version);assert.equal(api.validateSemanticLargeTraceRecordV3(r,r.raw.value.identity,sourceFacts),false);}
+ const wrong=stockRecord('0.3.7');for(const id of [wrong.raw.value.identity,wrong.raw.value.receipt.identity,wrong.originals.value.identity,wrong.validation.value.identity,wrong.validation.value.decoderResult.identity])id.profile='copilotkit';wrong.raw.reference.bytes=Buffer.byteLength(JSON.stringify(wrong.raw.value))+23;wrong.originals.value.rawReference=clone(wrong.raw.reference);wrong.validation.value.rawReference=clone(wrong.raw.reference);wrong.validation.value.decoderResult.rawReference=clone(wrong.raw.reference);reseal(wrong);assert.equal(api.validateSemanticLargeTraceRecordV3(wrong,wrong.raw.value.identity,sourceFacts),false);
+});
+test('stock037 format recognized record cannot qualify the fixed stock036 aggregate',()=>{
+ const c=cohort(),row=c.results[0],r=stockRecord('0.3.7');c.context.cases[row.id]=r;
+ row.traceDiagnostic.rawCapture=r.raw.reference;row.traceDiagnostic.decoderOriginals=r.originals.reference;row.traceDiagnostic.validation=r.validation.reference;
+ assert.equal(api.validateSemanticLargeTraceRecordV3(r,r.raw.value.identity,sourceFacts),true);
+ assert.equal(api.admitFourProfileStock036LargeV3(c.results,c.builds,c.context),false);
+ assert.equal(api.summarizeFourProfileStock036LargeV3(c.results,c.builds,c.context).profiles[0].qualified,11);
+});
+
+test('stock037 format new case identity joins exactly and refuses an old case expectation',()=>{
+ const r=stockRecord('0.3.7'),oldId=r.raw.value.identity.id,newId=oldId.replace('stock036','stock037');assert.notEqual(oldId,newId);
+ for(const id of [r.raw.value.identity,r.raw.value.receipt.identity,r.originals.value.identity,r.validation.value.identity,r.validation.value.decoderResult.identity])id.id=newId;
+ r.raw.reference={...r.raw.reference,path:newId+'/aimock-trace-v3-private.json',bytes:Buffer.byteLength(JSON.stringify(r.raw.value))+23};
+ r.originals.reference.path=newId+'/aimock-trace-v3-decoder-originals.json';r.validation.reference.path=newId+'/aimock-trace-v3-validation.json';
+ r.originals.value.rawReference=clone(r.raw.reference);r.validation.value.rawReference=clone(r.raw.reference);r.validation.value.decoderResult.rawReference=clone(r.raw.reference);reseal(r);
+ assert.equal(api.validateSemanticLargeTraceRecordV3(r,r.raw.value.identity,sourceFacts),true);
+ assert.equal(api.validateSemanticLargeTraceRecordV3(r,{...r.raw.value.identity,id:oldId},sourceFacts),false);
+ const old=stockRecord('0.3.6');assert.equal(api.validateSemanticLargeTraceRecordV3(old,{...old.raw.value.identity,id:newId},sourceFacts),false);
+});

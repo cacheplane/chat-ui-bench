@@ -361,7 +361,7 @@ test('finite source map preserves byte-exact collector core, helpers and fixed l
   assert.equal(hash(old),'ee25e4ac8a37d73677c69d5975edeab1cba0d8bbebb17a57e8564f6f6e91ab32');
   assert.equal(hash(await read('aimock-trace-capture-v2.mjs')),'5681153b2a23c91be85f149fdbfb837c5566ac20fd658865d5952f12a0961a00');
   assert.equal(hash(await read('aimock-trace-completion-waiter-v1.mjs')),'67df5242c4f7765c3cc34a5503ffc32168696622c27c3e1705b66b3af7855d38');
-  assert.equal(hash(await read('semantic-large-v3-policy.mjs')),'245f2f9e59d79fd83079941601e658ac7202c232c470dc7f545af20394eef405');
+  assert.equal(hash(await read('semantic-large-v3-policy.mjs')),'a114d883dbb53894ba0dd730c0b70ab9af801fbc18245b074c9e4e7a9da83454');
   const oldCaseSlice="try{trace.beforeBrowserClose();}catch{traceFailure??='aimock-trace-stop-unavailable';}\n // TRACE-V2-END cleanup-stop\n  if(browser){const originalClose=browser.close();";
   for(const [name,expected] of [
     ['matrix-case-competitor-trace-v1.mjs','2d95efd2268b4c2335565ed7a32ac442ed9f20b509b682502ab92cfeaaa4892b'],

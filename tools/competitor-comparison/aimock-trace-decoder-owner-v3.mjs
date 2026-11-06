@@ -5,14 +5,14 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash,randomBytes} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from './semantic-large-v3-policy.mjs';
+import {isSemanticLargeProfileStockVersionV3,SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from './semantic-large-v3-policy.mjs';
 
 const integer=n=>Number.isSafeInteger(n)&&n>=0;
 const finite=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0;
 const digest=s=>typeof s==='string'&&/^[0-9a-f]{64}$/.test(s);
 const need=(v,c)=>{if(!v)throw Error('timeline-owner-'+c);};
 function keys(v,ks,c){need(v&&typeof v==='object'&&!Array.isArray(v)&&Object.getPrototypeOf(v)===Object.prototype,c);const names=Reflect.ownKeys(v);need(names.length===ks.length&&ks.every(k=>{const d=Object.getOwnPropertyDescriptor(v,k);return d&&Object.hasOwn(d,'value')&&d.enumerable;}),c);}
-function validateIdentity(v){keys(v,['id','profile','historyCount','responseBytes','journey','stockVersion','buildSha256'],'arguments');for(const k of ['id','profile','journey'])need(typeof v[k]==='string'&&Buffer.byteLength(v[k])>0&&Buffer.byteLength(v[k])<=256,'arguments');need(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(v.id)&&['threadplane','copilotkit','assistant-ui','vercel-ai-sdk'].includes(v.profile)&&v.stockVersion===(v.profile==='threadplane'?'0.3.6':null)&&integer(v.historyCount)&&integer(v.responseBytes)&&digest(v.buildSha256),'arguments');}
+function validateIdentity(v){keys(v,['id','profile','historyCount','responseBytes','journey','stockVersion','buildSha256'],'arguments');for(const k of ['id','profile','journey'])need(typeof v[k]==='string'&&Buffer.byteLength(v[k])>0&&Buffer.byteLength(v[k])<=256,'arguments');need(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(v.id)&&isSemanticLargeProfileStockVersionV3(v.profile,v.stockVersion)&&integer(v.historyCount)&&integer(v.responseBytes)&&digest(v.buildSha256),'arguments');}
 const SOURCE_NAMES=['aimock-trace-decoder-child-v3.mjs','aimock-trace-decoder-v3.mjs','semantic-large-v3-policy.mjs','aimock-trace-renderer-v1.mjs','aimock-trace-costs-v1.mjs','aimock-trace-capture-v1.mjs','aimock-trace-completion-waiter-v1.mjs'];
 const REASONS=new Set(['preflight','deadline','sources','platform','reservation','space','request','spawn','protocol','result','pipe','process','rss','cleanup','originals-bound','publication','publication-unsettled','internal'].map(c=>'timeline-owner-'+c));
 const CHILD_REASONS=new Set(['buffer-ledger','buffer-usage','capture-facts','decoder-arguments','decompressed-cap','event-category','fields','gzip-utf8-or-json-invalid','identity','inventory','json-duplicate-key','own-data','owner-clock','owner-facts','payload-base64','payload-integrity','phase-clock','raw-bound','raw-header','receipt-bound','required-metadata','result-bound','support-facts','trace-event','trace-json','trace-process','trace-time','child-input-cap','child-frame','child-order','child-request','child-sources','child-raw-read','child-raw-json','child-raw-join','child-output','child-internal'].map(c=>'timeline-'+c));

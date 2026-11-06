@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {decodeSemanticLargeSnapshotV3} from './aimock-trace-decoder-v3.mjs';
-import {SEMANTIC_LARGE_V3_POLICY as P, SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from './semantic-large-v3-policy.mjs';
+import {isSemanticLargeProfileStockVersionV3,SEMANTIC_LARGE_V3_POLICY as P, SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from './semantic-large-v3-policy.mjs';
 
 const SOURCE_NAMES=['aimock-trace-decoder-child-v3.mjs','aimock-trace-decoder-v3.mjs','semantic-large-v3-policy.mjs','aimock-trace-renderer-v1.mjs','aimock-trace-costs-v1.mjs','aimock-trace-capture-v1.mjs','aimock-trace-completion-waiter-v1.mjs'];
 const SOURCE_PATHS=SOURCE_NAMES.map(n=>'tools/competitor-comparison/'+n);
@@ -39,7 +39,7 @@ function request(b){
  keys(b,['identity','policySha256','artifactRoot','rootIdentity','caseParentIdentity','rawReference','decoderSources'],'request');
  const id=b.identity;keys(id,['id','profile','historyCount','responseBytes','journey','stockVersion','buildSha256'],'request');
  for(const k of ['id','profile','journey'])need(typeof id[k]==='string'&&Buffer.byteLength(id[k])>0&&Buffer.byteLength(id[k])<=256,'request');
- need(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(id.id)&&integer(id.historyCount)&&integer(id.responseBytes)&&digest(id.buildSha256)&&['threadplane','copilotkit','assistant-ui','vercel-ai-sdk'].includes(id.profile)&&id.stockVersion===(id.profile==='threadplane'?'0.3.6':null),'request');
+ need(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(id.id)&&integer(id.historyCount)&&integer(id.responseBytes)&&digest(id.buildSha256)&&isSemanticLargeProfileStockVersionV3(id.profile,id.stockVersion),'request');
  need(b.policySha256===POLICY_SHA&&typeof b.artifactRoot==='string'&&path.isAbsolute(b.artifactRoot)&&!b.artifactRoot.includes('\0')&&Buffer.byteLength(b.artifactRoot)<=4096&&path.resolve(b.artifactRoot)===b.artifactRoot,'request');
  for(const p of [b.rootIdentity,b.caseParentIdentity]){keys(p,['dev','ino'],'request');need(decimal(p.dev)&&decimal(p.ino),'request');}
  const r=b.rawReference;keys(r,['path','bytes','sha256'],'request');need(r.path===id.id+'/'+P.storage.rawFilename&&r.path.length<=257&&integer(r.bytes)&&r.bytes<=P.capture.wrapperBytes&&digest(r.sha256),'request');

@@ -52,6 +52,146 @@ async function fixture(t, {count = 16, free, clock = 100, hooks = {}} = {}) {
   return {parent, directory, state, create, async store() {return create({directory, invocationStarted: 0});}};
 }
 const plain = value => JSON.parse(JSON.stringify(value));
+const fixedConstructorNames = ['createSemanticLarge16StoreV3', 'createSemanticLarge48StoreV3', 'createSemanticLargeStock03716StoreV3', 'createSemanticLargeStock03748StoreV3'];
+const stock037Pilot = pilot.map(id => id.replace('-large-v3-pilot-', '-large-stock037-v3-pilot-'));
+const stock037Full = full.map(id => id.replace('-stock036-', '-stock037-'));
+
+// Entirely authored filesystem and clock: no real store, descriptor, mkdir,
+// statfs or temporary directory is opened by the stock037 format controls.
+function stock037Model(constructorName) {
+  const directory = '/authored/invocation';
+  let ino = 1n;
+  const nodes = new Map([['/authored', {ino: ino++, directory: true, bytes: Buffer.alloc(0)}]]);
+  const calls = [];
+  const stat = node => ({dev: 1n, ino: node.ino, nlink: 1n, size: BigInt(node.bytes.length), mtimeNs: 1n, ctimeNs: 1n,
+    isDirectory: () => node.directory, isSymbolicLink: () => false, isFile: () => !node.directory});
+  const io = {
+    async lstat(file) {assert.ok(nodes.has(file), `authored path missing: ${file}`); return stat(nodes.get(file));},
+    async realpath(file) {assert.ok(nodes.has(file)); return file;},
+    async statfs() {return {bsize: 1n, bavail: 100n * 1024n ** 3n};},
+    async mkdir(file) {assert.equal(nodes.has(file), false); nodes.set(file, {ino: ino++, directory: true, bytes: Buffer.alloc(0)});},
+    async open(file, flags) {
+      if (flags & constants.O_CREAT) {
+        assert.equal(nodes.has(file), false);
+        nodes.set(file, {ino: ino++, directory: false, bytes: Buffer.alloc(0)});
+      }
+      assert.ok(nodes.has(file));
+      const node = nodes.get(file);
+      return Object.fromEntries(Object.entries({
+        async stat() {return stat(node);},
+        async writeFile(bytes) {node.bytes = Buffer.from(bytes);},
+        async sync() {}, async close() {},
+        async read(buffer, offset, length, position) {return {bytesRead: node.bytes.copy(buffer, offset, position, position + length)};},
+      }).map(([method, implementation]) => [method, async (...args) => {
+        calls.push({method: `descriptor.${method}`, args}); return implementation(...args);
+      }]));
+    },
+  };
+  const fakeFS = Object.fromEntries(Object.entries(io).map(([method, implementation]) => [method, async (...args) => {
+    calls.push({method, args}); return implementation(...args);
+  }]));
+  const body = source.replace(/^import .*;\n/gm, '').replace(/export /g, '');
+  // typeof makes an absent constructor an explicit contract assertion, rather
+  // than an undefined binding/import error in the source-extracted harness.
+  const entries = fixedConstructorNames.map(name => `${name}: typeof ${name} === 'function' ? ${name} : null`).join(',');
+  const api = vm.runInNewContext(`(function(){${body}\nreturn {${entries}};})()`,
+    {fs: fakeFS, constants, path, createHash, types, Buffer, TextDecoder, performance: {now: () => 100}, SEMANTIC_LARGE_V3_POLICY: policy});
+  assert.equal(typeof api[constructorName], 'function', `missing fixed constructor ${constructorName}`);
+  return {calls, directory, create: (...args) => api[constructorName](...args), async store() {return api[constructorName]({directory, invocationStarted: 0});}};
+}
+
+test('stock037 fixed stores expose exactly four closed constructors and literal tuple-preserving schedules', () => {
+  assert.deepEqual(Object.keys(production).sort(), fixedConstructorNames);
+  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), fixedConstructorNames);
+  const literal = name => {
+    const match = source.match(new RegExp(`const ${name} = Object\\.freeze\\(\\[([\\s\\S]*?)\\]\\);`));
+    assert.ok(match, `missing private literal ${name}`);
+    assert.match(match[1], /^(?:\s*'[^']+',\s*)+$/);
+    return [...match[1].matchAll(/'([^']+)'/g)].map(x => x[1]);
+  };
+  const oldPilot = literal('PILOT_IDS'), oldFull = literal('FULL_IDS');
+  const newPilot = literal('STOCK037_PILOT_IDS'), newFull = literal('STOCK037_FULL_IDS');
+  assert.deepEqual(oldPilot, pilot); assert.deepEqual(oldFull, full);
+  assert.deepEqual(newPilot, stock037Pilot); assert.deepEqual(newFull, stock037Full);
+  assert.equal(new Set([...oldPilot, ...oldFull, ...newPilot, ...newFull]).size, 128);
+  const tuple = (id, index, count) => {
+    const match = id.match(/^(threadplane|copilotkit|assistant-ui|vercel-ai-sdk)-h(1000|10000)-r6400-(follow|history-reading)-/);
+    assert.ok(match);
+    return {parentId: match[0].slice(0, -1), profile: match[1], history: Number(match[2]), response: 6400, mode: match[3],
+      ordinal: index + 1, round: count === 16 ? 1 : Math.floor(index / 16) + 1,
+      stratum: Math.floor(index % 16 / 4), block: Math.floor(index / 4) + 1, position: index % 4 + 1, kind: 'positive'};
+  };
+  for (const [oldIds, newIds] of [[oldPilot, newPilot], [oldFull, newFull]]) {
+    assert.deepEqual(newIds.map((id, index) => tuple(id, index, newIds.length)), oldIds.map((id, index) => tuple(id, index, oldIds.length)));
+  }
+  for (const name of fixedConstructorNames) assert.equal(production[name].length, 1);
+  // cf58's entire private mechanism and the original two constructors remain
+  // byte-exact; only new private schedules and fixed delegates are added.
+  const unchanged = source.slice(source.indexOf('async function createStore'), source.indexOf('export async function createSemanticLargeStock03716StoreV3'));
+  assert.equal(createHash('sha256').update(unchanged).digest('hex'), '89ef6130f9d65f7f821128c67c316862417cb17dccea3ab683e0ff1e1f1a07cd');
+});
+
+test('stock037 fixed stores exercise all 16 and 48 ordered grants with unchanged upfront reserves using authored IO', async () => {
+  for (const [name, ids] of [[fixedConstructorNames[2], stock037Pilot], [fixedConstructorNames[3], stock037Full]]) {
+    const f = stock037Model(name), store = await f.store();
+    assert.equal(store.stats().invocationReservation, (ids.length * 96 + 3) * MiB);
+    assert.equal(store.stats().spaceChecks[0].requiredBytes, String(BigInt((ids.length * 96 + 3) * MiB) + margin));
+    await assert.rejects(store.beginCase(ids[0]), /grant/);
+    for (const id of ids) {
+      await store.requireSpaceBeforeNextCaseV3(id);
+      const before = f.calls.length;
+      await assert.rejects(store.requireSpaceBeforeNextCaseV3(id), /grant/);
+      assert.equal(f.calls.length, before);
+      await store.beginCase(id);
+    }
+    assert.equal(store.stats().caseReservation, ids.length * 96 * MiB);
+    assert.equal(store.stats().chargedBytes, 0);
+    assert.equal(store.stats().spaceChecks.length, ids.length + 1);
+    await assert.rejects(store.requireSpaceBeforeNextCaseV3(ids[0]), /roster/);
+  }
+});
+
+test('stock037 fixed stores refuse cross-cohort IDs before grant begin read write without consuming valid grants', async () => {
+  for (const [name, own, foreign] of [
+    [fixedConstructorNames[0], pilot, stock037Pilot], [fixedConstructorNames[1], full, stock037Full],
+    [fixedConstructorNames[2], stock037Pilot, pilot], [fixedConstructorNames[3], stock037Full, full],
+  ]) {
+    const f = stock037Model(name), store = await f.store();
+    const before = f.calls.length;
+    for (const id of foreign) {
+      await assert.rejects(store.requireSpaceBeforeNextCaseV3(id), /roster/);
+      await assert.rejects(store.beginCase(id), /grant/);
+      await assert.rejects(store.readJSON({path: `${id}/evidence.json`, bytes: 2, sha256: '0'.repeat(64)}), /case-path/);
+    }
+    assert.equal(f.calls.length, before);
+    await store.requireSpaceBeforeNextCaseV3(own[0]);
+    const granted = f.calls.length;
+    await assert.rejects(store.beginCase(foreign[0]), /grant/);
+    assert.equal(f.calls.length, granted);
+    const record = await store.beginCase(own[0]);
+    const ready = f.calls.length;
+    await assert.rejects(record.writeJSON(`${foreign[0]}/evidence.json`, {}), /path-name/);
+    assert.equal(f.calls.length, ready);
+    const ref = await record.writeJSON('evidence.json', {own: own[0]});
+    const written = f.calls.length;
+    await assert.rejects(store.readJSON({...plain(ref), path: `${foreign[0]}/evidence.json`}), /case-path/);
+    assert.equal(f.calls.length, written);
+    assert.deepEqual(plain(await store.readJSON(ref)), {own: own[0]});
+    assert.equal(store.stats().stopped, false);
+  }
+});
+
+test('stock037 fixed stores preserve exact one-argument data contract before authored IO', async () => {
+  for (const name of fixedConstructorNames.slice(2)) {
+    const f = stock037Model(name), input = {directory: f.directory, invocationStarted: 0};
+    for (const args of [[], [input, {}], [{...input, ids: stock037Pilot}], [{...input, count: 16}], [{...input, policy: {}}], [{...input, invocationStarted: Infinity}], [{...input, directory: '/authored/invocation/..'}]]) {
+      await assert.rejects(f.create(...args), /arguments|clock|path/);
+    }
+    let reads = 0;
+    await assert.rejects(f.create({get directory() {reads++; return f.directory;}, invocationStarted: 0}), /arguments/);
+    assert.equal(reads, 0); assert.equal(f.calls.length, 0);
+  }
+});
 async function begin(store, id = pilot[0]) {await store.requireSpaceBeforeNextCaseV3(id); return store.beginCase(id);}
 
 test('fixed reservation is upfront, hierarchical and includes three independent root reserves', async t => {
@@ -358,10 +498,10 @@ test('whole invocation+cleanup equality dispatches no new IO, including reads an
   assert.equal(f.state.calls.length, before);
 });
 
-test('both exact frozen roster arrays are private and literal with no roster/configuration exports', () => {
+test('all exact frozen roster arrays are private and literal with no roster/configuration exports', () => {
   assert.match(source, /const PILOT_IDS = Object\.freeze\(\[/);
   assert.match(source, /const FULL_IDS = Object\.freeze\(\[/);
-  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), ['createSemanticLarge16StoreV3', 'createSemanticLarge48StoreV3']);
+  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), fixedConstructorNames);
   assert.equal(new Set(full).size, 48);
 });
 
@@ -511,8 +651,8 @@ test('full48 maximum ledger is 97 rows, with detached facts fitting ordinary evi
   assert.equal(facts.pendingOriginals, 0); assert.equal(facts.pendingWriters, 0);
 });
 
-test('production exports only the two closed constructors and old store source remains byte-exact', async () => {
-  assert.deepEqual(Object.keys(production).sort(), ['createSemanticLarge16StoreV3', 'createSemanticLarge48StoreV3']);
+test('production exports only the four closed constructors and old store source remains byte-exact', async () => {
+  assert.deepEqual(Object.keys(production).sort(), fixedConstructorNames);
   const old = await fs.readFile(new URL('./matrix-artifacts-v3.mjs', import.meta.url));
   assert.equal(createHash('sha256').update(old).digest('hex'), '172fbdd42640c0053f07a50a939b99fa33d6e34b0b7a660cf1644b2d5d621a4e');
 });
