@@ -52,9 +52,19 @@ async function fixture(t, {count = 16, free, clock = 100, hooks = {}} = {}) {
   return {parent, directory, state, create, async store() {return create({directory, invocationStarted: 0});}};
 }
 const plain = value => JSON.parse(JSON.stringify(value));
-const fixedConstructorNames = ['createSemanticLarge16StoreV3', 'createSemanticLarge48StoreV3', 'createSemanticLargeStock03716StoreV3', 'createSemanticLargeStock03748StoreV3', 'createStock037CpuDiagnosticStoreV1'];
+const fixedConstructorNames = ['createSemanticLarge16StoreV3', 'createSemanticLarge48StoreV3', 'createSemanticLargeStock03716StoreV3', 'createSemanticLargeStock03748StoreV3', 'createStock037CpuDiagnosticStoreV1', 'createLocalSharedSignals24StoreV1'];
 const stock037Pilot = pilot.map(id => id.replace('-large-v3-pilot-', '-large-stock037-v3-pilot-'));
 const stock037Full = full.map(id => id.replace('-stock036-', '-stock037-'));
+
+test('a separate fixed24 local shared-signal store is exported without changing old constructors', () => {
+  assert.equal(typeof production.createLocalSharedSignals24StoreV1, 'function');
+  for (const name of fixedConstructorNames) assert.equal(typeof production[name], 'function');
+});
+const localSharedSignalsIds = Object.freeze(Array.from({length: 3}, (_, roundIndex) => Array.from({length: 4}, (_, stratum) => {
+  const history = stratum < 2 ? 1000 : 10000, journey = stratum % 2 ? 'history-reading' : 'follow';
+  return ((roundIndex + stratum) % 2 ? ['candidate', 'control'] : ['control', 'candidate'])
+    .map(role => `threadplane-h${history}-r6400-${journey}-local-shared-signals-v1-${role}-round-${roundIndex + 1}`);
+})).flat(2));
 
 // Entirely authored filesystem and clock: no real store, descriptor, mkdir,
 // statfs or temporary directory is opened by the stock037 format controls.
@@ -100,7 +110,35 @@ function stock037Model(constructorName) {
   return {calls, directory, create: (...args) => api[constructorName](...args), async store() {return api[constructorName]({directory, invocationStarted: 0});}};
 }
 
-test('fixed stores expose exactly five closed constructors and literal tuple-preserving schedules', () => {
+test('local fixed24 literal order and upfront reservation preserve all existing budgets', async () => {
+  const literal = source.match(/const LOCAL_SHARED_SIGNALS_IDS_V1 = Object\.freeze\(\[([\s\S]*?)\]\);/);
+  assert.ok(literal);assert.deepEqual([...literal[1].matchAll(/'([^']+)'/g)].map(m => m[1]), localSharedSignalsIds);
+  const fixed = await import('../threadplane-local-shared-signals/fixed-experiment-v1.mjs');
+  assert.deepEqual(localSharedSignalsIds, fixed.localSharedSignalsRosterV1().map(row => row.id));
+  const f = stock037Model('createLocalSharedSignals24StoreV1'), store = await f.store();
+  assert.equal(store.stats().caseReservation, 0);
+  assert.equal(store.stats().invocationReservation, (24 * 96 + 3) * MiB);
+  for (const id of localSharedSignalsIds) {await store.requireSpaceBeforeNextCaseV3(id);await store.beginCase(id);}
+  assert.equal(store.stats().caseReservation, 24 * 96 * MiB);
+  assert.equal(store.stats().spaceChecks.length, 25);
+  await assert.rejects(store.requireSpaceBeforeNextCaseV3(localSharedSignalsIds[0]), /roster/);
+});
+test('local fixed24 and every earlier constructor refuse each other IDs before filesystem work', async () => {
+  const local = stock037Model('createLocalSharedSignals24StoreV1'), localStore = await local.store();
+  const before = local.calls.length;
+  for (const id of [...pilot,...full,...stock037Pilot,...stock037Full,'threadplane-h10000-r6400-follow-stock037-cpu-samples-v1']) {
+    await assert.rejects(localStore.requireSpaceBeforeNextCaseV3(id), /roster/);
+    await assert.rejects(localStore.beginCase(id), /grant/);
+  }
+  assert.equal(local.calls.length, before);
+  for (const name of fixedConstructorNames.slice(0, 5)) {
+    const old = stock037Model(name), store = await old.store(), before = old.calls.length;
+    for (const id of localSharedSignalsIds) await assert.rejects(store.requireSpaceBeforeNextCaseV3(id), /roster/);
+    assert.equal(old.calls.length, before);
+  }
+});
+
+test('fixed stores expose exactly six closed constructors and literal tuple-preserving schedules', () => {
   assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames].sort());
   assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), [...fixedConstructorNames].sort());
   const literal = name => {
@@ -651,7 +689,7 @@ test('full48 maximum ledger is 97 rows, with detached facts fitting ordinary evi
   assert.equal(facts.pendingOriginals, 0); assert.equal(facts.pendingWriters, 0);
 });
 
-test('production exports only the five closed constructors and old store source remains byte-exact', async () => {
+test('production exports only the six closed constructors and old store source remains byte-exact', async () => {
   assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames].sort());
   const old = await fs.readFile(new URL('./matrix-artifacts-v3.mjs', import.meta.url));
   assert.equal(createHash('sha256').update(old).digest('hex'), '172fbdd42640c0053f07a50a939b99fa33d6e34b0b7a660cf1644b2d5d621a4e');

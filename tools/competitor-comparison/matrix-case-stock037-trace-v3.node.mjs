@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import vm from 'node:vm';
+import path from 'node:path';
 import {EventEmitter} from 'node:events';
 import {createStock037CpuCaptureV1} from './aimock-stock037-cpu-capture-v1.mjs';
 import {types} from 'node:util';
@@ -24,6 +25,34 @@ function parse(text){
 }
 const body=(s,start,end)=>{const a=s.indexOf(start),b=end?s.indexOf(end,a):s.length;assert.ok(a>=0&&b>a);return s.slice(a,b);};
 const AsyncFunction=Object.getPrototypeOf(async()=>{}).constructor;
+test('new local shared-signal entry is closed and separate from ordinary stock and CPU wrappers',()=>{
+ assert.match(source,/export async function runLocalSharedSignalsCaseV1\(input\)/);
+ assert.match(source,/assertLocalSharedSignalsExecutionsReadyV1\(\)/);
+ assert.match(source,/localSharedSignalsSlotV1\(ordinal\)/);
+ assert.match(source,/localSharedSignalsRoleRootV1\(slot.role\)/);
+});
+test('real local NULL gate precedes even caller property inspection',async()=>{
+ const api=await import('./matrix-case-stock037-trace-v3.mjs');let touched=0;
+ await assert.rejects(api.runLocalSharedSignalsCaseV1(new Proxy({},{get(){touched++;throw Error('caller-read');},getPrototypeOf(){touched++;throw Error('caller-prototype');}})),/identity-unavailable/);
+ assert.equal(touched,0);
+});
+test('source-extracted local entry verifies its genuine guard before native acquisition',async()=>{
+ const entry=body(source,'export async function runLocalSharedSignalsCaseV1(input){','\nasync function installMatrixThreadplaneBridge(').replace('export async function','async function');
+ const slot={id:'fixed-local',role:'control'},events=[],tokens=new WeakMap();let resolve;const original=new Promise(r=>resolve=r);
+ const run=AsyncFunction('p',`const {path,slot,tokens}=p,ROOT='/fixed/control/',LOCAL_SHARED_SIGNALS_TOKENS=tokens,performance={now:()=>1},STAGES={transcript:10000},assertLocalSharedSignalsExecutionsReadyV1=()=>{},localSharedSignalsSlotV1=i=>{if(i!==0)throw Error('ordinal');return slot;},localSharedSignalsRoleRootV1=()=>'/fixed/control',createMatrixDeadline=()=>({wait:async x=>x,remaining:()=>240000}),waitLocalSharedSignalsOriginalV1=p.wait,createLocalSharedSignalsBuildGuardV1=p.guard,threadplaneBuildEvidence=p.read,runMatrixCaseOriginal=p.native;${entry};return runLocalSharedSignalsCaseV1(p.input);`);
+ const input={ordinal:0,store:{},out:'/out',invocationStarted:0},pending=run({path,slot,tokens,input,wait:async x=>x,guard:async()=>({identity:{stock:false},verify:async build=>{events.push('guard-verify');return original;}}),read:async()=>({genuine:true}),native:async(args,token)=>{events.push('native');assert.equal(args.slot,slot);assert.equal(tokens.get(token).ordinal,0);return{complete:true};}});
+ await new Promise(setImmediate);assert.deepEqual(events,['guard-verify']);resolve({genuine:true});assert.deepEqual(await pending,{complete:true});assert.deepEqual(events,['guard-verify','native']);
+});
+test('ordinary stock entry refuses every local ID before native fixture acquisition',async()=>{
+ const {seams}=parse(source),run=AsyncFunction('slot',`const stock037PublishedIdentityV1=()=>{};${seams.create};return true;`);
+ for(const role of ['control','candidate'])await assert.rejects(run({id:'threadplane-h1000-r6400-follow-local-shared-signals-v1-'+role+'-round-1',selection:{profile:'threadplane'}}),/local-shared-signals-ordinary-entry/);
+});
+test('private local mode uses actual guard and numeric compatibility wire without enabling CPU sampling',async()=>{
+ const {seams}=parse(source),token={},tokens=new WeakMap(),slot={id:'threadplane-h1000-r6400-follow-local-shared-signals-v1-control-round-1',role:'control',selection:{profile:'threadplane'}},build={genuine:'default-production',assetHashes:{}},events=[];
+ tokens.set(token,{slot,ordinal:0,guard:{identity:{stock:false},verify:async value=>{events.push('verify');assert.equal(value,build);return value;}}});
+ const run=AsyncFunction('p','token',`const LOCAL_SHARED_SIGNALS_TOKENS=p.tokens,STOCK037_CPU_TOKEN=Symbol('cpu'),{slot,build}=p,{createHash}=p,profile='threadplane',historyCount=1000,responseBytes=6400,journey='follow',started=0,performance={now:()=>1},deadline={remaining:()=>240000},STAGES={transcript:10000,progress:10000},wait=async x=>x,browser={},context={},page={},server={origin:'http://localhost'},stock037PublishedIdentityV1=()=>{throw Error('published-guard-must-not-authorize-local');},threadplaneBuildEvidence=async()=>build,waitLocalSharedSignalsOriginalV1=async x=>x,waitStock037BuildOriginalV1=async()=>{throw Error('stock-wait');},assertStock037BuildV1=()=>{throw Error('stock-build');},createAimockTraceCaptureV3=options=>{p.events.push('capture');return{setup:async()=>{},assertBeforeStart(){}};};${seams.create}${seams.setup};return{cpuMode,traceIdentity};`);
+ const out=await run({tokens,slot,build,createHash,events},token);assert.equal(out.cpuMode,false);assert.equal(out.traceIdentity.stockVersion,'0.3.7');assert.equal(out.traceIdentity.buildSha256,sha(JSON.stringify(build)));assert.deepEqual(events,['verify','capture']);
+});
 test('strict eight-seam parser and exact native V5/wrapper/bridge bytes',()=>{
  const parsed=parse(source);let actual=body(parsed.native,'async function runMatrixCaseOriginal(');
  assert.equal(actual.split('async function runMatrixCaseOriginal(').length,2);
@@ -37,8 +66,8 @@ test('strict eight-seam parser and exact native V5/wrapper/bridge bytes',()=>{
  for(const malformed of [source.replace('TRACE-V3-END ack','TRACE-V3-END setup'),source.replace('TRACE-V3-END ack','TRACE-V3-BEGIN ack'),source.replace('TRACE-V3-BEGIN ack','TRACE-V3-BEGIN ninth'),source+'// TRACE-V3-BEGIN ninth\n'])assert.throws(()=>parse(malformed));
  for(const malformed of [source+' // TRACE-V3-BEGIN ninth\n // TRACE-V3-END ninth\n',source.replace(' // TRACE-V3-END stop\n',''),source.replace(' // TRACE-V3-BEGIN ack\n',''),source.replace(' // TRACE-V3-BEGIN ack\n',' // TRACE-V3-BEGIN finish\n')])assert.throws(()=>parse(malformed));
 });
-test('case has only ordinary and fixed CPU exports and remains fixed037 at its local identity gate',async()=>{
- assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(m=>m[1]),['runMatrixCase','runStock037CpuDiagnosticCaseV1']);
+test('case has only fixed local, ordinary and fixed CPU exports and remains fixed037 at its local identity gate',async()=>{
+ assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(m=>m[1]),['runLocalSharedSignalsCaseV1','runMatrixCase','runStock037CpuDiagnosticCaseV1']);
  const {seams}=parse(source),prefix=seams.publish.slice(0,seams.publish.indexOf(' const traceDiagnostic='));
  const check=AsyncFunction('value','createHash','TRACE_POLICY','TRACE_POLICY_SHA256',prefix+'validateIdentity(value);return true;');
  const identity={id:'stock037-case',profile:'threadplane',historyCount:10,responseBytes:100,journey:'history-reading',stockVersion:'0.3.7',buildSha256:'a'.repeat(64)};
@@ -82,6 +111,8 @@ test('complete imports are closed, with no child, guard override or alternate de
  "import {runAimockTraceDecoderOwnerV3} from './aimock-trace-decoder-owner-v3.mjs';",
  "import {createStock037CpuCaptureV1} from './aimock-stock037-cpu-capture-v1.mjs';",
  "import {SEMANTIC_LARGE_V3_POLICY as TRACE_POLICY,SEMANTIC_LARGE_V3_POLICY_SHA256 as TRACE_POLICY_SHA256} from './semantic-large-v3-policy.mjs';",
+ "import {assertLocalSharedSignalsExecutionsReadyV1,localSharedSignalsSlotV1,localSharedSignalsRoleRootV1} from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';",
+ "import {createLocalSharedSignalsBuildGuardV1,waitLocalSharedSignalsOriginalV1} from './threadplane-local-shared-signals-build-v1.mjs';",
  ]);
  const active=source.slice(source.indexOf('const readinessAck='),source.indexOf('readinessController.assertBeforeWheel();'));
  assert.doesNotMatch(active,/assertStock037|threadplaneBuildEvidence|runAimockTraceDecoderOwner/);
