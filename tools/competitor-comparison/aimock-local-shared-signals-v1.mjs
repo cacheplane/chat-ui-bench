@@ -7,7 +7,7 @@ import {performance} from 'node:perf_hooks';
 import {createHash} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify,types} from 'node:util';
-import {LOCAL_SHARED_SIGNALS_ROLES_V1 as ROLES,LOCAL_SHARED_SIGNALS_FIXED_EXPERIMENT_V1 as FIXED,assertLocalSharedSignalsExecutionsReadyV1,assertLocalSharedSignalsActivationSourceV1,localSharedSignalsRosterV1,localSharedSignalsSlotV1,localSharedSignalsRoleRootV1,localSharedSignalsSelectionIdentityV1,localSharedSignalsExecutionIdentityV1} from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';
+import {LOCAL_SHARED_SIGNALS_ROLES_V1 as ROLES,LOCAL_SHARED_SIGNALS_FIXED_EXPERIMENT_V1 as FIXED,assertLocalSharedSignalsExecutionsReadyV1,assertLocalSharedSignalsActivationSourceV1,localSharedSignalsGitExecutableV1,localSharedSignalsRosterV1,localSharedSignalsSlotV1,localSharedSignalsRoleRootV1,localSharedSignalsSelectionIdentityV1,localSharedSignalsExecutionIdentityV1} from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';
 import {createLocalSharedSignals24StoreV1} from './matrix-artifacts-trace-v3.mjs';
 import {runMatrixRoster} from './matrix-run-v5.mjs';
 import {parseFourProfileStock036LargeArgumentsV3,validateSemanticLargeTraceRecordV3,verifySemanticLargeFixtureV3,SEMANTIC_LARGE_FLAGS_V3 as FLAGS} from './four-profile-stock036-large-v3.mjs';
@@ -87,7 +87,7 @@ function ownership(invocationEnd,cleanupEnd){
  }
  async function sources(root,prior=null){
   gate(invocationEnd);need(['darwin','linux'].includes(process.platform),'platform');const end=Math.min(now()+10000,invocationEnd),observationEnd=Math.min(end+P.timing.cleanupMs,cleanupEnd);
-  const names=[process.execPath,...SOURCE_NAMES.map(name=>path.join(root,'tools/competitor-comparison',name)),process.platform==='darwin'?'/bin/ps':'/usr/bin/ps','/usr/bin/git'],facts=[];
+  const names=[process.execPath,...SOURCE_NAMES.map(name=>path.join(root,'tools/competitor-comparison',name)),process.platform==='darwin'?'/bin/ps':'/usr/bin/ps',localSharedSignalsGitExecutableV1()],facts=[];
   try{for(let i=0;i<names.length;i++)facts.push(await fileFact(names[i],end,observationEnd,prior?.[i]));return facts;}catch(error){await observe(observationEnd);throw error;}
  }
  return{now,gate,retain,attend,operation,observe,fileFact,sources,unknown,lastOriginal(){const r=records.at(-1);return r?{nodeClock:'node-performance-monotonic-ms',dispatched:r.dispatched,settled:r.settled,status:r.status}:null;},setStore(value){store=value;},markUnsafe(){unsafe=true;}};
@@ -99,7 +99,7 @@ function relativeSource(name){return typeof name==='string'&&name.length>0&&name
 function nulRecords(bytes){if(bytes.length===0)return[];need(bytes.at(-1)===0,'git-nul');return utf8Bytes(bytes).slice(0,-1).split('\0');}
 async function gitControllerFacts(own,root,selection,end){
  need(/^[a-f0-9]{40}$/.test(selection.benchmarkBaseCommit),'controller-base');
- const git=async args=>{const value=await own.operation(end,()=>promisify(execFile)('/usr/bin/git',args,{cwd:root,encoding:'buffer',maxBuffer:1048576,timeout:10000}));need(Buffer.isBuffer(value.stdout)&&Buffer.isBuffer(value.stderr)&&value.stderr.length===0,'git-output');return value.stdout;};
+ const git=async args=>{const value=await own.operation(end,()=>promisify(execFile)(localSharedSignalsGitExecutableV1(),args,{cwd:root,encoding:'buffer',maxBuffer:1048576,timeout:10000}));need(Buffer.isBuffer(value.stdout)&&Buffer.isBuffer(value.stderr)&&value.stderr.length===0,'git-output');return value.stdout;};
  const line=async args=>{const bytes=await git(args),text=utf8Bytes(bytes);need(text.endsWith('\n')&&text.indexOf('\n')===text.length-1&&!text.includes('\r'),'git-line');return text.slice(0,-1);};
  const head=await line(['rev-parse','--verify','HEAD']),tree=await line(['rev-parse','--verify','HEAD^{tree}']),baseTree=await line(['rev-parse','--verify',selection.benchmarkBaseCommit+'^{tree}']),toplevel=await line(['rev-parse','--show-toplevel']),origin=await line(['remote','get-url','origin']);
  need(head===selection.benchmarkBaseCommit&&/^[a-f0-9]{40}$/.test(tree)&&tree===baseTree&&toplevel===root&&['https://github.com/cacheplane/chat-ui-bench.git','git@github.com:cacheplane/chat-ui-bench.git'].includes(origin),'controller-git-identity');

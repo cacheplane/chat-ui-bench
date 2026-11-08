@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import {gunzipSync} from 'node:zlib';
 import {execFile} from 'node:child_process';
 import {promisify,types} from 'node:util';
-import {assertLocalSharedSignalsSelectionsReadyV1,assertLocalSharedSignalsExecutionsReadyV1,localSharedSignalsSelectionIdentityV1,localSharedSignalsExecutionIdentityV1,localSharedSignalsDigestV1,localSharedSignalsRoleRootV1,LOCAL_SHARED_SIGNALS_RUNTIME_NAMES_V1} from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';
+import {assertLocalSharedSignalsSelectionsReadyV1,assertLocalSharedSignalsExecutionsReadyV1,localSharedSignalsSelectionIdentityV1,localSharedSignalsExecutionIdentityV1,localSharedSignalsDigestV1,localSharedSignalsRoleRootV1,localSharedSignalsGitExecutableV1,LOCAL_SHARED_SIGNALS_RUNTIME_NAMES_V1} from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';
 import {threadplaneBuildEvidence} from '../../apps/threadplane/provenance.mjs';
 import {probeRecordKey} from '../../apps/threadplane/probe-provenance.mjs';
 import {STOCK034_SOURCE_HASHES_V1 as STOCK037_SOURCE_HASHES_V1} from './aimock-stock034-v1.mjs';
@@ -54,7 +54,7 @@ export async function waitLocalSharedSignalsOriginalV1(original,wait,ms,label){
 }
 async function fixedBaseInputs(selection){
  const execute=promisify(execFile),result={};
- for(const[key,name]of [['rootManifestBytes','package.json'],['appManifestBytes','apps/threadplane/package.json'],['stockLockBytes','package-lock.json']]){const{stdout}=await execute('git',['show',`${selection.benchmarkBaseCommit}:${name}`],{cwd:ROOT,encoding:'buffer',maxBuffer:4194304,timeout:10000});need(sha(stdout)===selection.canonicalInputs[name]);result[key]=stdout;}
+ for(const[key,name]of [['rootManifestBytes','package.json'],['appManifestBytes','apps/threadplane/package.json'],['stockLockBytes','package-lock.json']]){const{stdout}=await execute(localSharedSignalsGitExecutableV1(),['show',`${selection.benchmarkBaseCommit}:${name}`],{cwd:ROOT,encoding:'buffer',maxBuffer:4194304,timeout:10000});need(sha(stdout)===selection.canonicalInputs[name]);result[key]=stdout;}
  return result;
 }
 async function collectActual(role){
