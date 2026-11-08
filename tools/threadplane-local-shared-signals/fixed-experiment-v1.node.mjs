@@ -1,6 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile,realpath,lstat} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {promisify,types} from 'node:util';
+import path from 'node:path';
+import vm from 'node:vm';
+import {execFile} from 'node:child_process';
 const m=await import('./fixed-experiment-v1.mjs').catch(()=>({}));
+async function platformGit(platform){
+ const source=await readFile(new URL('./fixed-experiment-v1.mjs',import.meta.url),'utf8');
+ return vm.runInNewContext(source.replace(/^import .*;\n/gm,'').replace(/^export /gm,'')+'\ntypeof localSharedSignalsGitExecutableV1 === "function" ? localSharedSignalsGitExecutableV1 : undefined;',
+  {Buffer,structuredClone,types,path,createHash,process:new Proxy({platform},{get(target,key){assert.equal(key,'platform','closed Git lookup reads only platform');return target.platform;}})});
+}
+test('closed Git executable lookup exists independently of NULL execution authority',()=>{
+ assert.equal(typeof m.localSharedSignalsGitExecutableV1,'function');
+ assert.equal(m.localSharedSignalsGitExecutableV1(),process.platform==='darwin'?'/Library/Developer/CommandLineTools/usr/bin/git':'/usr/bin/git');
+ assert.throws(()=>m.assertLocalSharedSignalsExecutionsReadyV1(),/identity-unavailable/);
+});
+for(const [platform,expected]of [['darwin','/Library/Developer/CommandLineTools/usr/bin/git'],['linux','/usr/bin/git']])test('actual closed Git lookup uses literal '+platform+' implementation without environment or filesystem access',async()=>{
+ const get=await platformGit(platform);assert.equal(typeof get,'function');assert.equal(get(),expected);
+ let touches=0;const trap=new Proxy({},{get(){touches++;throw Error('argument inspected');}});
+ for(const args of [[undefined],['/other/git'],[trap]])assert.throws(()=>get(...args),/local-shared-signals-arguments/);
+ assert.equal(touches,0);
+});
+test('actual closed Git lookup refuses unsupported platforms rather than PATH or xcrun fallback',async()=>{
+ for(const platform of ['win32','freebsd','']){const get=await platformGit(platform);assert.equal(typeof get,'function');assert.throws(()=>get(),/local-shared-signals-platform/);}
+});
+test('actual selected Git executable is canonical regular single-link and original version process closes',async()=>{
+ assert.equal(typeof m.localSharedSignalsGitExecutableV1,'function');const file=m.localSharedSignalsGitExecutableV1();
+ assert.equal(await realpath(file),file);const before=await lstat(file);assert.ok(before.isFile()&&!before.isSymbolicLink());assert.equal(before.nlink,1);
+ const bytes=await readFile(file),digest=createHash('sha256').update(bytes).digest('hex');
+ const {stdout,stderr}=await promisify(execFile)(file,['--version'],{encoding:'utf8',maxBuffer:1048576});assert.match(stdout,/^git version /);assert.equal(stderr,'');
+ const after=await lstat(file);for(const key of ['dev','ino','size','mtimeMs','ctimeMs','nlink'])assert.equal(after[key],before[key]);assert.equal(createHash('sha256').update(await readFile(file)).digest('hex'),digest);
+ console.log('actual-closed-git-preflight',JSON.stringify({file,bytes:bytes.length,nlink:before.nlink,sha256:digest,version:stdout.trim()}));
+});
 test('closed local-shared-signals module exists with NULL two-role authority',()=>{assert.equal(typeof m.assertLocalSharedSignalsSelectionsReadyV1,'function');assert.equal(typeof m.assertLocalSharedSignalsExecutionsReadyV1,'function');assert.equal(m.LOCAL_SHARED_SIGNALS_FIXED_EXPERIMENT_V1.roles.control,null);assert.equal(m.LOCAL_SHARED_SIGNALS_FIXED_EXPERIMENT_V1.roles.candidate,null);});
 test('NULL gates reject without inspecting role proxies or accepting parser models',()=>{let effects=0;const trap=new Proxy({},{get(){effects++;throw Error('role inspected');},ownKeys(){effects++;throw Error('role inspected');}});for(const name of ['assertLocalSharedSignalsSelectionsReadyV1','assertLocalSharedSignalsExecutionsReadyV1','localSharedSignalsSelectionIdentityV1','localSharedSignalsExecutionIdentityV1'])assert.throws(()=>m[name](trap),/local-shared-signals-identity-unavailable/);assert.equal(effects,0);assert.throws(()=>m.validateLocalSharedSignalsExperimentRecordV1(null),/local-shared-signals-record/);});
 test('NULL parser copy owns and freezes role records, rejects extra/getter/proxy/037 drift',()=>{const data={schema:'threadplane-local-shared-signals-fixed-experiment-v1',experimentId:'local-shared-signals-v1',decisionSha256:'4aeb8b7928090073430b99feb4c708b483c9a76ca6531d1eaba414bfdbf7e68c',version:'0.3.7',controlSourceCommit:'ea0c0a1851f86f4e2c2a03fdb88611e21766653b',roles:{control:null,candidate:null}};const copy=m.immutableLocalSharedSignalsExperimentRecordV1(data);data.roles.control={};assert.equal(copy.roles.control,null);assert.ok(Object.isFrozen(copy.roles));assert.throws(()=>m.validateLocalSharedSignalsExperimentRecordV1({...copy,version:'0.3.4'}),/local-shared-signals-record/);assert.throws(()=>m.validateLocalSharedSignalsExperimentRecordV1({...copy,override:true}),/local-shared-signals-record/);assert.throws(()=>m.validateLocalSharedSignalsExperimentRecordV1(new Proxy(copy,{})),/local-shared-signals-record/);let calls=0;assert.throws(()=>m.validateLocalSharedSignalsExperimentRecordV1({...copy,get roles(){calls++;throw Error('getter');}}),/local-shared-signals-record/);assert.equal(calls,0);});

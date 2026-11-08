@@ -33,6 +33,12 @@ function roleCheck(role){need(LOCAL_SHARED_SIGNALS_ROLES_V1.includes(role),'role
 export function localSharedSignalsSelectionIdentityV1(role){assertLocalSharedSignalsSelectionsReadyV1();roleCheck(role);return LOCAL_SHARED_SIGNALS_FIXED_EXPERIMENT_V1.roles[role].selection;}
 export function localSharedSignalsExecutionIdentityV1(role){assertLocalSharedSignalsExecutionsReadyV1();roleCheck(role);return LOCAL_SHARED_SIGNALS_FIXED_EXPERIMENT_V1.roles[role].execution;}
 export const localSharedSignalsDigestV1=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+/** Closed implementation path only; callers retain their existing authority gates. */
+export function localSharedSignalsGitExecutableV1(){
+ need(arguments.length===0,'arguments');
+ if(process.platform==='darwin')return '/Library/Developer/CommandLineTools/usr/bin/git';
+ need(process.platform==='linux','platform');return '/usr/bin/git';
+}
 
 const ROOTS=Object.freeze({control:'/private/tmp/chat-ui-bench-shared-signals-control-native-20261107-invocation01',candidate:'/private/tmp/chat-ui-bench-shared-signals-candidate-native-20261107-invocation01'});
 /** Runtime roots are inaccessible until both real executions are activated. */

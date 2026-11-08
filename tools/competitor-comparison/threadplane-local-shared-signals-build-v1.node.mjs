@@ -5,6 +5,19 @@ import {gzipSync} from 'node:zlib';
 import {tmpdir} from 'node:os';
 const m=await import('./threadplane-local-shared-signals-build-v1.mjs').catch(()=>({}));
 const sha=b=>createHash('sha256').update(b).digest('hex');
+for(const [platform,expected]of [['darwin','/Library/Developer/CommandLineTools/usr/bin/git'],['linux','/usr/bin/git']])test('actual canonical-base reader executes the shared '+platform+' Git path with original buffer/hash contract',async()=>{
+ const {readFile}=await import('node:fs/promises'),source=await readFile(new URL('./threadplane-local-shared-signals-build-v1.mjs',import.meta.url),'utf8');
+ const start=source.indexOf('async function fixedBaseInputs('),end=source.indexOf('async function collectActual(',start);assert.ok(start>=0&&end>start);
+ const facts={'package.json':Buffer.from('root'),'apps/threadplane/package.json':Buffer.from('app'),'package-lock.json':Buffer.from('lock')},calls=[];
+ const execute=async(command,args,options)=>{calls.push({command,args,options});return{stdout:facts[args[1].split(':').slice(1).join(':')]};};
+ const run=Object.getPrototypeOf(async()=>{}).constructor('promisify','execFile','ROOT','need','sha','localSharedSignalsGitExecutableV1','selection',source.slice(start,end)+'\nreturn fixedBaseInputs(selection);');
+ const selection={benchmarkBaseCommit:'7'.repeat(40),canonicalInputs:Object.fromEntries(Object.entries(facts).map(([key,b])=>[key,sha(b)]))};
+ const result=await run(()=>execute,()=>{},'/fixed/'+platform,v=>assert.ok(v),sha,()=>expected,selection);
+ assert.deepEqual(calls.map(c=>c.command),[expected,expected,expected]);
+ assert.deepEqual(calls.map(c=>c.args),Object.keys(facts).map(key=>['show',selection.benchmarkBaseCommit+':'+key]));
+ for(const c of calls)assert.deepEqual(c.options,{cwd:'/fixed/'+platform,encoding:'buffer',maxBuffer:4194304,timeout:10000});
+ assert.deepEqual(result,{rootManifestBytes:facts['package.json'],appManifestBytes:facts['apps/threadplane/package.json'],stockLockBytes:facts['package-lock.json']});
+});
 function tar(entries){const blocks=[];for(const[name,body]of entries){const b=Buffer.from(body),h=Buffer.alloc(512);h.write('package/'+name);h.write('0000644\0',100);h.write('0000000\0',108);h.write('0000000\0',116);h.write(b.length.toString(8).padStart(11,'0')+'\0',124);h.write('00000000000\0',136);h.fill(32,148,156);h[156]=48;h.write('ustar\0',257);const sum=[...h].reduce((a,b)=>a+b,0);h.write(sum.toString(8).padStart(6,'0')+'\0 ',148);blocks.push(h,b,Buffer.alloc((512-b.length%512)%512));}return gzipSync(Buffer.concat([...blocks,Buffer.alloc(1024)]));}
 test('production preparation/runtime readers refuse NULL before role/getters and any filesystem',async()=>{assert.equal(typeof m.createLocalSharedSignalsBuildGuardV1,'function');let effects=0;const role=new Proxy({},{get(){effects++;throw Error('role inspected');},ownKeys(){effects++;throw Error('role inspected');}});await assert.rejects(m.createLocalSharedSignalsBuildGuardV1(role),/local-shared-signals-identity-unavailable/);await assert.rejects(m.readLocalSharedSignalsPreparationFactsV1(role),/local-shared-signals-identity-unavailable/);assert.equal(effects,0);});
 test('pure local tar inventory binds exact regular payload and rejects duplicates/traversal/truncation',()=>{const body=JSON.stringify({name:'@threadplane/chat',version:'0.3.7'}),b=tar([['package.json',body]]);const result=m.inspectLocalSharedSignalsTarV1(b);assert.equal(result.length,1);assert.equal(result[0].sha256,sha(Buffer.from(body)));assert.equal(result[0].path,'package.json');assert.throws(()=>m.inspectLocalSharedSignalsTarV1(tar([['package.json',body],['package.json',body]])),/local-shared-signals/);assert.throws(()=>m.inspectLocalSharedSignalsTarV1(tar([['../escape',body]])),/local-shared-signals/);assert.throws(()=>m.inspectLocalSharedSignalsTarV1(b.subarray(0,b.length-4)));});
