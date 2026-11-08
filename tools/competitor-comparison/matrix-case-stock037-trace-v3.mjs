@@ -16,8 +16,10 @@ import {SEMANTIC_LARGE_V3_POLICY as TRACE_POLICY,SEMANTIC_LARGE_V3_POLICY_SHA256
 import {assertLocalSharedSignalsExecutionsReadyV1,localSharedSignalsSlotV1,localSharedSignalsRoleRootV1} from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';
 import {createLocalSharedSignalsBuildGuardV1,waitLocalSharedSignalsOriginalV1} from './threadplane-local-shared-signals-build-v1.mjs';
 import {assertLocalOwnedMarkdownExecutionsReadyV1,localOwnedMarkdownSlotV1,localOwnedMarkdownRoleRootV1} from '../threadplane-local-owned-markdown/fixed-experiment-v1.mjs';
+import {assertLocalOwnedMarkdownExecutionsReadyV2,localOwnedMarkdownSlotV2,localOwnedMarkdownRoleRootV2} from '../threadplane-local-owned-markdown/fixed-experiment-v2.mjs';
 import {createLocalOwnedMarkdownBuildGuardV1,waitLocalOwnedMarkdownOriginalV1} from './threadplane-local-owned-markdown-build-v1.mjs';
-import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1} from '../threadplane-local-experiments/closed-policies-v1.mjs';
+import {createLocalOwnedMarkdownBuildGuardV2,waitLocalOwnedMarkdownOriginalV2} from './threadplane-local-owned-markdown-build-v2.mjs';
+import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1,OWNED_MARKDOWN_POLICY_V2} from '../threadplane-local-experiments/closed-policies-v1.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const message=error=>String(error?.message??error).slice(0,4096);
 function assetsFor(profile){return path.join(ROOT,profile==='threadplane'?'apps/threadplane/dist':`competitors/${profile}/dist`);}
@@ -25,8 +27,25 @@ const LOCAL_SHARED_SIGNALS_TOKENS=new WeakMap();
 const LOCAL_NATIVE_BINDINGS=new WeakMap();
 const SHARED_SIGNALS_NATIVE_HANDLE=Object.freeze({});
 const OWNED_MARKDOWN_NATIVE_HANDLE=Object.freeze({});
+const OWNED_MARKDOWN_V2_NATIVE_HANDLE=Object.freeze({});
 LOCAL_NATIVE_BINDINGS.set(SHARED_SIGNALS_NATIVE_HANDLE,Object.freeze({policy:SHARED_SIGNALS_POLICY_V1,slot:localSharedSignalsSlotV1,wait:waitLocalSharedSignalsOriginalV1}));
 LOCAL_NATIVE_BINDINGS.set(OWNED_MARKDOWN_NATIVE_HANDLE,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V1,slot:localOwnedMarkdownSlotV1,wait:waitLocalOwnedMarkdownOriginalV1}));
+LOCAL_NATIVE_BINDINGS.set(OWNED_MARKDOWN_V2_NATIVE_HANDLE,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V2,slot:localOwnedMarkdownSlotV2,wait:waitLocalOwnedMarkdownOriginalV2}));
+/** Closed local experiment entry. A caller can supply only the frozen ordinal. */
+export async function runLocalOwnedMarkdownCaseV2(input){
+ assertLocalOwnedMarkdownExecutionsReadyV2();
+ if(arguments.length!==1||!input||Object.getPrototypeOf(input)!==Object.prototype)throw Error('local-owned-markdown-v2-case-arguments');
+ const ds=Object.getOwnPropertyDescriptors(input);
+ if(Reflect.ownKeys(ds).sort().join(',')!=='invocationStarted,ordinal,out,store'||Object.values(ds).some(d=>!Object.hasOwn(d,'value')))throw Error('local-owned-markdown-v2-case-arguments');
+ const {ordinal,store,out,invocationStarted}=input,slot=localOwnedMarkdownSlotV2(ordinal);
+ if(typeof out!=='string'||!path.isAbsolute(out)||path.resolve(out)!==out||out.includes('\0')||typeof invocationStarted!=='number'||!Number.isFinite(invocationStarted)||invocationStarted<0||invocationStarted>performance.now())throw Error('local-owned-markdown-v2-case-arguments');
+ if(path.resolve(ROOT)!==localOwnedMarkdownRoleRootV2(slot.role))throw Error('local-owned-markdown-v2-case-root');
+ const caseStarted=performance.now(),deadline=createMatrixDeadline({caseStarted,invocationStarted}),wait=(original,ms,label)=>deadline.wait(original,ms,label);
+ const guard=await waitLocalOwnedMarkdownOriginalV2(createLocalOwnedMarkdownBuildGuardV2(slot.role),wait,STAGES.transcript,'local-owned-markdown-v2-case-guard');
+ await waitLocalOwnedMarkdownOriginalV2(threadplaneBuildEvidence().then(build=>guard.verify(build)),wait,STAGES.transcript,'local-owned-markdown-v2-case-before-acquisition');
+ const token=Object.freeze({});LOCAL_SHARED_SIGNALS_TOKENS.set(token,Object.freeze({policyHandle:OWNED_MARKDOWN_V2_NATIVE_HANDLE,slot,ordinal,guard}));
+ return waitLocalOwnedMarkdownOriginalV2(runMatrixCaseOriginal({slot,store,out,invocationStarted},token),wait,deadline.remaining(),'local-owned-markdown-v2-case-original');
+}
 /** Closed local experiment entry. A caller can supply only the frozen ordinal. */
 export async function runLocalOwnedMarkdownCaseV1(input){
  assertLocalOwnedMarkdownExecutionsReadyV1();
@@ -111,6 +130,7 @@ async function runMatrixCaseOriginal({slot,store,out,invocationStarted}){
  }else{
   if(slot.id.includes('-local-shared-signals-v1-'))throw Error('local-shared-signals-ordinary-entry');
   if(slot.id.includes('-local-owned-markdown-v1-'))throw Error('local-owned-markdown-ordinary-entry');
+  if(slot.id.includes('-local-owned-markdown-v2-'))throw Error('local-owned-markdown-v2-ordinary-entry');
   stock037PublishedIdentityV1();
  }
  let trace=null,traceIdentity=null,traceSnapshot=null,traceFailure=null,traceBuild=null,tracePublicationStop=false,traceCleanupEnd=null;

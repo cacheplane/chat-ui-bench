@@ -6,21 +6,24 @@ import {performance} from 'node:perf_hooks';
 import {createHash} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify,types} from 'node:util';
-import {createLocalSharedSignals24StoreV1,createLocalOwnedMarkdown24StoreV1} from '../competitor-comparison/matrix-artifacts-trace-v3.mjs';
+import {createLocalSharedSignals24StoreV1,createLocalOwnedMarkdown24StoreV1,createLocalOwnedMarkdown24StoreV2} from '../competitor-comparison/matrix-artifacts-trace-v3.mjs';
 import {runMatrixRoster} from '../competitor-comparison/matrix-run-v5.mjs';
 import {parseFourProfileStock036LargeArgumentsV3,validateSemanticLargeTraceRecordV3,verifySemanticLargeFixtureV3,SEMANTIC_LARGE_FLAGS_V3 as FLAGS} from '../competitor-comparison/four-profile-stock036-large-v3.mjs';
 import {SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from '../competitor-comparison/semantic-large-v3-policy.mjs';
 import {admitMatrixCase} from '../competitor-comparison/matrix-admission-v5.mjs';
 import {MATRIX_V5_ACQUISITION} from '../competitor-comparison/matrix-policy-v5.mjs';
 import * as sharedSignalsFixed from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';
-import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1} from './closed-policies-v1.mjs';
+import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1,OWNED_MARKDOWN_POLICY_V2} from './closed-policies-v1.mjs';
 import * as ownedMarkdownFixed from '../threadplane-local-owned-markdown/fixed-experiment-v1.mjs';
+import * as ownedMarkdownV2Fixed from '../threadplane-local-owned-markdown/fixed-experiment-v2.mjs';
 // Policy handles and factories are private to this module instance.
 const bindings=new WeakMap();
 const sharedSignalsHandle=Object.freeze({});
 bindings.set(sharedSignalsHandle,Object.freeze({policy:SHARED_SIGNALS_POLICY_V1,ROLES:sharedSignalsFixed.LOCAL_SHARED_SIGNALS_ROLES_V1,FIXED:sharedSignalsFixed.LOCAL_SHARED_SIGNALS_FIXED_EXPERIMENT_V1,assertLocalSharedSignalsExecutionsReadyV1:sharedSignalsFixed.assertLocalSharedSignalsExecutionsReadyV1,assertLocalSharedSignalsActivationSourceV1:sharedSignalsFixed.assertLocalSharedSignalsActivationSourceV1,localSharedSignalsGitExecutableV1:sharedSignalsFixed.localSharedSignalsGitExecutableV1,localSharedSignalsRosterV1:sharedSignalsFixed.localSharedSignalsRosterV1,localSharedSignalsSlotV1:sharedSignalsFixed.localSharedSignalsSlotV1,localSharedSignalsRoleRootV1:sharedSignalsFixed.localSharedSignalsRoleRootV1,localSharedSignalsSelectionIdentityV1:sharedSignalsFixed.localSharedSignalsSelectionIdentityV1,localSharedSignalsExecutionIdentityV1:sharedSignalsFixed.localSharedSignalsExecutionIdentityV1}));
 const ownedMarkdownHandle=Object.freeze({});
 bindings.set(ownedMarkdownHandle,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V1,ROLES:ownedMarkdownFixed.LOCAL_OWNED_MARKDOWN_ROLES_V1,FIXED:ownedMarkdownFixed.LOCAL_OWNED_MARKDOWN_FIXED_EXPERIMENT_V1,assertLocalSharedSignalsExecutionsReadyV1:ownedMarkdownFixed.assertLocalOwnedMarkdownExecutionsReadyV1,assertLocalSharedSignalsActivationSourceV1:ownedMarkdownFixed.assertLocalOwnedMarkdownActivationSourceV1,localSharedSignalsGitExecutableV1:ownedMarkdownFixed.localOwnedMarkdownGitExecutableV1,localSharedSignalsRosterV1:ownedMarkdownFixed.localOwnedMarkdownRosterV1,localSharedSignalsSlotV1:ownedMarkdownFixed.localOwnedMarkdownSlotV1,localSharedSignalsRoleRootV1:ownedMarkdownFixed.localOwnedMarkdownRoleRootV1,localSharedSignalsSelectionIdentityV1:ownedMarkdownFixed.localOwnedMarkdownSelectionIdentityV1,localSharedSignalsExecutionIdentityV1:ownedMarkdownFixed.localOwnedMarkdownExecutionIdentityV1}));
+const ownedMarkdownV2Handle=Object.freeze({});
+bindings.set(ownedMarkdownV2Handle,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V2,ROLES:ownedMarkdownV2Fixed.LOCAL_OWNED_MARKDOWN_ROLES_V2,FIXED:ownedMarkdownV2Fixed.LOCAL_OWNED_MARKDOWN_FIXED_EXPERIMENT_V2,assertLocalSharedSignalsExecutionsReadyV1:ownedMarkdownV2Fixed.assertLocalOwnedMarkdownExecutionsReadyV2,assertLocalSharedSignalsActivationSourceV1:ownedMarkdownV2Fixed.assertLocalOwnedMarkdownActivationSourceV2,localSharedSignalsGitExecutableV1:ownedMarkdownV2Fixed.localOwnedMarkdownGitExecutableV2,localSharedSignalsRosterV1:ownedMarkdownV2Fixed.localOwnedMarkdownRosterV2,localSharedSignalsSlotV1:ownedMarkdownV2Fixed.localOwnedMarkdownSlotV2,localSharedSignalsRoleRootV1:ownedMarkdownV2Fixed.localOwnedMarkdownRoleRootV2,localSharedSignalsSelectionIdentityV1:ownedMarkdownV2Fixed.localOwnedMarkdownSelectionIdentityV2,localSharedSignalsExecutionIdentityV1:ownedMarkdownV2Fixed.localOwnedMarkdownExecutionIdentityV2}));
 function createCoordinatorEngine(handle){
  const binding=bindings.get(handle);if(!binding)throw Error('closed-local-policy');
  const {policy,ROLES,FIXED,assertLocalSharedSignalsExecutionsReadyV1,assertLocalSharedSignalsActivationSourceV1,localSharedSignalsGitExecutableV1,localSharedSignalsRosterV1,localSharedSignalsSlotV1,localSharedSignalsRoleRootV1,localSharedSignalsSelectionIdentityV1,localSharedSignalsExecutionIdentityV1}=binding;
@@ -172,7 +175,7 @@ async function runAimockLocalSharedSignalsInvocationV1(args){
    Object.assign(roles[role],{modules,guard,build,buildSha256,provenance});
   }
   need(same(roles.control.guard.identity.toolingSourceHashes,roles.candidate.guard.identity.toolingSourceHashes),'tooling-pair');
-  const storeOriginal=own.retain(policy.id==='local-owned-markdown-v1'?createLocalOwnedMarkdown24StoreV1({directory:out,invocationStarted}):createLocalSharedSignals24StoreV1({directory:out,invocationStarted}));storeOriginal.original.then(v=>{store=v;own.setStore(v);},()=>{});store=await own.attend(storeOriginal,phaseEnd());own.setStore(store);
+  const storeOriginal=own.retain(policy.id==='local-owned-markdown-v2'?createLocalOwnedMarkdown24StoreV2({directory:out,invocationStarted}):policy.id==='local-owned-markdown-v1'?createLocalOwnedMarkdown24StoreV1({directory:out,invocationStarted}):createLocalSharedSignals24StoreV1({directory:out,invocationStarted}));storeOriginal.original.then(v=>{store=v;own.setStore(v);},()=>{});store=await own.attend(storeOriginal,phaseEnd());own.setStore(store);
   authority=Object.fromEntries(ROLES.map(role=>[role,{identity:roles[role].guard.identity,buildSha256:roles[role].buildSha256,controllerSourceSha256:sha(bounded(roles[role].controller.hashes,1048576)),controllerGit:roles[role].controller.git,gitExecutableSha256:roles[role].sources[9].sha256,sourceFacts:sourcesFacts(roles[role].sources)}]));
   await own.operation(phaseEnd(),()=>store.writeManifest('manifest-initial.json',{...base,status:'planned',authority,slots:roster}));
   execution=await runMatrixRoster({slots:roster,invocationStarted,execute:async slot=>{
@@ -212,3 +215,8 @@ const ownedMarkdown=createCoordinatorEngine(ownedMarkdownHandle);
 export const admitOwnedMarkdownCaseV1=ownedMarkdown.admitLocalSharedSignalsCaseV1;
 export const decideOwnedMarkdownBenefitV1=ownedMarkdown.decideLocalSharedSignalsBenefitV1;
 export const runOwnedMarkdownInvocationV1=ownedMarkdown.runAimockLocalSharedSignalsInvocationV1;
+
+const ownedMarkdownV2=createCoordinatorEngine(ownedMarkdownV2Handle);
+export const admitOwnedMarkdownCaseV2=ownedMarkdownV2.admitLocalSharedSignalsCaseV1;
+export const decideOwnedMarkdownBenefitV2=ownedMarkdownV2.decideLocalSharedSignalsBenefitV1;
+export const runOwnedMarkdownInvocationV2=ownedMarkdownV2.runAimockLocalSharedSignalsInvocationV1;

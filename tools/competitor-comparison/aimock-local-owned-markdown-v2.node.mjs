@@ -1,0 +1,199 @@
+// DRAFT v2 tests ONLY: f9 control and d2*32 decision are non-authoritative placeholders.
+// Actual Git-parent source pin and final declaration re-freeze before any commit/data.
+// preparation-facts-v3 separates v2 authority from v1's v2 tag; algorithm/shape unchanged.
+import test, {beforeEach} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import path from 'node:path';
+import vm from 'node:vm';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+import {types} from 'node:util';
+
+async function futureModule(relative){
+ const url=new URL(relative,import.meta.url);
+ try{await (await import('node:fs/promises')).lstat(url);}catch(error){if(error.code==='ENOENT')return {};throw error;}
+ return import(url.href);
+}
+const fixed=await futureModule('../threadplane-local-owned-markdown/fixed-experiment-v2.mjs');
+const {localOwnedMarkdownRosterV2,assertLocalOwnedMarkdownActivationSourceV2}=fixed;
+import {MATRIX_V5_ACQUISITION} from './matrix-policy-v5.mjs';
+import {runMatrixRoster} from './matrix-run-v5.mjs';
+import {parseFourProfileStock036LargeArgumentsV3,SEMANTIC_LARGE_FLAGS_V3 as FLAGS} from './four-profile-stock036-large-v3.mjs';
+import {SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from './semantic-large-v3-policy.mjs';
+
+const {OWNED_MARKDOWN_POLICY_V2}=await import('../threadplane-local-experiments/closed-policies-v1.mjs');
+const api=await futureModule('./aimock-local-owned-markdown-v2.mjs');
+const common=await import('../threadplane-local-experiments/coordinator-engine-v1.mjs');
+beforeEach(()=>assert.equal(typeof common.runOwnedMarkdownInvocationV2,'function','API absence only: common.runOwnedMarkdownInvocationV2; behavioral case requires the named owned capability'));
+test('fixed local24 coordinator and its pure admission/decision helpers exist',()=>{
+ assert.equal(typeof api?.runAimockLocalOwnedMarkdownInvocationV2,'function');
+ assert.equal(typeof api?.admitLocalOwnedMarkdownCaseV2,'function');
+ assert.equal(typeof api?.decideLocalOwnedMarkdownBenefitV2,'function');
+});
+{
+ const wrapperSource=Object.keys(api).length?await readFile(new URL('./aimock-local-owned-markdown-v2.mjs',import.meta.url),'utf8'):'';
+ const source=await readFile(new URL('../threadplane-local-experiments/coordinator-engine-v1.mjs',import.meta.url),'utf8');
+ const fixedSourceBytes=Object.keys(fixed).length?await readFile(new URL('../threadplane-local-owned-markdown/fixed-experiment-v2.mjs',import.meta.url)):Buffer.alloc(0);
+ test('real NULL authorities refuse before any caller property or runtime acquisition',async()=>{
+  let touched=0;const args=new Proxy([],{get(){touched++;throw Error('caller-property');}});
+  await assert.rejects(api.runAimockLocalOwnedMarkdownInvocationV2(args),/identity-unavailable/);assert.equal(touched,0);
+ });
+ test('coordinator exports no roots, role selectors, retry or runtime ports',()=>{
+  assert.deepEqual(Object.keys(api).sort(),['admitLocalOwnedMarkdownCaseV2','decideLocalOwnedMarkdownBenefitV2','runAimockLocalOwnedMarkdownInvocationV2'].sort());
+  assert.match(wrapperSource,/runOwnedMarkdownInvocationV2 as runAimockLocalOwnedMarkdownInvocationV2/);
+  assert.match(source,/runMatrixRoster\(/);assert.match(source,/createLocalOwnedMarkdown24StoreV2/);
+  assert.doesNotMatch(source,/chromium\.launch|createBrowser|\bports\b|\bretry\s*\(/);
+ });
+ const identity=role=>({schema:'threadplane-local-owned-markdown-build-identity-v2',experimentId:'local-owned-markdown-v2',role,sourceCommit:(role==='control'?'a':'b').repeat(40),sourceTree:(role==='control'?'c':'d').repeat(40),selectionDigest:'e'.repeat(64),executionDigest:'f'.repeat(64),toolingSourceHashes:{'tools/example.mjs':'1'.repeat(64)},fixedRoot:'/fixed/'+role,label:'local-source-built-owned-markdown-037-v2',stock:false});
+ const flags={performance:false,scoringEligibility:false,FPS:null,cpuTime:null};
+ function model(ordinal=0){const slot=localOwnedMarkdownRosterV2()[ordinal],id=identity(slot.role),buildSha256='9'.repeat(64),fixture={status:'verified-canonical',sourceSha256:'1'.repeat(64),historySha256:'2'.repeat(64),responseSha256:'3'.repeat(64),sourceDeltaSha256:'4'.repeat(64)};
+  const local={schema:'threadplane-local-owned-markdown-case-v2',experimentId:'local-owned-markdown-v2',stock:false,sourceFlavor:'local-source-built-owned-markdown-v2',id:slot.id,ordinal,role:slot.role,parentId:slot.parentId,round:slot.round,stratum:slot.stratum,block:slot.block,position:slot.position,selection:slot.selection,localBuild:id,sourceCommit:id.sourceCommit,sourceTree:id.sourceTree,selectionDigest:id.selectionDigest,executionDigest:id.executionDigest,buildSha256,...flags};
+  const result={schema:'four-stack-matrix-case-v5',purpose:'functional-conformance-development',id:slot.id,kind:'positive',...slot.selection,status:'matrix-pass',failure:null,unsafeOutstanding:false,stopInvocation:false,performance:false,scoringEligibility:false,FPS:null,fixtureDigests:{sourceSha256:fixture.sourceSha256,historySha256:fixture.historySha256,responseSha256:fixture.responseSha256},admission:{schema:'four-stack-matrix-conformance-v5',profile:'threadplane',status:'functional-pass',workload:{seed:1,historyCount:slot.selection.historyCount,responseBytes:6400,journey:slot.selection.journey,deltaCount:200,deltaIntervalMs:50},performance:false,scoringEligibility:false,FPS:null},traceDiagnostic:{schema:'threadplane-aimock-trace-case-v3',profile:'threadplane',status:'complete',failure:null,buildSha256},localOwnedMarkdownV2:local};
+  result.acquisition=MATRIX_V5_ACQUISITION;result.admission.acquisition=MATRIX_V5_ACQUISITION;
+  return{ordinal,result,identity:id,buildSha256,fixture,traceValid:true};
+ }
+ test('closed local envelope joins a valid native/fixture/trace row without granting execution',()=>{assert.equal(api.admitLocalOwnedMarkdownCaseV2(model()),true);});
+ for(const [label,mutate]of [
+  ['missing envelope',m=>delete m.result.localOwnedMarkdownV2],['stock relabel',m=>m.result.localOwnedMarkdownV2.stock=true],['swapped role',m=>m.result.localOwnedMarkdownV2.role='candidate'],['swapped build',m=>m.result.localOwnedMarkdownV2.buildSha256='8'.repeat(64)],['swapped source',m=>m.result.localOwnedMarkdownV2.sourceCommit='8'.repeat(40)],['old stock ID',m=>m.result.id=m.result.localOwnedMarkdownV2.parentId],['missing strict trace',m=>m.traceValid=false],['fixture drift',m=>m.fixture.sourceDeltaSha256=null],['unsafe original',m=>m.result.unsafeOutstanding=true],['publication refusal',m=>m.result.stopInvocation=true],['CPU profiling',m=>m.result.cpuDiagnostic={status:'complete'}],['extra outer authority',m=>m.result.localOwnedMarkdownV2.guard={untrusted:true}],
+ ])test('valid raw data cannot qualify '+label,()=>{const m=model();mutate(m);assert.equal(api.admitLocalOwnedMarkdownCaseV2(m),false);});
+ function rows(){return localOwnedMarkdownRosterV2().map((slot,ordinal)=>({id:slot.id,ordinal,role:slot.role,round:slot.round,stratum:slot.stratum,block:slot.block,position:slot.position,qualified:true,fixture:{sourceSha256:'1'.repeat(64),historySha256:'2'.repeat(64),responseSha256:'3'.repeat(64),sourceDeltaSha256:'4'.repeat(64)},costs:{tasks:{observedCompleteEvents:1,longTaskEvents:1,longest:[{eventIndex:1,timestampUs:10,durationUs:slot.role==='control'?100000:slot.stratum<2?100000:90000}]},layouts:{observedCompleteEvents:1,longest:[{eventIndex:2,timestampUs:20,durationUs:1000}]},minorGC:{observedCompleteEvents:0,longest:[]}}}));}
+ test('all24 qualified rows obey the frozen prospective benefit rule',()=>{const d=api.decideLocalOwnedMarkdownBenefitV2(rows());assert.equal(d.decision,'benefit-observed');assert.equal(d.eligible,true);assert.equal(d.FPS,null);assert.equal(d.cpuTime,null);});
+ for(const[label,mutate]of [
+  ['missing row',r=>r.pop()],['unqualified row',r=>r[0].qualified=false],['reordered row',r=>[r[0],r[1]]=[r[1],r[0]]],['fixture mismatch',r=>r[1].fixture.historySha256='5'.repeat(64)],['H1k layout median worsening',r=>{for(const x of r)if(x.role==='candidate'&&x.stratum===0)x.costs.layouts.longest[0].durationUs=1001;}],['one H1k task maximum worsening',r=>r.find(x=>x.role==='candidate'&&x.stratum===1).costs.tasks.longest[0].durationUs=100001],['one H10k tie',r=>r.find(x=>x.role==='candidate'&&x.stratum===2).costs.tasks.longest[0].durationUs=100000],['unavailable layout',r=>r[0].costs.layouts=null],
+ ])test('decision HOLD preserves '+label,()=>{const r=rows();mutate(r);assert.equal(api.decideLocalOwnedMarkdownBenefitV2(r).decision,'hold');});
+ test('GC increase is descriptive, never an offset score or invented veto',()=>{const r=rows();for(const x of r)if(x.role==='candidate')x.costs.minorGC={observedCompleteEvents:1,longest:[{eventIndex:3,timestampUs:30,durationUs:10000}]};const d=api.decideLocalOwnedMarkdownBenefitV2(r);assert.equal(d.decision,'benefit-observed');assert.ok(d.strata[0].candidate.minorGC);});
+
+ // Source-local authored model. It runs the actual coordinator/owner code and
+ // existing roster engine; no test hook is exported by the production CLI.
+ function deferred(){let resolve,reject;const original=new Promise((a,b)=>{resolve=a;reject=b;});return{original,resolve,reject};}
+ function invocationModel(options={}){
+  let time=100,nextTimer=0,outcome,opens=0,closes=0;const timers=new Map(),events=[],files=new Map(),calls=[],sourceBytes=Buffer.from('source'),sha=b=>createHash('sha256').update(b).digest('hex'),assetHash=sha('js'),decisionBytes=Buffer.from('decision'),baseCommit='7'.repeat(40),baseTree='8'.repeat(40),fixedKey='tools/threadplane-local-owned-markdown/fixed-experiment-v2.mjs';
+  const baseFiles={'package.json':sourceBytes,'tools/example.mjs':sourceBytes,'apps/threadplane/package.json':Buffer.from('base-app'),'package-lock.json':Buffer.from('base-lock'),[fixedKey]:fixedSourceBytes};
+  baseFiles['tools/threadplane-local-shared-signals/fixed-experiment-v1.mjs']=sourceBytes;
+  baseFiles['tools/threadplane-local-owned-markdown/fixed-experiment-v1.mjs']=sourceBytes;
+  baseFiles['tools/threadplane-local-owned-markdown/select-v2.mjs']=sourceBytes;
+  baseFiles['tools/competitor-comparison/threadplane-local-owned-markdown-build-v2.mjs']=sourceBytes;
+  for(const name of ['closed-policies-v1.mjs','selection-engine-v1.mjs','build-engine-v1.mjs','coordinator-engine-v1.mjs'])baseFiles['tools/threadplane-local-experiments/'+name]=sourceBytes;
+  const blob=bytes=>createHash('sha1').update(Buffer.from('blob '+bytes.length+'\0')).update(bytes).digest('hex');
+  const roster=localOwnedMarkdownRosterV2(),build={assetHashes:{'main.js':assetHash}},buildSha256=sha(JSON.stringify(build)),selected={},executions={},guards={},provenances={};
+  for(const role of ['control','candidate']){selected[role]={sourceCommit:(role==='control'?'a':'b').repeat(40),sourceTree:(role==='control'?'c':'d').repeat(40),benchmarkBaseCommit:options.expectedBase??baseCommit,selectedSourceHashes:{'package.json':sha(sourceBytes),'apps/threadplane/package.json':sha(Buffer.from('selected-app')),'package-lock.json':sha(Buffer.from('selected-lock-'+role))},artifacts:['a2ui','ag-ui','chat','langgraph','render','telemetry'].map(n=>({relativeTarballPath:'local-packages/local-owned-markdown-v2/'+role+'/'+n+'.tgz'}))};executions[role]={parsedBuildSha256:buildSha256};const id={...identity(role),fixedRoot:'/fixed/'+role,selectionDigest:sha(JSON.stringify(selected[role])),executionDigest:sha(JSON.stringify(executions[role]))};let reads=0;guards[role]={identity:id,verify:async value=>{reads++;if(options.buildDrift&&role==='control'&&reads===2)return{...value,changed:true};return value;}};provenances[role]={source:[],assets:[{path:'main.js',bytes:2,sha256:assetHash}],compiledContract:[],locks:[]};}
+  const stats={pendingOriginals:0,pendingWriters:0,unsafeWriter:false,stopped:false};
+  const store={stats:()=>({...stats}),requireSpaceBeforeNextCaseV3:async id=>events.push(['grant',id]),readJSON:async(reference)=>{events.push(['read',reference.path]);if(options.read)return options.read(reference,files);return JSON.parse(files.get(reference.path).text);},writeManifest:async(name,value)=>{events.push(['manifest',name]);if(options.manifest)return options.manifest(name,value,stats);return{};},writeInvocationFailureV3:async()=>events.push(['failure'])};
+  const makeNative=ordinal=>{
+   const m=model(ordinal),slot=roster[ordinal],guard=guards[slot.role],id=slot.id;
+   const native=m.result;native.localOwnedMarkdownV2={...native.localOwnedMarkdownV2,localBuild:guard.identity,sourceCommit:guard.identity.sourceCommit,sourceTree:guard.identity.sourceTree,selectionDigest:guard.identity.selectionDigest,executionDigest:guard.identity.executionDigest,buildSha256};native.traceDiagnostic.buildSha256=buildSha256;
+   const reference=(name,value)=>{const text=JSON.stringify(value),ref={path:id+'/'+name,bytes:Buffer.byteLength(text),sha256:sha(text)};files.set(ref.path,{value,text});return ref;};
+   const req={method:'GET',path:'/main.js',status:200,responseBytes:2,sourceEof:true,responseFinished:true,responseClosed:true,clientAborted:false,error:null},server={pid:123,exit:{code:0,signal:null},close:{code:0,signal:null},disconnected:true,protocolError:null,stdout:'',stderr:'',streams:{stdout:{bytes:0,end:true,closed:true},stderr:{bytes:0,end:true,closed:true}},report:{schema:2,protocol:'matrix-v3',profile:'threadplane',closed:true,requests:[req],errors:[]}},evidence={server:server.report,provenance:{before:provenances[slot.role],after:provenances[slot.role]},network:{finished:['/main.js']}};
+   const fixture={actual:'canonical-fixture'},initial={actual:'initial'},final={actual:'final'},payload=Buffer.from('compressed'),raw={schema:P.schemas.raw,captureProfile:P.captureProfile,policySha256:POLICY_SHA,identity:{id,...slot.selection,stockVersion:'0.3.7',buildSha256},traceFormat:'json',compression:'gzip',payloadEncoding:'base64',receipt:{actual:'owned'},retainedCompressedBytes:payload.length,compressedSha256:sha(payload),payloadBase64:payload.toString('base64'),...FLAGS};
+   native.fixture=reference('fixture-private.json',fixture);native.transcripts={initial:reference('transcript-initial.json',initial),final:reference('transcript-final.json',final)};native.traceDiagnostic.rawCapture=reference('aimock-trace-v3-private.json',raw);native.traceDiagnostic.decoderOriginals=reference('aimock-trace-v3-decoder-originals.json',{actual:'closed-originals'});native.traceDiagnostic.validation=reference('aimock-trace-v3-validation.json',{decoderResult:{costs:{status:'available',...rows()[ordinal].costs}}});
+   options.mutate?.({ordinal,native,server,evidence,raw,reference});reference('evidence.json',evidence);reference('server-process.json',server);const {stopInvocation,...stored}=native;reference('result.json',stored);return native;
+  };
+  const platform=options.platform??'darwin',gitPath=platform==='darwin'?'/Library/Developer/CommandLineTools/usr/bin/git':'/usr/bin/git';
+  const stat=(size,name)=>({dev:1n,ino:2n,nlink:options.hardLinkedGit&&name===gitPath?2n:1n,mode:0o100644n,size:BigInt(size),mtimeNs:1n,ctimeNs:1n,isFile:()=>true,isSymbolicLink:()=>false});
+  const data=name=>options.data?.(name)??(name===gitPath?Buffer.from(options.gitDrift&&calls.length===24?'changed-git-implementation':'git-implementation-'+platform):name.includes('/exclusive/output/')?Buffer.from(files.get(name.slice(name.indexOf('/exclusive/output/')+'/exclusive/output/'.length)).text):name.includes('PROSPECTIVE-DECISION')?decisionBytes:name.endsWith('/'+fixedKey)?fixedSourceBytes:name.endsWith('/apps/threadplane/package.json')?Buffer.from('selected-app'):name.endsWith('/package-lock.json')?Buffer.from('selected-lock-'+(name.startsWith('/fixed/control/')?'control':'candidate')):sourceBytes);
+  const io={realpath:async name=>options.noncanonicalGit&&name===gitPath?'/other/git':name,lstat:async name=>stat(data(name).length,name),open(name){opens++;events.push(['open',name]);const bytes=data(name),handle={stat:async()=>stat(bytes.length,name),read:async(buffer,offset,length,position)=>{const size=Math.min(length,Math.max(0,bytes.length-position));bytes.copy(buffer,offset,position,position+size);return{bytesRead:size};},close:async()=>{closes++;if(options.closeReject)throw Error('close-refused');}};return options.open?options.open(handle,name):Promise.resolve(handle);}};
+  const roleImport=async(root,kind)=>{events.push(['import',root,kind]);const role=root.endsWith('control')?'control':'candidate';if(kind==='build')return{createLocalOwnedMarkdownBuildGuardV2:async()=>guards[role]};if(kind==='reader')return{threadplaneBuildEvidence:async()=>build};if(kind==='provenance')return{collectMatrixProvenance:async()=>provenances[role]};return{runLocalOwnedMarkdownCaseV2:async input=>{calls.push(input);events.push(['case',input.ordinal]);const native=makeNative(input.ordinal);return options.engine?options.engine(native,input,stats):native;}};};
+  const git=async(command,args,config)=>{events.push(['git',config.cwd,args,command]);if(options.gitPending)return options.gitPending;const role=config.cwd.endsWith('control')?'control':'candidate';let stdout;
+   if(args[0]==='ls-files'&&args[1]==='-z')stdout=Object.keys(baseFiles).join('\0')+'\0';
+   else if(args.join(' ')==='rev-parse --show-toplevel')stdout=(options.toplevel??config.cwd)+'\n';
+   else if(args[0]==='rev-parse'&&args.at(-1)==='HEAD')stdout=(options.head??(options.headDrift&&calls.length===24?'9'.repeat(40):baseCommit))+'\n';
+   else if(args[0]==='rev-parse'&&args.at(-1)==='HEAD^{tree}')stdout=(options.tree??baseTree)+'\n';
+   else if(args[0]==='rev-parse'&&args.at(-1).endsWith('^{tree}'))stdout=baseTree+'\n';
+   else if(args.join(' ')==='remote get-url origin')stdout=(options.origin??(options.originDrift&&calls.length===24?'git@github.com:cacheplane/chat-ui-bench.git':'https://github.com/cacheplane/chat-ui-bench.git'))+'\n';
+   else if(args[0]==='diff')stdout=options.staged??'';
+   else if(args[0]==='ls-tree')stdout=Object.entries(baseFiles).map(([key,b])=>'100644 blob '+blob(b)+'\t'+key+'\0').join('');
+   else if(args[0]==='ls-files'&&args[1]==='--stage')stdout=options.index??Object.entries(baseFiles).map(([key,b])=>'100644 '+blob(b)+' 0\t'+key+'\0').join('');
+   else if(args[0]==='status')stdout=options.status??' M apps/threadplane/package.json\0 M package-lock.json\0'+selected[role].artifacts.map(a=>'?? '+a.relativeTarballPath+'\0').join('');
+   else if(args[0]==='show')stdout=fixedSourceBytes;
+   else throw Error('unexpected authored Git command: '+args.join(' '));
+   return{stdout:config.encoding==='buffer'?Buffer.from(stdout):stdout,stderr:config.encoding==='buffer'?Buffer.alloc(0):''};
+  };
+  const factoryStart=source.indexOf('function createCoordinatorEngine(handle){'),factoryEnd=source.indexOf('\nconst sharedSignals=createCoordinatorEngine(',factoryStart);assert.ok(factoryStart>=0&&factoryEnd>factoryStart);
+  let executable=source.slice(factoryStart,factoryEnd).replace("const ROOT=path.resolve(fileURLToPath(new URL('../../',import.meta.url)));","const ROOT='/fixed/control';");
+  for(const [field,kind]of [['buildModule','build'],['caseModule','case']])executable=executable.replace('import(pathToFileURL(path.join(root,policy.'+field+')).href)',"roleImport(root,'"+kind+"')");
+  for(const[key,file]of [['build','tools/competitor-comparison/threadplane-local-owned-markdown-build-v2.mjs'],['reader','apps/threadplane/provenance.mjs'],['provenance','tools/competitor-comparison/matrix-run-v5.mjs'],['case','tools/competitor-comparison/matrix-case-stock037-trace-v3.mjs']])executable=executable.replace("import(pathToFileURL(path.join(root,'"+file+"')).href)","roleImport(root,'"+key+"')");
+  const context={Buffer,TextDecoder,URL,createHash,path,fileURLToPath,pathToFileURL,types,fs:io,constants:{O_RDONLY:0,O_NOFOLLOW:256},process:{execPath:'/node',platform,argv:[]},performance:{now:()=>time},ROLES:['control','candidate'],FIXED:{experimentId:'local-owned-markdown-v2',decisionSha256:sha(decisionBytes)},assertLocalOwnedMarkdownExecutionsReadyV2(){},assertLocalOwnedMarkdownActivationSourceV2,localOwnedMarkdownGitExecutableV2:()=>gitPath,localOwnedMarkdownRosterV2:()=>roster,localOwnedMarkdownSlotV2:i=>roster[i],localOwnedMarkdownRoleRootV2:role=>'/fixed/'+role,localOwnedMarkdownSelectionIdentityV2:role=>selected[role],localOwnedMarkdownExecutionIdentityV2:role=>executions[role],P,POLICY_SHA,FLAGS,MATRIX_V5_ACQUISITION,roleImport,execFile(){},promisify:()=>git,createLocalOwnedMarkdown24StoreV2:async()=>{events.push(['store']);return store;},parseFourProfileStock036LargeArgumentsV3,runMatrixRoster:args=>runMatrixRoster({...args,now:()=>time}),verifySemanticLargeFixtureV3:async(_,native)=>({status:'verified-canonical',...native.fixtureDigests,sourceDeltaSha256:'4'.repeat(64)}),admitMatrixCase:()=>{const ordinal=calls.at(-1).ordinal;return model(ordinal).result.admission;},validateSemanticLargeTraceRecordV3(record,identity,facts){assert.equal(record.raw.value.payloadBase64,undefined);assert.equal(facts.decoderSources.files.length,7);assert.equal(facts.decoderSources.nodeExecutableSha256,sha(sourceBytes));return options.traceValid!==false;},setTimeout(callback,ms){const id=++nextTimer;timers.set(id,{callback,at:time+ms});return id;},clearTimeout:id=>timers.delete(id)};
+  const binding={policy:OWNED_MARKDOWN_POLICY_V2,ROLES:context.ROLES,FIXED:context.FIXED};
+  for(const [key,value]of Object.entries(context))if((key.startsWith('assertLocalOwnedMarkdown')||key.startsWith('localOwnedMarkdown'))&&key.endsWith('V2'))binding[key.replace('OwnedMarkdown','SharedSignals').replace(/V2$/,'V1')]=value;
+  for(const key of ['assertLocalSharedSignalsExecutionsReadyV1','assertLocalSharedSignalsActivationSourceV1','localSharedSignalsGitExecutableV1','localSharedSignalsRosterV1','localSharedSignalsSlotV1','localSharedSignalsRoleRootV1','localSharedSignalsSelectionIdentityV1','localSharedSignalsExecutionIdentityV1'])assert.equal(typeof binding[key],'function','authored v2 binding supplies unchanged private factory accessor '+key);
+  const handle=Object.freeze({});context.bindings=new WeakMap([[handle,binding]]);context.handle=handle;
+  context.createLocalSharedSignals24StoreV1=async()=>{throw Error('v2 used foreign shared store');};
+  context.createLocalOwnedMarkdown24StoreV1=async()=>{throw Error('v2 used foreign owned-v1 store');};
+  const run=vm.runInThisContext('(function('+Object.keys(context).join(',')+'){'+executable+';return createCoordinatorEngine(handle).runAimockLocalSharedSignalsInvocationV1;})')(...Object.values(context)),task=run(...(options.callArgs??[['--out','/exclusive/output']]));task.then(value=>outcome={value},error=>outcome={error});
+  return{task,calls,events,stats,flush:async()=>{for(let i=0;i<20000;i++)await Promise.resolve();},fire(){const[key,timer]=[...timers].sort((a,b)=>a[1].at-b[1].at)[0];timers.delete(key);time=timer.at;timer.callback();},get outcome(){return outcome;},get opens(){return opens;},get closes(){return closes;}};
+ }
+ async function finishInvocation(m){await m.flush();assert.ok(m.outcome,'authored original coordinator settles');return m.outcome;}
+ for(const [platform,expected]of [['darwin','/Library/Developer/CommandLineTools/usr/bin/git'],['linux','/usr/bin/git']])test('actual coordinator hashes and executes one closed '+platform+' Git path at unchanged source index',async()=>{
+  const m=invocationModel({platform}),out=await finishInvocation(m);assert.equal(out.error,undefined);assert.equal(out.value.complete,true,out.value.failure);
+  const executed=m.events.filter(e=>e[0]==='git');assert.ok(executed.length>0);assert.ok(executed.every(e=>e[3]===expected));assert.ok(m.events.filter(e=>e[0]==='open'&&e[1]===expected).length>=4);
+  const expectedSha=createHash('sha256').update('git-implementation-'+platform).digest('hex');for(const role of ['control','candidate']){assert.equal(out.value.authority[role].gitExecutableSha256,expectedSha);assert.deepEqual(Object.keys(out.value.authority[role].sourceFacts).sort(),['decoderSources','rssExecutableSha256'].sort());}
+ });
+ for(const [label,option]of [['hard-linked',{hardLinkedGit:true}],['noncanonical',{noncanonicalGit:true}]])test('actual selected Git '+label+' source still refuses before role imports and native cases',async()=>{
+  const m=invocationModel(option),out=await finishInvocation(m),result=out.value??out.error?.localOwnedMarkdownDiagnosticV2;assert.equal(result.complete,false);assert.equal(m.calls.length,0);assert.equal(m.events.some(e=>e[0]==='git'||e[0]==='import'||e[0]==='store'),false);
+ });
+ test('actual selected Git source byte drift after cases forces unchanged ownership checks to HOLD',async()=>{
+  const m=invocationModel({gitDrift:true}),out=await finishInvocation(m),result=out.value??out.error?.localOwnedMarkdownDiagnosticV2;assert.equal(m.calls.length,24);assert.equal(result.complete,false);assert.equal(result.decision.decision,'hold');assert.equal(result.decision.eligible,false);
+ });
+ test('actual coordinator runs exact24 alternating originals once with a shared clock and two closed manifests',async()=>{const m=invocationModel(),out=await finishInvocation(m);assert.equal(out.error,undefined);assert.equal(out.value.complete,true,out.value.failure);assert.equal(out.value.decision.decision,'benefit-observed');assert.deepEqual(m.calls.map(c=>c.ordinal),Array.from({length:24},(_,i)=>i));assert.equal(new Set(m.calls.map(c=>c.invocationStarted)).size,1);assert.equal(m.opens,m.closes);assert.deepEqual(m.events.filter(e=>e[0]==='manifest').map(e=>e[1]),['manifest-initial.json','manifest-final.json']);for(const role of ['control','candidate']){const before=out.value.authority[role].controllerGit;assert.equal(before.head,'7'.repeat(40));assert.equal(before.tree,'8'.repeat(40));assert.equal(before.origin,'https://github.com/cacheplane/chat-ui-bench.git');assert.deepEqual(out.value.controllerGitAfter[role],before);}});
+ test('a source/build post-bookend failure forces HOLD even if all case costs pass',async()=>{const m=invocationModel({buildDrift:true}),out=await finishInvocation(m);assert.equal(out.value.complete,false);assert.equal(out.value.decision.decision,'hold');assert.equal(out.value.decision.eligible,false);assert.equal(m.calls.length,24);});
+ test('missing local envelope stops qualification without retrying or dropping remaining planned rows',async()=>{const m=invocationModel({mutate({ordinal,native}){if(ordinal===0)delete native.localOwnedMarkdownV2;}}),out=await finishInvocation(m);assert.equal(out.value.complete,false);assert.equal(m.calls.length,1);assert.equal(out.value.rows.length,24);assert.equal(out.value.rows[1].status,'unattempted');assert.equal(out.value.decision.decision,'hold');});
+ test('pending native original forbids final publication and never retries after late settlement',async()=>{const pending=deferred(),m=invocationModel({engine:()=>pending.original});await m.flush();assert.equal(m.outcome,undefined);m.fire();const out=await finishInvocation(m);assert.equal(out.error.unsafeOutstanding,true);assert.equal(m.calls.length,1);assert.equal(out.error.localOwnedMarkdownDiagnosticV2.rows.length,24);const before=m.events.length;pending.resolve({status:'late'});await m.flush();assert.equal(m.events.length,before);assert.deepEqual(m.events.filter(e=>e[0]==='manifest').map(e=>e[1]),['manifest-initial.json']);});
+ test('pending writer ownership forbids readback and every later publication',async()=>{const m=invocationModel({engine(native,input,stats){stats.pendingWriters=1;return native;}}),out=await finishInvocation(m);assert.equal(out.error.unsafeOutstanding,true);assert.equal(m.calls.length,1);assert.equal(m.events.some(e=>e[0]==='read'),false);assert.deepEqual(m.events.filter(e=>e[0]==='manifest').map(e=>e[1]),['manifest-initial.json']);});
+ test('close rejection retains unknown descriptor ownership before any native acquisition',async()=>{const m=invocationModel({closeReject:true}),out=await finishInvocation(m);assert.equal(out.error.unsafeOutstanding,true);assert.equal(m.calls.length,0);assert.equal(m.events.some(e=>e[0]==='manifest'),false);});
+ test('whole controller file cap is checked before opening or reading an oversized source',async()=>{const m=invocationModel({data:name=>name.endsWith('/tools/example.mjs')?Buffer.alloc(8388609):null}),out=await finishInvocation(m);assert.equal(out.error?.unsafeOutstanding,false);assert.equal(m.calls.length,0);assert.equal(m.opens,m.closes);assert.equal(m.events.some(e=>e[0]==='open'&&e[1].endsWith('/tools/example.mjs')),false);assert.equal(m.events.some(e=>e[0]==='manifest'),false);});
+ test('a late settled native result preserves its actual attempt without restoring qualification',async()=>{const pending=deferred();let held;const m=invocationModel({engine:native=>{held=native;return pending.original;}});await m.flush();m.fire();pending.resolve(held);const out=await finishInvocation(m),d=out.error.localOwnedMarkdownDiagnosticV2;assert.equal(d.complete,false);assert.equal(d.rows[0].nativeAttempt.status,'matrix-pass');assert.equal(d.rows[0].originalCall.status,'fulfilled');assert.equal(d.decision.decision,'hold');assert.equal(m.calls.length,1);assert.deepEqual(m.events.filter(e=>e[0]==='manifest').map(e=>e[1]),['manifest-initial.json']);});
+ test('fulfilled final publication is distinct from the pending serialized manifest',async()=>{let serialized;const m=invocationModel({manifest(name,value){if(name==='manifest-final.json')serialized=value;}}),out=await finishInvocation(m);assert.equal(out.value.finalPublication.state,'fulfilled');assert.equal(out.value.finalPublication.owner.status,'fulfilled');assert.ok(out.value.finalPublication.owner.settled>=out.value.finalPublication.owner.dispatched);assert.equal(serialized.finalPublication.state,'pending-at-serialization');});
+ test('a pending final publication cannot produce success or a failure-sidecar write',async()=>{const pending=deferred(),m=invocationModel({manifest(name,value,stats){if(name==='manifest-final.json'){stats.pendingWriters=1;return pending.original;}}});await m.flush();assert.equal(m.outcome,undefined);m.fire();await m.flush();if(!m.outcome)m.fire();const out=await finishInvocation(m);assert.equal(out.error.unsafeOutstanding,true);assert.equal(out.error.localOwnedMarkdownDiagnosticV2.decision.decision,'hold');assert.equal(m.calls.length,24);assert.equal(m.events.some(e=>e[0]==='failure'),false);const count=m.events.length;pending.resolve({});await m.flush();assert.equal(m.events.length,count);});
+ test('canonical readback drift remains a failed qualification and preserves the denominator',async()=>{const m=invocationModel({read:async()=>({changed:true})}),out=await finishInvocation(m);assert.equal(out.value.complete,false);assert.equal(out.value.rows.length,24);assert.equal(out.value.rows[0].nativeAttempt.status,'matrix-pass');assert.equal(out.value.rows[0].qualified,false);assert.equal(out.value.rows[1].status,'unattempted');assert.equal(m.calls.length,1);});
+ for(const[label,options]of [
+  ['candidate code differs', {data:name=>name==='/fixed/candidate/tools/example.mjs'?Buffer.from('unreviewed'):null}],
+  ['both controllers share unreviewed code', {data:name=>name.endsWith('/tools/example.mjs')?Buffer.from('same-unreviewed'):null}],
+  ['reviewed benchmark base mismatch', {expectedBase:'6'.repeat(40)}],
+  ['actual HEAD mismatch', {head:'6'.repeat(40)}],
+  ['actual tree mismatch', {tree:'6'.repeat(40)}],
+  ['foreign origin', {origin:'https://github.com/foreign/chat-ui-bench.git'}],
+  ['wrong top-level path', {toplevel:'/fixed/elsewhere'}],
+  ['staged source changes', {staged:'M\0tools/example.mjs\0'}],
+  ['index differs from reviewed base', {index:'100644 '+ '0'.repeat(40)+' 0\ttools/example.mjs\0'}],
+  ['unexpected tracked state', {status:' M tools/example.mjs\0'}],
+  ['untracked executable source', {status:'?? tools/unreviewed.mjs\0'}],
+  ['selected app hash drift', {data:name=>name.endsWith('/apps/threadplane/package.json')?Buffer.from('unreviewed-app'):null}],
+  ['selected lock hash drift', {data:name=>name.endsWith('/package-lock.json')?Buffer.from('unreviewed-lock'):null}],
+  ['fixed function-code change', {data:name=>name.endsWith('/tools/threadplane-local-owned-markdown/fixed-experiment-v2.mjs')?Buffer.from(fixedSourceBytes.toString().replace('const need=', 'const injected=()=>{};const need=')):null}],
+  ['fixed source BOM change', {data:name=>name.endsWith('/tools/threadplane-local-owned-markdown/fixed-experiment-v2.mjs')?Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),fixedSourceBytes]):null}],
+  ['fixed source invalid UTF8', {data:name=>name.endsWith('/tools/threadplane-local-owned-markdown/fixed-experiment-v2.mjs')?Buffer.concat([Buffer.from([0xff]),fixedSourceBytes]):null}],
+ ])test('before any role import refuses '+label,async()=>{const m=invocationModel(options),out=await finishInvocation(m);assert.equal(out.value?.complete??false,false);assert.equal(m.events.filter(e=>e[0]==='import').length,0);assert.equal(m.calls.length,0);assert.equal(m.events.some(e=>e[0]==='store'),false);});
+ test('unchanged bytes cannot conceal a post-capture Git HEAD change',async()=>{const m=invocationModel({headDrift:true}),out=await finishInvocation(m),result=out.value??out.error?.localOwnedMarkdownDiagnosticV2;assert.equal(m.calls.length,24);assert.equal(result.complete,false);assert.equal(result.decision.decision,'hold');assert.equal(result.decision.eligible,false);});
+ test('post-capture canonical origin changes are retained as Git bookend failure',async()=>{const m=invocationModel({originDrift:true}),out=await finishInvocation(m),result=out.value??out.error?.localOwnedMarkdownDiagnosticV2;assert.equal(m.calls.length,24);assert.equal(result.complete,false);assert.equal(result.decision.decision,'hold');assert.equal(result.decision.eligible,false);});
+ test('source-valid selected app and lock changes are accepted before imports',async()=>{const m=invocationModel(),out=await finishInvocation(m);assert.equal(out.value.complete,true);const firstImport=m.events.findIndex(e=>e[0]==='import');assert.ok(firstImport>0);for(const role of ['control','candidate'])assert.ok(m.events.slice(0,firstImport).some(e=>e[0]==='open'&&e[1]==='/fixed/'+role+'/package-lock.json'));});
+ for(const name of ['closed-policies-v1.mjs','selection-engine-v1.mjs','build-engine-v1.mjs','coordinator-engine-v1.mjs']){
+  test('ordinary tracked common source '+name+' drift refuses before either role import',async()=>{const m=invocationModel({data:file=>file.endsWith('/tools/threadplane-local-experiments/'+name)?Buffer.from('unreviewed-common-code'):null}),out=await finishInvocation(m);assert.equal(out.value?.complete??false,false);assert.equal(m.events.some(e=>e[0]==='import'||e[0]==='store'),false);assert.equal(m.calls.length,0);assert.equal(out.error?.localOwnedMarkdownDiagnosticV2.failure,'local-owned-markdown-v2-controller-blob');});
+  test('ordinary tracked common source '+name+' post-slot drift forces HOLD',async()=>{let changed=false;const m=invocationModel({data:file=>changed&&file.endsWith('/tools/threadplane-local-experiments/'+name)?Buffer.from('late-common-code'):null,engine(native,input){if(input.ordinal===23)changed=true;return native;}}),out=await finishInvocation(m);assert.equal(out.value.complete,false);assert.equal(out.value.decision.decision,'hold');assert.equal(out.value.decision.eligible,false);assert.equal(m.calls.length,24);});
+ }
+ test('pending original Git read forbids imports and later publication',async()=>{const pending=deferred(),m=invocationModel({gitPending:pending.original});await m.flush();assert.equal(m.outcome,undefined);m.fire();await m.flush();if(!m.outcome)m.fire();const out=await finishInvocation(m);assert.equal(out.error.unsafeOutstanding,true);assert.equal(m.events.some(e=>e[0]==='import'),false);assert.equal(m.events.some(e=>e[0]==='store'),false);const count=m.events.length;pending.resolve({stdout:Buffer.from('late'),stderr:Buffer.alloc(0)});await m.flush();assert.equal(m.events.length,count);});
+
+ for(const key of ['tools/threadplane-local-owned-markdown/fixed-experiment-v1.mjs','tools/threadplane-local-shared-signals/fixed-experiment-v1.mjs','tools/threadplane-local-owned-markdown/select-v2.mjs','tools/competitor-comparison/threadplane-local-owned-markdown-build-v2.mjs']){
+  test('only active fixed has a two-RHS exception; ordinary '+key+' drift refuses before imports',async()=>{const x=invocationModel({data:file=>file.endsWith('/'+key)?Buffer.from('other policy activation or changed wrapper'):null}),out=await finishInvocation(x);assert.equal(out.value?.complete??false,false);assert.equal(x.calls.length,0);assert.equal(x.events.some(e=>e[0]==='import'||e[0]==='store'),false);});
+  test('ordinary inactive fixed or wrapper '+key+' post-slot drift forces HOLD',async()=>{let changed=false;const x=invocationModel({data:file=>changed&&file.endsWith('/'+key)?Buffer.from('postslot drift'):null,engine(native,input){if(input.ordinal===23)changed=true;return native;}}),out=await finishInvocation(x);assert.equal(x.calls.length,24);assert.equal(out.value.complete,false);assert.equal(out.value.decision.decision,'hold');});
+ }
+ for(const [label,mutate]of [
+  ['old envelope key',x=>{x.result.localSharedSignals=x.result.localOwnedMarkdownV2;delete x.result.localOwnedMarkdownV2;}],
+  ['old envelope schema',x=>x.result.localOwnedMarkdownV2.schema='threadplane-local-shared-signals-case-v1'],
+  ['old source flavor',x=>x.result.localOwnedMarkdownV2.sourceFlavor='local-source-built-shared-signals-v1'],
+  ['old build schema',x=>x.identity.schema='threadplane-local-shared-signals-build-identity-v1'],
+  ['old build label',x=>x.identity.label='local-source-built-shared-signals-037'],
+  ['old slot ID',x=>{x.result.id=x.result.id.replace('owned-markdown','shared-signals');x.result.localOwnedMarkdownV2.id=x.result.id;}],
+  ['selection digest swap',x=>x.result.localOwnedMarkdownV2.selectionDigest='7'.repeat(64)],
+  ['execution digest swap',x=>x.result.localOwnedMarkdownV2.executionDigest='7'.repeat(64)],
+ ])test('owned admission refuses cross-policy '+label,()=>{const x=model();mutate(x);assert.equal(api.admitLocalOwnedMarkdownCaseV2(x),false);});
+ test('pure owned admission keeps its unchanged nonempty <=16 tooling digest model cap',()=>{
+  for(const count of [1,9,16]){const x=model();x.identity.toolingSourceHashes=Object.fromEntries(Array.from({length:count},(_,i)=>['synthetic-'+i,'a'.repeat(64)]));assert.equal(api.admitLocalOwnedMarkdownCaseV2(x),true);}
+  for(const count of [0,17]){const x=model();x.identity.toolingSourceHashes=Object.fromEntries(Array.from({length:count},(_,i)=>['synthetic-'+i,'a'.repeat(64)]));assert.equal(api.admitLocalOwnedMarkdownCaseV2(x),false);}
+ });
+ test('decision preserves zero GC versus unavailable and exact false/null flags',()=>{
+  const zero=api.decideLocalOwnedMarkdownBenefitV2(rows());assert.equal(zero.decision,'benefit-observed');assert.deepEqual(zero.strata[0].control.minorGC[0],{observedCompleteEvents:0,maxDurationUs:0,longest:[]});
+  assert.equal(zero.performance,false);assert.equal(zero.scoringEligibility,false);assert.equal(zero.FPS,null);assert.equal(zero.cpuTime,null);
+  const absent=rows();absent[0].costs.minorGC=null;const hold=api.decideLocalOwnedMarkdownBenefitV2(absent);assert.equal(hold.decision,'hold');assert.equal(hold.eligible,false);
+ });
+}
