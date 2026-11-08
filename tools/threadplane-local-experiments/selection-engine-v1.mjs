@@ -8,14 +8,17 @@ import {fileURLToPath} from 'node:url';
 import {deriveStock037SelectionV1} from '../threadplane-stock037/select-v1.mjs';
 import {stock037PublishedIdentityV1} from '../competitor-comparison/aimock-stock037-v1.mjs';
 import * as sharedSignalsFixed from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';
-import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1} from './closed-policies-v1.mjs';
+import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1,OWNED_MARKDOWN_POLICY_V2} from './closed-policies-v1.mjs';
 import * as ownedMarkdownFixed from '../threadplane-local-owned-markdown/fixed-experiment-v1.mjs';
+import * as ownedMarkdownV2Fixed from '../threadplane-local-owned-markdown/fixed-experiment-v2.mjs';
 // Policy handles and factories are private to this module instance.
 const bindings=new WeakMap();
 const sharedSignalsHandle=Object.freeze({});
 bindings.set(sharedSignalsHandle,Object.freeze({policy:SHARED_SIGNALS_POLICY_V1,assertLocalSharedSignalsSelectionsReadyV1:sharedSignalsFixed.assertLocalSharedSignalsSelectionsReadyV1,localSharedSignalsSelectionIdentityV1:sharedSignalsFixed.localSharedSignalsSelectionIdentityV1,validateLocalSharedSignalsExperimentRecordV1:sharedSignalsFixed.validateLocalSharedSignalsExperimentRecordV1,LOCAL_SHARED_SIGNALS_CONTROL_SOURCE_V1:sharedSignalsFixed.LOCAL_SHARED_SIGNALS_CONTROL_SOURCE_V1,LOCAL_SHARED_SIGNALS_RUNTIME_NAMES_V1:sharedSignalsFixed.LOCAL_SHARED_SIGNALS_RUNTIME_NAMES_V1}));
 const ownedMarkdownHandle=Object.freeze({});
 bindings.set(ownedMarkdownHandle,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V1,assertLocalSharedSignalsSelectionsReadyV1:ownedMarkdownFixed.assertLocalOwnedMarkdownSelectionsReadyV1,localSharedSignalsSelectionIdentityV1:ownedMarkdownFixed.localOwnedMarkdownSelectionIdentityV1,validateLocalSharedSignalsExperimentRecordV1:ownedMarkdownFixed.validateLocalOwnedMarkdownExperimentRecordV1,LOCAL_SHARED_SIGNALS_CONTROL_SOURCE_V1:ownedMarkdownFixed.LOCAL_OWNED_MARKDOWN_CONTROL_SOURCE_V1,LOCAL_SHARED_SIGNALS_RUNTIME_NAMES_V1:ownedMarkdownFixed.LOCAL_OWNED_MARKDOWN_RUNTIME_NAMES_V1}));
+const ownedMarkdownV2Handle=Object.freeze({});
+bindings.set(ownedMarkdownV2Handle,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V2,assertLocalSharedSignalsSelectionsReadyV1:ownedMarkdownV2Fixed.assertLocalOwnedMarkdownSelectionsReadyV2,localSharedSignalsSelectionIdentityV1:ownedMarkdownV2Fixed.localOwnedMarkdownSelectionIdentityV2,validateLocalSharedSignalsExperimentRecordV1:ownedMarkdownV2Fixed.validateLocalOwnedMarkdownExperimentRecordV2,LOCAL_SHARED_SIGNALS_CONTROL_SOURCE_V1:ownedMarkdownV2Fixed.LOCAL_OWNED_MARKDOWN_CONTROL_SOURCE_V2,LOCAL_SHARED_SIGNALS_RUNTIME_NAMES_V1:ownedMarkdownV2Fixed.LOCAL_OWNED_MARKDOWN_RUNTIME_NAMES_V2}));
 function createSelectionEngine(handle){
  const binding=bindings.get(handle);if(!binding)throw Error('closed-local-policy');
  const {policy,assertLocalSharedSignalsSelectionsReadyV1,localSharedSignalsSelectionIdentityV1,validateLocalSharedSignalsExperimentRecordV1,LOCAL_SHARED_SIGNALS_CONTROL_SOURCE_V1,LOCAL_SHARED_SIGNALS_RUNTIME_NAMES_V1}=binding;
@@ -71,3 +74,7 @@ export const selectSharedSignalsV1=sharedSignals.selectLocalSharedSignalsDepende
 const ownedMarkdown=createSelectionEngine(ownedMarkdownHandle);
 export const deriveOwnedMarkdownSelectionV1=ownedMarkdown.deriveLocalSharedSignalsSelectionV1;
 export const selectOwnedMarkdownV1=ownedMarkdown.selectLocalSharedSignalsDependenciesV1;
+
+const ownedMarkdownV2=createSelectionEngine(ownedMarkdownV2Handle);
+export const deriveOwnedMarkdownSelectionV2=ownedMarkdownV2.deriveLocalSharedSignalsSelectionV1;
+export const selectOwnedMarkdownV2=ownedMarkdownV2.selectLocalSharedSignalsDependenciesV1;

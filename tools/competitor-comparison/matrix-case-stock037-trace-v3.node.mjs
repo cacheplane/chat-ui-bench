@@ -67,7 +67,7 @@ test('strict eight-seam parser and exact native V5/wrapper/bridge bytes',()=>{
  for(const malformed of [source+' // TRACE-V3-BEGIN ninth\n // TRACE-V3-END ninth\n',source.replace(' // TRACE-V3-END stop\n',''),source.replace(' // TRACE-V3-BEGIN ack\n',''),source.replace(' // TRACE-V3-BEGIN ack\n',' // TRACE-V3-BEGIN finish\n')])assert.throws(()=>parse(malformed));
 });
 test('case has only fixed local, ordinary and fixed CPU exports and remains fixed037 at its local identity gate',async()=>{
- assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(m=>m[1]),['runLocalOwnedMarkdownCaseV1','runLocalSharedSignalsCaseV1','runMatrixCase','runStock037CpuDiagnosticCaseV1']);
+ assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(m=>m[1]),['runLocalOwnedMarkdownCaseV2','runLocalOwnedMarkdownCaseV1','runLocalSharedSignalsCaseV1','runMatrixCase','runStock037CpuDiagnosticCaseV1']);
  const {seams}=parse(source),prefix=seams.publish.slice(0,seams.publish.indexOf(' const traceDiagnostic='));
  const check=AsyncFunction('value','createHash','TRACE_POLICY','TRACE_POLICY_SHA256',prefix+'validateIdentity(value);return true;');
  const identity={id:'stock037-case',profile:'threadplane',historyCount:10,responseBytes:100,journey:'history-reading',stockVersion:'0.3.7',buildSha256:'a'.repeat(64)};
@@ -114,8 +114,10 @@ test('complete imports are closed, with no child, guard override or alternate de
  "import {assertLocalSharedSignalsExecutionsReadyV1,localSharedSignalsSlotV1,localSharedSignalsRoleRootV1} from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';",
  "import {createLocalSharedSignalsBuildGuardV1,waitLocalSharedSignalsOriginalV1} from './threadplane-local-shared-signals-build-v1.mjs';",
  "import {assertLocalOwnedMarkdownExecutionsReadyV1,localOwnedMarkdownSlotV1,localOwnedMarkdownRoleRootV1} from '../threadplane-local-owned-markdown/fixed-experiment-v1.mjs';",
+ "import {assertLocalOwnedMarkdownExecutionsReadyV2,localOwnedMarkdownSlotV2,localOwnedMarkdownRoleRootV2} from '../threadplane-local-owned-markdown/fixed-experiment-v2.mjs';",
  "import {createLocalOwnedMarkdownBuildGuardV1,waitLocalOwnedMarkdownOriginalV1} from './threadplane-local-owned-markdown-build-v1.mjs';",
- "import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1} from '../threadplane-local-experiments/closed-policies-v1.mjs';",
+ "import {createLocalOwnedMarkdownBuildGuardV2,waitLocalOwnedMarkdownOriginalV2} from './threadplane-local-owned-markdown-build-v2.mjs';",
+ "import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1,OWNED_MARKDOWN_POLICY_V2} from '../threadplane-local-experiments/closed-policies-v1.mjs';",
  ]);
  const active=source.slice(source.indexOf('const readinessAck='),source.indexOf('readinessController.assertBeforeWheel();'));
  assert.doesNotMatch(active,/assertStock037|threadplaneBuildEvidence|runAimockTraceDecoderOwner/);

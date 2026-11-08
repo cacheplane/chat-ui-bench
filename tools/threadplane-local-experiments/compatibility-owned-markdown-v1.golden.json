@@ -1,0 +1,4101 @@
+{
+  "note": "Passive legacy ac9c05ee575b1c833d2e55e10134954b4261da8b characterization. Synthetic model data never activates production policy. Byte facts pin exact current outputs without copying the 1MB lockfile.",
+  "exports": {
+    "fixed": [
+      "LOCAL_OWNED_MARKDOWN_CANDIDATE_SOURCE_V1",
+      "LOCAL_OWNED_MARKDOWN_CONTROL_SOURCE_V1",
+      "LOCAL_OWNED_MARKDOWN_DECISION_SHA256_V1",
+      "LOCAL_OWNED_MARKDOWN_FIXED_EXPERIMENT_V1",
+      "LOCAL_OWNED_MARKDOWN_PACKAGE_NAMES_V1",
+      "LOCAL_OWNED_MARKDOWN_ROLES_V1",
+      "LOCAL_OWNED_MARKDOWN_RUNTIME_NAMES_V1",
+      "assertLocalOwnedMarkdownActivationSourceV1",
+      "assertLocalOwnedMarkdownExecutionsReadyV1",
+      "assertLocalOwnedMarkdownSelectionsReadyV1",
+      "immutableLocalOwnedMarkdownExperimentRecordV1",
+      "localOwnedMarkdownDigestV1",
+      "localOwnedMarkdownExecutionIdentityV1",
+      "localOwnedMarkdownGitExecutableV1",
+      "localOwnedMarkdownRoleRootV1",
+      "localOwnedMarkdownRosterV1",
+      "localOwnedMarkdownSelectionIdentityV1",
+      "localOwnedMarkdownSlotV1",
+      "validateLocalOwnedMarkdownExperimentRecordV1"
+    ],
+    "selector": [
+      "deriveLocalOwnedMarkdownSelectionV1",
+      "selectLocalOwnedMarkdownDependenciesV1"
+    ],
+    "build": [
+      "assertLocalOwnedMarkdownExecutionFactsV1",
+      "assertLocalOwnedMarkdownToolingBookendsV1",
+      "createLocalOwnedMarkdownBuildGuardV1",
+      "inspectLocalOwnedMarkdownTarV1",
+      "readLocalOwnedMarkdownPreparationFactsV1",
+      "waitLocalOwnedMarkdownOriginalV1"
+    ],
+    "coordinator": [
+      "admitLocalOwnedMarkdownCaseV1",
+      "decideLocalOwnedMarkdownBenefitV1",
+      "runAimockLocalOwnedMarkdownInvocationV1"
+    ]
+  },
+  "roster": [
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-1",
+      "parentId": "threadplane-h1000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "control",
+      "round": 1,
+      "stratum": 0,
+      "block": 1,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-1",
+      "parentId": "threadplane-h1000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "candidate",
+      "round": 1,
+      "stratum": 0,
+      "block": 1,
+      "position": 2,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-1",
+      "parentId": "threadplane-h1000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "candidate",
+      "round": 1,
+      "stratum": 1,
+      "block": 2,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-1",
+      "parentId": "threadplane-h1000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "control",
+      "round": 1,
+      "stratum": 1,
+      "block": 2,
+      "position": 2,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-1",
+      "parentId": "threadplane-h10000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "control",
+      "round": 1,
+      "stratum": 2,
+      "block": 3,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-1",
+      "parentId": "threadplane-h10000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "candidate",
+      "round": 1,
+      "stratum": 2,
+      "block": 3,
+      "position": 2,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-1",
+      "parentId": "threadplane-h10000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "candidate",
+      "round": 1,
+      "stratum": 3,
+      "block": 4,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-1",
+      "parentId": "threadplane-h10000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "control",
+      "round": 1,
+      "stratum": 3,
+      "block": 4,
+      "position": 2,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-2",
+      "parentId": "threadplane-h1000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "candidate",
+      "round": 2,
+      "stratum": 0,
+      "block": 5,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-2",
+      "parentId": "threadplane-h1000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "control",
+      "round": 2,
+      "stratum": 0,
+      "block": 5,
+      "position": 2,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-2",
+      "parentId": "threadplane-h1000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "control",
+      "round": 2,
+      "stratum": 1,
+      "block": 6,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-2",
+      "parentId": "threadplane-h1000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "candidate",
+      "round": 2,
+      "stratum": 1,
+      "block": 6,
+      "position": 2,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-2",
+      "parentId": "threadplane-h10000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "candidate",
+      "round": 2,
+      "stratum": 2,
+      "block": 7,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-2",
+      "parentId": "threadplane-h10000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "control",
+      "round": 2,
+      "stratum": 2,
+      "block": 7,
+      "position": 2,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-2",
+      "parentId": "threadplane-h10000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "control",
+      "round": 2,
+      "stratum": 3,
+      "block": 8,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-2",
+      "parentId": "threadplane-h10000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "candidate",
+      "round": 2,
+      "stratum": 3,
+      "block": 8,
+      "position": 2,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-3",
+      "parentId": "threadplane-h1000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "control",
+      "round": 3,
+      "stratum": 0,
+      "block": 9,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-3",
+      "parentId": "threadplane-h1000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "candidate",
+      "round": 3,
+      "stratum": 0,
+      "block": 9,
+      "position": 2,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-3",
+      "parentId": "threadplane-h1000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "candidate",
+      "round": 3,
+      "stratum": 1,
+      "block": 10,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-3",
+      "parentId": "threadplane-h1000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 1000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "control",
+      "round": 3,
+      "stratum": 1,
+      "block": 10,
+      "position": 2,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-3",
+      "parentId": "threadplane-h10000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "control",
+      "round": 3,
+      "stratum": 2,
+      "block": 11,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-3",
+      "parentId": "threadplane-h10000-r6400-follow",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "follow"
+      },
+      "role": "candidate",
+      "round": 3,
+      "stratum": 2,
+      "block": 11,
+      "position": 2,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-3",
+      "parentId": "threadplane-h10000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "candidate",
+      "round": 3,
+      "stratum": 3,
+      "block": 12,
+      "position": 1,
+      "stock": false
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-3",
+      "parentId": "threadplane-h10000-r6400-history-reading",
+      "kind": "positive",
+      "selection": {
+        "profile": "threadplane",
+        "historyCount": 10000,
+        "responseBytes": 6400,
+        "journey": "history-reading"
+      },
+      "role": "control",
+      "round": 3,
+      "stratum": 3,
+      "block": 12,
+      "position": 2,
+      "stock": false
+    }
+  ],
+  "selectionModel": {
+    "schema": "threadplane-local-owned-markdown-selection-identity-v1",
+    "role": "control",
+    "sourceCommit": "331b3b2d4cfc1e9b8e44c94ec867103a4693db2c",
+    "sourceTree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "sourceOrigin": "git@github.com:cacheplane/threadplane.git",
+    "sourceClean": true,
+    "sourceProofSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "benchmarkBaseCommit": "1355d9ef20d4899af298e3d8f32b58b23304f93c",
+    "canonicalInputs": {
+      "package.json": "cd13748fd683ee4f4d80e2244f210c4597164d4813c381855c2cd2242bf70579",
+      "apps/threadplane/package.json": "aa2e1ff97c71ed46de6c1551b4234650ede1093b051d8b967cd1480fc6589edc",
+      "package-lock.json": "e7cddcd2aa8a768818b1c513b818759c9094b4b07bbd01df4fb9ca1b6eb5cef4"
+    },
+    "registry037Inputs": {
+      "package.json": "cd13748fd683ee4f4d80e2244f210c4597164d4813c381855c2cd2242bf70579",
+      "apps/threadplane/package.json": "3afbc08f65dfe915bbf776859cf4fdcf9b518ee78c45ace6afc9d62f02cb6da4",
+      "package-lock.json": "3462a5fde17e5c08d2b6f579bbfc9aec1f0c00343e092296857c9d4dcbabf482"
+    },
+    "selectedSourceHashes": {
+      "package.json": "cd13748fd683ee4f4d80e2244f210c4597164d4813c381855c2cd2242bf70579",
+      "apps/threadplane/package.json": "3afbc08f65dfe915bbf776859cf4fdcf9b518ee78c45ace6afc9d62f02cb6da4",
+      "package-lock.json": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "runtimePackageNames": [
+      "@threadplane/a2ui",
+      "@threadplane/chat",
+      "@threadplane/langgraph",
+      "@threadplane/render",
+      "@threadplane/telemetry"
+    ],
+    "vendorPackagesSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sourceProofRefs": [
+      {
+        "path": "/private/tmp/synthetic-source-proof",
+        "bytes": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ],
+    "artifacts": [
+      {
+        "name": "@threadplane/a2ui",
+        "version": "0.3.7",
+        "sourceRef": {
+          "path": "/private/tmp/synthetic-a2ui.tgz",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "relativeTarballPath": "local-packages/local-owned-markdown/control/a2ui.tgz",
+        "bytes": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "integrity": "sha512-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ==",
+        "files": [
+          {
+            "path": "package.json",
+            "bytes": 1,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ],
+        "manifest": {
+          "name": "@threadplane/a2ui",
+          "version": "0.3.7"
+        }
+      },
+      {
+        "name": "@threadplane/ag-ui",
+        "version": "0.3.7",
+        "sourceRef": {
+          "path": "/private/tmp/synthetic-ag-ui.tgz",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "relativeTarballPath": "local-packages/local-owned-markdown/control/ag-ui.tgz",
+        "bytes": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "integrity": "sha512-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ==",
+        "files": [
+          {
+            "path": "package.json",
+            "bytes": 1,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ],
+        "manifest": {
+          "name": "@threadplane/ag-ui",
+          "version": "0.3.7"
+        }
+      },
+      {
+        "name": "@threadplane/chat",
+        "version": "0.3.7",
+        "sourceRef": {
+          "path": "/private/tmp/synthetic-chat.tgz",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "relativeTarballPath": "local-packages/local-owned-markdown/control/chat.tgz",
+        "bytes": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "integrity": "sha512-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ==",
+        "files": [
+          {
+            "path": "package.json",
+            "bytes": 1,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ],
+        "manifest": {
+          "name": "@threadplane/chat",
+          "version": "0.3.7",
+          "scripts": {
+            "postinstall": "synthetic parser model only"
+          },
+          "dependencies": {
+            "@cacheplane/partial-json": ">=0.1.1 <0.3.0",
+            "@cacheplane/partial-markdown": "0.5.8",
+            "tslib": "^2.3.0"
+          },
+          "peerDependencies": {
+            "@angular/common": "^20.0.0 || ^21.0.0 || ^22.0.0",
+            "@angular/core": "^20.0.0 || ^21.0.0 || ^22.0.0",
+            "@angular/platform-browser": "^20.0.0 || ^21.0.0 || ^22.0.0",
+            "@angular/router": "^20.0.0 || ^21.0.0 || ^22.0.0",
+            "@json-render/core": "^0.16.0",
+            "@threadplane/a2ui": "0.3.7",
+            "@threadplane/render": "0.3.7",
+            "@threadplane/telemetry": "^0.3.7",
+            "katex": "^0.16.0 || ^0.17.0",
+            "marked": "^15.0.0 || ^16.0.0",
+            "rxjs": "~7.8.0",
+            "zod": "^3.25.0 || ^4.0.0"
+          },
+          "peerDependenciesMeta": {
+            "katex": {
+              "optional": true
+            }
+          }
+        }
+      },
+      {
+        "name": "@threadplane/langgraph",
+        "version": "0.3.7",
+        "sourceRef": {
+          "path": "/private/tmp/synthetic-langgraph.tgz",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "relativeTarballPath": "local-packages/local-owned-markdown/control/langgraph.tgz",
+        "bytes": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "integrity": "sha512-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ==",
+        "files": [
+          {
+            "path": "package.json",
+            "bytes": 1,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ],
+        "manifest": {
+          "name": "@threadplane/langgraph",
+          "version": "0.3.7",
+          "scripts": {
+            "postinstall": "synthetic parser model only"
+          },
+          "dependencies": {
+            "tslib": "^2.3.0"
+          },
+          "peerDependencies": {
+            "@angular/core": "^20.0.0 || ^21.0.0 || ^22.0.0",
+            "@langchain/core": "^1.1.33",
+            "@langchain/langgraph-sdk": "^1.7.4",
+            "@threadplane/chat": "0.3.7",
+            "@threadplane/telemetry": "^0.3.7",
+            "rxjs": "~7.8.0"
+          }
+        }
+      },
+      {
+        "name": "@threadplane/render",
+        "version": "0.3.7",
+        "sourceRef": {
+          "path": "/private/tmp/synthetic-render.tgz",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "relativeTarballPath": "local-packages/local-owned-markdown/control/render.tgz",
+        "bytes": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "integrity": "sha512-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ==",
+        "files": [
+          {
+            "path": "package.json",
+            "bytes": 1,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ],
+        "manifest": {
+          "name": "@threadplane/render",
+          "version": "0.3.7",
+          "scripts": {
+            "postinstall": "synthetic parser model only"
+          },
+          "dependencies": {
+            "tslib": "^2.3.0"
+          },
+          "peerDependencies": {
+            "@angular/common": "^20.0.0 || ^21.0.0 || ^22.0.0",
+            "@angular/core": "^20.0.0 || ^21.0.0 || ^22.0.0",
+            "@json-render/core": "^0.16.0",
+            "@threadplane/telemetry": "^0.3.7"
+          }
+        }
+      },
+      {
+        "name": "@threadplane/telemetry",
+        "version": "0.3.7",
+        "sourceRef": {
+          "path": "/private/tmp/synthetic-telemetry.tgz",
+          "bytes": 1,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "relativeTarballPath": "local-packages/local-owned-markdown/control/telemetry.tgz",
+        "bytes": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "integrity": "sha512-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ==",
+        "files": [
+          {
+            "path": "package.json",
+            "bytes": 1,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ],
+        "manifest": {
+          "name": "@threadplane/telemetry",
+          "version": "0.3.7",
+          "peerDependencies": {
+            "@angular/core": "^20.0.0 || ^21.0.0 || ^22.0.0",
+            "posthog-js": "^1.372.0"
+          },
+          "peerDependenciesMeta": {
+            "@angular/core": {
+              "optional": true
+            },
+            "posthog-js": {
+              "optional": true
+            }
+          }
+        }
+      }
+    ]
+  },
+  "selection": {
+    "selection": "local-source-built-owned-markdown-037-v1",
+    "role": "control",
+    "version": "0.3.7",
+    "selectedSourceHashes": {
+      "package.json": "cd13748fd683ee4f4d80e2244f210c4597164d4813c381855c2cd2242bf70579",
+      "apps/threadplane/package.json": "3afbc08f65dfe915bbf776859cf4fdcf9b518ee78c45ace6afc9d62f02cb6da4",
+      "package-lock.json": "cfea8c01d1d2ec7234c8e4d733b88bb4daff2e28063f31882c0656d7e84f4672"
+    },
+    "publishedStockEvidence": false,
+    "appManifestBytes": {
+      "bytes": 1098,
+      "sha256": "3afbc08f65dfe915bbf776859cf4fdcf9b518ee78c45ace6afc9d62f02cb6da4"
+    },
+    "selectedLockBytes": {
+      "bytes": 1183579,
+      "sha256": "cfea8c01d1d2ec7234c8e4d733b88bb4daff2e28063f31882c0656d7e84f4672"
+    }
+  },
+  "admission": {
+    "ordinal": 0,
+    "result": {
+      "schema": "four-stack-matrix-case-v5",
+      "purpose": "functional-conformance-development",
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-1",
+      "kind": "positive",
+      "profile": "threadplane",
+      "historyCount": 1000,
+      "responseBytes": 6400,
+      "journey": "follow",
+      "status": "matrix-pass",
+      "failure": null,
+      "unsafeOutstanding": false,
+      "stopInvocation": false,
+      "performance": false,
+      "scoringEligibility": false,
+      "FPS": null,
+      "fixtureDigests": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      "admission": {
+        "schema": "four-stack-matrix-conformance-v5",
+        "profile": "threadplane",
+        "status": "functional-pass",
+        "workload": {
+          "seed": 1,
+          "historyCount": 1000,
+          "responseBytes": 6400,
+          "journey": "follow",
+          "deltaCount": 200,
+          "deltaIntervalMs": 50
+        },
+        "performance": false,
+        "scoringEligibility": false,
+        "FPS": null,
+        "acquisition": {
+          "contract": "matrix-acquisition-v5",
+          "nativeHistoryGesture": "visible-response-below-viewport-one-response-headroom-v4",
+          "orchestration": "matrix-browser-local-readiness-v1",
+          "sourceProtocol": "matrix-v3",
+          "sourceContextSchema": 2
+        }
+      },
+      "traceDiagnostic": {
+        "schema": "threadplane-aimock-trace-case-v3",
+        "profile": "threadplane",
+        "status": "complete",
+        "failure": null,
+        "buildSha256": "9999999999999999999999999999999999999999999999999999999999999999"
+      },
+      "localOwnedMarkdown": {
+        "schema": "threadplane-local-owned-markdown-case-v1",
+        "experimentId": "local-owned-markdown-v1",
+        "stock": false,
+        "sourceFlavor": "local-source-built-owned-markdown-v1",
+        "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-1",
+        "ordinal": 0,
+        "role": "control",
+        "parentId": "threadplane-h1000-r6400-follow",
+        "round": 1,
+        "stratum": 0,
+        "block": 1,
+        "position": 1,
+        "selection": {
+          "profile": "threadplane",
+          "historyCount": 1000,
+          "responseBytes": 6400,
+          "journey": "follow"
+        },
+        "localBuild": {
+          "schema": "threadplane-local-owned-markdown-build-identity-v1",
+          "experimentId": "local-owned-markdown-v1",
+          "role": "control",
+          "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sourceTree": "cccccccccccccccccccccccccccccccccccccccc",
+          "selectionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "executionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "toolingSourceHashes": {
+            "tools/example.mjs": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "fixedRoot": "/fixed/control",
+          "label": "local-source-built-owned-markdown-037",
+          "stock": false
+        },
+        "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sourceTree": "cccccccccccccccccccccccccccccccccccccccc",
+        "selectionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "executionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "buildSha256": "9999999999999999999999999999999999999999999999999999999999999999",
+        "performance": false,
+        "scoringEligibility": false,
+        "FPS": null,
+        "cpuTime": null
+      },
+      "acquisition": {
+        "contract": "matrix-acquisition-v5",
+        "nativeHistoryGesture": "visible-response-below-viewport-one-response-headroom-v4",
+        "orchestration": "matrix-browser-local-readiness-v1",
+        "sourceProtocol": "matrix-v3",
+        "sourceContextSchema": 2
+      }
+    },
+    "identity": {
+      "schema": "threadplane-local-owned-markdown-build-identity-v1",
+      "experimentId": "local-owned-markdown-v1",
+      "role": "control",
+      "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sourceTree": "cccccccccccccccccccccccccccccccccccccccc",
+      "selectionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "executionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "toolingSourceHashes": {
+        "tools/example.mjs": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "fixedRoot": "/fixed/control",
+      "label": "local-source-built-owned-markdown-037",
+      "stock": false
+    },
+    "buildSha256": "9999999999999999999999999999999999999999999999999999999999999999",
+    "fixture": {
+      "status": "verified-canonical",
+      "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    "traceValid": true
+  },
+  "facts": {
+    "schema": "threadplane-local-owned-markdown-preparation-facts-v2",
+    "buildRecordRef": {
+      "bytes": 10,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "parsedBuildSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "probeRecordRef": {
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "build": {
+      "production": true
+    }
+  },
+  "execution": {
+    "buildRecordBytes": 10,
+    "buildRecordSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "parsedBuildSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "probeRecordSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "preparationProofSha256": "0e3fa5036e5d5c0195ffef475e25f1f6398e719f11a6cb0b8a2d4609dc5654c8"
+  },
+  "joinedBuild": {
+    "production": true
+  },
+  "rows": [
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-1",
+      "ordinal": 0,
+      "role": "control",
+      "round": 1,
+      "stratum": 0,
+      "block": 1,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-1",
+      "ordinal": 1,
+      "role": "candidate",
+      "round": 1,
+      "stratum": 0,
+      "block": 1,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-1",
+      "ordinal": 2,
+      "role": "candidate",
+      "round": 1,
+      "stratum": 1,
+      "block": 2,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-1",
+      "ordinal": 3,
+      "role": "control",
+      "round": 1,
+      "stratum": 1,
+      "block": 2,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-1",
+      "ordinal": 4,
+      "role": "control",
+      "round": 1,
+      "stratum": 2,
+      "block": 3,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-1",
+      "ordinal": 5,
+      "role": "candidate",
+      "round": 1,
+      "stratum": 2,
+      "block": 3,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 90000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-1",
+      "ordinal": 6,
+      "role": "candidate",
+      "round": 1,
+      "stratum": 3,
+      "block": 4,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 90000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-1",
+      "ordinal": 7,
+      "role": "control",
+      "round": 1,
+      "stratum": 3,
+      "block": 4,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-2",
+      "ordinal": 8,
+      "role": "candidate",
+      "round": 2,
+      "stratum": 0,
+      "block": 5,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-2",
+      "ordinal": 9,
+      "role": "control",
+      "round": 2,
+      "stratum": 0,
+      "block": 5,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-2",
+      "ordinal": 10,
+      "role": "control",
+      "round": 2,
+      "stratum": 1,
+      "block": 6,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-2",
+      "ordinal": 11,
+      "role": "candidate",
+      "round": 2,
+      "stratum": 1,
+      "block": 6,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-2",
+      "ordinal": 12,
+      "role": "candidate",
+      "round": 2,
+      "stratum": 2,
+      "block": 7,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 90000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-2",
+      "ordinal": 13,
+      "role": "control",
+      "round": 2,
+      "stratum": 2,
+      "block": 7,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-2",
+      "ordinal": 14,
+      "role": "control",
+      "round": 2,
+      "stratum": 3,
+      "block": 8,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-2",
+      "ordinal": 15,
+      "role": "candidate",
+      "round": 2,
+      "stratum": 3,
+      "block": 8,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 90000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-3",
+      "ordinal": 16,
+      "role": "control",
+      "round": 3,
+      "stratum": 0,
+      "block": 9,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-3",
+      "ordinal": 17,
+      "role": "candidate",
+      "round": 3,
+      "stratum": 0,
+      "block": 9,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-3",
+      "ordinal": 18,
+      "role": "candidate",
+      "round": 3,
+      "stratum": 1,
+      "block": 10,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-3",
+      "ordinal": 19,
+      "role": "control",
+      "round": 3,
+      "stratum": 1,
+      "block": 10,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-3",
+      "ordinal": 20,
+      "role": "control",
+      "round": 3,
+      "stratum": 2,
+      "block": 11,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-3",
+      "ordinal": 21,
+      "role": "candidate",
+      "round": 3,
+      "stratum": 2,
+      "block": 11,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 90000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-3",
+      "ordinal": 22,
+      "role": "candidate",
+      "round": 3,
+      "stratum": 3,
+      "block": 12,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 90000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-3",
+      "ordinal": 23,
+      "role": "control",
+      "round": 3,
+      "stratum": 3,
+      "block": 12,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    }
+  ],
+  "holdRows": [
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-1",
+      "ordinal": 0,
+      "role": "control",
+      "round": 1,
+      "stratum": 0,
+      "block": 1,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-1",
+      "ordinal": 1,
+      "role": "candidate",
+      "round": 1,
+      "stratum": 0,
+      "block": 1,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-1",
+      "ordinal": 2,
+      "role": "candidate",
+      "round": 1,
+      "stratum": 1,
+      "block": 2,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-1",
+      "ordinal": 3,
+      "role": "control",
+      "round": 1,
+      "stratum": 1,
+      "block": 2,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-1",
+      "ordinal": 4,
+      "role": "control",
+      "round": 1,
+      "stratum": 2,
+      "block": 3,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-1",
+      "ordinal": 5,
+      "role": "candidate",
+      "round": 1,
+      "stratum": 2,
+      "block": 3,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-1",
+      "ordinal": 6,
+      "role": "candidate",
+      "round": 1,
+      "stratum": 3,
+      "block": 4,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 90000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-1",
+      "ordinal": 7,
+      "role": "control",
+      "round": 1,
+      "stratum": 3,
+      "block": 4,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-2",
+      "ordinal": 8,
+      "role": "candidate",
+      "round": 2,
+      "stratum": 0,
+      "block": 5,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-2",
+      "ordinal": 9,
+      "role": "control",
+      "round": 2,
+      "stratum": 0,
+      "block": 5,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-2",
+      "ordinal": 10,
+      "role": "control",
+      "round": 2,
+      "stratum": 1,
+      "block": 6,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-2",
+      "ordinal": 11,
+      "role": "candidate",
+      "round": 2,
+      "stratum": 1,
+      "block": 6,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-2",
+      "ordinal": 12,
+      "role": "candidate",
+      "round": 2,
+      "stratum": 2,
+      "block": 7,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 90000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-2",
+      "ordinal": 13,
+      "role": "control",
+      "round": 2,
+      "stratum": 2,
+      "block": 7,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-2",
+      "ordinal": 14,
+      "role": "control",
+      "round": 2,
+      "stratum": 3,
+      "block": 8,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-2",
+      "ordinal": 15,
+      "role": "candidate",
+      "round": 2,
+      "stratum": 3,
+      "block": 8,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 90000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-3",
+      "ordinal": 16,
+      "role": "control",
+      "round": 3,
+      "stratum": 0,
+      "block": 9,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-3",
+      "ordinal": 17,
+      "role": "candidate",
+      "round": 3,
+      "stratum": 0,
+      "block": 9,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-3",
+      "ordinal": 18,
+      "role": "candidate",
+      "round": 3,
+      "stratum": 1,
+      "block": 10,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-3",
+      "ordinal": 19,
+      "role": "control",
+      "round": 3,
+      "stratum": 1,
+      "block": 10,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-3",
+      "ordinal": 20,
+      "role": "control",
+      "round": 3,
+      "stratum": 2,
+      "block": 11,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-3",
+      "ordinal": 21,
+      "role": "candidate",
+      "round": 3,
+      "stratum": 2,
+      "block": 11,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 90000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-3",
+      "ordinal": 22,
+      "role": "candidate",
+      "round": 3,
+      "stratum": 3,
+      "block": 12,
+      "position": 1,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 90000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    },
+    {
+      "id": "threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-3",
+      "ordinal": 23,
+      "role": "control",
+      "round": 3,
+      "stratum": 3,
+      "block": 12,
+      "position": 2,
+      "qualified": true,
+      "fixture": {
+        "sourceSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "historySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "responseSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "sourceDeltaSha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "costs": {
+        "tasks": {
+          "observedCompleteEvents": 1,
+          "longTaskEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 1,
+              "timestampUs": 10,
+              "durationUs": 100000
+            }
+          ]
+        },
+        "layouts": {
+          "observedCompleteEvents": 1,
+          "longest": [
+            {
+              "eventIndex": 2,
+              "timestampUs": 20,
+              "durationUs": 1000
+            }
+          ]
+        },
+        "minorGC": {
+          "observedCompleteEvents": 0,
+          "longest": []
+        }
+      }
+    }
+  ],
+  "benefit": {
+    "schema": "threadplane-local-owned-markdown-decision-v1",
+    "decisionSha256": "fda4958afce1597ec1e3e0e1387335456cdc34bf126eec595ebdb36750987b63",
+    "eligible": true,
+    "decision": "benefit-observed",
+    "strata": [
+      {
+        "stratum": 0,
+        "historyCount": 1000,
+        "journey": "follow",
+        "control": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "candidate": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "paired": [
+          {
+            "round": 1,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 2,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 3,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          }
+        ],
+        "taskRangesOverlap": true,
+        "layoutRangesOverlap": true,
+        "layoutPass": true,
+        "taskPass": true
+      },
+      {
+        "stratum": 1,
+        "historyCount": 1000,
+        "journey": "history-reading",
+        "control": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "candidate": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "paired": [
+          {
+            "round": 1,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 2,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 3,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          }
+        ],
+        "taskRangesOverlap": true,
+        "layoutRangesOverlap": true,
+        "layoutPass": true,
+        "taskPass": true
+      },
+      {
+        "stratum": 2,
+        "historyCount": 10000,
+        "journey": "follow",
+        "control": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "candidate": {
+          "tasks": {
+            "roundValues": [
+              90000,
+              90000,
+              90000
+            ],
+            "min": 90000,
+            "median": 90000,
+            "max": 90000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "paired": [
+          {
+            "round": 1,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 90000,
+            "differenceUs": -10000,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 2,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 90000,
+            "differenceUs": -10000,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 3,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 90000,
+            "differenceUs": -10000,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          }
+        ],
+        "taskRangesOverlap": false,
+        "layoutRangesOverlap": true,
+        "layoutPass": true,
+        "taskPass": true
+      },
+      {
+        "stratum": 3,
+        "historyCount": 10000,
+        "journey": "history-reading",
+        "control": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "candidate": {
+          "tasks": {
+            "roundValues": [
+              90000,
+              90000,
+              90000
+            ],
+            "min": 90000,
+            "median": 90000,
+            "max": 90000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "paired": [
+          {
+            "round": 1,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 90000,
+            "differenceUs": -10000,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 2,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 90000,
+            "differenceUs": -10000,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 3,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 90000,
+            "differenceUs": -10000,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          }
+        ],
+        "taskRangesOverlap": false,
+        "layoutRangesOverlap": true,
+        "layoutPass": true,
+        "taskPass": true
+      }
+    ],
+    "failures": [],
+    "performance": false,
+    "scoringEligibility": false,
+    "FPS": null,
+    "cpuTime": null
+  },
+  "hold": {
+    "schema": "threadplane-local-owned-markdown-decision-v1",
+    "decisionSha256": "fda4958afce1597ec1e3e0e1387335456cdc34bf126eec595ebdb36750987b63",
+    "eligible": true,
+    "decision": "hold",
+    "strata": [
+      {
+        "stratum": 0,
+        "historyCount": 1000,
+        "journey": "follow",
+        "control": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "candidate": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "paired": [
+          {
+            "round": 1,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 2,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 3,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          }
+        ],
+        "taskRangesOverlap": true,
+        "layoutRangesOverlap": true,
+        "layoutPass": true,
+        "taskPass": true
+      },
+      {
+        "stratum": 1,
+        "historyCount": 1000,
+        "journey": "history-reading",
+        "control": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "candidate": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "paired": [
+          {
+            "round": 1,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 2,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 3,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          }
+        ],
+        "taskRangesOverlap": true,
+        "layoutRangesOverlap": true,
+        "layoutPass": true,
+        "taskPass": true
+      },
+      {
+        "stratum": 2,
+        "historyCount": 10000,
+        "journey": "follow",
+        "control": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "candidate": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              90000,
+              90000
+            ],
+            "min": 90000,
+            "median": 90000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "paired": [
+          {
+            "round": 1,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 100000,
+            "differenceUs": 0,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 2,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 90000,
+            "differenceUs": -10000,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 3,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 90000,
+            "differenceUs": -10000,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          }
+        ],
+        "taskRangesOverlap": true,
+        "layoutRangesOverlap": true,
+        "layoutPass": true,
+        "taskPass": false
+      },
+      {
+        "stratum": 3,
+        "historyCount": 10000,
+        "journey": "history-reading",
+        "control": {
+          "tasks": {
+            "roundValues": [
+              100000,
+              100000,
+              100000
+            ],
+            "min": 100000,
+            "median": 100000,
+            "max": 100000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "candidate": {
+          "tasks": {
+            "roundValues": [
+              90000,
+              90000,
+              90000
+            ],
+            "min": 90000,
+            "median": 90000,
+            "max": 90000
+          },
+          "layouts": {
+            "roundValues": [
+              1000,
+              1000,
+              1000
+            ],
+            "min": 1000,
+            "median": 1000,
+            "max": 1000
+          },
+          "longTaskCounts": [
+            1,
+            1,
+            1
+          ],
+          "minorGC": [
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            },
+            {
+              "observedCompleteEvents": 0,
+              "maxDurationUs": 0,
+              "longest": []
+            }
+          ]
+        },
+        "paired": [
+          {
+            "round": 1,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 90000,
+            "differenceUs": -10000,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 2,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 90000,
+            "differenceUs": -10000,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          },
+          {
+            "round": 3,
+            "controlTaskMaxUs": 100000,
+            "candidateTaskMaxUs": 90000,
+            "differenceUs": -10000,
+            "controlLayoutMaxUs": 1000,
+            "candidateLayoutMaxUs": 1000,
+            "layoutDifferenceUs": 0
+          }
+        ],
+        "taskRangesOverlap": false,
+        "layoutRangesOverlap": true,
+        "layoutPass": true,
+        "taskPass": true
+      }
+    ],
+    "failures": [
+      "stratum-2-tasks"
+    ],
+    "performance": false,
+    "scoringEligibility": false,
+    "FPS": null,
+    "cpuTime": null
+  },
+  "ineligible": {
+    "schema": "threadplane-local-owned-markdown-decision-v1",
+    "decisionSha256": "fda4958afce1597ec1e3e0e1387335456cdc34bf126eec595ebdb36750987b63",
+    "eligible": false,
+    "decision": "hold",
+    "strata": [],
+    "failures": [
+      "local-owned-markdown-eligibility"
+    ],
+    "performance": false,
+    "scoringEligibility": false,
+    "FPS": null,
+    "cpuTime": null
+  },
+  "functionMetadata": {
+    "fixed": {
+      "assertLocalOwnedMarkdownActivationSourceV1": {
+        "name": "assertLocalOwnedMarkdownActivationSourceV1",
+        "length": 2
+      },
+      "assertLocalOwnedMarkdownExecutionsReadyV1": {
+        "name": "assertLocalOwnedMarkdownExecutionsReadyV1",
+        "length": 0
+      },
+      "assertLocalOwnedMarkdownSelectionsReadyV1": {
+        "name": "assertLocalOwnedMarkdownSelectionsReadyV1",
+        "length": 0
+      },
+      "immutableLocalOwnedMarkdownExperimentRecordV1": {
+        "name": "immutableLocalOwnedMarkdownExperimentRecordV1",
+        "length": 1
+      },
+      "localOwnedMarkdownDigestV1": {
+        "name": "localOwnedMarkdownDigestV1",
+        "length": 1
+      },
+      "localOwnedMarkdownExecutionIdentityV1": {
+        "name": "localOwnedMarkdownExecutionIdentityV1",
+        "length": 1
+      },
+      "localOwnedMarkdownGitExecutableV1": {
+        "name": "localOwnedMarkdownGitExecutableV1",
+        "length": 0
+      },
+      "localOwnedMarkdownRoleRootV1": {
+        "name": "localOwnedMarkdownRoleRootV1",
+        "length": 1
+      },
+      "localOwnedMarkdownRosterV1": {
+        "name": "localOwnedMarkdownRosterV1",
+        "length": 0
+      },
+      "localOwnedMarkdownSelectionIdentityV1": {
+        "name": "localOwnedMarkdownSelectionIdentityV1",
+        "length": 1
+      },
+      "localOwnedMarkdownSlotV1": {
+        "name": "localOwnedMarkdownSlotV1",
+        "length": 1
+      },
+      "validateLocalOwnedMarkdownExperimentRecordV1": {
+        "name": "validateLocalOwnedMarkdownExperimentRecordV1",
+        "length": 1
+      }
+    },
+    "selector": {
+      "deriveLocalOwnedMarkdownSelectionV1": {
+        "name": "deriveLocalSharedSignalsSelectionV1",
+        "length": 2
+      },
+      "selectLocalOwnedMarkdownDependenciesV1": {
+        "name": "selectLocalSharedSignalsDependenciesV1",
+        "length": 1
+      }
+    },
+    "build": {
+      "assertLocalOwnedMarkdownExecutionFactsV1": {
+        "name": "assertLocalSharedSignalsExecutionFactsV1",
+        "length": 3
+      },
+      "assertLocalOwnedMarkdownToolingBookendsV1": {
+        "name": "assertLocalSharedSignalsToolingBookendsV1",
+        "length": 2
+      },
+      "createLocalOwnedMarkdownBuildGuardV1": {
+        "name": "createLocalSharedSignalsBuildGuardV1",
+        "length": 1
+      },
+      "inspectLocalOwnedMarkdownTarV1": {
+        "name": "inspectLocalSharedSignalsTarV1",
+        "length": 1
+      },
+      "readLocalOwnedMarkdownPreparationFactsV1": {
+        "name": "readLocalSharedSignalsPreparationFactsV1",
+        "length": 1
+      },
+      "waitLocalOwnedMarkdownOriginalV1": {
+        "name": "waitLocalSharedSignalsOriginalV1",
+        "length": 4
+      }
+    },
+    "coordinator": {
+      "admitLocalOwnedMarkdownCaseV1": {
+        "name": "admitLocalSharedSignalsCaseV1",
+        "length": 1
+      },
+      "decideLocalOwnedMarkdownBenefitV1": {
+        "name": "decideLocalSharedSignalsBenefitV1",
+        "length": 1
+      },
+      "runAimockLocalOwnedMarkdownInvocationV1": {
+        "name": "runAimockLocalSharedSignalsInvocationV1",
+        "length": 1
+      }
+    }
+  },
+  "characterization": {
+    "sourceCommit": "bef4f2bb925910c7bba58699c64e5f3d883decbf",
+    "meaning": "Actual pre-v2 pure outputs on authored synthetic data; not source/build/fixture/native authority. Freeze; never regenerate to accommodate behavior drift."
+  }
+}
