@@ -39,7 +39,7 @@ test('real local NULL gate precedes even caller property inspection',async()=>{
 test('source-extracted local entry verifies its genuine guard before native acquisition',async()=>{
  const entry=body(source,'export async function runLocalSharedSignalsCaseV1(input){','\nasync function installMatrixThreadplaneBridge(').replace('export async function','async function');
  const slot={id:'fixed-local',role:'control'},events=[],tokens=new WeakMap();let resolve;const original=new Promise(r=>resolve=r);
- const run=AsyncFunction('p',`const {path,slot,tokens}=p,ROOT='/fixed/control/',LOCAL_SHARED_SIGNALS_TOKENS=tokens,performance={now:()=>1},STAGES={transcript:10000},assertLocalSharedSignalsExecutionsReadyV1=()=>{},localSharedSignalsSlotV1=i=>{if(i!==0)throw Error('ordinal');return slot;},localSharedSignalsRoleRootV1=()=>'/fixed/control',createMatrixDeadline=()=>({wait:async x=>x,remaining:()=>240000}),waitLocalSharedSignalsOriginalV1=p.wait,createLocalSharedSignalsBuildGuardV1=p.guard,threadplaneBuildEvidence=p.read,runMatrixCaseOriginal=p.native;${entry};return runLocalSharedSignalsCaseV1(p.input);`);
+ const run=AsyncFunction('p',`const {path,slot,tokens}=p,ROOT='/fixed/control/',LOCAL_SHARED_SIGNALS_TOKENS=tokens,SHARED_SIGNALS_NATIVE_HANDLE=Object.freeze({}),performance={now:()=>1},STAGES={transcript:10000},assertLocalSharedSignalsExecutionsReadyV1=()=>{},localSharedSignalsSlotV1=i=>{if(i!==0)throw Error('ordinal');return slot;},localSharedSignalsRoleRootV1=()=>'/fixed/control',createMatrixDeadline=()=>({wait:async x=>x,remaining:()=>240000}),waitLocalSharedSignalsOriginalV1=p.wait,createLocalSharedSignalsBuildGuardV1=p.guard,threadplaneBuildEvidence=p.read,runMatrixCaseOriginal=p.native;${entry};return runLocalSharedSignalsCaseV1(p.input);`);
  const input={ordinal:0,store:{},out:'/out',invocationStarted:0},pending=run({path,slot,tokens,input,wait:async x=>x,guard:async()=>({identity:{stock:false},verify:async build=>{events.push('guard-verify');return original;}}),read:async()=>({genuine:true}),native:async(args,token)=>{events.push('native');assert.equal(args.slot,slot);assert.equal(tokens.get(token).ordinal,0);return{complete:true};}});
  await new Promise(setImmediate);assert.deepEqual(events,['guard-verify']);resolve({genuine:true});assert.deepEqual(await pending,{complete:true});assert.deepEqual(events,['guard-verify','native']);
 });
@@ -48,10 +48,10 @@ test('ordinary stock entry refuses every local ID before native fixture acquisit
  for(const role of ['control','candidate'])await assert.rejects(run({id:'threadplane-h1000-r6400-follow-local-shared-signals-v1-'+role+'-round-1',selection:{profile:'threadplane'}}),/local-shared-signals-ordinary-entry/);
 });
 test('private local mode uses actual guard and numeric compatibility wire without enabling CPU sampling',async()=>{
- const {seams}=parse(source),token={},tokens=new WeakMap(),slot={id:'threadplane-h1000-r6400-follow-local-shared-signals-v1-control-round-1',role:'control',selection:{profile:'threadplane'}},build={genuine:'default-production',assetHashes:{}},events=[];
- tokens.set(token,{slot,ordinal:0,guard:{identity:{stock:false},verify:async value=>{events.push('verify');assert.equal(value,build);return value;}}});
- const run=AsyncFunction('p','token',`const LOCAL_SHARED_SIGNALS_TOKENS=p.tokens,STOCK037_CPU_TOKEN=Symbol('cpu'),{slot,build}=p,{createHash}=p,profile='threadplane',historyCount=1000,responseBytes=6400,journey='follow',started=0,performance={now:()=>1},deadline={remaining:()=>240000},STAGES={transcript:10000,progress:10000},wait=async x=>x,browser={},context={},page={},server={origin:'http://localhost'},stock037PublishedIdentityV1=()=>{throw Error('published-guard-must-not-authorize-local');},threadplaneBuildEvidence=async()=>build,waitLocalSharedSignalsOriginalV1=async x=>x,waitStock037BuildOriginalV1=async()=>{throw Error('stock-wait');},assertStock037BuildV1=()=>{throw Error('stock-build');},createAimockTraceCaptureV3=options=>{p.events.push('capture');return{setup:async()=>{},assertBeforeStart(){}};};${seams.create}${seams.setup};return{cpuMode,traceIdentity};`);
- const out=await run({tokens,slot,build,createHash,events},token);assert.equal(out.cpuMode,false);assert.equal(out.traceIdentity.stockVersion,'0.3.7');assert.equal(out.traceIdentity.buildSha256,sha(JSON.stringify(build)));assert.deepEqual(events,['verify','capture']);
+ const {seams}=parse(source),token={},policyHandle=Object.freeze({}),tokens=new WeakMap(),slot={id:'threadplane-h1000-r6400-follow-local-shared-signals-v1-control-round-1',role:'control',selection:{profile:'threadplane'}},build={genuine:'default-production',assetHashes:{}},events=[];
+ tokens.set(token,{policyHandle,slot,ordinal:0,guard:{identity:{stock:false},verify:async value=>{events.push('verify');assert.equal(value,build);return value;}}});
+ const run=AsyncFunction('p','token',`const LOCAL_SHARED_SIGNALS_TOKENS=p.tokens,LOCAL_NATIVE_BINDINGS=new WeakMap([[p.policyHandle,{policy:{id:"local-shared-signals-v1",prefix:"local-shared-signals"},slot:()=>p.slot,wait:async x=>x}]]),STOCK037_CPU_TOKEN=Symbol('cpu'),{slot,build}=p,{createHash}=p,profile='threadplane',historyCount=1000,responseBytes=6400,journey='follow',started=0,performance={now:()=>1},deadline={remaining:()=>240000},STAGES={transcript:10000,progress:10000},wait=async x=>x,browser={},context={},page={},server={origin:'http://localhost'},stock037PublishedIdentityV1=()=>{throw Error('published-guard-must-not-authorize-local');},threadplaneBuildEvidence=async()=>build,waitLocalSharedSignalsOriginalV1=async x=>x,waitStock037BuildOriginalV1=async()=>{throw Error('stock-wait');},assertStock037BuildV1=()=>{throw Error('stock-build');},createAimockTraceCaptureV3=options=>{p.events.push('capture');return{setup:async()=>{},assertBeforeStart(){}};};${seams.create}${seams.setup};return{cpuMode,traceIdentity};`);
+ const out=await run({tokens,policyHandle,slot,build,createHash,events},token);assert.equal(out.cpuMode,false);assert.equal(out.traceIdentity.stockVersion,'0.3.7');assert.equal(out.traceIdentity.buildSha256,sha(JSON.stringify(build)));assert.deepEqual(events,['verify','capture']);
 });
 test('strict eight-seam parser and exact native V5/wrapper/bridge bytes',()=>{
  const parsed=parse(source);let actual=body(parsed.native,'async function runMatrixCaseOriginal(');
@@ -67,7 +67,7 @@ test('strict eight-seam parser and exact native V5/wrapper/bridge bytes',()=>{
  for(const malformed of [source+' // TRACE-V3-BEGIN ninth\n // TRACE-V3-END ninth\n',source.replace(' // TRACE-V3-END stop\n',''),source.replace(' // TRACE-V3-BEGIN ack\n',''),source.replace(' // TRACE-V3-BEGIN ack\n',' // TRACE-V3-BEGIN finish\n')])assert.throws(()=>parse(malformed));
 });
 test('case has only fixed local, ordinary and fixed CPU exports and remains fixed037 at its local identity gate',async()=>{
- assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(m=>m[1]),['runLocalSharedSignalsCaseV1','runMatrixCase','runStock037CpuDiagnosticCaseV1']);
+ assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(m=>m[1]),['runLocalOwnedMarkdownCaseV1','runLocalSharedSignalsCaseV1','runMatrixCase','runStock037CpuDiagnosticCaseV1']);
  const {seams}=parse(source),prefix=seams.publish.slice(0,seams.publish.indexOf(' const traceDiagnostic='));
  const check=AsyncFunction('value','createHash','TRACE_POLICY','TRACE_POLICY_SHA256',prefix+'validateIdentity(value);return true;');
  const identity={id:'stock037-case',profile:'threadplane',historyCount:10,responseBytes:100,journey:'history-reading',stockVersion:'0.3.7',buildSha256:'a'.repeat(64)};
@@ -113,6 +113,9 @@ test('complete imports are closed, with no child, guard override or alternate de
  "import {SEMANTIC_LARGE_V3_POLICY as TRACE_POLICY,SEMANTIC_LARGE_V3_POLICY_SHA256 as TRACE_POLICY_SHA256} from './semantic-large-v3-policy.mjs';",
  "import {assertLocalSharedSignalsExecutionsReadyV1,localSharedSignalsSlotV1,localSharedSignalsRoleRootV1} from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';",
  "import {createLocalSharedSignalsBuildGuardV1,waitLocalSharedSignalsOriginalV1} from './threadplane-local-shared-signals-build-v1.mjs';",
+ "import {assertLocalOwnedMarkdownExecutionsReadyV1,localOwnedMarkdownSlotV1,localOwnedMarkdownRoleRootV1} from '../threadplane-local-owned-markdown/fixed-experiment-v1.mjs';",
+ "import {createLocalOwnedMarkdownBuildGuardV1,waitLocalOwnedMarkdownOriginalV1} from './threadplane-local-owned-markdown-build-v1.mjs';",
+ "import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1} from '../threadplane-local-experiments/closed-policies-v1.mjs';",
  ]);
  const active=source.slice(source.indexOf('const readinessAck='),source.indexOf('readinessController.assertBeforeWheel();'));
  assert.doesNotMatch(active,/assertStock037|threadplaneBuildEvidence|runAimockTraceDecoderOwner/);
@@ -556,4 +559,124 @@ test('real CPU owner sealed enable/start/stop deadline refusals survive actual c
   assert.equal(result.writes.filter(w=>w.name==='stock037-cpu-owner-v1.json').length,1);
   assert.equal(!!diagnostic.rawCapture,snapshot.rawJson!==null);assert.equal(!!diagnostic.binding,snapshot.bindingJson!==null);
  }
+});
+
+// Additive owned capability contracts. Existing eight-seam/native assertions above
+// remain intact; these tests never launch a browser or open a runtime root.
+test('owned native capability is a named one-input route on the existing module',async()=>{
+ const api=await import('./matrix-case-stock037-trace-v3.mjs');
+ assert.equal(typeof api.runLocalOwnedMarkdownCaseV1,'function','API absence only: existing native module lacks owned route');
+ assert.equal(api.runLocalOwnedMarkdownCaseV1.length,1);
+ let effects=0;const hostile=new Proxy({},{get(){effects++;throw Error('caller get');},ownKeys(){effects++;throw Error('caller keys');},getPrototypeOf(){effects++;throw Error('caller prototype');}});
+ for(const args of [[hostile],[hostile,hostile]])await assert.rejects(api.runLocalOwnedMarkdownCaseV1(...args),{message:'local-owned-markdown-identity-unavailable'});
+ assert.equal(effects,0);
+});
+test('ordinary native entry refuses both local namespaces and forged token data before acquiring fixtures',async()=>{
+ const {seams}=parse(source),run=AsyncFunction('slot','token',`const STOCK037_CPU_TOKEN=Symbol('cpu'),stock037PublishedIdentityV1=()=>{};${seams.create};return true;`);
+ for(const namespace of ['local-shared-signals-v1','local-owned-markdown-v1'])for(const role of ['control','candidate']){
+  const slot={id:'threadplane-h1000-r6400-follow-'+namespace+'-'+role+'-round-1',selection:{profile:'threadplane'}};
+  for(const token of [undefined,Object.freeze({}),{slot,ordinal:0,guard:{verify(){throw Error('forged verifier');}}}])await assert.rejects(run(slot,token),new RegExp(namespace.replace('-v1','')+'-ordinary-entry'));
+ }
+});
+
+// Active token boundary model. The production entry prefix and CREATE/SETUP
+// seams execute in one closure, retaining their genuine private WeakMaps and
+// policy handles. Import substitutions below are confined to this authored VM:
+// they provide readiness/build facts, never production activation or test ports.
+async function activeLocalTokenRealm(){
+ const production=await import('./matrix-case-stock037-trace-v3.mjs');
+ assert.equal(typeof production.runLocalOwnedMarkdownCaseV1,'function','API absence only: active token behavior requires the named owned native entry');
+ const registry=await import('../threadplane-local-experiments/closed-policies-v1.mjs');
+ assert.ok(registry.OWNED_MARKDOWN_POLICY_V1,'API absence only: active token behavior requires the source-authored owned policy');
+ const policies={shared:registry.SHARED_SIGNALS_POLICY_V1,owned:registry.OWNED_MARKDOWN_POLICY_V1},events=[],captured=[],build=Object.freeze({genuine:'source-only-build-model',assetHashes:{}}),slots={};
+ const importNamespaces=new Map();
+ for(const [kind,casing,upper,directory]of [['shared','SharedSignals','SHARED_SIGNALS','shared-signals'],['owned','OwnedMarkdown','OWNED_MARKDOWN','owned-markdown']]){
+  const fixedPath='../threadplane-local-'+directory+'/fixed-experiment-v1.mjs',actual=await import(fixedPath),policy=policies[kind];
+  slots[kind]=actual['local'+casing+'RosterV1']();
+  const fixed={...actual,
+   ['assertLocal'+casing+'ExecutionsReadyV1'](){events.push(['ready',kind]);},
+   ['local'+casing+'SlotV1'](ordinal){events.push(['slot',kind,ordinal]);assert.ok(Number.isInteger(ordinal)&&ordinal>=0&&ordinal<24);return slots[kind][ordinal];},
+   ['local'+casing+'RoleRootV1'](role){events.push(['root',kind,role]);assert.ok(role==='control'||role==='candidate');return policy.roots[role];},
+  };
+  importNamespaces.set(fixedPath,fixed);
+  const buildPath='./threadplane-local-'+directory+'-build-v1.mjs',actualBuild=await import(buildPath);
+  importNamespaces.set(buildPath,{...actualBuild,
+   ['createLocal'+casing+'BuildGuardV1']:async role=>{events.push(['guard-create',kind,role]);return Object.freeze({identity:Object.freeze({experimentId:policy.id,role,stock:false}),verify:async value=>{events.push(['guard-verify',kind]);assert.equal(value,build);return value;}});},
+   ['waitLocal'+casing+'OriginalV1']:async original=>original,
+  });
+ }
+ const common={
+  './matrix-run-v5.mjs':{createMatrixDeadline:()=>({wait:async original=>original,remaining:()=>240000})},
+  '../../apps/threadplane/provenance.mjs':{threadplaneBuildEvidence:async()=>{events.push(['build-read']);return build;}},
+  './aimock-stock037-v1.mjs':{stock037PublishedIdentityV1:()=>{events.push(['stock-identity']);return{};},assertStock037BuildV1:()=>{events.push(['stock-build']);throw Error('stock verifier cannot authorize local');}},
+  './aimock-trace-capture-v3.mjs':{createAimockTraceCaptureV3:options=>{events.push(['capture',options.identity.id]);return{setup:async()=>events.push(['capture-setup']),assertBeforeStart:()=>events.push(['capture-ready'])};}},
+  'node:perf_hooks':{performance:{now:()=>1}},
+ };
+ const prefixEnd=source.indexOf('\nasync function installMatrixThreadplaneBridge(');assert.ok(prefixEnd>0,'unchanged bridge marks private-entry prefix');
+ let prefix=source.slice(0,prefixEnd),bindings={};
+ for(const match of prefix.matchAll(/^import (.+?) from '([^']+)';$/gm)){
+  const [,declaration,specifier]=match;
+  const namespace=importNamespaces.get(specifier)??{...await import(specifier),...common[specifier]};
+  if(declaration.startsWith('{')){
+   for(const item of declaration.slice(1,-1).split(',')){const [exported,local=exported]=item.trim().split(/\s+as\s+/);assert.ok(Object.hasOwn(namespace,exported),'source import resolves '+specifier+' '+exported);bindings[local]=namespace[exported];}
+  }else if(declaration.startsWith('* as '))bindings[declaration.slice(5)]=namespace;
+  else bindings[declaration]=namespace.default;
+ }
+ prefix=prefix.replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
+ const rootMatches=prefix.match(/^const ROOT=.*;$/gm);assert.equal(rootMatches?.length,1,'one source-owned native root binding');
+ prefix=prefix.replace(/^const ROOT=.*;$/m,'let ROOT=initialRoot;');
+ const {seams}=parse(source),server={get origin(){events.push(['server-origin']);return'http://127.0.0.1:1234';}};
+ const parameters={...bindings,Buffer,initialRoot:policies.shared.roots.control,events,captured,server,
+  runMatrixCaseOriginal:async(input,token)=>{events.push(['private-original',input.slot.id]);captured.push({input,token});return{captured:true};},
+ };
+ const program=`(function(${Object.keys(parameters).join(',')}){${prefix}
+  const STOCK037_CPU_TOKEN=Symbol('model CPU token');
+  async function probe(slot,token){
+   const {profile,historyCount,responseBytes,journey}=slot.selection,started=0,wait=async original=>original,deadline={remaining:()=>240000},browser={},context={},page={};
+   ${seams.create}${seams.setup}
+   return{cpuMode,traceIdentity,ordinal:localContext.ordinal};
+  }
+  return{probe,entries:{shared:runLocalSharedSignalsCaseV1,owned:runLocalOwnedMarkdownCaseV1},setRoot(value){ROOT=value;}};
+ })`;
+ const realm=vm.runInThisContext(program)(...Object.values(parameters));
+ return{events,slots,captured,probe:realm.probe,async issue(kind,ordinal=0){
+  const slot=slots[kind][ordinal];realm.setRoot(policies[kind].roots[slot.role]);
+  const input={ordinal,store:{},out:'/authored/token-output',invocationStarted:0},before=captured.length;
+  const result=await realm.entries[kind](input);assert.deepEqual(result,{captured:true});assert.equal(captured.length,before+1);
+  const issued=captured.at(-1);assert.equal(issued.input.slot,slot);assert.ok(issued.token&&typeof issued.token==='object');
+  return{...issued,callerInput:input,slot,kind,ordinal};
+ }};
+}
+for(const kind of ['shared','owned'])test('active '+kind+' entry genuinely issues a private token only after its own guard, then matching CREATE/SETUP captures',async()=>{
+ const realm=await activeLocalTokenRealm(),issued=await realm.issue(kind),before=realm.events.length;
+ assert.deepEqual(realm.events.filter(e=>e[0]==='guard-verify'),[['guard-verify',kind]]);
+ const verifyIndex=realm.events.findIndex(e=>e[0]==='guard-verify'),originalIndex=realm.events.findIndex(e=>e[0]==='private-original');assert.ok(verifyIndex>=0&&originalIndex>verifyIndex);
+ const result=await realm.probe(issued.slot,issued.token),events=realm.events.slice(before);assert.equal(result.cpuMode,false);assert.equal(result.ordinal,0);assert.equal(result.traceIdentity.id,issued.slot.id);assert.equal(result.traceIdentity.stockVersion,'0.3.7');
+ assert.deepEqual(events.filter(e=>e[0]==='guard-verify'),[['guard-verify',kind]]);assert.equal(events.filter(e=>e[0]==='capture').length,1);assert.equal(events.filter(e=>e[0]==='capture-setup').length,1);assert.equal(events.some(e=>e[0]==='stock-build'),false);
+});
+async function assertLocalTokenRefusal(realm,slot,token){
+ const before=realm.events.length;await assert.rejects(realm.probe(slot,token),/local-(?:shared-signals|owned-markdown)-/);
+ const effects=realm.events.slice(before);assert.equal(effects.some(e=>['guard-verify','capture','capture-setup','server-origin','fixture-write','browser-create'].includes(e[0])),false,'refuse before foreign guard/capture/server/browser/fixture writes; pure fixture creation/reservation is outside these seams');
+}
+for(const [from,to]of [['shared','owned'],['owned','shared']])test('genuine '+from+' opaque token cannot authorize '+to+' slot in the same private module instance',async()=>{
+ const realm=await activeLocalTokenRealm(),first=await realm.issue(from),second=await realm.issue(to);await assertLocalTokenRefusal(realm,second.slot,first.token);
+ // A refusal must not destroy the genuine memberships or make the model inert.
+ assert.equal((await realm.probe(first.slot,first.token)).ordinal,0);assert.equal((await realm.probe(second.slot,second.token)).ordinal,0);
+});
+for(const kind of ['shared','owned'])test('genuine '+kind+' token binds exact source slot object and original ordinal, not caller mutations',async()=>{
+ const realm=await activeLocalTokenRealm(),issued=await realm.issue(kind,0),other=await realm.issue(kind,3);issued.callerInput.ordinal=3;
+ await assertLocalTokenRefusal(realm,other.slot,issued.token);await assertLocalTokenRefusal(realm,{...issued.slot},issued.token);
+ const result=await realm.probe(issued.slot,issued.token);assert.equal(result.ordinal,0);assert.equal(result.traceIdentity.id,issued.slot.id);assert.equal((await realm.probe(other.slot,other.token)).ordinal,3);
+});
+for(const kind of ['shared','owned'])test('genuine '+kind+' token from another module instance cannot use even the same source roster object',async()=>{
+ const first=await activeLocalTokenRealm(),second=await activeLocalTokenRealm(),a=await first.issue(kind),b=await second.issue(kind);assert.equal(a.slot,b.slot);
+ await assertLocalTokenRefusal(second,b.slot,a.token);assert.equal((await first.probe(a.slot,a.token)).ordinal,0);assert.equal((await second.probe(b.slot,b.token)).ordinal,0);
+});
+for(const kind of ['shared','owned'])test('cloned forged Proxy and getter '+kind+' tokens cannot execute caller traps or foreign verifiers',async()=>{
+ const realm=await activeLocalTokenRealm(),issued=await realm.issue(kind);let touches=0;
+ const foreign=()=>{touches++;throw Error('foreign verifier');},fake={slot:issued.slot,ordinal:0,policyHandle:{},guard:{verify:foreign}},getter={};
+ for(const key of ['slot','ordinal','policyHandle','guard'])Object.defineProperty(getter,key,{enumerable:true,get(){touches++;throw Error('token getter');}});
+ const proxy=new Proxy(fake,{get(){touches++;throw Error('token Proxy get');},getPrototypeOf(){touches++;throw Error('token Proxy prototype');},ownKeys(){touches++;throw Error('token Proxy keys');}});
+ for(const token of [undefined,null,Object.freeze({}),structuredClone(issued.token),{...issued.token},fake,getter,proxy])await assertLocalTokenRefusal(realm,issued.slot,token);
+ assert.equal(touches,0);assert.equal((await realm.probe(issued.slot,issued.token)).ordinal,0);
 });

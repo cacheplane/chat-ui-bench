@@ -578,3 +578,35 @@ export async function createLocalSharedSignals24StoreV1(input) {
   if (arguments.length !== 1) throw Error('matrix-artifact-arguments');
   return createStore(input, LOCAL_SHARED_SIGNALS_IDS_V1);
 }
+
+// Independently frozen local schedule; no published-stock constructor admits it.
+const LOCAL_OWNED_MARKDOWN_IDS_V1 = Object.freeze([
+  'threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-1',
+  'threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-1',
+  'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-1',
+  'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-1',
+  'threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-1',
+  'threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-1',
+  'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-1',
+  'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-1',
+  'threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-2',
+  'threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-2',
+  'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-2',
+  'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-2',
+  'threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-2',
+  'threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-2',
+  'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-2',
+  'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-2',
+  'threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-3',
+  'threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-3',
+  'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-3',
+  'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-3',
+  'threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-3',
+  'threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-3',
+  'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-3',
+  'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-3',
+]);
+export async function createLocalOwnedMarkdown24StoreV1(input) {
+  if (arguments.length !== 1) throw Error('matrix-artifact-arguments');
+  return createStore(input, LOCAL_OWNED_MARKDOWN_IDS_V1);
+}

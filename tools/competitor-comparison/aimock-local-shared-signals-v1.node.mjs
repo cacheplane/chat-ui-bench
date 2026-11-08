@@ -11,6 +11,9 @@ import {MATRIX_V5_ACQUISITION} from './matrix-policy-v5.mjs';
 import {runMatrixRoster} from './matrix-run-v5.mjs';
 import {parseFourProfileStock036LargeArgumentsV3,SEMANTIC_LARGE_FLAGS_V3 as FLAGS} from './four-profile-stock036-large-v3.mjs';
 import {SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from './semantic-large-v3-policy.mjs';
+import * as fixed from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';
+import * as ownedMarkdownFixed from '../threadplane-local-owned-markdown/fixed-experiment-v1.mjs';
+import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1} from '../threadplane-local-experiments/closed-policies-v1.mjs';
 let api=null;try{api=await import('./aimock-local-shared-signals-v1.mjs');}catch(error){if(error.code!=='ERR_MODULE_NOT_FOUND')throw error;}
 test('fixed local24 coordinator and its pure admission/decision helpers exist',()=>{
  assert.equal(typeof api?.runAimockLocalSharedSignalsInvocationV1,'function');
@@ -18,7 +21,8 @@ test('fixed local24 coordinator and its pure admission/decision helpers exist',(
  assert.equal(typeof api?.decideLocalSharedSignalsBenefitV1,'function');
 });
 if(api){
- const source=await readFile(new URL('./aimock-local-shared-signals-v1.mjs',import.meta.url),'utf8');
+ const wrapperSource=await readFile(new URL('./aimock-local-shared-signals-v1.mjs',import.meta.url),'utf8');
+ const source=await readFile(new URL('../threadplane-local-experiments/coordinator-engine-v1.mjs',import.meta.url),'utf8');
  const fixedSourceBytes=await readFile(new URL('../threadplane-local-shared-signals/fixed-experiment-v1.mjs',import.meta.url));
  test('real NULL authorities refuse before any caller property or runtime acquisition',async()=>{
   let touched=0;const args=new Proxy([],{get(){touched++;throw Error('caller-property');}});
@@ -26,6 +30,7 @@ if(api){
  });
  test('coordinator exports no roots, role selectors, retry or runtime ports',()=>{
   assert.deepEqual(Object.keys(api).sort(),['admitLocalSharedSignalsCaseV1','decideLocalSharedSignalsBenefitV1','runAimockLocalSharedSignalsInvocationV1'].sort());
+  assert.match(wrapperSource,/runSharedSignalsInvocationV1 as runAimockLocalSharedSignalsInvocationV1/);
   assert.match(source,/runMatrixRoster\(/);assert.match(source,/createLocalSharedSignals24StoreV1\(/);
   assert.doesNotMatch(source,/chromium\.launch|createBrowser|\bports\b|\bretry\s*\(/);
  });
@@ -54,6 +59,7 @@ if(api){
  function invocationModel(options={}){
   let time=100,nextTimer=0,outcome,opens=0,closes=0;const timers=new Map(),events=[],files=new Map(),calls=[],sourceBytes=Buffer.from('source'),sha=b=>createHash('sha256').update(b).digest('hex'),assetHash=sha('js'),decisionBytes=Buffer.from('decision'),baseCommit='7'.repeat(40),baseTree='8'.repeat(40),fixedKey='tools/threadplane-local-shared-signals/fixed-experiment-v1.mjs';
   const baseFiles={'package.json':sourceBytes,'tools/example.mjs':sourceBytes,'apps/threadplane/package.json':Buffer.from('base-app'),'package-lock.json':Buffer.from('base-lock'),[fixedKey]:fixedSourceBytes};
+  for(const name of ['closed-policies-v1.mjs','selection-engine-v1.mjs','build-engine-v1.mjs','coordinator-engine-v1.mjs'])baseFiles['tools/threadplane-local-experiments/'+name]=sourceBytes;
   const blob=bytes=>createHash('sha1').update(Buffer.from('blob '+bytes.length+'\0')).update(bytes).digest('hex');
   const roster=localSharedSignalsRosterV1(),build={assetHashes:{'main.js':assetHash}},buildSha256=sha(JSON.stringify(build)),selected={},executions={},guards={},provenances={};
   for(const role of ['control','candidate']){selected[role]={sourceCommit:(role==='control'?'a':'b').repeat(40),sourceTree:(role==='control'?'c':'d').repeat(40),benchmarkBaseCommit:options.expectedBase??baseCommit,selectedSourceHashes:{'package.json':sha(sourceBytes),'apps/threadplane/package.json':sha(Buffer.from('selected-app')),'package-lock.json':sha(Buffer.from('selected-lock-'+role))},artifacts:['a2ui','ag-ui','chat','langgraph','render','telemetry'].map(n=>({relativeTarballPath:'local-packages/local-shared-signals/'+role+'/'+n+'.tgz'}))};executions[role]={parsedBuildSha256:buildSha256};const id={...identity(role),fixedRoot:'/fixed/'+role,selectionDigest:sha(JSON.stringify(selected[role])),executionDigest:sha(JSON.stringify(executions[role]))};let reads=0;guards[role]={identity:id,verify:async value=>{reads++;if(options.buildDrift&&role==='control'&&reads===2)return{...value,changed:true};return value;}};provenances[role]={source:[],assets:[{path:'main.js',bytes:2,sha256:assetHash}],compiledContract:[],locks:[]};}
@@ -88,10 +94,15 @@ if(api){
    else throw Error('unexpected authored Git command: '+args.join(' '));
    return{stdout:config.encoding==='buffer'?Buffer.from(stdout):stdout,stderr:config.encoding==='buffer'?Buffer.alloc(0):''};
   };
-  let executable=source.slice(0,source.indexOf('if(process.argv[1]')).replace(/^import .*;\n/gm,'').replace(/^export /gm,'').replace("const ROOT=path.resolve(fileURLToPath(new URL('../../',import.meta.url)));","const ROOT='/fixed/control';");
+  let executable=source.replace(/^import .*;\n/gm,'').replace(/^export /gm,'').replace("const ROOT=path.resolve(fileURLToPath(new URL('../../',import.meta.url)));","const ROOT='/fixed/control';");
+  for(const [field,kind]of [['buildModule','build'],['caseModule','case']])executable=executable.replace('import(pathToFileURL(path.join(root,policy.'+field+')).href)',"roleImport(root,'"+kind+"')");
   for(const[key,file]of [['build','tools/competitor-comparison/threadplane-local-shared-signals-build-v1.mjs'],['reader','apps/threadplane/provenance.mjs'],['provenance','tools/competitor-comparison/matrix-run-v5.mjs'],['case','tools/competitor-comparison/matrix-case-stock037-trace-v3.mjs']])executable=executable.replace("import(pathToFileURL(path.join(root,'"+file+"')).href)","roleImport(root,'"+key+"')");
   const context={Buffer,TextDecoder,URL,createHash,path,fileURLToPath,pathToFileURL,types,fs:io,constants:{O_RDONLY:0,O_NOFOLLOW:256},process:{execPath:'/node',platform,argv:[]},performance:{now:()=>time},ROLES:['control','candidate'],FIXED:{experimentId:'local-shared-signals-v1',decisionSha256:sha(decisionBytes)},assertLocalSharedSignalsExecutionsReadyV1(){},assertLocalSharedSignalsActivationSourceV1,localSharedSignalsGitExecutableV1:()=>gitPath,localSharedSignalsRosterV1:()=>roster,localSharedSignalsSlotV1:i=>roster[i],localSharedSignalsRoleRootV1:role=>'/fixed/'+role,localSharedSignalsSelectionIdentityV1:role=>selected[role],localSharedSignalsExecutionIdentityV1:role=>executions[role],P,POLICY_SHA,FLAGS,MATRIX_V5_ACQUISITION,roleImport,execFile(){},promisify:()=>git,createLocalSharedSignals24StoreV1:async()=>{events.push(['store']);return store;},parseFourProfileStock036LargeArgumentsV3,runMatrixRoster:args=>runMatrixRoster({...args,now:()=>time}),verifySemanticLargeFixtureV3:async(_,native)=>({status:'verified-canonical',...native.fixtureDigests,sourceDeltaSha256:'4'.repeat(64)}),admitMatrixCase:()=>{const ordinal=calls.at(-1).ordinal;return model(ordinal).result.admission;},validateSemanticLargeTraceRecordV3(record,identity,facts){assert.equal(record.raw.value.payloadBase64,undefined);assert.equal(facts.decoderSources.files.length,7);assert.equal(facts.decoderSources.nodeExecutableSha256,sha(sourceBytes));return options.traceValid!==false;},setTimeout(callback,ms){const id=++nextTimer;timers.set(id,{callback,at:time+ms});return id;},clearTimeout:id=>timers.delete(id)};
-  const run=vm.runInThisContext('(function('+Object.keys(context).join(',')+'){'+executable+';return runAimockLocalSharedSignalsInvocationV1;})')(...Object.values(context)),task=run(...(options.callArgs??[['--out','/exclusive/output']]));task.then(value=>outcome={value},error=>outcome={error});
+  context.SHARED_SIGNALS_POLICY_V1=SHARED_SIGNALS_POLICY_V1;
+  context.OWNED_MARKDOWN_POLICY_V1=OWNED_MARKDOWN_POLICY_V1;context.ownedMarkdownFixed=ownedMarkdownFixed;
+  context.createLocalOwnedMarkdown24StoreV1=()=>{throw Error('inactive owned store must not execute');};
+  context.sharedSignalsFixed={...fixed,LOCAL_SHARED_SIGNALS_ROLES_V1:context.ROLES,LOCAL_SHARED_SIGNALS_FIXED_EXPERIMENT_V1:context.FIXED,...Object.fromEntries(Object.entries(context).filter(([key])=>key.startsWith('assertLocalSharedSignals')||key.startsWith('localSharedSignals')))};
+  const run=vm.runInThisContext('(function('+Object.keys(context).join(',')+'){'+executable+';return runSharedSignalsInvocationV1;})')(...Object.values(context)),task=run(...(options.callArgs??[['--out','/exclusive/output']]));task.then(value=>outcome={value},error=>outcome={error});
   return{task,calls,events,stats,flush:async()=>{for(let i=0;i<20000;i++)await Promise.resolve();},fire(){const[key,timer]=[...timers].sort((a,b)=>a[1].at-b[1].at)[0];timers.delete(key);time=timer.at;timer.callback();},get outcome(){return outcome;},get opens(){return opens;},get closes(){return closes;}};
  }
  async function finishInvocation(m){await m.flush();assert.ok(m.outcome,'authored original coordinator settles');return m.outcome;}
@@ -138,5 +149,9 @@ if(api){
  test('unchanged bytes cannot conceal a post-capture Git HEAD change',async()=>{const m=invocationModel({headDrift:true}),out=await finishInvocation(m),result=out.value??out.error?.localSharedSignalsDiagnostic;assert.equal(m.calls.length,24);assert.equal(result.complete,false);assert.equal(result.decision.decision,'hold');assert.equal(result.decision.eligible,false);});
  test('post-capture canonical origin changes are retained as Git bookend failure',async()=>{const m=invocationModel({originDrift:true}),out=await finishInvocation(m),result=out.value??out.error?.localSharedSignalsDiagnostic;assert.equal(m.calls.length,24);assert.equal(result.complete,false);assert.equal(result.decision.decision,'hold');assert.equal(result.decision.eligible,false);});
  test('source-valid selected app and lock changes are accepted before imports',async()=>{const m=invocationModel(),out=await finishInvocation(m);assert.equal(out.value.complete,true);const firstImport=m.events.findIndex(e=>e[0]==='import');assert.ok(firstImport>0);for(const role of ['control','candidate'])assert.ok(m.events.slice(0,firstImport).some(e=>e[0]==='open'&&e[1]==='/fixed/'+role+'/package-lock.json'));});
+ for(const name of ['closed-policies-v1.mjs','selection-engine-v1.mjs','build-engine-v1.mjs','coordinator-engine-v1.mjs']){
+  test('ordinary tracked common source '+name+' drift refuses before either role import',async()=>{const m=invocationModel({data:file=>file.endsWith('/tools/threadplane-local-experiments/'+name)?Buffer.from('unreviewed-common-code'):null}),out=await finishInvocation(m);assert.equal(out.value?.complete??false,false);assert.equal(m.events.some(e=>e[0]==='import'||e[0]==='store'),false);assert.equal(m.calls.length,0);assert.equal(out.error?.localSharedSignalsDiagnostic.failure,'local-shared-signals-controller-blob');});
+  test('ordinary tracked common source '+name+' post-slot drift forces HOLD',async()=>{let changed=false;const m=invocationModel({data:file=>changed&&file.endsWith('/tools/threadplane-local-experiments/'+name)?Buffer.from('late-common-code'):null,engine(native,input){if(input.ordinal===23)changed=true;return native;}}),out=await finishInvocation(m);assert.equal(out.value.complete,false);assert.equal(out.value.decision.decision,'hold');assert.equal(out.value.decision.eligible,false);assert.equal(m.calls.length,24);});
+ }
  test('pending original Git read forbids imports and later publication',async()=>{const pending=deferred(),m=invocationModel({gitPending:pending.original});await m.flush();assert.equal(m.outcome,undefined);m.fire();await m.flush();if(!m.outcome)m.fire();const out=await finishInvocation(m);assert.equal(out.error.unsafeOutstanding,true);assert.equal(m.events.some(e=>e[0]==='import'),false);assert.equal(m.events.some(e=>e[0]==='store'),false);const count=m.events.length;pending.resolve({stdout:Buffer.from('late'),stderr:Buffer.alloc(0)});await m.flush();assert.equal(m.events.length,count);});
 }

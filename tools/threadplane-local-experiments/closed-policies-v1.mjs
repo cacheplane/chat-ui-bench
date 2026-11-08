@@ -1,0 +1,53 @@
+// Closed source-authored descriptive data. Importing or copying this object grants
+// no authority: each engine privately binds live fixed accessors to named routes.
+const freeze=value=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
+export const SHARED_SIGNALS_POLICY_V1=freeze({
+ id:'local-shared-signals-v1',prefix:'local-shared-signals',envelopeKey:'localSharedSignals',diagnosticKey:'localSharedSignalsDiagnostic',
+ label:'local-source-built-shared-signals-037',selectionName:'local-source-built-shared-signals-037-v1',sourceFlavor:'local-source-built-shared-signals-v1',
+ purpose:'paired-local-source-built-shared-read-diagnostic',
+ decisionPath:'/private/tmp/THREADPLANE-SHARED-SIGNALS-PROSPECTIVE-DECISION-V1-20261107.json',
+ decisionSha256:'4aeb8b7928090073430b99feb4c708b483c9a76ca6531d1eaba414bfdbf7e68c',
+ transactionName:'.threadplane-local-shared-signals-selection',packageDirectory:'local-packages/local-shared-signals',
+ roots:{control:'/private/tmp/chat-ui-bench-shared-signals-control-native-20261107-invocation01',candidate:'/private/tmp/chat-ui-bench-shared-signals-candidate-native-20261107-invocation01'},
+ fixedSourceKey:'tools/threadplane-local-shared-signals/fixed-experiment-v1.mjs',
+ selectorModule:'tools/threadplane-local-shared-signals/select-v1.mjs',deriveExport:'deriveLocalSharedSignalsSelectionV1',
+ buildModule:'tools/competitor-comparison/threadplane-local-shared-signals-build-v1.mjs',buildGuardExport:'createLocalSharedSignalsBuildGuardV1',
+ caseModule:'tools/competitor-comparison/matrix-case-stock037-trace-v3.mjs',caseExport:'runLocalSharedSignalsCaseV1',
+ schemas:{fixed:'threadplane-local-shared-signals-fixed-experiment-v1',selection:'threadplane-local-shared-signals-selection-v1',preparation:'threadplane-local-shared-signals-preparation-facts-v2',build:'threadplane-local-shared-signals-build-identity-v1',envelope:'threadplane-local-shared-signals-case-v1',decision:'threadplane-local-shared-signals-decision-v1',invocation:'threadplane-local-shared-signals-invocation-v1'},
+ toolingKeys:[
+  'tools/threadplane-local-shared-signals/fixed-experiment-v1.mjs',
+  'tools/threadplane-local-shared-signals/select-v1.mjs',
+  'tools/threadplane-stock037/select-v1.mjs',
+  'tools/competitor-comparison/threadplane-local-shared-signals-build-v1.mjs',
+  'tools/competitor-comparison/threadplane-local-shared-signals-install-transform-v1.mjs',
+  'tools/threadplane-local-experiments/closed-policies-v1.mjs',
+  'tools/threadplane-local-experiments/selection-engine-v1.mjs',
+  'tools/threadplane-local-experiments/build-engine-v1.mjs',
+  'tools/threadplane-local-experiments/coordinator-engine-v1.mjs',
+ ],
+});
+export const OWNED_MARKDOWN_POLICY_V1=freeze({
+ id:'local-owned-markdown-v1',prefix:'local-owned-markdown',envelopeKey:'localOwnedMarkdown',diagnosticKey:'localOwnedMarkdownDiagnostic',
+ label:'local-source-built-owned-markdown-037',selectionName:'local-source-built-owned-markdown-037-v1',sourceFlavor:'local-source-built-owned-markdown-v1',
+ purpose:'paired-local-source-built-owned-markdown-diagnostic',
+ decisionPath:'/private/tmp/THREADPLANE-OWNED-MARKDOWN-PROSPECTIVE-DECISION-V1-20261108.json',
+ decisionSha256:'fda4958afce1597ec1e3e0e1387335456cdc34bf126eec595ebdb36750987b63',
+ transactionName:'.threadplane-local-owned-markdown-selection',packageDirectory:'local-packages/local-owned-markdown',
+ roots:{control:'/private/tmp/chat-ui-bench-owned-markdown-control-native-20261108-invocation01',candidate:'/private/tmp/chat-ui-bench-owned-markdown-candidate-native-20261108-invocation01'},
+ fixedSourceKey:'tools/threadplane-local-owned-markdown/fixed-experiment-v1.mjs',
+ selectorModule:'tools/threadplane-local-owned-markdown/select-v1.mjs',deriveExport:'deriveLocalOwnedMarkdownSelectionV1',
+ buildModule:'tools/competitor-comparison/threadplane-local-owned-markdown-build-v1.mjs',buildGuardExport:'createLocalOwnedMarkdownBuildGuardV1',
+ caseModule:'tools/competitor-comparison/matrix-case-stock037-trace-v3.mjs',caseExport:'runLocalOwnedMarkdownCaseV1',
+ schemas:{fixed:'threadplane-local-owned-markdown-fixed-experiment-v1',selection:'threadplane-local-owned-markdown-selection-v1',preparation:'threadplane-local-owned-markdown-preparation-facts-v2',build:'threadplane-local-owned-markdown-build-identity-v1',envelope:'threadplane-local-owned-markdown-case-v1',decision:'threadplane-local-owned-markdown-decision-v1',invocation:'threadplane-local-owned-markdown-invocation-v1'},
+ toolingKeys:[
+  'tools/threadplane-local-owned-markdown/fixed-experiment-v1.mjs',
+  'tools/threadplane-local-owned-markdown/select-v1.mjs',
+  'tools/threadplane-stock037/select-v1.mjs',
+  'tools/competitor-comparison/threadplane-local-owned-markdown-build-v1.mjs',
+  'tools/competitor-comparison/threadplane-local-shared-signals-install-transform-v1.mjs',
+  'tools/threadplane-local-experiments/closed-policies-v1.mjs',
+  'tools/threadplane-local-experiments/selection-engine-v1.mjs',
+  'tools/threadplane-local-experiments/build-engine-v1.mjs',
+  'tools/threadplane-local-experiments/coordinator-engine-v1.mjs',
+ ],
+});
