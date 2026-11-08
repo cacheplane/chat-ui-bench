@@ -12,6 +12,17 @@ analyzer. It validates exact transcript completion, receipt/application ordering
 active message identity, scroll movement/anchoring, and evidence integrity before
 scoring any sample. Failed and invalid repetitions remain in reports.
 
+The closed local experiments `local-shared-signals-v1` and
+`local-owned-markdown-v1` have separate named selector, build, coordinator,
+native-case and 24-slot artifact-store routes. The committed fixed records
+contain NULL candidate and role identities, so execution is unavailable by default.
+Passive model records and copied policy descriptors grant no execution authority.
+Each capability keeps its own source roots, declaration, schedule and envelopes;
+published-stock routes reject both local namespaces. Numeric `0.3.7` is a wire
+compatibility requirement for these local source builds, which remain `stock:false`.
+Raw proofs and traces stay local. These diagnostics do not establish FPS, exclusive
+CPU time or release-promotion eligibility; gaps in qualification require HOLD.
+
 ## Run it
 
 The separate [Copilot module-binding diagnostic](tools/copilot-module-binding/README.md)

@@ -139,8 +139,8 @@ test('local fixed24 and every earlier constructor refuse each other IDs before f
 });
 
 test('fixed stores expose exactly six closed constructors and literal tuple-preserving schedules', () => {
-  assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames].sort());
-  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), [...fixedConstructorNames].sort());
+  assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1'].sort());
+  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1'].sort());
   const literal = name => {
     const match = source.match(new RegExp(`const ${name} = Object\\.freeze\\(\\[([\\s\\S]*?)\\]\\);`));
     assert.ok(match, `missing private literal ${name}`);
@@ -539,7 +539,7 @@ test('whole invocation+cleanup equality dispatches no new IO, including reads an
 test('all exact frozen roster arrays are private and literal with no roster/configuration exports', () => {
   assert.match(source, /const PILOT_IDS = Object\.freeze\(\[/);
   assert.match(source, /const FULL_IDS = Object\.freeze\(\[/);
-  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), [...fixedConstructorNames].sort());
+  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1'].sort());
   assert.equal(new Set(full).size, 48);
 });
 
@@ -690,7 +690,7 @@ test('full48 maximum ledger is 97 rows, with detached facts fitting ordinary evi
 });
 
 test('production exports only the six closed constructors and old store source remains byte-exact', async () => {
-  assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames].sort());
+  assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1'].sort());
   const old = await fs.readFile(new URL('./matrix-artifacts-v3.mjs', import.meta.url));
   assert.equal(createHash('sha256').update(old).digest('hex'), '172fbdd42640c0053f07a50a939b99fa33d6e34b0b7a660cf1644b2d5d621a4e');
 });
@@ -795,4 +795,90 @@ test('all old fixed stores reject the CPU slot without consuming their original 
     await assert.rejects(store.requireSpaceBeforeNextCaseV3(cpuId), /roster/);
     assert.equal(store.stats().caseReservation, 0);
   }
+});
+
+// Independently frozen owned roster, authored as literal IDs below. This test
+// model executes the actual private store body against a fully authored FS.
+function ownedMarkdownStoreModel(constructorName) {
+  const directory = '/authored/invocation';
+  let ino = 1n;
+  const nodes = new Map([['/authored', {ino: ino++, directory: true, bytes: Buffer.alloc(0)}]]);
+  const calls = [];
+  const stat = node => ({dev: 1n, ino: node.ino, nlink: 1n, size: BigInt(node.bytes.length), mtimeNs: 1n, ctimeNs: 1n,
+    isDirectory: () => node.directory, isSymbolicLink: () => false, isFile: () => !node.directory});
+  const io = {
+    async lstat(file) {assert.ok(nodes.has(file), `authored path missing: ${file}`); return stat(nodes.get(file));},
+    async realpath(file) {assert.ok(nodes.has(file)); return file;},
+    async statfs() {return {bsize: 1n, bavail: 100n * 1024n ** 3n};},
+    async mkdir(file) {assert.equal(nodes.has(file), false); nodes.set(file, {ino: ino++, directory: true, bytes: Buffer.alloc(0)});},
+    async open(file, flags) {
+      if (flags & constants.O_CREAT) {
+        assert.equal(nodes.has(file), false);
+        nodes.set(file, {ino: ino++, directory: false, bytes: Buffer.alloc(0)});
+      }
+      assert.ok(nodes.has(file));
+      const node = nodes.get(file);
+      return Object.fromEntries(Object.entries({
+        async stat() {return stat(node);},
+        async writeFile(bytes) {node.bytes = Buffer.from(bytes);},
+        async sync() {}, async close() {},
+        async read(buffer, offset, length, position) {return {bytesRead: node.bytes.copy(buffer, offset, position, position + length)};},
+      }).map(([method, implementation]) => [method, async (...args) => {
+        calls.push({method: `descriptor.${method}`, args}); return implementation(...args);
+      }]));
+    },
+  };
+  const fakeFS = Object.fromEntries(Object.entries(io).map(([method, implementation]) => [method, async (...args) => {
+    calls.push({method, args}); return implementation(...args);
+  }]));
+  const body = source.replace(/^import .*;\n/gm, '').replace(/export /g, '');
+  // typeof makes an absent constructor an explicit contract assertion, rather
+  // than an undefined binding/import error in the source-extracted harness.
+  const entries = [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1'].map(name => `${name}: typeof ${name} === 'function' ? ${name} : null`).join(',');
+  const api = vm.runInNewContext(`(function(){${body}\nreturn {${entries}};})()`,
+    {fs: fakeFS, constants, path, createHash, types, Buffer, TextDecoder, performance: {now: () => 100}, SEMANTIC_LARGE_V3_POLICY: policy});
+  assert.equal(typeof api[constructorName], 'function', `missing fixed constructor ${constructorName}`);
+  return {calls, directory, create: (...args) => api[constructorName](...args), async store() {return api[constructorName]({directory, invocationStarted: 0});}};
+}
+const ownedMarkdownIds=Object.freeze([
+ 'threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-1',
+ 'threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-1',
+ 'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-1',
+ 'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-1',
+ 'threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-1',
+ 'threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-1',
+ 'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-1',
+ 'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-1',
+ 'threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-2',
+ 'threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-2',
+ 'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-2',
+ 'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-2',
+ 'threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-2',
+ 'threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-2',
+ 'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-2',
+ 'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-2',
+ 'threadplane-h1000-r6400-follow-local-owned-markdown-v1-control-round-3',
+ 'threadplane-h1000-r6400-follow-local-owned-markdown-v1-candidate-round-3',
+ 'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-candidate-round-3',
+ 'threadplane-h1000-r6400-history-reading-local-owned-markdown-v1-control-round-3',
+ 'threadplane-h10000-r6400-follow-local-owned-markdown-v1-control-round-3',
+ 'threadplane-h10000-r6400-follow-local-owned-markdown-v1-candidate-round-3',
+ 'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-candidate-round-3',
+ 'threadplane-h10000-r6400-history-reading-local-owned-markdown-v1-control-round-3',
+]);
+
+test('owned fixed24 store exists separately with its independent literal IDs and unchanged reservation caps',async()=>{
+ assert.equal(typeof production.createLocalOwnedMarkdown24StoreV1,'function','API absence only: existing store module lacks owned constructor');
+ const literal=source.match(/const LOCAL_OWNED_MARKDOWN_IDS_V1 = Object\.freeze\(\[([\s\S]*?)\]\);/);assert.ok(literal,'independently source-authored frozen owned IDs');assert.deepEqual([...literal[1].matchAll(/'([^']+)'/g)].map(m=>m[1]),ownedMarkdownIds);
+ const f=ownedMarkdownStoreModel('createLocalOwnedMarkdown24StoreV1'),store=await f.store();assert.equal(store.stats().invocationReservation,(24*96+3)*MiB);
+ for(const id of ownedMarkdownIds){await store.requireSpaceBeforeNextCaseV3(id);await store.beginCase(id);}assert.equal(store.stats().caseReservation,24*96*MiB);assert.equal(store.stats().spaceChecks.length,25);
+ await assert.rejects(store.requireSpaceBeforeNextCaseV3(ownedMarkdownIds[0]),/roster/);
+});
+test('both local stores and all stock/CPU stores reject cross-policy IDs before filesystem effects',async()=>{
+ assert.equal(typeof production.createLocalOwnedMarkdown24StoreV1,'function','API absence only: existing store module lacks owned constructor');
+ for(const name of [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1']){
+  const f=ownedMarkdownStoreModel(name),store=await f.store(),before=f.calls.length;
+  const forbidden=name==='createLocalOwnedMarkdown24StoreV1'?[...localSharedSignalsIds,...pilot,...full,...stock037Pilot,...stock037Full,cpuId]:ownedMarkdownIds;
+  for(const id of forbidden){await assert.rejects(store.requireSpaceBeforeNextCaseV3(id),/roster/);await assert.rejects(store.beginCase(id),/grant/);}assert.equal(f.calls.length,before);
+ }
 });

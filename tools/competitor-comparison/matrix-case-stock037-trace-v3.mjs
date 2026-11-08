@@ -15,10 +15,33 @@ import {createStock037CpuCaptureV1} from './aimock-stock037-cpu-capture-v1.mjs';
 import {SEMANTIC_LARGE_V3_POLICY as TRACE_POLICY,SEMANTIC_LARGE_V3_POLICY_SHA256 as TRACE_POLICY_SHA256} from './semantic-large-v3-policy.mjs';
 import {assertLocalSharedSignalsExecutionsReadyV1,localSharedSignalsSlotV1,localSharedSignalsRoleRootV1} from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';
 import {createLocalSharedSignalsBuildGuardV1,waitLocalSharedSignalsOriginalV1} from './threadplane-local-shared-signals-build-v1.mjs';
+import {assertLocalOwnedMarkdownExecutionsReadyV1,localOwnedMarkdownSlotV1,localOwnedMarkdownRoleRootV1} from '../threadplane-local-owned-markdown/fixed-experiment-v1.mjs';
+import {createLocalOwnedMarkdownBuildGuardV1,waitLocalOwnedMarkdownOriginalV1} from './threadplane-local-owned-markdown-build-v1.mjs';
+import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1} from '../threadplane-local-experiments/closed-policies-v1.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const message=error=>String(error?.message??error).slice(0,4096);
 function assetsFor(profile){return path.join(ROOT,profile==='threadplane'?'apps/threadplane/dist':`competitors/${profile}/dist`);}
 const LOCAL_SHARED_SIGNALS_TOKENS=new WeakMap();
+const LOCAL_NATIVE_BINDINGS=new WeakMap();
+const SHARED_SIGNALS_NATIVE_HANDLE=Object.freeze({});
+const OWNED_MARKDOWN_NATIVE_HANDLE=Object.freeze({});
+LOCAL_NATIVE_BINDINGS.set(SHARED_SIGNALS_NATIVE_HANDLE,Object.freeze({policy:SHARED_SIGNALS_POLICY_V1,slot:localSharedSignalsSlotV1,wait:waitLocalSharedSignalsOriginalV1}));
+LOCAL_NATIVE_BINDINGS.set(OWNED_MARKDOWN_NATIVE_HANDLE,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V1,slot:localOwnedMarkdownSlotV1,wait:waitLocalOwnedMarkdownOriginalV1}));
+/** Closed local experiment entry. A caller can supply only the frozen ordinal. */
+export async function runLocalOwnedMarkdownCaseV1(input){
+ assertLocalOwnedMarkdownExecutionsReadyV1();
+ if(arguments.length!==1||!input||Object.getPrototypeOf(input)!==Object.prototype)throw Error('local-owned-markdown-case-arguments');
+ const ds=Object.getOwnPropertyDescriptors(input);
+ if(Reflect.ownKeys(ds).sort().join(',')!=='invocationStarted,ordinal,out,store'||Object.values(ds).some(d=>!Object.hasOwn(d,'value')))throw Error('local-owned-markdown-case-arguments');
+ const {ordinal,store,out,invocationStarted}=input,slot=localOwnedMarkdownSlotV1(ordinal);
+ if(typeof out!=='string'||!path.isAbsolute(out)||path.resolve(out)!==out||out.includes('\0')||typeof invocationStarted!=='number'||!Number.isFinite(invocationStarted)||invocationStarted<0||invocationStarted>performance.now())throw Error('local-owned-markdown-case-arguments');
+ if(path.resolve(ROOT)!==localOwnedMarkdownRoleRootV1(slot.role))throw Error('local-owned-markdown-case-root');
+ const caseStarted=performance.now(),deadline=createMatrixDeadline({caseStarted,invocationStarted}),wait=(original,ms,label)=>deadline.wait(original,ms,label);
+ const guard=await waitLocalOwnedMarkdownOriginalV1(createLocalOwnedMarkdownBuildGuardV1(slot.role),wait,STAGES.transcript,'local-owned-markdown-case-guard');
+ await waitLocalOwnedMarkdownOriginalV1(threadplaneBuildEvidence().then(build=>guard.verify(build)),wait,STAGES.transcript,'local-owned-markdown-case-before-acquisition');
+ const token=Object.freeze({});LOCAL_SHARED_SIGNALS_TOKENS.set(token,Object.freeze({policyHandle:OWNED_MARKDOWN_NATIVE_HANDLE,slot,ordinal,guard}));
+ return waitLocalOwnedMarkdownOriginalV1(runMatrixCaseOriginal({slot,store,out,invocationStarted},token),wait,deadline.remaining(),'local-owned-markdown-case-original');
+}
 /** Closed local experiment entry. A caller can supply only the frozen ordinal. */
 export async function runLocalSharedSignalsCaseV1(input){
  assertLocalSharedSignalsExecutionsReadyV1();
@@ -31,7 +54,7 @@ export async function runLocalSharedSignalsCaseV1(input){
  const caseStarted=performance.now(),deadline=createMatrixDeadline({caseStarted,invocationStarted}),wait=(original,ms,label)=>deadline.wait(original,ms,label);
  const guard=await waitLocalSharedSignalsOriginalV1(createLocalSharedSignalsBuildGuardV1(slot.role),wait,STAGES.transcript,'local-shared-signals-case-guard');
  await waitLocalSharedSignalsOriginalV1(threadplaneBuildEvidence().then(build=>guard.verify(build)),wait,STAGES.transcript,'local-shared-signals-case-before-acquisition');
- const token=Object.freeze({});LOCAL_SHARED_SIGNALS_TOKENS.set(token,Object.freeze({slot,ordinal,guard}));
+ const token=Object.freeze({});LOCAL_SHARED_SIGNALS_TOKENS.set(token,Object.freeze({policyHandle:SHARED_SIGNALS_NATIVE_HANDLE,slot,ordinal,guard}));
  return waitLocalSharedSignalsOriginalV1(runMatrixCaseOriginal({slot,store,out,invocationStarted},token),wait,deadline.remaining(),'local-shared-signals-case-original');
 }
 async function installMatrixThreadplaneBridge(page,source,origin,wait){
@@ -82,8 +105,14 @@ async function runMatrixCaseOriginal({slot,store,out,invocationStarted}){
  // TRACE-V3-BEGIN create
  if(slot.selection.profile!=='threadplane')throw Error('aimock-stock037-profile');
  const localContext=typeof LOCAL_SHARED_SIGNALS_TOKENS==='undefined'?null:LOCAL_SHARED_SIGNALS_TOKENS.get(arguments[1])??null;
- if(localContext){if(localContext.slot!==slot)throw Error('local-shared-signals-slot');}
- else{stock037PublishedIdentityV1();if(slot.id.includes('-local-shared-signals-v1-'))throw Error('local-shared-signals-ordinary-entry');}
+ const localBinding=localContext?LOCAL_NATIVE_BINDINGS.get(localContext.policyHandle):null;
+ if(localContext){
+  if(!localBinding||localContext.slot!==slot||localBinding.slot(localContext.ordinal)!==slot||!slot.id.includes('-'+localBinding.policy.id+'-'))throw Error('local-shared-signals-slot');
+ }else{
+  if(slot.id.includes('-local-shared-signals-v1-'))throw Error('local-shared-signals-ordinary-entry');
+  if(slot.id.includes('-local-owned-markdown-v1-'))throw Error('local-owned-markdown-ordinary-entry');
+  stock037PublishedIdentityV1();
+ }
  let trace=null,traceIdentity=null,traceSnapshot=null,traceFailure=null,traceBuild=null,tracePublicationStop=false,traceCleanupEnd=null;
  const cpuMode=arguments.length===2&&arguments[1]===STOCK037_CPU_TOKEN;
  let cpu=null,cpuFailure=null,cpuSnapshot=null;
@@ -148,7 +177,7 @@ async function runMatrixCaseOriginal({slot,store,out,invocationStarted}){
   }
  // TRACE-V3-BEGIN setup
   const traceBuildRead=traceRetain(localContext?threadplaneBuildEvidence().then(build=>localContext.guard.verify(build)):threadplaneBuildEvidence());
-  traceBuild=localContext?await waitLocalSharedSignalsOriginalV1(traceBuildRead.original,wait,STAGES.transcript,'local-shared-signals-before'):assertStock037BuildV1(await waitStock037BuildOriginalV1(traceBuildRead.original,wait,STAGES.transcript,'aimock-stock037-before'));
+  traceBuild=localContext?await localBinding.wait(traceBuildRead.original,wait,STAGES.transcript,localBinding.policy.prefix+'-before'):assertStock037BuildV1(await waitStock037BuildOriginalV1(traceBuildRead.original,wait,STAGES.transcript,'aimock-stock037-before'));
   traceIdentity={id:slot.id,profile,historyCount,responseBytes,journey,stockVersion:'0.3.7',buildSha256:createHash('sha256').update(JSON.stringify(traceBuild)).digest('hex')};
   trace=createAimockTraceCaptureV3({now:performance.now.bind(performance),origin:started,identity:traceIdentity,wait,remaining:()=>Math.min(deadline.remaining(),traceCleanupEnd===null?Infinity:traceCleanupEnd-performance.now()),stageMs:STAGES.progress});
   if(cpuMode)try{
@@ -448,7 +477,7 @@ function receipt(r,raw){
  let traceOwnerEnd=Infinity,traceOwnerReceipt=null,traceOwnerOperation=null,tracePublicationError=null;
  try{
   const traceAfterRead=traceRetain(localContext?threadplaneBuildEvidence().then(build=>localContext.guard.verify(build)):threadplaneBuildEvidence());
-  const traceAfter=localContext?await waitLocalSharedSignalsOriginalV1(traceAfterRead.original,wait,STAGES.transcript,'local-shared-signals-after'):assertStock037BuildV1(await waitStock037BuildOriginalV1(traceAfterRead.original,wait,STAGES.transcript,'aimock-stock037-after'));
+  const traceAfter=localContext?await localBinding.wait(traceAfterRead.original,wait,STAGES.transcript,localBinding.policy.prefix+'-after'):assertStock037BuildV1(await waitStock037BuildOriginalV1(traceAfterRead.original,wait,STAGES.transcript,'aimock-stock037-after'));
   need(traceBuild&&same(traceAfter,traceBuild)&&sha(JSON.stringify(traceAfter))===traceIdentity?.buildSha256,'build-drift');
   need(traceSnapshot,'snapshot-unavailable');
   successGate();const wrapper=createAimockTraceRawEvidenceV3(traceSnapshot);
@@ -534,7 +563,7 @@ function receipt(r,raw){
  }
  if(typeof localContext!=='undefined'&&localContext){
   const {ordinal,guard}=localContext;
-  result.localSharedSignals={schema:'threadplane-local-shared-signals-case-v1',experimentId:'local-shared-signals-v1',stock:false,sourceFlavor:'local-source-built-shared-signals-v1',id:slot.id,ordinal,role:slot.role,parentId:slot.parentId,round:slot.round,stratum:slot.stratum,block:slot.block,position:slot.position,selection:slot.selection,localBuild:guard.identity,sourceCommit:guard.identity.sourceCommit,sourceTree:guard.identity.sourceTree,selectionDigest:guard.identity.selectionDigest,executionDigest:guard.identity.executionDigest,buildSha256:traceIdentity?.buildSha256??null,performance:false,scoringEligibility:false,FPS:null,cpuTime:null};
+  result[localBinding.policy.envelopeKey]={schema:localBinding.policy.schemas.envelope,experimentId:localBinding.policy.id,stock:false,sourceFlavor:localBinding.policy.sourceFlavor,id:slot.id,ordinal,role:slot.role,parentId:slot.parentId,round:slot.round,stratum:slot.stratum,block:slot.block,position:slot.position,selection:slot.selection,localBuild:guard.identity,sourceCommit:guard.identity.sourceCommit,sourceTree:guard.identity.sourceTree,selectionDigest:guard.identity.selectionDigest,executionDigest:guard.identity.executionDigest,buildSha256:traceIdentity?.buildSha256??null,performance:false,scoringEligibility:false,FPS:null,cpuTime:null};
  }
  // TRACE-V3-END publish
  try{deadline.check();if(evidence.readinessV5)readinessReceiptRef=await wait(artifacts.writeJSON('readiness-receipt.json',evidence.readinessV5,{kind:'evidence'}),STAGES.progress,'matrix-readiness-receipt-write');if(serverOutcome)await wait(artifacts.writeJSON('server-process.json',serverOutcome,{kind:'evidence'}),STAGES.progress,'matrix-server-receipt-write');await wait(artifacts.writeJSON('evidence.json',evidence,{kind:'evidence'}),STAGES.transcript,'matrix-evidence-write');await wait(artifacts.writeJSON('result.json',result,{kind:'result'}),STAGES.progress,'matrix-result-write');}

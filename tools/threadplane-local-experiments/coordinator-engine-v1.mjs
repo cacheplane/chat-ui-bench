@@ -1,0 +1,214 @@
+import fs from 'node:fs/promises';
+import {constants} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+import {performance} from 'node:perf_hooks';
+import {createHash} from 'node:crypto';
+import {execFile} from 'node:child_process';
+import {promisify,types} from 'node:util';
+import {createLocalSharedSignals24StoreV1,createLocalOwnedMarkdown24StoreV1} from '../competitor-comparison/matrix-artifacts-trace-v3.mjs';
+import {runMatrixRoster} from '../competitor-comparison/matrix-run-v5.mjs';
+import {parseFourProfileStock036LargeArgumentsV3,validateSemanticLargeTraceRecordV3,verifySemanticLargeFixtureV3,SEMANTIC_LARGE_FLAGS_V3 as FLAGS} from '../competitor-comparison/four-profile-stock036-large-v3.mjs';
+import {SEMANTIC_LARGE_V3_POLICY as P,SEMANTIC_LARGE_V3_POLICY_SHA256 as POLICY_SHA} from '../competitor-comparison/semantic-large-v3-policy.mjs';
+import {admitMatrixCase} from '../competitor-comparison/matrix-admission-v5.mjs';
+import {MATRIX_V5_ACQUISITION} from '../competitor-comparison/matrix-policy-v5.mjs';
+import * as sharedSignalsFixed from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';
+import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1} from './closed-policies-v1.mjs';
+import * as ownedMarkdownFixed from '../threadplane-local-owned-markdown/fixed-experiment-v1.mjs';
+// Policy handles and factories are private to this module instance.
+const bindings=new WeakMap();
+const sharedSignalsHandle=Object.freeze({});
+bindings.set(sharedSignalsHandle,Object.freeze({policy:SHARED_SIGNALS_POLICY_V1,ROLES:sharedSignalsFixed.LOCAL_SHARED_SIGNALS_ROLES_V1,FIXED:sharedSignalsFixed.LOCAL_SHARED_SIGNALS_FIXED_EXPERIMENT_V1,assertLocalSharedSignalsExecutionsReadyV1:sharedSignalsFixed.assertLocalSharedSignalsExecutionsReadyV1,assertLocalSharedSignalsActivationSourceV1:sharedSignalsFixed.assertLocalSharedSignalsActivationSourceV1,localSharedSignalsGitExecutableV1:sharedSignalsFixed.localSharedSignalsGitExecutableV1,localSharedSignalsRosterV1:sharedSignalsFixed.localSharedSignalsRosterV1,localSharedSignalsSlotV1:sharedSignalsFixed.localSharedSignalsSlotV1,localSharedSignalsRoleRootV1:sharedSignalsFixed.localSharedSignalsRoleRootV1,localSharedSignalsSelectionIdentityV1:sharedSignalsFixed.localSharedSignalsSelectionIdentityV1,localSharedSignalsExecutionIdentityV1:sharedSignalsFixed.localSharedSignalsExecutionIdentityV1}));
+const ownedMarkdownHandle=Object.freeze({});
+bindings.set(ownedMarkdownHandle,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V1,ROLES:ownedMarkdownFixed.LOCAL_OWNED_MARKDOWN_ROLES_V1,FIXED:ownedMarkdownFixed.LOCAL_OWNED_MARKDOWN_FIXED_EXPERIMENT_V1,assertLocalSharedSignalsExecutionsReadyV1:ownedMarkdownFixed.assertLocalOwnedMarkdownExecutionsReadyV1,assertLocalSharedSignalsActivationSourceV1:ownedMarkdownFixed.assertLocalOwnedMarkdownActivationSourceV1,localSharedSignalsGitExecutableV1:ownedMarkdownFixed.localOwnedMarkdownGitExecutableV1,localSharedSignalsRosterV1:ownedMarkdownFixed.localOwnedMarkdownRosterV1,localSharedSignalsSlotV1:ownedMarkdownFixed.localOwnedMarkdownSlotV1,localSharedSignalsRoleRootV1:ownedMarkdownFixed.localOwnedMarkdownRoleRootV1,localSharedSignalsSelectionIdentityV1:ownedMarkdownFixed.localOwnedMarkdownSelectionIdentityV1,localSharedSignalsExecutionIdentityV1:ownedMarkdownFixed.localOwnedMarkdownExecutionIdentityV1}));
+function createCoordinatorEngine(handle){
+ const binding=bindings.get(handle);if(!binding)throw Error('closed-local-policy');
+ const {policy,ROLES,FIXED,assertLocalSharedSignalsExecutionsReadyV1,assertLocalSharedSignalsActivationSourceV1,localSharedSignalsGitExecutableV1,localSharedSignalsRosterV1,localSharedSignalsSlotV1,localSharedSignalsRoleRootV1,localSharedSignalsSelectionIdentityV1,localSharedSignalsExecutionIdentityV1}=binding;
+// Fixed local source contrast. The legacy numeric037 wire is never release authority.
+const SOURCE_NAMES=['aimock-trace-decoder-child-v3.mjs','aimock-trace-decoder-v3.mjs','semantic-large-v3-policy.mjs','aimock-trace-renderer-v1.mjs','aimock-trace-costs-v1.mjs','aimock-trace-capture-v1.mjs','aimock-trace-completion-waiter-v1.mjs'];
+const DECISION_PATH=policy.decisionPath;
+const ROOT=path.resolve(fileURLToPath(new URL('../../',import.meta.url)));
+const FIXED_SOURCE_KEY=policy.fixedSourceKey;
+const SELECTED_SOURCE_KEYS=Object.freeze(['apps/threadplane/package.json','package-lock.json']);
+const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+const need=(v,c)=>{if(!v)throw Error((policy.prefix+'-')+c);};
+const finite=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0;
+const integer=n=>Number.isSafeInteger(n)&&n>=0;
+const digest=s=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
+const reason=e=>String(e?.message??e).slice(0,2048);
+const metadata=(a,b)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs&&a.nlink===b.nlink;
+function same(a,b){if(a===b)return true;if(!a||!b||typeof a!=='object'||typeof b!=='object'||Array.isArray(a)!==Array.isArray(b))return false;const ks=Object.keys(a);return ks.length===Object.keys(b).length&&ks.every(k=>Object.hasOwn(b,k)&&same(a[k],b[k]));}
+function passive(value,cap=2097152){
+ let budget=cap,items=0;const seen=new Set();
+ function visit(v,depth){need(depth<=32&&++items<=100000&&!types.isProxy(v),'own-data');if(v===null||typeof v==='boolean')return;if(typeof v==='number'){need(Number.isFinite(v),'own-data');return;}if(typeof v==='string'){budget-=Buffer.byteLength(v);need(budget>=0,'byte-cap');return;}need(v&&typeof v==='object'&&!seen.has(v),'own-data');seen.add(v);const ds=Object.getOwnPropertyDescriptors(v);need(Reflect.ownKeys(ds).every(k=>typeof k==='string')&&Object.values(ds).every(d=>Object.hasOwn(d,'value')),'own-data');if(Array.isArray(v)){need(Object.getPrototypeOf(v)===Array.prototype&&v.length<=100000&&Object.keys(ds).length===v.length+1,'own-data');for(let i=0;i<v.length;i++){need(Object.hasOwn(ds,String(i)),'own-data');visit(ds[i].value,depth+1);}}else{need(Object.getPrototypeOf(v)===Object.prototype,'own-data');for(const[k,d]of Object.entries(ds)){budget-=Buffer.byteLength(k);need(budget>=0,'byte-cap');visit(d.value,depth+1);}}seen.delete(v);
+ }visit(value,0);return value;
+}
+function bounded(value,cap){const text=JSON.stringify(value);need(typeof text==='string'&&Buffer.byteLength(text)<=cap,'byte-cap');return text;}
+function keys(value,names){need(value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===names.length&&names.every(k=>Object.hasOwn(value,k)),'closed-schema');}
+function ref(ref,id,name,cap,value){keys(ref,['path','bytes','sha256']);need(ref.path===id+'/'+name&&integer(ref.bytes)&&ref.bytes>0&&ref.bytes<=cap&&digest(ref.sha256),'reference');if(value!==undefined){const text=bounded(value,cap);need(Buffer.byteLength(text)===ref.bytes&&sha(text)===ref.sha256,'readback');return text;}}
+function localEnvelope(slot,ordinal,identity,buildSha256){return{schema:policy.schemas.envelope,experimentId:FIXED.experimentId,stock:false,sourceFlavor:policy.sourceFlavor,id:slot.id,ordinal,role:slot.role,parentId:slot.parentId,round:slot.round,stratum:slot.stratum,block:slot.block,position:slot.position,selection:slot.selection,localBuild:identity,sourceCommit:identity.sourceCommit,sourceTree:identity.sourceTree,selectionDigest:identity.selectionDigest,executionDigest:identity.executionDigest,buildSha256,...FLAGS};}
+/** Pure data join only; never selection/build/execution authority. */
+function admitLocalSharedSignalsCaseV1(input){
+ try{passive(input);keys(input,['ordinal','result','identity','buildSha256','fixture','traceValid']);const {ordinal,result:r,identity:id,buildSha256,fixture:f,traceValid}=input,slot=localSharedSignalsSlotV1(ordinal);keys(id,['schema','experimentId','role','sourceCommit','sourceTree','fixedRoot','selectionDigest','executionDigest','toolingSourceHashes','label','stock']);need(id.schema===policy.schemas.build&&id.label===policy.label&&typeof id.fixedRoot==='string'&&path.isAbsolute(id.fixedRoot)&&path.resolve(id.fixedRoot)===id.fixedRoot&&id.toolingSourceHashes&&Object.keys(id.toolingSourceHashes).length>0&&Object.keys(id.toolingSourceHashes).length<=16&&Object.values(id.toolingSourceHashes).every(digest),'identity-schema');need(id.stock===false&&id.role===slot.role&&id.experimentId===FIXED.experimentId&&typeof id.sourceCommit==='string'&&/^[a-f0-9]{40}$/.test(id.sourceCommit)&&typeof id.sourceTree==='string'&&/^[a-f0-9]{40}$/.test(id.sourceTree)&&digest(id.selectionDigest)&&digest(id.executionDigest)&&digest(buildSha256),'identity');need(same(r[policy.envelopeKey],localEnvelope(slot,ordinal,id,buildSha256)),'local-envelope');need(r.schema==='four-stack-matrix-case-v5'&&r.purpose==='functional-conformance-development'&&same(r.acquisition,MATRIX_V5_ACQUISITION)&&r.id===slot.id&&r.kind==='positive'&&Object.keys(slot.selection).every(k=>r[k]===slot.selection[k])&&r.status==='matrix-pass'&&r.failure===null&&r.unsafeOutstanding===false&&r.stopInvocation===false&&!Object.hasOwn(r,'publicationUnavailable')&&!Object.hasOwn(r,'cpuDiagnostic')&&r.performance===false&&r.scoringEligibility===false&&r.FPS===null,'native');const a=r.admission;need(a?.schema==='four-stack-matrix-conformance-v5'&&a.profile==='threadplane'&&a.status==='functional-pass'&&same(a.acquisition,MATRIX_V5_ACQUISITION)&&same(a.workload,{seed:1,historyCount:slot.selection.historyCount,responseBytes:6400,journey:slot.selection.journey,deltaCount:200,deltaIntervalMs:50})&&a.performance===false&&a.scoringEligibility===false&&a.FPS===null,'admission');need(f.status==='verified-canonical'&&['sourceSha256','historySha256','responseSha256','sourceDeltaSha256'].every(k=>digest(f[k]))&&['sourceSha256','historySha256','responseSha256'].every(k=>f[k]===r.fixtureDigests[k]),'fixture');need(traceValid===true&&r.traceDiagnostic?.schema==='threadplane-aimock-trace-case-v3'&&r.traceDiagnostic.profile==='threadplane'&&r.traceDiagnostic.status==='complete'&&r.traceDiagnostic.failure===null&&r.traceDiagnostic.buildSha256===buildSha256,'trace');return true;}catch{return false;}
+}
+function metric(value,task=false){need(value&&integer(value.observedCompleteEvents)&&Array.isArray(value.longest)&&value.longest.length===Math.min(value.observedCompleteEvents,8),'costs');if(task)need(value.observedCompleteEvents>0&&integer(value.longTaskEvents)&&value.longTaskEvents<=value.observedCompleteEvents,'costs');for(const row of value.longest)need(finite(row.durationUs)&&finite(row.timestampUs)&&integer(row.eventIndex),'costs');return value.longest.length?Math.max(...value.longest.map(r=>r.durationUs)):0;}
+function describe(values){const sorted=[...values].sort((a,b)=>a-b);return{roundValues:values,min:sorted[0],median:sorted[1],max:sorted[2]};}
+/** Frozen prospective descriptive decision. Counts/intervals never imply FPS or CPU time. */
+function decideLocalSharedSignalsBenefitV1(rows){
+ const result={schema:policy.schemas.decision,decisionSha256:FIXED.decisionSha256,eligible:false,decision:'hold',strata:[],failures:[],...FLAGS};
+ try{passive(rows);need(Array.isArray(rows)&&rows.length===24,'eligibility');const roster=localSharedSignalsRosterV1();for(let i=0;i<24;i++){const r=rows[i],s=roster[i];need(['id','role','round','stratum','block','position'].every(k=>r[k]===s[k])&&r.ordinal===i&&r.qualified===true,'eligibility');for(const k of ['sourceSha256','historySha256','responseSha256','sourceDeltaSha256'])need(digest(r.fixture?.[k]),'fixture');metric(r.costs?.tasks,true);metric(r.costs?.layouts);metric(r.costs?.minorGC);}
+ for(let s=0;s<4;s++){const arms={};for(const role of ROLES){const selected=rows.filter(r=>r.stratum===s&&r.role===role);need(selected.length===3&&selected.every((r,i)=>r.round===i+1),'rounds');arms[role]={tasks:describe(selected.map(r=>metric(r.costs.tasks,true))),layouts:describe(selected.map(r=>metric(r.costs.layouts))),longTaskCounts:selected.map(r=>r.costs.tasks.longTaskEvents),minorGC:selected.map(r=>({observedCompleteEvents:r.costs.minorGC.observedCompleteEvents,maxDurationUs:metric(r.costs.minorGC),longest:r.costs.minorGC.longest}))};}
+ const paired=[1,2,3].map(round=>{const c=rows.find(r=>r.role==='control'&&r.stratum===s&&r.round===round),d=rows.find(r=>r.role==='candidate'&&r.stratum===s&&r.round===round);need(['sourceSha256','historySha256','responseSha256','sourceDeltaSha256'].every(k=>c.fixture[k]===d.fixture[k]),'fixture-pair');return{round,controlTaskMaxUs:metric(c.costs.tasks,true),candidateTaskMaxUs:metric(d.costs.tasks,true),differenceUs:metric(d.costs.tasks,true)-metric(c.costs.tasks,true),controlLayoutMaxUs:metric(c.costs.layouts),candidateLayoutMaxUs:metric(d.costs.layouts),layoutDifferenceUs:metric(d.costs.layouts)-metric(c.costs.layouts)};});
+ const control=arms.control,candidate=arms.candidate,layoutPass=candidate.layouts.median<=control.layouts.median&&candidate.layouts.max<=control.layouts.max,taskPass=s<2?candidate.tasks.median<=control.tasks.median&&candidate.tasks.max<=control.tasks.max:paired.every(p=>p.candidateTaskMaxUs<p.controlTaskMaxUs)&&candidate.tasks.median<control.tasks.median&&candidate.tasks.max<control.tasks.max;
+ result.strata.push({stratum:s,historyCount:s<2?1000:10000,journey:s%2?'history-reading':'follow',...arms,paired,taskRangesOverlap:candidate.tasks.min<=control.tasks.max&&control.tasks.min<=candidate.tasks.max,layoutRangesOverlap:candidate.layouts.min<=control.layouts.max&&control.layouts.min<=candidate.layouts.max,layoutPass,taskPass});if(!layoutPass)result.failures.push('stratum-'+s+'-layout');if(!taskPass)result.failures.push('stratum-'+s+'-tasks');}
+ result.eligible=true;if(result.failures.length===0)result.decision='benefit-observed';return result;
+ }catch(error){result.failures.push(reason(error));return result;}
+}
+function ownership(invocationEnd,cleanupEnd){
+ const records=[],descriptors=new Set();let store=null,unsafe=false;
+ const now=()=>performance.now();
+ const unknown=()=>unsafe||descriptors.size>0||records.some(r=>r.status==='pending'||r.error?.unsafeOutstanding===true)||!!(store&&(store.stats().pendingOriginals||store.stats().pendingWriters||store.stats().unsafeWriter));
+ function gate(end,terminal=false){need(now()<end,'deadline');need(!unknown(),'ownership');if(!terminal&&store)need(!store.stats().stopped,'store-stopped');}
+ function retain(original){const r={original,status:'pending',dispatched:now(),settled:null,error:null};records.push(r);original.then(value=>{r.status='fulfilled';r.value=value;r.settled=now();},error=>{r.status='rejected';r.error=error;r.settled=now();if(error?.unsafeOutstanding===true)unsafe=true;});return r;}
+ async function attend(r,end){r.attentionEnd??=end;let timer;try{const value=await Promise.race([r.original,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error((policy.prefix+'-attention-expired'))),Math.max(0,end-now()));})]);need(now()<end,'deadline');return value;}finally{clearTimeout(timer);}}
+ async function operation(end,factory,terminal=false){gate(end,terminal);const r=retain(Promise.resolve(factory()));const value=await attend(r,end);gate(end,terminal);return value;}
+ async function observe(end){if(unsafe)return false;for(const r of records)if(r.status==='pending'&&finite(r.attentionEnd))end=Math.min(end,r.attentionEnd+P.timing.cleanupMs);for(const r of records)if(r.status==='pending'&&now()<end)try{await attend(r,end);}catch{}if(unknown())unsafe=true;return !unsafe;}
+ // Sources stream through a fixed buffer. Artifact retention additionally has a
+ // literal byte cap; descriptor and pathname metadata must agree at both ends.
+ async function fileFact(name,end,observationEnd,prior=null,cap=null,retainBytes=true){
+  const run=fn=>operation(end,fn),resolved=await run(()=>fs.realpath(name));need(resolved===name,'file-realpath');
+  const before=await run(()=>fs.lstat(name,{bigint:true}));need(before.isFile()&&!before.isSymbolicLink()&&before.nlink===1n,'file-type');if(cap!==null)need(before.size>=(retainBytes?1n:0n)&&before.size<=BigInt(cap),'file-cap');
+  let handle=null,abandoned=false,closing=null;const chunks=[],hash=createHash('sha256'),blobHash=createHash('sha1').update(Buffer.from('blob '+before.size+'\0'));let length=0;
+  function close(){if(closing||!handle)return closing;if(now()>=observationEnd){unsafe=true;return null;}closing=retain(Promise.resolve(handle.close()));closing.original.then(()=>descriptors.delete(handle),()=>{unsafe=true;});return closing;}
+  let after;
+  try{
+   gate(end);const opening=retain(fs.open(name,constants.O_RDONLY|constants.O_NOFOLLOW));
+   opening.original.then(value=>{handle=value;descriptors.add(value);if(abandoned)close();},()=>{});
+   handle=await attend(opening,end);need(!unsafe&&now()<end,'file-open');
+   // The held descriptor is intentional ownership during its bounded operations.
+   const heldRun=async factory=>{need(now()<end&&!unsafe,'deadline');const r=retain(Promise.resolve(factory()));return attend(r,end);};
+   need(metadata(before,await heldRun(()=>handle.stat({bigint:true}))),'file-identity');
+   const buffer=Buffer.alloc(65536);
+   while(true){const {bytesRead}=await heldRun(()=>handle.read(buffer,0,cap===null?buffer.length:Math.min(buffer.length,cap+1-length),length));need(Number.isSafeInteger(bytesRead)&&bytesRead>=0&&bytesRead<=buffer.length,'file-read');if(bytesRead===0)break;length+=bytesRead;need(cap===null||length<=cap,'file-cap');hash.update(buffer.subarray(0,bytesRead));blobHash.update(buffer.subarray(0,bytesRead));if(cap!==null&&retainBytes)chunks.push(Buffer.from(buffer.subarray(0,bytesRead)));}
+   after=await heldRun(()=>handle.stat({bigint:true}));need(metadata(before,after)&&BigInt(length)===after.size,'file-drift');
+  }finally{abandoned=true;const c=close();if(c)await attend(c,Math.min(end,observationEnd));}
+  need(await run(()=>fs.realpath(name))===resolved&&metadata(after,await run(()=>fs.lstat(name,{bigint:true}))),'file-name');
+  const fact={name,resolved,stat:after,sha256:hash.digest('hex'),blobSha1:blobHash.digest('hex'),bytes:length};if(prior)need(fact.resolved===prior.resolved&&fact.sha256===prior.sha256&&fact.blobSha1===prior.blobSha1&&metadata(fact.stat,prior.stat),'source-changed');
+  return cap===null||!retainBytes?fact:{...fact,data:Buffer.concat(chunks)};
+ }
+ async function sources(root,prior=null){
+  gate(invocationEnd);need(['darwin','linux'].includes(process.platform),'platform');const end=Math.min(now()+10000,invocationEnd),observationEnd=Math.min(end+P.timing.cleanupMs,cleanupEnd);
+  const names=[process.execPath,...SOURCE_NAMES.map(name=>path.join(root,'tools/competitor-comparison',name)),process.platform==='darwin'?'/bin/ps':'/usr/bin/ps',localSharedSignalsGitExecutableV1()],facts=[];
+  try{for(let i=0;i<names.length;i++)facts.push(await fileFact(names[i],end,observationEnd,prior?.[i]));return facts;}catch(error){await observe(observationEnd);throw error;}
+ }
+ return{now,gate,retain,attend,operation,observe,fileFact,sources,unknown,lastOriginal(){const r=records.at(-1);return r?{nodeClock:'node-performance-monotonic-ms',dispatched:r.dispatched,settled:r.settled,status:r.status}:null;},setStore(value){store=value;},markUnsafe(){unsafe=true;}};
+}
+
+
+function utf8Bytes(bytes){need(Buffer.isBuffer(bytes),'git-bytes');const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);need(Buffer.from(text).equals(bytes),'git-utf8');return text;}
+function relativeSource(name){return typeof name==='string'&&name.length>0&&name.length<=2048&&!path.isAbsolute(name)&&!/[\\\0\r\n\t]/.test(name)&&name.split('/').every(p=>p&&p!=='.'&&p!=='..');}
+function nulRecords(bytes){if(bytes.length===0)return[];need(bytes.at(-1)===0,'git-nul');return utf8Bytes(bytes).slice(0,-1).split('\0');}
+async function gitControllerFacts(own,root,selection,end){
+ need(/^[a-f0-9]{40}$/.test(selection.benchmarkBaseCommit),'controller-base');
+ const git=async args=>{const value=await own.operation(end,()=>promisify(execFile)(localSharedSignalsGitExecutableV1(),args,{cwd:root,encoding:'buffer',maxBuffer:1048576,timeout:10000}));need(Buffer.isBuffer(value.stdout)&&Buffer.isBuffer(value.stderr)&&value.stderr.length===0,'git-output');return value.stdout;};
+ const line=async args=>{const bytes=await git(args),text=utf8Bytes(bytes);need(text.endsWith('\n')&&text.indexOf('\n')===text.length-1&&!text.includes('\r'),'git-line');return text.slice(0,-1);};
+ const head=await line(['rev-parse','--verify','HEAD']),tree=await line(['rev-parse','--verify','HEAD^{tree}']),baseTree=await line(['rev-parse','--verify',selection.benchmarkBaseCommit+'^{tree}']),toplevel=await line(['rev-parse','--show-toplevel']),origin=await line(['remote','get-url','origin']);
+ need(head===selection.benchmarkBaseCommit&&/^[a-f0-9]{40}$/.test(tree)&&tree===baseTree&&toplevel===root&&['https://github.com/cacheplane/chat-ui-bench.git','git@github.com:cacheplane/chat-ui-bench.git'].includes(origin),'controller-git-identity');
+ const treeBytes=await git(['ls-tree','-rz','--full-tree','HEAD']),indexBytes=await git(['ls-files','--stage','-z']),staged=await git(['diff','--cached','--name-status','-z']),statusBytes=await git(['status','--porcelain=v1','-z','--untracked-files=all']);need(staged.length===0,'controller-staged');
+ const entries=nulRecords(treeBytes).map(record=>{const m=/^(100644|100755) blob ([a-f0-9]{40})\t(.+)$/.exec(record);need(m&&relativeSource(m[3]),'controller-tree');return{mode:m[1],blob:m[2],name:m[3]};});
+ need(entries.length>0&&entries.length<=2048&&new Set(entries.map(r=>r.name)).size===entries.length,'controller-tree');
+ const index=nulRecords(indexBytes).map(record=>{const m=/^(100644|100755) ([a-f0-9]{40}) 0\t(.+)$/.exec(record);need(m&&relativeSource(m[3]),'controller-index');return{mode:m[1],blob:m[2],name:m[3]};});
+ need(index.length===entries.length&&new Set(index.map(r=>r.name)).size===index.length&&entries.every(row=>index.some(i=>same(row,i))),'controller-index');
+ const statuses=nulRecords(statusBytes).map(record=>{need(record.length>3&&record[2]===' '&&relativeSource(record.slice(3)),'controller-status');return{code:record.slice(0,2),name:record.slice(3)};});
+ need(statuses.length<=32&&new Set(statuses.map(r=>r.name)).size===statuses.length,'controller-status');const untracked=new Set(selection.artifacts.map(a=>a.relativeTarballPath));need(untracked.size===6,'controller-untracked');
+ need(statuses.every(row=>row.code===' M'?[...SELECTED_SOURCE_KEYS,FIXED_SOURCE_KEY].includes(row.name):row.code==='??'&&untracked.has(row.name))&&[...untracked].every(name=>statuses.some(r=>r.code==='??'&&r.name===name)),'controller-status');
+ const baseSource=await git(['show',selection.benchmarkBaseCommit+':'+FIXED_SOURCE_KEY]);need(baseSource.length>0&&baseSource.length<=1048576,'activation-source-cap');const fixedEntry=entries.find(row=>row.name===FIXED_SOURCE_KEY);need(fixedEntry&&createHash('sha1').update(Buffer.from('blob '+baseSource.length+'\0')).update(baseSource).digest('hex')===fixedEntry.blob,'activation-source-blob');
+ return{entries,statuses,baseSource,record:{baseCommit:selection.benchmarkBaseCommit,head,tree,baseTree,toplevel,origin,treeEntriesSha256:sha(treeBytes),indexSha256:sha(indexBytes),statusSha256:sha(statusBytes),stagedSha256:sha(staged),baseFixedSourceSha256:sha(baseSource),statuses}};
+}
+async function controllerSources(own,root,selection,end,observationEnd,prior=null){
+ const git=await gitControllerFacts(own,root,selection,end),names=git.entries.map(row=>row.name);if(prior)need(same(names,prior.names)&&same(git.record,prior.git),'controller-git-drift');let total=0;const facts=[];
+ for(let i=0;i<names.length;i++){
+  const name=names[i],entry=git.entries[i],fixed=name===FIXED_SOURCE_KEY,fact=await own.fileFact(path.join(root,name),end,observationEnd,prior?.facts[i],fixed?1048576:8388608,fixed);need((total+=fact.bytes)<=268435456,'controller-cap');
+  need(typeof fact.stat.mode==='bigint'&&((Number(fact.stat.mode)&0o111)!==0)===(entry.mode==='100755'),'controller-mode');
+  if(SELECTED_SOURCE_KEYS.includes(name))need(digest(selection.selectedSourceHashes[name])&&fact.sha256===selection.selectedSourceHashes[name],'controller-selected');
+  else if(fixed)assertLocalSharedSignalsActivationSourceV1(utf8Bytes(git.baseSource),utf8Bytes(fact.data));
+  else need(fact.blobSha1===entry.blob,'controller-blob');
+  need(git.statuses.some(row=>row.code===' M'&&row.name===name)===(fact.blobSha1!==entry.blob),'controller-working-state');facts.push(fact);
+ }
+ need([...SELECTED_SOURCE_KEYS,FIXED_SOURCE_KEY].every(name=>names.includes(name)),'controller-paths');
+ return{names,facts,git:git.record,hashes:Object.fromEntries(names.map((name,i)=>[name,facts[i].sha256]))};
+}
+function sourcesFacts(s){return{decoderSources:{nodeExecutableSha256:s[0].sha256,files:SOURCE_NAMES.map((name,i)=>({path:'tools/competitor-comparison/'+name,sha256:s[i+1].sha256}))},rssExecutableSha256:s[8].sha256};}
+function assertServing(build,provenance,evidence,server){
+ need(same(evidence.server,server.report)&&server.report?.schema===2&&server.report.protocol==='matrix-v3'&&server.report.profile==='threadplane'&&server.report.closed===true&&same(server.report.errors,[])&&integer(server.pid)&&server.pid>0&&server.exit?.code===0&&server.exit.signal===null&&server.close?.code===0&&server.close.signal===null&&server.disconnected===true&&server.protocolError===null,'server-originals');
+ for(const name of ['stdout','stderr'])need(server.streams?.[name]?.end===true&&server.streams[name].closed===true&&integer(server.streams[name].bytes)&&server.streams[name].bytes<=262144&&typeof server[name]==='string'&&Buffer.byteLength(server[name])===server.streams[name].bytes,'server-pipes');
+ for(const[key,hash]of Object.entries(build.assetHashes)){const a=provenance.assets.find(r=>r.path===key);need(a&&a.sha256===hash,'asset-build');const requests=server.report.requests.filter(r=>r.path==='/'+key&&r.method==='GET');if(evidence.network.finished.includes('/'+key))need(requests.length>0&&requests.every(r=>r.status===200&&r.responseBytes===a.bytes&&r.sourceEof===true&&r.responseFinished===true&&r.responseClosed===true&&r.clientAborted===false&&r.error===null),'asset-served');}
+ for(const key of evidence.network.finished)if(/\.js$/.test(key))need(Object.hasOwn(build.assetHashes,key.slice(1)),'unbound-script');
+}
+function attempt(native){return{id:typeof native?.id==='string'?native.id.slice(0,256):null,status:typeof native?.status==='string'?native.status.slice(0,64):null,failure:native?.failure==null?null:reason(native.failure.message??native.failure),unsafeOutstanding:native?.unsafeOutstanding===true,stopInvocation:native?.stopInvocation===true,referencesVerified:false};}
+async function runAimockLocalSharedSignalsInvocationV1(args){
+ assertLocalSharedSignalsExecutionsReadyV1();need(arguments.length===1,'arguments');const {out}=parseFourProfileStock036LargeArgumentsV3(args),invocationStarted=performance.now(),invocationEnd=invocationStarted+P.timing.invocationMs,cleanupEnd=invocationEnd+P.timing.cleanupMs,own=ownership(invocationEnd,cleanupEnd),roster=localSharedSignalsRosterV1();
+ need(ROLES.some(role=>ROOT===localSharedSignalsRoleRootV1(role)),'controller-root');
+ let store=null,execution=null,failure=null,decisionBefore=null,authority=null;const roles={},records=[],bookends={control:'unavailable',candidate:'unavailable',controllers:'unavailable',decision:'unavailable'};
+ const phaseEnd=()=>Math.min(own.now()+10000,invocationEnd),observeEnd=end=>Math.min(end+P.timing.cleanupMs,cleanupEnd);
+ const base={schema:policy.schemas.invocation,purpose:policy.purpose,experimentId:FIXED.experimentId,decisionSha256:FIXED.decisionSha256,stock:false,planned:24,baselineCohortEquivalent:false,order:'fixed-balanced-alternation-residual-stratum-2-to-1',limitations:['Whole-capture observed complete-X wall intervals include observers/readiness/final checks.','Not exclusive CPU time, presentation FPS, randomization or causal speedup.','All older stock and modified cohorts remain separate.'],...FLAGS};
+ try{
+  const end=phaseEnd();decisionBefore=await own.fileFact(DECISION_PATH,end,observeEnd(end),null,16384);need(decisionBefore.sha256===FIXED.decisionSha256,'decision-source');
+  for(const role of ROLES){
+   own.gate(invocationEnd);const root=localSharedSignalsRoleRootV1(role),s=localSharedSignalsSelectionIdentityV1(role),e=localSharedSignalsExecutionIdentityV1(role);
+   const sources=await own.sources(root),end=phaseEnd(),controller=await controllerSources(own,root,s,end,observeEnd(end));
+   roles[role]={root,s,e,controller,sources};
+  }
+  need(roles.control.s.benchmarkBaseCommit===roles.candidate.s.benchmarkBaseCommit&&roles.control.controller.git.tree===roles.candidate.controller.git.tree&&same(roles.control.controller.names,roles.candidate.controller.names),'controller-pair');
+  for(const name of roles.control.controller.names)if(!SELECTED_SOURCE_KEYS.includes(name))need(roles.control.controller.hashes[name]===roles.candidate.controller.hashes[name],'controller-pair');
+  // No selected-root module executes until BOTH reviewed controller closures pass.
+  for(const role of ROLES){
+   const {root,s,e}=roles[role];
+   const modules=await own.operation(phaseEnd(),()=>Promise.all([import(pathToFileURL(path.join(root,policy.buildModule)).href),import(pathToFileURL(path.join(root,'apps/threadplane/provenance.mjs')).href),import(pathToFileURL(path.join(root,'tools/competitor-comparison/matrix-run-v5.mjs')).href),import(pathToFileURL(path.join(root,policy.caseModule)).href)]));
+   need(modules.length===4&&typeof modules[0][policy.buildGuardExport]==='function'&&typeof modules[1].threadplaneBuildEvidence==='function'&&typeof modules[2].collectMatrixProvenance==='function'&&typeof modules[3][policy.caseExport]==='function','modules');
+   const guard=await own.operation(phaseEnd(),()=>modules[0][policy.buildGuardExport](role));need(guard.identity.stock===false&&guard.identity.role===role&&guard.identity.sourceCommit===s.sourceCommit&&guard.identity.sourceTree===s.sourceTree&&guard.identity.fixedRoot===root&&guard.identity.selectionDigest===sha(JSON.stringify(s))&&guard.identity.executionDigest===sha(JSON.stringify(e)),'guard-identity');
+   const build=await own.operation(phaseEnd(),()=>modules[1].threadplaneBuildEvidence().then(b=>guard.verify(b))),buildSha256=sha(bounded(build,1048576));need(buildSha256===e.parsedBuildSha256,'build-execution');
+   const provenance=await own.operation(phaseEnd(),()=>modules[2].collectMatrixProvenance('threadplane'));bounded(provenance,2097152);
+   Object.assign(roles[role],{modules,guard,build,buildSha256,provenance});
+  }
+  need(same(roles.control.guard.identity.toolingSourceHashes,roles.candidate.guard.identity.toolingSourceHashes),'tooling-pair');
+  const storeOriginal=own.retain(policy.id==='local-owned-markdown-v1'?createLocalOwnedMarkdown24StoreV1({directory:out,invocationStarted}):createLocalSharedSignals24StoreV1({directory:out,invocationStarted}));storeOriginal.original.then(v=>{store=v;own.setStore(v);},()=>{});store=await own.attend(storeOriginal,phaseEnd());own.setStore(store);
+  authority=Object.fromEntries(ROLES.map(role=>[role,{identity:roles[role].guard.identity,buildSha256:roles[role].buildSha256,controllerSourceSha256:sha(bounded(roles[role].controller.hashes,1048576)),controllerGit:roles[role].controller.git,gitExecutableSha256:roles[role].sources[9].sha256,sourceFacts:sourcesFacts(roles[role].sources)}]));
+  await own.operation(phaseEnd(),()=>store.writeManifest('manifest-initial.json',{...base,status:'planned',authority,slots:roster}));
+  execution=await runMatrixRoster({slots:roster,invocationStarted,execute:async slot=>{
+   const ordinal=roster.indexOf(slot),r=roles[slot.role];own.gate(invocationEnd);await own.operation(phaseEnd(),()=>store.requireSpaceBeforeNextCaseV3(slot.id));const caseEnd=Math.min(own.now()+P.timing.caseMs,invocationEnd),observationEnd=observeEnd(caseEnd),call=own.retain(Promise.resolve(r.modules[3][policy.caseExport]({ordinal,store,out,invocationStarted})));const record={ordinal,caseEnd,observationEnd,call,native:null};records.push(record);
+   try{record.native=await own.attend(call,observationEnd);if(record.native?.unsafeOutstanding===true)own.markUnsafe();own.gate(caseEnd);return record.native;}catch(error){await own.observe(observationEnd);throw error;}
+  },onResult:async native=>{
+   const record=records.at(-1);if(!record||native.id!==roster[record.ordinal].id)return;const slot=roster[record.ordinal],r=roles[slot.role],summary={ordinal:record.ordinal,id:slot.id,role:slot.role,round:slot.round,stratum:slot.stratum,block:slot.block,position:slot.position,qualified:false,fixture:null,costs:null,failure:null,nativeAttempt:attempt(record.call.value??native),references:{},originalCall:{dispatched:record.call.dispatched,settled:record.call.settled,status:record.call.status}};record.summary=summary;
+   if(native.status!=='matrix-pass'||native.failure!==null||native.stopInvocation!==false||native.unsafeOutstanding!==false){summary.failure=(policy.prefix+'-native-unavailable');return;}
+   const end=Math.min(own.now()+10000,record.caseEnd),sourceFacts=sourcesFacts(r.sources),identity={id:slot.id,...slot.selection,stockVersion:'0.3.7',buildSha256:r.buildSha256};
+   const read=async(reference,name,kind,cap)=>{ref(reference,slot.id,name,cap);const value=await own.operation(end,()=>store.readJSON(reference,{kind}));ref(reference,slot.id,name,cap,value);summary.references[name]=reference;return value;};
+   const observed=async(name,kind,cap)=>{const fact=await own.fileFact(path.join(out,slot.id,name),end,record.observationEnd,null,cap),reference={path:slot.id+'/'+name,bytes:fact.bytes,sha256:fact.sha256};const text=new TextDecoder('utf-8',{fatal:true}).decode(fact.data),value=JSON.parse(text);need(bounded(value,cap)===text,'canonical-observation');return read(reference,name,kind,cap);};
+   try{
+    bounded(native,P.storage.kinds.result);const stored=await observed('result.json','result',P.storage.kinds.result);need(!Object.hasOwn(stored,'stopInvocation')&&same({...stored,stopInvocation:false},native),'native-readback');
+    const evidence=await observed('evidence.json','evidence',P.storage.kinds.evidence),server=await observed('server-process.json','evidence',P.storage.kinds.evidence);need(same(evidence.provenance?.before,r.provenance)&&same(evidence.provenance?.after,r.provenance),'native-provenance');assertServing(r.build,r.provenance,evidence,server);
+    const fixture=await read(native.fixture,'fixture-private.json','private-case',P.storage.kinds['private-case']),initial=await read(native.transcripts.initial,'transcript-initial.json','transcript',P.storage.kinds.transcript),final=await read(native.transcripts.final,'transcript-final.json','transcript',P.storage.kinds.transcript);const fixtureFacts=await own.operation(end,()=>verifySemanticLargeFixtureV3(fixture,native,slot)),admitted=admitMatrixCase(fixture,evidence,{initial,final});need(same(admitted,native.admission),'native-admission');
+    const trace=native.traceDiagnostic;need(trace?.status==='complete','trace-unavailable');const raw=await read(trace.rawCapture,'aimock-trace-v3-private.json','trace-v3',P.capture.wrapperBytes);need(raw.schema===P.schemas.raw&&raw.captureProfile===P.captureProfile&&raw.policySha256===POLICY_SHA&&same(raw.identity,identity)&&raw.traceFormat==='json'&&raw.compression==='gzip'&&raw.payloadEncoding==='base64'&&Object.keys(FLAGS).every(k=>raw[k]===FLAGS[k])&&typeof raw.payloadBase64==='string'&&raw.payloadBase64.length<=P.capture.base64Characters,'trace-header');const compressed=Buffer.from(raw.payloadBase64,'base64');need(compressed.toString('base64')===raw.payloadBase64&&compressed.length>0&&compressed.length<=P.capture.compressedBytes&&compressed.length===raw.retainedCompressedBytes&&sha(compressed)===raw.compressedSha256,'trace-payload');const header=Object.fromEntries(Object.entries(raw).filter(([k])=>k!=='payloadBase64'));bounded(raw.receipt,P.capture.receiptBytes);need(Buffer.byteLength(bounded(header,P.capture.wrapperOverheadBytes))+19<=P.capture.wrapperOverheadBytes,'trace-overhead');
+    const originals=await read(trace.decoderOriginals,'aimock-trace-v3-decoder-originals.json','evidence',P.decoder.originalsBytes),validation=await read(trace.validation,'aimock-trace-v3-validation.json','evidence',P.storage.kinds.evidence),traceValid=validateSemanticLargeTraceRecordV3({raw:{reference:trace.rawCapture,value:header},originals:{reference:trace.decoderOriginals,value:originals},validation:{reference:trace.validation,value:validation}},identity,sourceFacts);
+    need(admitLocalSharedSignalsCaseV1({ordinal:record.ordinal,result:native,identity:r.guard.identity,buildSha256:r.buildSha256,fixture:fixtureFacts,traceValid}),'local-admission');need(validation.decoderResult.costs?.status==='available','costs-unavailable');summary.fixture=fixtureFacts;summary.costs={tasks:validation.decoderResult.costs.tasks,layouts:validation.decoderResult.costs.layouts,minorGC:validation.decoderResult.costs.minorGC};summary.qualified=true;
+   }catch(error){summary.failure=reason(error);await own.observe(record.observationEnd);if(error?.unsafeOutstanding===true)own.markUnsafe();native.stopInvocation=true;if(own.unknown())native.unsafeOutstanding=true;}
+  }});
+  if(execution.results.some(row=>row.unsafeOutstanding===true))own.markUnsafe();own.gate(invocationEnd);
+  for(const role of ROLES){const r=roles[role],after=await own.operation(phaseEnd(),()=>r.modules[1].threadplaneBuildEvidence().then(b=>r.guard.verify(b)));need(same(after,r.build)&&sha(bounded(after,1048576))===r.buildSha256,'build-bookend');need(same(await own.operation(phaseEnd(),()=>r.modules[2].collectMatrixProvenance('threadplane')),r.provenance),'provenance-bookend');const end=phaseEnd();r.controllerAfter=await controllerSources(own,r.root,r.s,end,observeEnd(end),r.controller);await own.sources(r.root,r.sources);bookends[role]='unchanged';}
+  bookends.controllers='unchanged';const decisionEnd=phaseEnd();await own.fileFact(DECISION_PATH,decisionEnd,observeEnd(decisionEnd),decisionBefore,16384);bookends.decision='unchanged';own.gate(invocationEnd);
+ }catch(error){failure=reason(error);await own.observe(cleanupEnd);if(error?.unsafeOutstanding===true)own.markUnsafe();}
+ const rows=roster.map((slot,ordinal)=>records.find(r=>r.ordinal===ordinal)?.summary??{id:slot.id,ordinal,role:slot.role,round:slot.round,stratum:slot.stratum,block:slot.block,position:slot.position,qualified:false,status:execution?.results[ordinal]?.status??(records.some(r=>r.ordinal===ordinal)?'unavailable':'unattempted'),fixture:null,costs:null}),decision=decideLocalSharedSignalsBenefitV1(rows),complete=!failure&&!own.unknown()&&execution?.complete===true&&decision.eligible&&Object.values(bookends).every(v=>v==='unchanged');if(!complete){decision.eligible=false;decision.decision='hold';decision.failures.push((policy.prefix+'-acquisition-or-bookend-unavailable'));}const result={...base,authority,controllerGitAfter:Object.fromEntries(ROLES.map(role=>[role,roles[role]?.controllerAfter?.git??null])),finalPublication:{state:'pending-at-serialization',receiptLocation:'original-cli-output'},status:complete?'complete':'incomplete',complete,failure,unsafeOutstanding:own.unknown(),attempted:records.length,bookends,results:execution?.results??null,rows,decision,storage:store?.stats()??null};
+ try{need(store&&!own.unknown(),'terminal-ownership');bounded(result,P.storage.finalManifestReserveBytes);await own.operation(Math.min(own.now()+10000,cleanupEnd),()=>store.writeManifest('manifest-final.json',result),true);return{...result,finalPublication:{state:'fulfilled',owner:own.lastOriginal()}};}catch(error){await own.observe(cleanupEnd);const terminal=Error(failure??reason(error));terminal.unsafeOutstanding=own.unknown();terminal[policy.diagnosticKey]={...base,status:'incomplete',complete:false,failure:terminal.message,unsafeOutstanding:terminal.unsafeOutstanding,attempted:records.length,bookends,rows:rows.map(r=>({id:r.id,ordinal:r.ordinal,status:r.qualified?'qualified':r.status??'unavailable',failure:r.failure??null,nativeAttempt:r.nativeAttempt??null,originalCall:r.originalCall??null})),decision:{...FLAGS,decision:'hold',eligible:false},publication:'unavailable'};if(store&&!own.unknown()&&own.now()<cleanupEnd)try{await own.operation(Math.min(own.now()+10000,cleanupEnd),()=>store.writeInvocationFailureV3(terminal[policy.diagnosticKey]),true);}catch{await own.observe(cleanupEnd);terminal.unsafeOutstanding=own.unknown();terminal[policy.diagnosticKey].unsafeOutstanding=terminal.unsafeOutstanding;}throw terminal;}
+}
+
+ return Object.freeze({admitLocalSharedSignalsCaseV1,decideLocalSharedSignalsBenefitV1,runAimockLocalSharedSignalsInvocationV1});
+}
+const sharedSignals=createCoordinatorEngine(sharedSignalsHandle);
+export const admitSharedSignalsCaseV1=sharedSignals.admitLocalSharedSignalsCaseV1;
+export const decideSharedSignalsBenefitV1=sharedSignals.decideLocalSharedSignalsBenefitV1;
+export const runSharedSignalsInvocationV1=sharedSignals.runAimockLocalSharedSignalsInvocationV1;
+
+const ownedMarkdown=createCoordinatorEngine(ownedMarkdownHandle);
+export const admitOwnedMarkdownCaseV1=ownedMarkdown.admitLocalSharedSignalsCaseV1;
+export const decideOwnedMarkdownBenefitV1=ownedMarkdown.decideLocalSharedSignalsBenefitV1;
+export const runOwnedMarkdownInvocationV1=ownedMarkdown.runAimockLocalSharedSignalsInvocationV1;
