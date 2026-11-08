@@ -105,6 +105,12 @@ jobs:
             tools/competitor-comparison/aimock-local-owned-markdown-v2.node.mjs \
             tools/competitor-comparison/matrix-case-owned-markdown-v2.node.mjs \
             tools/competitor-comparison/matrix-artifacts-owned-markdown-v2.node.mjs \
+            tools/threadplane-local-postfix-diagnostic/fixed-experiment-v1.node.mjs \
+            tools/threadplane-local-postfix-diagnostic/select-v1.node.mjs \
+            tools/competitor-comparison/threadplane-local-postfix-diagnostic-build-v1.node.mjs \
+            tools/competitor-comparison/aimock-local-postfix-two-slot-v1.node.mjs \
+            tools/competitor-comparison/matrix-case-postfix-diagnostic-v1.node.mjs \
+            tools/competitor-comparison/matrix-artifacts-postfix-diagnostic-v1.node.mjs \
             2>&1 | tee ci-logs/semantic-large-v3-controls.log
 
       - name: Test fixed native-wheel raw census after analyzer build

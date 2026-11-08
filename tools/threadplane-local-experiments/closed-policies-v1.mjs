@@ -80,3 +80,16 @@ export const OWNED_MARKDOWN_POLICY_V2=freeze({
   'tools/threadplane-local-experiments/coordinator-engine-v1.mjs',
  ],
 });
+
+// Candidate-only two-slot diagnostic; actual source/declaration bindings pending.
+export const POSTFIX_DIAGNOSTIC_POLICY_V1=freeze({
+ id:'local-postfix-two-slot-v1',prefix:'local-postfix-two-slot-v1',label:'local-source-built-postfix-diagnostic-037-v1',selectionName:'local-source-built-postfix-diagnostic-037-v1',sourceFlavor:'local-source-built-postfix-diagnostic-v1',purpose:'candidate-only-two-slot-postfix-diagnostic',
+ decisionPath:'/private/tmp/THREADPLANE-POSTFIX-TWO-SLOT-DIAGNOSTIC-DECISION-V1-20261108.json',decisionSha256:null,
+ transactionName:'.threadplane-local-postfix-two-slot-v1-selection',packageDirectory:'local-packages/local-postfix-two-slot-v1',roots:{candidate:'/private/tmp/chat-ui-bench-postfix-two-slot-candidate-native-20261108-invocation01'},
+ envelopeKey:'localPostfixDiagnosticV1',diagnosticKey:'localPostfixTwoSlotDiagnosticV1',caseModule:'tools/competitor-comparison/matrix-case-stock037-trace-v3.mjs',caseExport:'runLocalPostfixDiagnosticCaseV1',
+ fixedSourceKey:'tools/threadplane-local-postfix-diagnostic/fixed-experiment-v1.mjs',selectorModule:'tools/threadplane-local-postfix-diagnostic/select-v1.mjs',deriveExport:'deriveLocalPostfixSelectionV1',buildModule:'tools/competitor-comparison/threadplane-local-postfix-diagnostic-build-v1.mjs',buildGuardExport:'createLocalPostfixBuildGuardV1',
+ schemas:{fixed:'threadplane-local-postfix-diagnostic-fixed-v1',selection:'threadplane-local-postfix-diagnostic-selection-v1',preparation:'threadplane-local-postfix-diagnostic-preparation-facts-v1',build:'threadplane-local-postfix-diagnostic-build-identity-v1',envelope:'threadplane-local-postfix-diagnostic-case-v1',invocation:'threadplane-postfix-two-slot-diagnostic-v1'},
+ toolingKeys:['tools/threadplane-local-postfix-diagnostic/fixed-experiment-v1.mjs','tools/threadplane-local-postfix-diagnostic/select-v1.mjs','tools/threadplane-stock037/select-v1.mjs','tools/competitor-comparison/threadplane-local-postfix-diagnostic-build-v1.mjs','tools/competitor-comparison/threadplane-local-shared-signals-install-transform-v1.mjs','tools/threadplane-local-experiments/closed-policies-v1.mjs','tools/threadplane-local-experiments/selection-engine-v1.mjs','tools/threadplane-local-experiments/build-engine-v1.mjs',
+ // Required future coordinator source. No old paired coordinator substitution.
+ 'tools/competitor-comparison/aimock-local-postfix-two-slot-v1.mjs'],
+});

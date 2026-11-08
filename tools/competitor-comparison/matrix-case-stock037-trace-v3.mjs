@@ -1,5 +1,6 @@
 // Semantic V3 instrumented Aimock case. Functional V5 bytes are checked independently.
 import path from 'node:path';
+import {types} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {performance} from 'node:perf_hooks';
 import {createHash} from 'node:crypto';
@@ -19,7 +20,9 @@ import {assertLocalOwnedMarkdownExecutionsReadyV1,localOwnedMarkdownSlotV1,local
 import {assertLocalOwnedMarkdownExecutionsReadyV2,localOwnedMarkdownSlotV2,localOwnedMarkdownRoleRootV2} from '../threadplane-local-owned-markdown/fixed-experiment-v2.mjs';
 import {createLocalOwnedMarkdownBuildGuardV1,waitLocalOwnedMarkdownOriginalV1} from './threadplane-local-owned-markdown-build-v1.mjs';
 import {createLocalOwnedMarkdownBuildGuardV2,waitLocalOwnedMarkdownOriginalV2} from './threadplane-local-owned-markdown-build-v2.mjs';
-import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1,OWNED_MARKDOWN_POLICY_V2} from '../threadplane-local-experiments/closed-policies-v1.mjs';
+import {assertLocalPostfixExecutionsReadyV1,localPostfixSlotV1,localPostfixRoleRootV1} from '../threadplane-local-postfix-diagnostic/fixed-experiment-v1.mjs';
+import {createLocalPostfixBuildGuardV1,waitLocalPostfixOriginalV1} from './threadplane-local-postfix-diagnostic-build-v1.mjs';
+import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1,OWNED_MARKDOWN_POLICY_V2,POSTFIX_DIAGNOSTIC_POLICY_V1} from '../threadplane-local-experiments/closed-policies-v1.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const message=error=>String(error?.message??error).slice(0,4096);
 function assetsFor(profile){return path.join(ROOT,profile==='threadplane'?'apps/threadplane/dist':`competitors/${profile}/dist`);}
@@ -31,6 +34,23 @@ const OWNED_MARKDOWN_V2_NATIVE_HANDLE=Object.freeze({});
 LOCAL_NATIVE_BINDINGS.set(SHARED_SIGNALS_NATIVE_HANDLE,Object.freeze({policy:SHARED_SIGNALS_POLICY_V1,slot:localSharedSignalsSlotV1,wait:waitLocalSharedSignalsOriginalV1}));
 LOCAL_NATIVE_BINDINGS.set(OWNED_MARKDOWN_NATIVE_HANDLE,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V1,slot:localOwnedMarkdownSlotV1,wait:waitLocalOwnedMarkdownOriginalV1}));
 LOCAL_NATIVE_BINDINGS.set(OWNED_MARKDOWN_V2_NATIVE_HANDLE,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V2,slot:localOwnedMarkdownSlotV2,wait:waitLocalOwnedMarkdownOriginalV2}));
+const POSTFIX_DIAGNOSTIC_NATIVE_HANDLE=Object.freeze({});
+LOCAL_NATIVE_BINDINGS.set(POSTFIX_DIAGNOSTIC_NATIVE_HANDLE,Object.freeze({policy:POSTFIX_DIAGNOSTIC_POLICY_V1,slot:localPostfixSlotV1,wait:waitLocalPostfixOriginalV1}));
+/** Closed local experiment entry. A caller can supply only the frozen ordinal. */
+export async function runLocalPostfixDiagnosticCaseV1(input){
+ assertLocalPostfixExecutionsReadyV1();
+ if(arguments.length!==1||!input||types.isProxy(input)||Object.getPrototypeOf(input)!==Object.prototype)throw Error('local-postfix-two-slot-v1-case-arguments');
+ const ds=Object.getOwnPropertyDescriptors(input);
+ if(Reflect.ownKeys(ds).sort().join(',')!=='invocationStarted,ordinal,out,store'||Object.values(ds).some(d=>!Object.hasOwn(d,'value')))throw Error('local-postfix-two-slot-v1-case-arguments');
+ const {ordinal,store,out,invocationStarted}=input,slot=localPostfixSlotV1(ordinal);
+ if(typeof out!=='string'||!path.isAbsolute(out)||path.resolve(out)!==out||out.includes('\0')||typeof invocationStarted!=='number'||!Number.isFinite(invocationStarted)||invocationStarted<0||invocationStarted>performance.now())throw Error('local-postfix-two-slot-v1-case-arguments');
+ if(path.resolve(ROOT)!==localPostfixRoleRootV1(slot.role))throw Error('local-postfix-two-slot-v1-case-root');
+ const caseStarted=performance.now(),deadline=createMatrixDeadline({caseStarted,invocationStarted}),wait=(original,ms,label)=>deadline.wait(original,ms,label);
+ const guard=await waitLocalPostfixOriginalV1(createLocalPostfixBuildGuardV1(slot.role),wait,STAGES.transcript,'local-postfix-two-slot-v1-case-guard');
+ await waitLocalPostfixOriginalV1(threadplaneBuildEvidence().then(build=>guard.verify(build)),wait,STAGES.transcript,'local-postfix-two-slot-v1-case-before-acquisition');
+ const token=Object.freeze({});LOCAL_SHARED_SIGNALS_TOKENS.set(token,Object.freeze({policyHandle:POSTFIX_DIAGNOSTIC_NATIVE_HANDLE,slot,ordinal,guard}));
+ return waitLocalPostfixOriginalV1(runMatrixCaseOriginal({slot,store,out,invocationStarted},token),wait,deadline.remaining(),'local-postfix-two-slot-v1-case-original');
+}
 /** Closed local experiment entry. A caller can supply only the frozen ordinal. */
 export async function runLocalOwnedMarkdownCaseV2(input){
  assertLocalOwnedMarkdownExecutionsReadyV2();
@@ -94,8 +114,16 @@ async function installMatrixThreadplaneBridge(page,source,origin,wait){
  },{history:source.fixture.history,origin}),STAGES.hydration,'matrix-threadplane-history');
 }
 
+function assertPostfixOrdinaryArgumentsV1(args){
+ const refuse=()=>{throw Error('local-postfix-two-slot-v1-ordinary-entry');};
+ if(!args||typeof args!=='object'||types.isProxy(args))refuse();
+ const sd=Object.getOwnPropertyDescriptor(args,'slot');if(!sd||!Object.hasOwn(sd,'value'))refuse();
+ const slot=sd.value;if(!slot||typeof slot!=='object'||types.isProxy(slot))refuse();
+ const id=Object.getOwnPropertyDescriptor(slot,'id');if(!id||!Object.hasOwn(id,'value')||typeof id.value!=='string'||id.value.includes('-local-postfix-two-slot-v1'))refuse();
+}
 export async function runMatrixCase(args){
  stock037PublishedIdentityV1();
+ assertPostfixOrdinaryArgumentsV1(args);
  return runMatrixCaseOriginal(args);
 }
 
@@ -128,6 +156,7 @@ async function runMatrixCaseOriginal({slot,store,out,invocationStarted}){
  if(localContext){
   if(!localBinding||localContext.slot!==slot||localBinding.slot(localContext.ordinal)!==slot||!slot.id.includes('-'+localBinding.policy.id+'-'))throw Error('local-shared-signals-slot');
  }else{
+  if(slot.id.includes('-local-postfix-two-slot-v1'))throw Error('local-postfix-two-slot-v1-ordinary-entry');
   if(slot.id.includes('-local-shared-signals-v1-'))throw Error('local-shared-signals-ordinary-entry');
   if(slot.id.includes('-local-owned-markdown-v1-'))throw Error('local-owned-markdown-ordinary-entry');
   if(slot.id.includes('-local-owned-markdown-v2-'))throw Error('local-owned-markdown-v2-ordinary-entry');
@@ -583,7 +612,11 @@ function receipt(r,raw){
  }
  if(typeof localContext!=='undefined'&&localContext){
   const {ordinal,guard}=localContext;
+  if(localContext.policyHandle===POSTFIX_DIAGNOSTIC_NATIVE_HANDLE){
+  result[localBinding.policy.envelopeKey]={schema:localBinding.policy.schemas.envelope,diagnosticId:'local-postfix-two-slot-v1',stock:false,sourceFlavor:localBinding.policy.sourceFlavor,id:slot.id,ordinal,role:'candidate',selection:slot.selection,localBuild:guard.identity,sourceCommit:guard.identity.sourceCommit,sourceTree:guard.identity.sourceTree,selectionDigest:guard.identity.selectionDigest,executionDigest:guard.identity.executionDigest,buildSha256:traceIdentity?.buildSha256??null,performance:false,scoringEligibility:false,FPS:null,cpuTime:null};
+  }else{
   result[localBinding.policy.envelopeKey]={schema:localBinding.policy.schemas.envelope,experimentId:localBinding.policy.id,stock:false,sourceFlavor:localBinding.policy.sourceFlavor,id:slot.id,ordinal,role:slot.role,parentId:slot.parentId,round:slot.round,stratum:slot.stratum,block:slot.block,position:slot.position,selection:slot.selection,localBuild:guard.identity,sourceCommit:guard.identity.sourceCommit,sourceTree:guard.identity.sourceTree,selectionDigest:guard.identity.selectionDigest,executionDigest:guard.identity.executionDigest,buildSha256:traceIdentity?.buildSha256??null,performance:false,scoringEligibility:false,FPS:null,cpuTime:null};
+  }
  }
  // TRACE-V3-END publish
  try{deadline.check();if(evidence.readinessV5)readinessReceiptRef=await wait(artifacts.writeJSON('readiness-receipt.json',evidence.readinessV5,{kind:'evidence'}),STAGES.progress,'matrix-readiness-receipt-write');if(serverOutcome)await wait(artifacts.writeJSON('server-process.json',serverOutcome,{kind:'evidence'}),STAGES.progress,'matrix-server-receipt-write');await wait(artifacts.writeJSON('evidence.json',evidence,{kind:'evidence'}),STAGES.transcript,'matrix-evidence-write');await wait(artifacts.writeJSON('result.json',result,{kind:'result'}),STAGES.progress,'matrix-result-write');}

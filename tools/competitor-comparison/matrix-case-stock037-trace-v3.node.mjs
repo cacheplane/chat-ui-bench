@@ -59,15 +59,15 @@ test('strict eight-seam parser and exact native V5/wrapper/bridge bytes',()=>{
  actual=actual.replace('async function runMatrixCaseOriginal(','export async function runMatrixCase(');
  assert.equal(actual,body(native,'export async function runMatrixCase(','\nexport async function runMatrixInvocation'));
  assert.equal(sha(actual),'92fc187e53a8ac30684ebbfc6987b1ebbed66de395ee61ab15455af28bd463ef');
- const wrapper='export async function runMatrixCase(args){\n stock037PublishedIdentityV1();\n return runMatrixCaseOriginal(args);\n}';assert.ok(source.includes(wrapper));
- const bridge=body(source,'async function installMatrixThreadplaneBridge(','\nexport async function runMatrixCase(');
+ const wrapper='export async function runMatrixCase(args){\n stock037PublishedIdentityV1();\n assertPostfixOrdinaryArgumentsV1(args);\n return runMatrixCaseOriginal(args);\n}';assert.ok(source.includes(wrapper));
+ const bridge=body(source,'async function installMatrixThreadplaneBridge(','\nfunction assertPostfixOrdinaryArgumentsV1(');
  assert.equal(bridge,body(native,'async function installMatrixThreadplaneBridge(','\nexport async function runMatrixCase('));
  assert.equal(sha(bridge),'58154a50b158bb11ff5d708d5165ce6b1e5ab61ddb3ddbc85a12d01d93f74823');
  for(const malformed of [source.replace('TRACE-V3-END ack','TRACE-V3-END setup'),source.replace('TRACE-V3-END ack','TRACE-V3-BEGIN ack'),source.replace('TRACE-V3-BEGIN ack','TRACE-V3-BEGIN ninth'),source+'// TRACE-V3-BEGIN ninth\n'])assert.throws(()=>parse(malformed));
  for(const malformed of [source+' // TRACE-V3-BEGIN ninth\n // TRACE-V3-END ninth\n',source.replace(' // TRACE-V3-END stop\n',''),source.replace(' // TRACE-V3-BEGIN ack\n',''),source.replace(' // TRACE-V3-BEGIN ack\n',' // TRACE-V3-BEGIN finish\n')])assert.throws(()=>parse(malformed));
 });
 test('case has only fixed local, ordinary and fixed CPU exports and remains fixed037 at its local identity gate',async()=>{
- assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(m=>m[1]),['runLocalOwnedMarkdownCaseV2','runLocalOwnedMarkdownCaseV1','runLocalSharedSignalsCaseV1','runMatrixCase','runStock037CpuDiagnosticCaseV1']);
+ assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(m=>m[1]),['runLocalPostfixDiagnosticCaseV1','runLocalOwnedMarkdownCaseV2','runLocalOwnedMarkdownCaseV1','runLocalSharedSignalsCaseV1','runMatrixCase','runStock037CpuDiagnosticCaseV1']);
  const {seams}=parse(source),prefix=seams.publish.slice(0,seams.publish.indexOf(' const traceDiagnostic='));
  const check=AsyncFunction('value','createHash','TRACE_POLICY','TRACE_POLICY_SHA256',prefix+'validateIdentity(value);return true;');
  const identity={id:'stock037-case',profile:'threadplane',historyCount:10,responseBytes:100,journey:'history-reading',stockVersion:'0.3.7',buildSha256:'a'.repeat(64)};
@@ -98,6 +98,7 @@ test('typed genuine build is awaited and hashed before the delayed collector con
 test('complete imports are closed, with no child, guard override or alternate decoding dependency',()=>{
  assert.deepEqual(source.split('\n').filter(line=>line.startsWith('import ')),[
  "import path from 'node:path';",
+ "import {types} from 'node:util';",
  "import {fileURLToPath} from 'node:url';",
  "import {performance} from 'node:perf_hooks';",
  "import {createHash} from 'node:crypto';",
@@ -117,15 +118,17 @@ test('complete imports are closed, with no child, guard override or alternate de
  "import {assertLocalOwnedMarkdownExecutionsReadyV2,localOwnedMarkdownSlotV2,localOwnedMarkdownRoleRootV2} from '../threadplane-local-owned-markdown/fixed-experiment-v2.mjs';",
  "import {createLocalOwnedMarkdownBuildGuardV1,waitLocalOwnedMarkdownOriginalV1} from './threadplane-local-owned-markdown-build-v1.mjs';",
  "import {createLocalOwnedMarkdownBuildGuardV2,waitLocalOwnedMarkdownOriginalV2} from './threadplane-local-owned-markdown-build-v2.mjs';",
- "import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1,OWNED_MARKDOWN_POLICY_V2} from '../threadplane-local-experiments/closed-policies-v1.mjs';",
+ "import {assertLocalPostfixExecutionsReadyV1,localPostfixSlotV1,localPostfixRoleRootV1} from '../threadplane-local-postfix-diagnostic/fixed-experiment-v1.mjs';",
+ "import {createLocalPostfixBuildGuardV1,waitLocalPostfixOriginalV1} from './threadplane-local-postfix-diagnostic-build-v1.mjs';",
+ "import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1,OWNED_MARKDOWN_POLICY_V2,POSTFIX_DIAGNOSTIC_POLICY_V1} from '../threadplane-local-experiments/closed-policies-v1.mjs';",
  ]);
  const active=source.slice(source.indexOf('const readinessAck='),source.indexOf('readinessController.assertBeforeWheel();'));
  assert.doesNotMatch(active,/assertStock037|threadplaneBuildEvidence|runAimockTraceDecoderOwner/);
 });
 test('public wrapper accessor refuses before any argument property is touched',async()=>{
- const wrapper=body(source,'export async function runMatrixCase(args){','\n\nconst STOCK037_CPU_TOKEN').replace('export async function','async function');let reads=0;
- const run=AsyncFunction('stock037PublishedIdentityV1','runMatrixCaseOriginal',wrapper+';return runMatrixCase(new Proxy({},{get(){throw Error("property-touched");}}));');
- await assert.rejects(run(()=>{throw Error('stock037-published-identity-unavailable');},()=>{reads++;}),/stock037-published-identity-unavailable/);assert.equal(reads,0);
+ const wrapper=body(source,'function assertPostfixOrdinaryArgumentsV1(','\n\nconst STOCK037_CPU_TOKEN').replace('export async function','async function');let reads=0;
+ const run=AsyncFunction('types','stock037PublishedIdentityV1','runMatrixCaseOriginal',wrapper+';return runMatrixCase(new Proxy({},{get(){throw Error("property-touched");}}));');
+ await assert.rejects(run(types,()=>{throw Error('stock037-published-identity-unavailable');},()=>{reads++;}),/stock037-published-identity-unavailable/);assert.equal(reads,0);
 });
 test('rejected typed build or guard never constructs a collector',async()=>{
  const {seams}=parse(source);let constructs=0;
@@ -232,9 +235,9 @@ test('source-VM typed037 guard binds exact complete actual record before collect
 });
 test('unavailable source-VM authority refuses before argument or browser/IO work, and wrong release pins refuse',async()=>{
  const {load,pins}=await authoredGuard(),api=load(null);let properties=0,work=0;
- const wrapper=body(source,'export async function runMatrixCase(args){','\n\nconst STOCK037_CPU_TOKEN').replace('export async function','async function');
- const run=AsyncFunction('stock037PublishedIdentityV1','runMatrixCaseOriginal','args',wrapper+';return runMatrixCase(args);');
- await assert.rejects(run(api.stock037PublishedIdentityV1,()=>{work++;},new Proxy({},{get(){properties++;}})),/published-identity-unavailable/);
+ const wrapper=body(source,'function assertPostfixOrdinaryArgumentsV1(','\n\nconst STOCK037_CPU_TOKEN').replace('export async function','async function');
+ const run=AsyncFunction('types','stock037PublishedIdentityV1','runMatrixCaseOriginal','args',wrapper+';return runMatrixCase(args);');
+ await assert.rejects(run(types,api.stock037PublishedIdentityV1,()=>{work++;},new Proxy({},{get(){properties++;}})),/published-identity-unavailable/);
  assert.equal(properties,0);assert.equal(work,0);
  for(const version of ['0.3.6','0.3.8']){const wrong=clone(pins);wrong.version=version;assert.throws(()=>load(wrong),/pins-identity/);}
 });

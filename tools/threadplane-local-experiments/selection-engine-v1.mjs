@@ -8,9 +8,10 @@ import {fileURLToPath} from 'node:url';
 import {deriveStock037SelectionV1} from '../threadplane-stock037/select-v1.mjs';
 import {stock037PublishedIdentityV1} from '../competitor-comparison/aimock-stock037-v1.mjs';
 import * as sharedSignalsFixed from '../threadplane-local-shared-signals/fixed-experiment-v1.mjs';
-import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1,OWNED_MARKDOWN_POLICY_V2} from './closed-policies-v1.mjs';
+import {SHARED_SIGNALS_POLICY_V1,OWNED_MARKDOWN_POLICY_V1,OWNED_MARKDOWN_POLICY_V2,POSTFIX_DIAGNOSTIC_POLICY_V1} from './closed-policies-v1.mjs';
 import * as ownedMarkdownFixed from '../threadplane-local-owned-markdown/fixed-experiment-v1.mjs';
 import * as ownedMarkdownV2Fixed from '../threadplane-local-owned-markdown/fixed-experiment-v2.mjs';
+import * as postfixFixed from '../threadplane-local-postfix-diagnostic/fixed-experiment-v1.mjs';
 // Policy handles and factories are private to this module instance.
 const bindings=new WeakMap();
 const sharedSignalsHandle=Object.freeze({});
@@ -19,6 +20,8 @@ const ownedMarkdownHandle=Object.freeze({});
 bindings.set(ownedMarkdownHandle,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V1,assertLocalSharedSignalsSelectionsReadyV1:ownedMarkdownFixed.assertLocalOwnedMarkdownSelectionsReadyV1,localSharedSignalsSelectionIdentityV1:ownedMarkdownFixed.localOwnedMarkdownSelectionIdentityV1,validateLocalSharedSignalsExperimentRecordV1:ownedMarkdownFixed.validateLocalOwnedMarkdownExperimentRecordV1,LOCAL_SHARED_SIGNALS_CONTROL_SOURCE_V1:ownedMarkdownFixed.LOCAL_OWNED_MARKDOWN_CONTROL_SOURCE_V1,LOCAL_SHARED_SIGNALS_RUNTIME_NAMES_V1:ownedMarkdownFixed.LOCAL_OWNED_MARKDOWN_RUNTIME_NAMES_V1}));
 const ownedMarkdownV2Handle=Object.freeze({});
 bindings.set(ownedMarkdownV2Handle,Object.freeze({policy:OWNED_MARKDOWN_POLICY_V2,assertLocalSharedSignalsSelectionsReadyV1:ownedMarkdownV2Fixed.assertLocalOwnedMarkdownSelectionsReadyV2,localSharedSignalsSelectionIdentityV1:ownedMarkdownV2Fixed.localOwnedMarkdownSelectionIdentityV2,validateLocalSharedSignalsExperimentRecordV1:ownedMarkdownV2Fixed.validateLocalOwnedMarkdownExperimentRecordV2,LOCAL_SHARED_SIGNALS_CONTROL_SOURCE_V1:ownedMarkdownV2Fixed.LOCAL_OWNED_MARKDOWN_CONTROL_SOURCE_V2,LOCAL_SHARED_SIGNALS_RUNTIME_NAMES_V1:ownedMarkdownV2Fixed.LOCAL_OWNED_MARKDOWN_RUNTIME_NAMES_V2}));
+const postfixHandle=Object.freeze({});
+bindings.set(postfixHandle,Object.freeze({policy:POSTFIX_DIAGNOSTIC_POLICY_V1,assertLocalSharedSignalsSelectionsReadyV1:postfixFixed.assertLocalPostfixSelectionsReadyV1,localSharedSignalsSelectionIdentityV1:postfixFixed.localPostfixSelectionIdentityV1,LOCAL_SHARED_SIGNALS_RUNTIME_NAMES_V1:postfixFixed.LOCAL_POSTFIX_RUNTIME_NAMES_V1,validateLocalSharedSignalsExperimentRecordV1:postfixFixed.validateLocalPostfixDiagnosticRecordV1}));
 function createSelectionEngine(handle){
  const binding=bindings.get(handle);if(!binding)throw Error('closed-local-policy');
  const {policy,assertLocalSharedSignalsSelectionsReadyV1,localSharedSignalsSelectionIdentityV1,validateLocalSharedSignalsExperimentRecordV1,LOCAL_SHARED_SIGNALS_CONTROL_SOURCE_V1,LOCAL_SHARED_SIGNALS_RUNTIME_NAMES_V1}=binding;
@@ -35,7 +38,7 @@ function passiveCanonicalInputs(input){
 }
 /** Pure model only: synthetic selections never activate production accessors. */
 function deriveLocalSharedSignalsSelectionV1(input,selection){
- need(selection!==null&&typeof selection==='object'&&!types.isProxy(selection)&&!Array.isArray(selection),'passive-selection');const descriptor=Object.getOwnPropertyDescriptor(selection,'role');need(descriptor&&Object.hasOwn(descriptor,'value'),'passive-role');const role=descriptor.value;need(role==='control'||role==='candidate','role');validateLocalSharedSignalsExperimentRecordV1({schema:policy.schemas.fixed,experimentId:policy.id,decisionSha256:policy.decisionSha256,version:'0.3.7',controlSourceCommit:LOCAL_SHARED_SIGNALS_CONTROL_SOURCE_V1,roles:{control:role==='control'?{selection,execution:null}:null,candidate:role==='candidate'?{selection,execution:null}:null}});
+ need(selection!==null&&typeof selection==='object'&&!types.isProxy(selection)&&!Array.isArray(selection),'passive-selection');const descriptor=Object.getOwnPropertyDescriptor(selection,'role');need(descriptor&&Object.hasOwn(descriptor,'value'),'passive-role');const role=descriptor.value;need(role==='control'||role==='candidate','role');if(policy.id==='local-postfix-two-slot-v1'){need(role==='candidate','candidate-only');const source=Object.getOwnPropertyDescriptors(selection);need(['sourceCommit','sourceTree'].every(k=>source[k]&&Object.hasOwn(source[k],'value')),'passive-source');validateLocalSharedSignalsExperimentRecordV1({schema:policy.schemas.fixed,diagnosticId:policy.id,declarationSha256:policy.decisionSha256,version:'0.3.7',sourceCommit:source.sourceCommit.value,sourceTree:source.sourceTree.value,candidate:{selection,execution:null}});}else validateLocalSharedSignalsExperimentRecordV1({schema:policy.schemas.fixed,experimentId:policy.id,decisionSha256:policy.decisionSha256,version:'0.3.7',controlSourceCommit:LOCAL_SHARED_SIGNALS_CONTROL_SOURCE_V1,roles:{control:role==='control'?{selection,execution:null}:null,candidate:role==='candidate'?{selection,execution:null}:null}});
  input=passiveCanonicalInputs(input);const registry=deriveStock037SelectionV1(input,stock037PublishedIdentityV1());need(equal(registry.selectedSourceHashes,selection.registry037Inputs),'registry-inputs');
  for(const[key,name]of [['rootManifestBytes','package.json'],['appManifestBytes','apps/threadplane/package.json'],['stockLockBytes','package-lock.json']])need(sha(input[key])===selection.canonicalInputs[name],'canonical-inputs');
  const lock=JSON.parse(registry.selectedLockBytes);
@@ -78,3 +81,7 @@ export const selectOwnedMarkdownV1=ownedMarkdown.selectLocalSharedSignalsDepende
 const ownedMarkdownV2=createSelectionEngine(ownedMarkdownV2Handle);
 export const deriveOwnedMarkdownSelectionV2=ownedMarkdownV2.deriveLocalSharedSignalsSelectionV1;
 export const selectOwnedMarkdownV2=ownedMarkdownV2.selectLocalSharedSignalsDependenciesV1;
+
+const postfix=createSelectionEngine(postfixHandle);
+export const derivePostfixSelectionV1=postfix.deriveLocalSharedSignalsSelectionV1;
+export const selectPostfixV1=postfix.selectLocalSharedSignalsDependenciesV1;

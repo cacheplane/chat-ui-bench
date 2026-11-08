@@ -642,3 +642,13 @@ export async function createLocalOwnedMarkdown24StoreV2(input) {
   if (arguments.length !== 1) throw Error('matrix-artifact-arguments');
   return createStore(input, LOCAL_OWNED_MARKDOWN_IDS_V2);
 }
+
+// Candidate-only diagnostic: exact two originals, no paired/round namespace.
+const LOCAL_POSTFIX_TWO_SLOT_IDS_V1 = Object.freeze([
+  'threadplane-h10000-r6400-follow-local-postfix-two-slot-v1-candidate',
+  'threadplane-h10000-r6400-history-reading-local-postfix-two-slot-v1-candidate',
+]);
+export async function createLocalPostfixTwoSlotStoreV1(input) {
+  if (arguments.length !== 1) throw Error('matrix-artifact-arguments');
+  return createStore(input, LOCAL_POSTFIX_TWO_SLOT_IDS_V1);
+}

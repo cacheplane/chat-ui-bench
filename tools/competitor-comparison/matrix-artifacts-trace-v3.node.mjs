@@ -139,8 +139,8 @@ test('local fixed24 and every earlier constructor refuse each other IDs before f
 });
 
 test('fixed stores expose exactly six closed constructors and literal tuple-preserving schedules', () => {
-  assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1','createLocalOwnedMarkdown24StoreV2'].sort());
-  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1','createLocalOwnedMarkdown24StoreV2'].sort());
+  assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1','createLocalOwnedMarkdown24StoreV2','createLocalPostfixTwoSlotStoreV1'].sort());
+  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1','createLocalOwnedMarkdown24StoreV2','createLocalPostfixTwoSlotStoreV1'].sort());
   const literal = name => {
     const match = source.match(new RegExp(`const ${name} = Object\\.freeze\\(\\[([\\s\\S]*?)\\]\\);`));
     assert.ok(match, `missing private literal ${name}`);
@@ -539,7 +539,7 @@ test('whole invocation+cleanup equality dispatches no new IO, including reads an
 test('all exact frozen roster arrays are private and literal with no roster/configuration exports', () => {
   assert.match(source, /const PILOT_IDS = Object\.freeze\(\[/);
   assert.match(source, /const FULL_IDS = Object\.freeze\(\[/);
-  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1','createLocalOwnedMarkdown24StoreV2'].sort());
+  assert.deepEqual([...source.matchAll(/^export (?:async )?function (\w+)/gm)].map(x => x[1]).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1','createLocalOwnedMarkdown24StoreV2','createLocalPostfixTwoSlotStoreV1'].sort());
   assert.equal(new Set(full).size, 48);
 });
 
@@ -690,7 +690,7 @@ test('full48 maximum ledger is 97 rows, with detached facts fitting ordinary evi
 });
 
 test('production exports only the six closed constructors and old store source remains byte-exact', async () => {
-  assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1','createLocalOwnedMarkdown24StoreV2'].sort());
+  assert.deepEqual(Object.keys(production).sort(), [...fixedConstructorNames,'createLocalOwnedMarkdown24StoreV1','createLocalOwnedMarkdown24StoreV2','createLocalPostfixTwoSlotStoreV1'].sort());
   const old = await fs.readFile(new URL('./matrix-artifacts-v3.mjs', import.meta.url));
   assert.equal(createHash('sha256').update(old).digest('hex'), '172fbdd42640c0053f07a50a939b99fa33d6e34b0b7a660cf1644b2d5d621a4e');
 });
