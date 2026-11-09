@@ -1,5 +1,5 @@
-// Candidate-only TWO-slot diagnostic. Actual SDK M/tree/declaration remain unknown.
-// All published source/activation/selection/execution authority is NIL.
+// Candidate-only TWO-slot diagnostic bound to reviewed, unreleased SDK source.
+// Published activation/selection/execution remain NIL.
 import {types} from 'node:util';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
@@ -9,9 +9,9 @@ const names=['a2ui','ag-ui','chat','langgraph','render','telemetry'].map(n=>'@th
 export const LOCAL_POSTFIX_ROLES_V1=Object.freeze(['candidate']);
 export const LOCAL_POSTFIX_RUNTIME_NAMES_V1=Object.freeze(runtime);
 export const LOCAL_POSTFIX_PACKAGE_NAMES_V1=Object.freeze(names);
-export const LOCAL_POSTFIX_SOURCE_COMMIT_V1=null;
-export const LOCAL_POSTFIX_SOURCE_TREE_V1=null;
-export const LOCAL_POSTFIX_DECLARATION_SHA256_V1=null;
+export const LOCAL_POSTFIX_SOURCE_COMMIT_V1="7e0787edbf740c81911421f9dc9730c44cfac228";
+export const LOCAL_POSTFIX_SOURCE_TREE_V1="1e35b14597179dff81e89b153f0a3f4e8ae5e470";
+export const LOCAL_POSTFIX_DECLARATION_SHA256_V1="c5741a0cae825c3cceac08da93c41dcc3ef36832586c32b77d098f845dd41c1f";
 export const LOCAL_POSTFIX_ACTIVE_SOURCE_V1=null;
 function exact(v,keys){need(v!==null&&typeof v==='object'&&!Array.isArray(v)&&!types.isProxy(v)&&Object.getPrototypeOf(v)===Object.prototype);const d=Object.getOwnPropertyDescriptors(v);need(Reflect.ownKeys(d).every(k=>typeof k==='string'));need(Object.keys(d).sort().join('\0')===[...keys].sort().join('\0')&&Object.values(d).every(p=>Object.hasOwn(p,'value')));}
 function jsonData(v,depth=0,budget={n:0}){need(depth<=32&&++budget.n<=200000&&!types.isProxy(v));if(v===null||typeof v==='boolean'||typeof v==='string'){if(typeof v==='string')need(v.length<=1048576);return;}if(typeof v==='number'){need(Number.isFinite(v));return;}need(typeof v==='object');const ds=Object.getOwnPropertyDescriptors(v);need(Reflect.ownKeys(ds).every(k=>typeof k==='string'));need(Object.values(ds).every(d=>Object.hasOwn(d,'value')));if(Array.isArray(v)){need(Object.getPrototypeOf(v)===Array.prototype);need(v.length<=24576&&Object.keys(ds).filter(k=>k!=='length').length===v.length);for(let i=0;i<v.length;i++){need(Object.hasOwn(ds,String(i)));jsonData(ds[i].value,depth+1,budget);}}else{need(Object.getPrototypeOf(v)===Object.prototype);for(const[k,d]of Object.entries(ds)){need(k!=='__proto__'&&k!=='constructor'&&k!=='prototype');jsonData(d.value,depth+1,budget);}}}
@@ -35,7 +35,7 @@ export function validateLocalPostfixDiagnosticRecordV1(value){
 }
 const freeze=v=>{if(v&&typeof v==='object'){for(const x of Object.values(v))freeze(x);Object.freeze(v);}return v;};
 export function immutableLocalPostfixDiagnosticRecordV1(value){validateLocalPostfixDiagnosticRecordV1(value);return freeze(structuredClone(value));}
-export const LOCAL_POSTFIX_FIXED_DIAGNOSTIC_V1=immutableLocalPostfixDiagnosticRecordV1({"schema":"threadplane-local-postfix-diagnostic-fixed-v1","diagnosticId":"local-postfix-two-slot-v1","declarationSha256":null,"version":"0.3.7","sourceCommit":null,"sourceTree":null,"candidate":null});
+export const LOCAL_POSTFIX_FIXED_DIAGNOSTIC_V1=immutableLocalPostfixDiagnosticRecordV1({"schema":"threadplane-local-postfix-diagnostic-fixed-v1","diagnosticId":"local-postfix-two-slot-v1","declarationSha256":"c5741a0cae825c3cceac08da93c41dcc3ef36832586c32b77d098f845dd41c1f","version":"0.3.7","sourceCommit":"7e0787edbf740c81911421f9dc9730c44cfac228","sourceTree":"1e35b14597179dff81e89b153f0a3f4e8ae5e470","candidate":null});
 export function assertLocalPostfixSelectionsReadyV1(){need(hex(LOCAL_POSTFIX_SOURCE_COMMIT_V1,40)&&hex(LOCAL_POSTFIX_SOURCE_TREE_V1,40)&&hex(LOCAL_POSTFIX_DECLARATION_SHA256_V1)&&LOCAL_POSTFIX_ACTIVE_SOURCE_V1===LOCAL_POSTFIX_SOURCE_COMMIT_V1&&LOCAL_POSTFIX_FIXED_DIAGNOSTIC_V1.candidate!==null,'identity-unavailable');validateLocalPostfixDiagnosticRecordV1(LOCAL_POSTFIX_FIXED_DIAGNOSTIC_V1);}
 export function assertLocalPostfixExecutionsReadyV1(){assertLocalPostfixSelectionsReadyV1();need(LOCAL_POSTFIX_FIXED_DIAGNOSTIC_V1.candidate.execution!==null,'identity-unavailable');}
 function roleCheck(role){need(role==='candidate','role');}
