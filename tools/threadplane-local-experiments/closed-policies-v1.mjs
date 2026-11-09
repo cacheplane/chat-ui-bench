@@ -84,7 +84,7 @@ export const OWNED_MARKDOWN_POLICY_V2=freeze({
 // Candidate-only two-slot diagnostic; actual source/declaration bindings pending.
 export const POSTFIX_DIAGNOSTIC_POLICY_V1=freeze({
  id:'local-postfix-two-slot-v1',prefix:'local-postfix-two-slot-v1',label:'local-source-built-postfix-diagnostic-037-v1',selectionName:'local-source-built-postfix-diagnostic-037-v1',sourceFlavor:'local-source-built-postfix-diagnostic-v1',purpose:'candidate-only-two-slot-postfix-diagnostic',
- decisionPath:'/private/tmp/THREADPLANE-POSTFIX-TWO-SLOT-DIAGNOSTIC-DECISION-V1-20261108.json',decisionSha256:null,
+ decisionPath:'/private/tmp/THREADPLANE-POSTFIX-TWO-SLOT-DIAGNOSTIC-DECISION-V1-20261108.json',decisionSha256:'b450dcda89e5f84301c6bbe69d4d89df5fe90a1fc63c2654dfc80ca4a6533318',
  transactionName:'.threadplane-local-postfix-two-slot-v1-selection',packageDirectory:'local-packages/local-postfix-two-slot-v1',roots:{candidate:'/private/tmp/chat-ui-bench-postfix-two-slot-candidate-native-20261108-invocation01'},
  envelopeKey:'localPostfixDiagnosticV1',diagnosticKey:'localPostfixTwoSlotDiagnosticV1',caseModule:'tools/competitor-comparison/matrix-case-stock037-trace-v3.mjs',caseExport:'runLocalPostfixDiagnosticCaseV1',
  fixedSourceKey:'tools/threadplane-local-postfix-diagnostic/fixed-experiment-v1.mjs',selectorModule:'tools/threadplane-local-postfix-diagnostic/select-v1.mjs',deriveExport:'deriveLocalPostfixSelectionV1',buildModule:'tools/competitor-comparison/threadplane-local-postfix-diagnostic-build-v1.mjs',buildGuardExport:'createLocalPostfixBuildGuardV1',
